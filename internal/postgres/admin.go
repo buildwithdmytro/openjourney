@@ -128,7 +128,9 @@ func (s *Store) CreateEventSchema(ctx context.Context, p domain.Principal, input
 func isBuiltInEvent(eventType string) bool {
 	return eventType == "profile.updated" || eventType == "consent.changed" ||
 		eventType == "identity.alias" || eventType == "identity.merge" ||
-		eventType == "email.sent" || eventType == "email.opened" || eventType == "link.clicked"
+		eventType == "email.sent" || eventType == "email.opened" || eventType == "link.clicked" ||
+		eventType == "message.sent" || eventType == "message.delivered" ||
+		eventType == "message.bounced" || eventType == "message.complained"
 }
 
 func (s *Store) ListAPIKeys(ctx context.Context, p domain.Principal) ([]domain.APIKey, error) {

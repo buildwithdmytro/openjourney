@@ -187,6 +187,24 @@ func (f *fakeStore) UpsertTrackedLink(_ context.Context, _ string, _ string, _ s
 func (f *fakeStore) GetProfileByID(_ context.Context, _, _, _ string) (domain.Profile, error) {
 	return domain.Profile{ID: "profile-1", ExternalID: "user-1", Attributes: json.RawMessage(`{}`)}, nil
 }
+func (f *fakeStore) IsSuppressed(ctx context.Context, p domain.Principal, channel, endpoint string) (bool, error) {
+	return false, nil
+}
+func (f *fakeStore) SuppressEndpoint(ctx context.Context, p domain.Principal, channel, endpoint, reason string) error {
+	return nil
+}
+func (f *fakeStore) RemoveSuppression(ctx context.Context, p domain.Principal, channel, endpoint string) error {
+	return nil
+}
+func (f *fakeStore) ListSuppressions(ctx context.Context, p domain.Principal) ([]domain.Suppression, error) {
+	return []domain.Suppression{}, nil
+}
+func (f *fakeStore) LatestConsent(ctx context.Context, p domain.Principal, profileID, channel, topic string) (domain.Consent, error) {
+	return domain.Consent{ProfileID: profileID, Channel: channel, Topic: topic, State: "subscribed"}, nil
+}
+func (f *fakeStore) SentCountSince(ctx context.Context, p domain.Principal, profileID string, since time.Time) (int, error) {
+	return 0, nil
+}
 
 func TestAcceptEvents(t *testing.T) {
 	store := &fakeStore{}

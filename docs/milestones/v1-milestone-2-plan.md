@@ -497,21 +497,21 @@ order; each milestone should compile and pass `go build ./... && go vet ./...` b
 8. [x] **React:** template editor + live preview (Recipe 6.8).
 
 ### Milestone 7.4 — Policy engine & suppressions
-1. **Migration** `011_delivery_policy.sql` (`suppressions`). *Done when:* table exists.
-2. **Projection side-effect:** in the store's `ProjectEvent`, add
+1. [x] **Migration** `011_delivery_policy.sql` (`suppressions`). *Done when:* table exists.
+2. [x] **Projection side-effect:** in the store's `ProjectEvent`, add
    `case "message.bounced", "message.complained":` that inserts into `suppressions`
    (`INSERT ... ON CONFLICT (tenant_id,channel,endpoint) DO NOTHING`), copying the
    `consent.changed` → `consent_ledger` block. *Done when:* projecting a bounce event
    creates a suppression row.
-3. **Store methods** `internal/postgres/delivery.go`: `IsSuppressed(ctx,p,channel,endpoint)`,
+3. [x] **Store methods** `internal/postgres/delivery.go`: `IsSuppressed(ctx,p,channel,endpoint)`,
    `SuppressEndpoint(...)`, `RemoveSuppression(...)`, `LatestConsent(ctx,p,profileID,channel,topic)`,
    `SentCountSince(ctx,p,profileID,since)`. Add to `ports.Store`.
-4. **Policy engine** `internal/policy/policy.go`:
+4. [x] **Policy engine** `internal/policy/policy.go`:
    `type Verdict struct { Decision, Reason string; Snapshot map[string]any }`;
    `Evaluate(ctx, store, p, recipient, caps) Verdict` implementing the §4 order.
    *Done when:* unit tests cover suppressed / no-consent / fatigued / eligible.
-5. **HTTP:** `GET/POST/DELETE /v1/suppressions`; `sending_identities` CRUD (Recipe 6.4).
-6. **React:** suppression + sender-identity management views.
+5. [x] **HTTP:** `GET/POST/DELETE /v1/suppressions`; `sending_identities` CRUD (Recipe 6.4).
+6. [x] **React:** suppression + sender-identity management views.
 
 ### Milestone 7.5 — Channel adapters & callbacks
 1. **Adapter interface** `internal/ports/store.go` (or `ports/adapter.go`):

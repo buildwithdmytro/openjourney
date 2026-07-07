@@ -280,3 +280,25 @@ export async function createSendingIdentity(baseURL: string, apiKey: string, inp
   return requestJSON(baseURL, apiKey, "/v1/sending-identities", { method: "POST", body: JSON.stringify(input) });
 }
 
+export type Suppression = {
+  id: string;
+  tenant_id: string;
+  channel: string;
+  endpoint: string;
+  reason: "bounce" | "complaint" | "unsubscribe" | "admin";
+  source_event_id?: string;
+  created_at: string;
+};
+
+export async function listSuppressions(baseURL: string, apiKey: string): Promise<Suppression[]> {
+  return requestJSON<Suppression[]>(baseURL, apiKey, "/v1/suppressions") ?? [];
+}
+
+export async function createSuppression(baseURL: string, apiKey: string, input: Partial<Suppression>): Promise<{ status: string }> {
+  return requestJSON<{ status: string }>(baseURL, apiKey, "/v1/suppressions", { method: "POST", body: JSON.stringify(input) });
+}
+
+export async function deleteSuppression(baseURL: string, apiKey: string, channel: string, endpoint: string): Promise<void> {
+  await requestJSON<void>(baseURL, apiKey, `/v1/suppressions?channel=${encodeURIComponent(channel)}&endpoint=${encodeURIComponent(endpoint)}`, { method: "DELETE" });
+}
+

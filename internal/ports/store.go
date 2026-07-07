@@ -64,6 +64,13 @@ type Store interface {
 	UpdateTemplate(context.Context, domain.Principal, domain.Template) (domain.Template, error)
 	ListTemplates(context.Context, domain.Principal) ([]domain.Template, error)
 	UpsertTrackedLink(ctx context.Context, tenantID string, templateID string, originalURL string) (string, error)
+
+	IsSuppressed(ctx context.Context, p domain.Principal, channel, endpoint string) (bool, error)
+	SuppressEndpoint(ctx context.Context, p domain.Principal, channel, endpoint, reason string) error
+	RemoveSuppression(ctx context.Context, p domain.Principal, channel, endpoint string) error
+	ListSuppressions(ctx context.Context, p domain.Principal) ([]domain.Suppression, error)
+	LatestConsent(ctx context.Context, p domain.Principal, profileID, channel, topic string) (domain.Consent, error)
+	SentCountSince(ctx context.Context, p domain.Principal, profileID string, since time.Time) (int, error)
 }
 
 type TokenVerifier interface {

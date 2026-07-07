@@ -1,0 +1,88 @@
+package postgres
+
+import (
+	"context"
+	"errors"
+	"strings"
+	"time"
+
+	"github.com/buildwithdmytro/openjourney/internal/domain"
+	"github.com/jackc/pgx/v5"
+)
+
+func (s *Store) IsSuppressed(ctx context.Context, p domain.Principal, channel, endpoint string) (bool, error) {
+	var exists bool
+	err := s.pool.QueryRow(ctx, `SELECT EXISTS(
+		SELECT 1 FROM suppressions WHERE tenant_id=$1 AND channel=$2 AND endpoint=$3
+	)`, p.TenantID, strings.ToLower(channel), strings.ToLower(endpoint)).Scan(&exists)
+	return exists, err
+}
+
+func (s *Store) SuppressEndpoint(ctx context.Context, p domain.Principal, channel, endpoint, reason string) error {
+	if reason != "bounce" && reason != "complaint" && reason != "unsubscribe" && reason != "admin" {
+		return errors.New("invalid suppression reason")
+	}
+	_, err := s.pool.Exec(ctx, `INSERT INTO suppressions (tenant_id, channel, endpoint, reason)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (tenant_id, channel, endpoint) DO UPDATE SET reason=EXCLUDED.reason`,
+		p.TenantID, strings.ToLower(channel), strings.ToLower(endpoint), reason)
+	if err != nil {
+		return err
+	}
+	_ = s.audit(ctx, p, "suppression.create", "suppression", endpoint, map[string]any{"channel": channel, "reason": reason})
+	return nil
+}
+
+func (s *Store) RemoveSuppression(ctx context.Context, p domain.Principal, channel, endpoint string) error {
+	tag, err := s.pool.Exec(ctx, `DELETE FROM suppressions WHERE tenant_id=$1 AND channel=$2 AND endpoint=$3`,
+		p.TenantID, strings.ToLower(channel), strings.ToLower(endpoint))
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	_ = s.audit(ctx, p, "suppression.delete", "suppression", endpoint, map[string]any{"channel": channel})
+	return nil
+}
+
+func (s *Store) ListSuppressions(ctx context.Context, p domain.Principal) ([]domain.Suppression, error) {
+	rows, err := s.pool.Query(ctx, `SELECT id, tenant_id, channel, endpoint, reason, source_event_id, created_at
+		FROM suppressions WHERE tenant_id=$1 ORDER BY created_at DESC`, p.TenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.Suppression
+	for rows.Next() {
+		var sup domain.Suppression
+		err := rows.Scan(&sup.ID, &sup.TenantID, &sup.Channel, &sup.Endpoint, &sup.Reason, &sup.SourceEventID, &sup.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, sup)
+	}
+	return out, nil
+}
+
+func (s *Store) LatestConsent(ctx context.Context, p domain.Principal, profileID, channel, topic string) (domain.Consent, error) {
+	var out domain.Consent
+	err := s.pool.QueryRow(ctx, `SELECT profile_id, channel, topic, state, occurred_at
+		FROM consent_ledger
+		WHERE tenant_id=$1 AND profile_id=$2 AND channel=$3 AND topic=$4
+		ORDER BY occurred_at DESC LIMIT 1`,
+		p.TenantID, profileID, strings.ToLower(channel), topic).
+		Scan(&out.ProfileID, &out.Channel, &out.Topic, &out.State, &out.OccurredAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Consent{}, ErrNotFound
+	}
+	return out, err
+}
+
+func (s *Store) SentCountSince(ctx context.Context, p domain.Principal, profileID string, since time.Time) (int, error) {
+	var count int
+	err := s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM delivery_attempts
+		WHERE tenant_id=$1 AND profile_id=$2 AND decision='sent' AND attempted_at>=$3`,
+		p.TenantID, profileID, since).Scan(&count)
+	return count, err
+}

@@ -438,6 +438,34 @@ func (s *Store) ProjectEvent(ctx context.Context, event domain.AcceptedEvent) er
 		if err != nil {
 			return err
 		}
+	case "message.bounced", "message.complained":
+		var body struct {
+			Channel    string `json:"channel"`
+			Endpoint   string `json:"endpoint"`
+			BounceType string `json:"bounce_type"`
+		}
+		if err := json.Unmarshal(event.Payload, &body); err != nil {
+			return err
+		}
+		if body.Endpoint == "" {
+			return errors.New("bounce/complaint event payload requires an endpoint")
+		}
+		channel := body.Channel
+		if channel == "" {
+			channel = "email"
+		}
+		reason := "bounce"
+		if event.Type == "message.complained" {
+			reason = "complaint"
+		}
+		_, err = tx.Exec(ctx, `INSERT INTO suppressions
+			(tenant_id, channel, endpoint, reason, source_event_id)
+			VALUES($1, $2, $3, $4, $5)
+			ON CONFLICT(tenant_id, channel, endpoint) DO NOTHING`,
+			event.Principal.TenantID, strings.ToLower(channel), strings.ToLower(body.Endpoint), reason, event.ID)
+		if err != nil {
+			return err
+		}
 	case "identity.alias":
 		var body struct {
 			Namespace string `json:"namespace"`

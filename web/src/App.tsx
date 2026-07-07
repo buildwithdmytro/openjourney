@@ -7,11 +7,12 @@ import {
   createSegment, listSegments, updateSegment, setSegmentMembers, Segment, SegmentMember,
   listTemplates, getTemplate, createTemplate, updateTemplate, previewTemplate,
   listSendingIdentities, createSendingIdentity, Template, SendingIdentity, TemplatePreview,
+  listSuppressions, createSuppression, deleteSuppression, Suppression,
 } from "./api";
 import { oidcConfigured, restoreOIDCSession, signIn, signOut } from "./auth";
 
 const apiBase = import.meta.env.VITE_API_BASE_URL || "/api";
-type View = "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "templates";
+type View = "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "templates" | "suppressions" | "sender-identities";
 type CredentialSource = "manual" | "session" | "oidc";
 
 const viewTitles: Record<View, [string, string]> = {
@@ -24,6 +25,8 @@ const viewTitles: Record<View, [string, string]> = {
   audit: ["Audit", "Review tenant-scoped security and operations activity."],
   segments: ["Segments", "Manage customer segments and membership rules."],
   templates: ["Templates", "Design email templates with Liquid tags and live preview."],
+  suppressions: ["Suppressions", "Manage bounces, complaints, and manually suppressed endpoints."],
+  "sender-identities": ["Sender Identities", "Manage verified sender emails and webhook channels."],
 };
 
 export function App() {
@@ -90,7 +93,7 @@ export function App() {
       <aside>
         <div className="brand"><span>O</span> OpenJourney</div>
         <nav aria-label="Primary">
-          {(["profiles", "segments", "schemas", "api-keys", "privacy", "access", "operations", "audit"] as View[]).map((item) => (
+          {(["profiles", "segments", "templates", "suppressions", "sender-identities", "schemas", "api-keys", "privacy", "access", "operations", "audit"] as View[]).map((item) => (
             <button key={item} className={view === item ? "active" : ""}
               onClick={() => setView(item)}>{viewTitles[item][0]}</button>
           ))}
@@ -134,6 +137,8 @@ export function App() {
         {view === "profiles" && <Profiles apiKey={apiKey} />}
         {view === "segments" && <Segments apiKey={apiKey} />}
         {view === "templates" && <Templates apiKey={apiKey} />}
+        {view === "suppressions" && <Suppressions apiKey={apiKey} />}
+        {view === "sender-identities" && <SenderIdentities apiKey={apiKey} />}
         {view === "schemas" && <Schemas apiKey={apiKey} />}
         {view === "api-keys" && <APIKeys apiKey={apiKey} />}
         {view === "privacy" && <Privacy apiKey={apiKey} />}
@@ -878,6 +883,188 @@ function Templates({ apiKey }: { apiKey: string }) {
             Enter a profile external_id and click Preview to render the template.
           </div>
         )}
+      </div>
+    </section>
+  );
+}
+
+function Suppressions({ apiKey }: { apiKey: string }) {
+  const [items, setItems] = useState<Suppression[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [channel, setChannel] = useState("email");
+  const [endpoint, setEndpoint] = useState("");
+  const [reason, setReason] = useState("admin");
+  const [saving, setSaving] = useState(false);
+
+  async function load() {
+    setLoading(true); setError("");
+    try {
+      setItems(await listSuppressions(apiBase, apiKey));
+    } catch (cause) {
+      setError(message(cause));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { if (apiKey) void load(); }, [apiKey]);
+
+  async function handleCreate(event: FormEvent) {
+    event.preventDefault();
+    setSaving(true); setError("");
+    try {
+      await createSuppression(apiBase, apiKey, { channel, endpoint, reason: reason as any });
+      setEndpoint("");
+      await load();
+    } catch (cause) {
+      setError(message(cause));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(item: Suppression) {
+    if (!confirm(`Are you sure you want to remove suppression for ${item.endpoint}?`)) return;
+    setError("");
+    try {
+      await deleteSuppression(apiBase, apiKey, item.channel, item.endpoint);
+      await load();
+    } catch (cause) {
+      setError(message(cause));
+    }
+  }
+
+  return (
+    <section className="card">
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2rem" }}>
+        <div>
+          <h2>Add suppression</h2>
+          <form onSubmit={handleCreate} className="panel">
+            <label>Channel
+              <select value={channel} onChange={e => setChannel(e.target.value)}>
+                <option value="email">Email</option>
+                <option value="webhook">Webhook</option>
+              </select>
+            </label>
+            <label>Endpoint (Email address or Webhook target)
+              <input value={endpoint} onChange={e => setEndpoint(e.target.value)} required placeholder="user@example.com" />
+            </label>
+            <label>Reason
+              <select value={reason} onChange={e => setReason(e.target.value)}>
+                <option value="admin">Admin override</option>
+                <option value="unsubscribe">Unsubscribed</option>
+                <option value="bounce">Bounced</option>
+                <option value="complaint">Complaint reported</option>
+              </select>
+            </label>
+            <button type="submit" disabled={saving || !endpoint.trim()}>{saving ? "Saving…" : "Suppress endpoint"}</button>
+          </form>
+          <ErrorMessage value={error} />
+        </div>
+        <div>
+          <h2>Suppressed endpoints ({items.length})</h2>
+          {loading && <p>Loading suppressions…</p>}
+          {!loading && items.length === 0 && <p style={{ color: "var(--muted)" }}>No suppressed endpoints found.</p>}
+          <ul className="list">
+            {items.map(item => (
+              <li key={item.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.5rem 0", borderBottom: "1px solid var(--border)" }}>
+                <div>
+                  <strong>{item.endpoint}</strong> <span style={{ color: "var(--muted)", fontSize: "0.8rem" }}>({item.channel} • {item.reason})</span>
+                  <div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>Suppressed {new Date(item.created_at).toLocaleString()}</div>
+                </div>
+                <button className="secondary danger small" onClick={() => void handleDelete(item)}>Remove</button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function SenderIdentities({ apiKey }: { apiKey: string }) {
+  const [items, setItems] = useState<SendingIdentity[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [channel, setChannel] = useState("email");
+  const [fromAddress, setFromAddress] = useState("");
+  const [fromName, setFromName] = useState("");
+  const [replyTo, setReplyTo] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function load() {
+    setLoading(true); setError("");
+    try {
+      setItems(await listSendingIdentities(apiBase, apiKey));
+    } catch (cause) {
+      setError(message(cause));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { if (apiKey) void load(); }, [apiKey]);
+
+  async function handleCreate(event: FormEvent) {
+    event.preventDefault();
+    setSaving(true); setError("");
+    try {
+      await createSendingIdentity(apiBase, apiKey, { channel, from_address: fromAddress, display_name: fromName, reply_to: replyTo });
+      setFromAddress("");
+      setFromName("");
+      setReplyTo("");
+      await load();
+    } catch (cause) {
+      setError(message(cause));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="card">
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2rem" }}>
+        <div>
+          <h2>Add sender identity</h2>
+          <form onSubmit={handleCreate} className="panel">
+            <label>Channel
+              <select value={channel} onChange={e => setChannel(e.target.value)}>
+                <option value="email">Email</option>
+                <option value="webhook">Webhook</option>
+              </select>
+            </label>
+            <label>Sender email address (or webhook URL)
+              <input value={fromAddress} onChange={e => setFromAddress(e.target.value)} required placeholder="no-reply@example.com" />
+            </label>
+            <label>Sender display name (or webhook name)
+              <input value={fromName} onChange={e => setFromName(e.target.value)} placeholder="Marketing Team" />
+            </label>
+            {channel === "email" && (
+              <label>Reply-to address
+                <input value={replyTo} onChange={e => setReplyTo(e.target.value)} placeholder="support@example.com" />
+              </label>
+            )}
+            <button type="submit" disabled={saving || !fromAddress.trim()}>{saving ? "Saving…" : "Save identity"}</button>
+          </form>
+          <ErrorMessage value={error} />
+        </div>
+        <div>
+          <h2>Sender identities ({items.length})</h2>
+          {loading && <p>Loading identities…</p>}
+          {!loading && items.length === 0 && <p style={{ color: "var(--muted)" }}>No sender identities found.</p>}
+          <ul className="list">
+            {items.map(item => (
+              <li key={item.id} style={{ padding: "0.5rem 0", borderBottom: "1px solid var(--border)" }}>
+                <div>
+                  <strong>{item.display_name || item.from_address}</strong> <span style={{ color: "var(--muted)", fontSize: "0.8rem" }}>({item.channel})</span>
+                  {item.display_name && <div style={{ fontSize: "0.85rem" }}>{item.from_address}</div>}
+                  {item.reply_to && <div style={{ fontSize: "0.8rem", color: "var(--muted)" }}>Reply-to: {item.reply_to}</div>}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
     </section>
   );

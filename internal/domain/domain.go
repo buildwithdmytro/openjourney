@@ -148,6 +148,48 @@ func (e Event) Validate(now time.Time) error {
 			strings.TrimSpace(body.URL) == "" {
 			return errors.New("link.clicked payload requires template_id, dispatch_id, and url")
 		}
+	case "message.sent":
+		var body struct {
+			CampaignID string `json:"campaign_id"`
+			Channel    string `json:"channel"`
+			Endpoint   string `json:"endpoint"`
+		}
+		if err := json.Unmarshal(e.Payload, &body); err != nil ||
+			strings.TrimSpace(body.CampaignID) == "" ||
+			strings.TrimSpace(body.Channel) == "" ||
+			strings.TrimSpace(body.Endpoint) == "" {
+			return errors.New("message.sent payload requires campaign_id, channel, and endpoint")
+		}
+	case "message.delivered":
+		var body struct {
+			CampaignID string `json:"campaign_id"`
+			Endpoint   string `json:"endpoint"`
+		}
+		if err := json.Unmarshal(e.Payload, &body); err != nil ||
+			strings.TrimSpace(body.CampaignID) == "" ||
+			strings.TrimSpace(body.Endpoint) == "" {
+			return errors.New("message.delivered payload requires campaign_id and endpoint")
+		}
+	case "message.bounced":
+		var body struct {
+			CampaignID string `json:"campaign_id"`
+			Endpoint   string `json:"endpoint"`
+		}
+		if err := json.Unmarshal(e.Payload, &body); err != nil ||
+			strings.TrimSpace(body.CampaignID) == "" ||
+			strings.TrimSpace(body.Endpoint) == "" {
+			return errors.New("message.bounced payload requires campaign_id and endpoint")
+		}
+	case "message.complained":
+		var body struct {
+			CampaignID string `json:"campaign_id"`
+			Endpoint   string `json:"endpoint"`
+		}
+		if err := json.Unmarshal(e.Payload, &body); err != nil ||
+			strings.TrimSpace(body.CampaignID) == "" ||
+			strings.TrimSpace(body.Endpoint) == "" {
+			return errors.New("message.complained payload requires campaign_id and endpoint")
+		}
 	}
 	return nil
 }
@@ -377,4 +419,14 @@ type AuditEvent struct {
 	ResourceID   string          `json:"resource_id,omitempty"`
 	Metadata     json.RawMessage `json:"metadata"`
 	OccurredAt   time.Time       `json:"occurred_at"`
+}
+
+type Suppression struct {
+	ID            string    `json:"id"`
+	TenantID      string    `json:"tenant_id"`
+	Channel       string    `json:"channel"`
+	Endpoint      string    `json:"endpoint"`
+	Reason        string    `json:"reason"`
+	SourceEventID *string   `json:"source_event_id,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
 }
