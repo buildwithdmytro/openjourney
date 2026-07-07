@@ -437,7 +437,7 @@ order; each milestone should compile and pass `go build ./... && go vet ./...` b
    Fields mirror the columns; `DSL json.RawMessage`. *Done when:* `go build ./...` passes.
 3. [x] **Scopes.** Add `segments:read` / `segments:write` (Recipe 6.5). *Done when:* new keys
    carry them.
-4. **Store methods** in new `internal/postgres/segments.go` (Recipe 6.3):
+4. [x] **Store methods** in new `internal/postgres/segments.go` (Recipe 6.3):
    `CreateSegment`, `GetSegment`, `UpdateSegment` (**increment `version` when `dsl` changes**),
    `ListSegments`, `SetSegmentMembers(ctx, p, segmentID, []SegmentMember)`. Add all five to
    the `ports.Store` interface. *Done when:* `go build ./...` passes.

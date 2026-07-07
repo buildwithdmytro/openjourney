@@ -46,6 +46,11 @@ type Store interface {
 	ListUsers(context.Context, domain.Principal) ([]domain.User, error)
 	CreateUser(context.Context, domain.Principal, domain.User) (domain.User, error)
 	ListAuditEvents(context.Context, domain.Principal, int) ([]domain.AuditEvent, error)
+	CreateSegment(context.Context, domain.Principal, domain.Segment) (domain.Segment, error)
+	GetSegment(context.Context, domain.Principal, string) (domain.Segment, error)
+	UpdateSegment(context.Context, domain.Principal, domain.Segment) (domain.Segment, error)
+	ListSegments(context.Context, domain.Principal) ([]domain.Segment, error)
+	SetSegmentMembers(context.Context, domain.Principal, string, []domain.SegmentMember) error
 }
 
 type TokenVerifier interface {
