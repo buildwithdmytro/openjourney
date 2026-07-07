@@ -452,7 +452,7 @@ order; each milestone should compile and pass `go build ./... && go vet ./...` b
    `[]Node`; leaf structs `ProfileAttribute{Field,Operator,Value}`,
    `EventHistory{EventType,Operator,TimeWindowDays,MinCount}`,
    `Consent{Channel,Topic,State}`. *Done when:* `go build ./...` passes.
-2. **Parser + validator** `internal/audience/parse.go`: `Parse([]byte) (Node, error)`.
+2. [x] **Parser + validator** `internal/audience/parse.go`: `Parse([]byte) (Node, error)`.
    Reject unknown `type`/`operator`, negative windows, empty `field`. *Done when:* unit
    tests cover one valid and three invalid DSLs.
 3. **Postgres profile compiler** `internal/audience/compile_pg.go`:
