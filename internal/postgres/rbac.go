@@ -13,6 +13,8 @@ var allowedPermissions = map[string]struct{}{
 	"*": {}, "events:write": {}, "profiles:read": {}, "schemas:read": {}, "schemas:write": {},
 	"api_keys:read": {}, "api_keys:write": {}, "privacy:write": {}, "operations:read": {}, "operations:write": {},
 	"users:read": {}, "users:write": {}, "roles:read": {}, "roles:write": {},
+	"segments:read": {}, "segments:write": {}, "templates:read": {}, "templates:write": {},
+	"campaigns:read": {}, "campaigns:write": {}, "suppressions:read": {}, "suppressions:write": {},
 }
 
 func (s *Store) ListRoles(ctx context.Context, p domain.Principal) ([]domain.Role, error) {

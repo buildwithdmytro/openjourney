@@ -435,7 +435,7 @@ order; each milestone should compile and pass `go build ./... && go vet ./...` b
    and the three tables exist.
 2. [x] **Domain models.** Add `Segment` and `SegmentMember` structs to `domain.go` (Recipe 6.2).
    Fields mirror the columns; `DSL json.RawMessage`. *Done when:* `go build ./...` passes.
-3. **Scopes.** Add `segments:read` / `segments:write` (Recipe 6.5). *Done when:* new keys
+3. [x] **Scopes.** Add `segments:read` / `segments:write` (Recipe 6.5). *Done when:* new keys
    carry them.
 4. **Store methods** in new `internal/postgres/segments.go` (Recipe 6.3):
    `CreateSegment`, `GetSegment`, `UpdateSegment` (**increment `version` when `dsl` changes**),
