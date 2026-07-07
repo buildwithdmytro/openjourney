@@ -441,7 +441,7 @@ order; each milestone should compile and pass `go build ./... && go vet ./...` b
    `CreateSegment`, `GetSegment`, `UpdateSegment` (**increment `version` when `dsl` changes**),
    `ListSegments`, `SetSegmentMembers(ctx, p, segmentID, []SegmentMember)`. Add all five to
    the `ports.Store` interface. *Done when:* `go build ./...` passes.
-5. **HTTP endpoints** in new `internal/httpapi/segments.go` + routes in `server.go` (Recipe 6.4):
+5. [x] **HTTP endpoints** in new `internal/httpapi/segments.go` + routes in `server.go` (Recipe 6.4):
    `POST /v1/segments`, `GET /v1/segments`, `GET /v1/segments/{id}`, `PUT /v1/segments/{id}`,
    `PUT /v1/segments/{id}/members`. *Done when:* each returns the expected JSON in a manual curl.
 6. **React view** (Recipe 6.8): list + create/edit segment with a raw-JSON DSL textarea.

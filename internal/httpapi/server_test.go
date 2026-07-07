@@ -136,6 +136,22 @@ func (f *fakeStore) CreateUser(_ context.Context, _ domain.Principal, user domai
 func (f *fakeStore) ListAuditEvents(context.Context, domain.Principal, int) ([]domain.AuditEvent, error) {
 	return nil, nil
 }
+func (f *fakeStore) CreateSegment(_ context.Context, _ domain.Principal, seg domain.Segment) (domain.Segment, error) {
+	seg.ID = "segment-1"
+	return seg, nil
+}
+func (f *fakeStore) GetSegment(_ context.Context, _ domain.Principal, id string) (domain.Segment, error) {
+	return domain.Segment{ID: id, Name: "Test Segment", DSL: json.RawMessage(`{}`)}, nil
+}
+func (f *fakeStore) UpdateSegment(_ context.Context, _ domain.Principal, seg domain.Segment) (domain.Segment, error) {
+	return seg, nil
+}
+func (f *fakeStore) ListSegments(_ context.Context, _ domain.Principal) ([]domain.Segment, error) {
+	return []domain.Segment{{ID: "segment-1", Name: "Test Segment", DSL: json.RawMessage(`{}`)}}, nil
+}
+func (f *fakeStore) SetSegmentMembers(_ context.Context, _ domain.Principal, _ string, _ []domain.SegmentMember) error {
+	return nil
+}
 
 func TestAcceptEvents(t *testing.T) {
 	store := &fakeStore{}
@@ -286,5 +302,57 @@ func TestCORSAllowsOnlyConfiguredOrigin(t *testing.T) {
 	server.ServeHTTP(deniedResponse, denied)
 	if deniedResponse.Header().Get("Access-Control-Allow-Origin") != "" {
 		t.Fatal("unconfigured origin was allowed")
+	}
+}
+
+func TestSegmentsEndpoints(t *testing.T) {
+	server := New(&fakeStore{scopes: []string{"segments:read", "segments:write"}}, 75)
+
+	// Create
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/segments", strings.NewReader(`{"name":"New Seg","type":"dynamic"}`))
+	createReq.Header.Set("Authorization", "Bearer test-key")
+	createRes := httptest.NewRecorder()
+	server.ServeHTTP(createRes, createReq)
+	if createRes.Code != http.StatusCreated {
+		t.Fatalf("status=%d body=%s", createRes.Code, createRes.Body.String())
+	}
+
+	// List
+	listReq := httptest.NewRequest(http.MethodGet, "/v1/segments", nil)
+	listReq.Header.Set("Authorization", "Bearer test-key")
+	listRes := httptest.NewRecorder()
+	server.ServeHTTP(listRes, listReq)
+	if listRes.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", listRes.Code, listRes.Body.String())
+	}
+	if !strings.Contains(listRes.Body.String(), "Test Segment") {
+		t.Fatalf("expected Test Segment in body=%s", listRes.Body.String())
+	}
+
+	// Get
+	getReq := httptest.NewRequest(http.MethodGet, "/v1/segments/segment-1", nil)
+	getReq.Header.Set("Authorization", "Bearer test-key")
+	getRes := httptest.NewRecorder()
+	server.ServeHTTP(getRes, getReq)
+	if getRes.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", getRes.Code, getRes.Body.String())
+	}
+
+	// Update
+	updateReq := httptest.NewRequest(http.MethodPut, "/v1/segments/segment-1", strings.NewReader(`{"name":"Updated Seg"}`))
+	updateReq.Header.Set("Authorization", "Bearer test-key")
+	updateRes := httptest.NewRecorder()
+	server.ServeHTTP(updateRes, updateReq)
+	if updateRes.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", updateRes.Code, updateRes.Body.String())
+	}
+
+	// Set Members
+	membersReq := httptest.NewRequest(http.MethodPut, "/v1/segments/segment-1/members", strings.NewReader(`[{"profile_id":"p-1","membership":"include"}]`))
+	membersReq.Header.Set("Authorization", "Bearer test-key")
+	membersRes := httptest.NewRecorder()
+	server.ServeHTTP(membersRes, membersReq)
+	if membersRes.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", membersRes.Code, membersRes.Body.String())
 	}
 }
