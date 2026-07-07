@@ -431,7 +431,7 @@ integration + load pass in 7.7.** Every task ends with a **Done when** check. Do
 order; each milestone should compile and pass `go build ./... && go vet ./...` before the next.
 
 ### Milestone 7.1 — Segments schema & CRUD
-1. **Migration.** Write `009_audiences.sql` per §2.1 (Recipe 6.1). *Done when:* app starts
+1. [x] **Migration.** Write `009_audiences.sql` per §2.1 (Recipe 6.1). *Done when:* app starts
    and the three tables exist.
 2. **Domain models.** Add `Segment` and `SegmentMember` structs to `domain.go` (Recipe 6.2).
    Fields mirror the columns; `DSL json.RawMessage`. *Done when:* `go build ./...` passes.
