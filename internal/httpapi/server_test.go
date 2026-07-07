@@ -206,6 +206,50 @@ func (f *fakeStore) SentCountSince(ctx context.Context, p domain.Principal, prof
 	return 0, nil
 }
 
+func (f *fakeStore) CreateCampaign(ctx context.Context, p domain.Principal, c domain.Campaign) (domain.Campaign, error) {
+	c.ID = "campaign-1"
+	return c, nil
+}
+func (f *fakeStore) GetCampaign(ctx context.Context, p domain.Principal, id string) (domain.Campaign, error) {
+	return domain.Campaign{ID: id, Name: "Test Campaign", Status: "draft"}, nil
+}
+func (f *fakeStore) UpdateCampaign(ctx context.Context, p domain.Principal, c domain.Campaign) (domain.Campaign, error) {
+	return c, nil
+}
+func (f *fakeStore) ListCampaigns(ctx context.Context, p domain.Principal) ([]domain.Campaign, error) {
+	return []domain.Campaign{{ID: "campaign-1", Name: "Test Campaign", Status: "draft"}}, nil
+}
+func (f *fakeStore) ClaimScheduledCampaign(ctx context.Context) (domain.Campaign, bool, error) {
+	return domain.Campaign{}, false, nil
+}
+func (f *fakeStore) SaveCampaignManifestAndJobs(ctx context.Context, campaignID string, manifestKey string, recipientCount int, jobs []domain.DeliveryJob) error {
+	return nil
+}
+func (f *fakeStore) ClaimDeliveryJob(ctx context.Context, workerID string) (domain.DeliveryJob, bool, error) {
+	return domain.DeliveryJob{}, false, nil
+}
+func (f *fakeStore) CompleteDeliveryJob(ctx context.Context, jobID string) error {
+	return nil
+}
+func (f *fakeStore) FailDeliveryJob(ctx context.Context, jobID string, errMsg string) error {
+	return nil
+}
+func (f *fakeStore) CreateDeliveryAttempt(ctx context.Context, attempt domain.DeliveryAttempt) (bool, error) {
+	return true, nil
+}
+func (f *fakeStore) UpdateDeliveryAttempt(ctx context.Context, campaignID, profileID, channel, decision, reason, providerMsgID string) error {
+	return nil
+}
+func (f *fakeStore) GetProfileEmails(ctx context.Context, tenantID string, profileIDs []string) (map[string]string, error) {
+	return map[string]string{}, nil
+}
+func (f *fakeStore) GetFirstAppID(ctx context.Context, tenantID, workspaceID string) (string, error) {
+	return "app-1", nil
+}
+
+
+
+
 func TestAcceptEvents(t *testing.T) {
 	store := &fakeStore{}
 	server := New(store, 75)

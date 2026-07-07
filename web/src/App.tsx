@@ -8,11 +8,12 @@ import {
   listTemplates, getTemplate, createTemplate, updateTemplate, previewTemplate,
   listSendingIdentities, createSendingIdentity, Template, SendingIdentity, TemplatePreview,
   listSuppressions, createSuppression, deleteSuppression, Suppression,
+  listCampaigns, getCampaign, createCampaign, updateCampaign, Campaign,
 } from "./api";
 import { oidcConfigured, restoreOIDCSession, signIn, signOut } from "./auth";
 
 const apiBase = import.meta.env.VITE_API_BASE_URL || "/api";
-type View = "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "templates" | "suppressions" | "sender-identities";
+type View = "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "templates" | "campaigns" | "suppressions" | "sender-identities";
 type CredentialSource = "manual" | "session" | "oidc";
 
 const viewTitles: Record<View, [string, string]> = {
@@ -25,6 +26,7 @@ const viewTitles: Record<View, [string, string]> = {
   audit: ["Audit", "Review tenant-scoped security and operations activity."],
   segments: ["Segments", "Manage customer segments and membership rules."],
   templates: ["Templates", "Design email templates with Liquid tags and live preview."],
+  campaigns: ["Campaigns", "Schedule and manage sharded marketing campaigns linked to segments and templates."],
   suppressions: ["Suppressions", "Manage bounces, complaints, and manually suppressed endpoints."],
   "sender-identities": ["Sender Identities", "Manage verified sender emails and webhook channels."],
 };
@@ -93,7 +95,7 @@ export function App() {
       <aside>
         <div className="brand"><span>O</span> OpenJourney</div>
         <nav aria-label="Primary">
-          {(["profiles", "segments", "templates", "suppressions", "sender-identities", "schemas", "api-keys", "privacy", "access", "operations", "audit"] as View[]).map((item) => (
+          {(["profiles", "segments", "templates", "campaigns", "suppressions", "sender-identities", "schemas", "api-keys", "privacy", "access", "operations", "audit"] as View[]).map((item) => (
             <button key={item} className={view === item ? "active" : ""}
               onClick={() => setView(item)}>{viewTitles[item][0]}</button>
           ))}
@@ -137,6 +139,7 @@ export function App() {
         {view === "profiles" && <Profiles apiKey={apiKey} />}
         {view === "segments" && <Segments apiKey={apiKey} />}
         {view === "templates" && <Templates apiKey={apiKey} />}
+        {view === "campaigns" && <Campaigns apiKey={apiKey} />}
         {view === "suppressions" && <Suppressions apiKey={apiKey} />}
         {view === "sender-identities" && <SenderIdentities apiKey={apiKey} />}
         {view === "schemas" && <Schemas apiKey={apiKey} />}
@@ -1069,3 +1072,270 @@ function SenderIdentities({ apiKey }: { apiKey: string }) {
     </section>
   );
 }
+
+export function Campaigns({ apiKey }: { apiKey: string }) {
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [segments, setSegments] = useState<Segment[]>([]);
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null);
+
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [segmentId, setSegmentId] = useState("");
+  const [templateId, setTemplateId] = useState("");
+  const [status, setStatus] = useState<Campaign["status"]>("draft");
+  const [scheduledAt, setScheduledAt] = useState("");
+
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function load() {
+    setLoading(true);
+    setError("");
+    try {
+      const [cRes, sRes, tRes] = await Promise.all([
+        listCampaigns(apiBase, apiKey),
+        listSegments(apiBase, apiKey),
+        listTemplates(apiBase, apiKey),
+      ]);
+      setCampaigns(cRes);
+      setSegments(sRes);
+      setTemplates(tRes);
+    } catch (cause) {
+      setError(message(cause));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (apiKey) void load();
+  }, [apiKey]);
+
+  async function handleCreate(event: FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      if (!segmentId) throw new Error("Segment is required");
+      if (!templateId) throw new Error("Template is required");
+
+      const payload: Partial<Campaign> = {
+        name,
+        description: description || undefined,
+        segment_id: segmentId,
+        template_id: templateId,
+        status,
+        scheduled_at: status === "scheduled" ? (scheduledAt ? new Date(scheduledAt).toISOString() : new Date().toISOString()) : undefined,
+      };
+
+      await createCampaign(apiBase, apiKey, payload);
+      resetForm();
+      await load();
+    } catch (cause) {
+      setError(message(cause));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleUpdate(event: FormEvent) {
+    event.preventDefault();
+    if (!editingCampaign) return;
+    setSaving(true);
+    setError("");
+    try {
+      if (!segmentId) throw new Error("Segment is required");
+      if (!templateId) throw new Error("Template is required");
+
+      const payload: Partial<Campaign> = {
+        name,
+        description: description || undefined,
+        segment_id: segmentId,
+        template_id: templateId,
+        status,
+        scheduled_at: status === "scheduled" ? (scheduledAt ? new Date(scheduledAt).toISOString() : new Date().toISOString()) : null as any,
+      };
+
+      await updateCampaign(apiBase, apiKey, editingCampaign.id, payload);
+      resetForm();
+      await load();
+    } catch (cause) {
+      setError(message(cause));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleLaunchNow(campaign: Campaign) {
+    setError("");
+    try {
+      await updateCampaign(apiBase, apiKey, campaign.id, {
+        ...campaign,
+        status: "scheduled",
+        scheduled_at: new Date().toISOString(),
+      });
+      await load();
+    } catch (cause) {
+      setError(message(cause));
+    }
+  }
+
+  function startEdit(c: Campaign) {
+    setEditingCampaign(c);
+    setName(c.name);
+    setDescription(c.description || "");
+    setSegmentId(c.segment_id);
+    setTemplateId(c.template_id);
+    setStatus(c.status);
+    if (c.scheduled_at) {
+      const d = new Date(c.scheduled_at);
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      const hours = String(d.getHours()).padStart(2, "0");
+      const minutes = String(d.getMinutes()).padStart(2, "0");
+      setScheduledAt(`${year}-${month}-${day}T${hours}:${minutes}`);
+    } else {
+      setScheduledAt("");
+    }
+  }
+
+  function resetForm() {
+    setEditingCampaign(null);
+    setName("");
+    setDescription("");
+    setSegmentId("");
+    setTemplateId("");
+    setStatus("draft");
+    setScheduledAt("");
+  }
+
+  const getSegmentName = (id: string) => segments.find(s => s.id === id)?.name || id;
+  const getTemplateName = (id: string) => templates.find(t => t.id === id)?.name || id;
+
+  const getStatusStyle = (s: Campaign["status"]) => {
+    switch (s) {
+      case "completed":
+        return { background: "#e9f8f1", color: "#187d56" };
+      case "sending":
+      case "building":
+        return { background: "#e8f0fe", color: "#1a73e8" };
+      case "scheduled":
+        return { background: "#fff8df", color: "#b06000" };
+      case "paused":
+        return { background: "#f1f3f4", color: "#5f6368" };
+      case "failed":
+        return { background: "#fff0f0", color: "#a93838" };
+      default: // draft
+        return { background: "#f8f9fa", color: "#202124", border: "1px solid #dadce0" };
+    }
+  };
+
+  return (
+    <section className="stack">
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: "2rem" }}>
+        <article className="card" style={{ height: "fit-content" }}>
+          <h2>{editingCampaign ? "Edit Campaign" : "Create Campaign"}</h2>
+          <form onSubmit={editingCampaign ? handleUpdate : handleCreate} className="schema-form" style={{ gridTemplateColumns: "1fr" }}>
+            <label>Name
+              <input value={name} onChange={e => setName(e.target.value)} required placeholder="Summer Discount Promo" />
+            </label>
+            <label>Description
+              <input value={description} onChange={e => setDescription(e.target.value)} placeholder="Send discount to SaaS users" />
+            </label>
+            <label>Segment
+              <select value={segmentId} onChange={e => setSegmentId(e.target.value)} required>
+                <option value="">-- Select Segment --</option>
+                {segments.map(s => (
+                  <option key={s.id} value={s.id}>{s.name} ({s.type})</option>
+                ))}
+              </select>
+            </label>
+            <label>Template
+              <select value={templateId} onChange={e => setTemplateId(e.target.value)} required>
+                <option value="">-- Select Template --</option>
+                {templates.map(t => (
+                  <option key={t.id} value={t.id}>{t.name} ({t.channel})</option>
+                ))}
+              </select>
+            </label>
+            <label>Status
+              <select value={status} onChange={e => setStatus(e.target.value as any)}>
+                <option value="draft">Draft</option>
+                <option value="scheduled">Scheduled</option>
+                <option value="paused">Paused</option>
+                <option value="archived">Archived</option>
+              </select>
+            </label>
+            {status === "scheduled" && (
+              <label>Schedule Time (Local)
+                <input type="datetime-local" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)} />
+                <span style={{ fontSize: "11px", color: "var(--muted)", marginTop: "2px" }}>Leave blank to run immediately upon scheduling.</span>
+              </label>
+            )}
+            <div className="form-actions" style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
+              <button type="submit" disabled={saving || !segmentId || !templateId || !name}>{saving ? "Saving..." : (editingCampaign ? "Update Campaign" : "Create Campaign")}</button>
+              {(editingCampaign || name || segmentId || templateId) && (
+                <button type="button" className="secondary" onClick={resetForm}>Cancel</button>
+              )}
+            </div>
+          </form>
+          <ErrorMessage value={error} />
+        </article>
+
+        <article className="card">
+          <h2>Campaigns ({campaigns.length})</h2>
+          {loading && <p>Loading campaigns…</p>}
+          {!loading && campaigns.length === 0 && <p style={{ color: "var(--muted)" }}>No campaigns found.</p>}
+          {!loading && campaigns.length > 0 && (
+            <div style={{ overflowX: "auto" }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Segment</th>
+                    <th>Template</th>
+                    <th>Status</th>
+                    <th>Scheduled</th>
+                    <th>Recipients</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {campaigns.map(c => (
+                    <tr key={c.id}>
+                      <td>
+                        <strong>{c.name}</strong>
+                        {c.description && <div style={{ fontSize: "11px", color: "var(--muted)" }}>{c.description}</div>}
+                      </td>
+                      <td>{getSegmentName(c.segment_id)}</td>
+                      <td>{getTemplateName(c.template_id)}</td>
+                      <td>
+                        <span className="pill" style={getStatusStyle(c.status)}>
+                          {c.status}
+                        </span>
+                      </td>
+                      <td>{c.scheduled_at ? formatDate(c.scheduled_at) : "Immediate"}</td>
+                      <td>{c.status === "draft" ? "Pending" : c.recipient_count}</td>
+                      <td>
+                        <div style={{ display: "flex", gap: "6px" }}>
+                          <button className="secondary" style={{ padding: "4px 8px", fontSize: "12px" }} onClick={() => startEdit(c)}>Edit</button>
+                          {c.status === "draft" && (
+                            <button style={{ padding: "4px 8px", fontSize: "12px", background: "#48bd8b", color: "white" }} onClick={() => handleLaunchNow(c)}>Launch</button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </article>
+      </div>
+    </section>
+  );
+}
+

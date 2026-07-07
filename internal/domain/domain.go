@@ -430,3 +430,54 @@ type Suppression struct {
 	SourceEventID *string   `json:"source_event_id,omitempty"`
 	CreatedAt     time.Time `json:"created_at"`
 }
+
+type Recipient struct {
+	ProfileID string `json:"profile_id"`
+	Endpoint  string `json:"endpoint"`
+}
+
+type Campaign struct {
+	ID              string     `json:"id"`
+	TenantID        string     `json:"tenant_id"`
+	WorkspaceID     string     `json:"workspace_id"`
+	Name            string     `json:"name"`
+	Description     *string    `json:"description,omitempty"`
+	SegmentID       string     `json:"segment_id"`
+	TemplateID      string     `json:"template_id"`
+	Status          string     `json:"status"` // draft, scheduled, building, sending, paused, completed, failed, archived
+	ScheduledAt     *time.Time `json:"scheduled_at,omitempty"`
+	ManifestKey     *string    `json:"manifest_key,omitempty"`
+	SegmentVersion  int        `json:"segment_version"`
+	TemplateVersion int        `json:"template_version"`
+	EvaluatedAt     *time.Time `json:"evaluated_at,omitempty"`
+	RecipientCount  int        `json:"recipient_count"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+}
+
+type DeliveryJob struct {
+	ID           string      `json:"id"`
+	CampaignID   string      `json:"campaign_id"`
+	TenantID     string      `json:"tenant_id"`
+	Shard        int         `json:"shard"`
+	Status       string      `json:"status"` // pending, processing, completed, failed
+	Recipients   []Recipient `json:"recipients"`
+	ClaimedAt    *time.Time  `json:"claimed_at,omitempty"`
+	ClaimedBy    *string     `json:"claimed_by,omitempty"`
+	ErrorMessage *string     `json:"error_message,omitempty"`
+	CreatedAt    time.Time   `json:"created_at"`
+	UpdatedAt    time.Time   `json:"updated_at"`
+}
+
+type DeliveryAttempt struct {
+	ID                string    `json:"id"`
+	CampaignID        string    `json:"campaign_id"`
+	ProfileID         string    `json:"profile_id"`
+	Channel           string    `json:"channel"`
+	Endpoint          string    `json:"endpoint"`
+	Decision          string    `json:"decision"` // sent, suppressed, no_consent, fatigued, failed
+	Reason            string    `json:"reason,omitempty"`
+	ProviderMessageID string    `json:"provider_message_id,omitempty"`
+	CreatedAt         time.Time `json:"created_at"`
+}
+

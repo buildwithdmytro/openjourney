@@ -84,6 +84,11 @@ func (s *Server) buildMux() http.Handler {
 	mux.Handle("GET /v1/templates/{id}", s.authenticate("templates:read", http.HandlerFunc(s.getTemplate)))
 	mux.Handle("PUT /v1/templates/{id}", s.authenticate("templates:write", http.HandlerFunc(s.updateTemplate)))
 	mux.Handle("POST /v1/templates/{id}/preview", s.authenticate("templates:read", http.HandlerFunc(s.previewTemplate)))
+	mux.Handle("POST /v1/campaigns", s.authenticate("campaigns:write", http.HandlerFunc(s.createCampaign)))
+	mux.Handle("GET /v1/campaigns", s.authenticate("campaigns:read", http.HandlerFunc(s.listCampaigns)))
+	mux.Handle("GET /v1/campaigns/{id}", s.authenticate("campaigns:read", http.HandlerFunc(s.getCampaign)))
+	mux.Handle("PUT /v1/campaigns/{id}", s.authenticate("campaigns:write", http.HandlerFunc(s.updateCampaign)))
+
 	mux.HandleFunc("GET /r/{token}", s.redirectLink)
 	mux.HandleFunc("GET /o/{token}", s.openPixel)
 	mux.HandleFunc("POST /v1/callbacks/ses", s.handleSESCallback)

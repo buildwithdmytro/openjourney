@@ -302,3 +302,39 @@ export async function deleteSuppression(baseURL: string, apiKey: string, channel
   await requestJSON<void>(baseURL, apiKey, `/v1/suppressions?channel=${encodeURIComponent(channel)}&endpoint=${encodeURIComponent(endpoint)}`, { method: "DELETE" });
 }
 
+export type Campaign = {
+  id: string;
+  tenant_id: string;
+  workspace_id: string;
+  name: string;
+  description?: string;
+  segment_id: string;
+  template_id: string;
+  status: "draft" | "scheduled" | "building" | "sending" | "paused" | "completed" | "failed" | "archived";
+  scheduled_at?: string;
+  manifest_key?: string;
+  segment_version: number;
+  template_version: number;
+  evaluated_at?: string;
+  recipient_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export async function listCampaigns(baseURL: string, apiKey: string): Promise<Campaign[]> {
+  return requestJSON<Campaign[]>(baseURL, apiKey, "/v1/campaigns") ?? [];
+}
+
+export async function getCampaign(baseURL: string, apiKey: string, id: string): Promise<Campaign> {
+  return requestJSON<Campaign>(baseURL, apiKey, `/v1/campaigns/${encodeURIComponent(id)}`);
+}
+
+export async function createCampaign(baseURL: string, apiKey: string, input: Partial<Campaign>): Promise<Campaign> {
+  return requestJSON<Campaign>(baseURL, apiKey, "/v1/campaigns", { method: "POST", body: JSON.stringify(input) });
+}
+
+export async function updateCampaign(baseURL: string, apiKey: string, id: string, input: Partial<Campaign>): Promise<Campaign> {
+  return requestJSON<Campaign>(baseURL, apiKey, `/v1/campaigns/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(input) });
+}
+
+
