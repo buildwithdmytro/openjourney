@@ -152,6 +152,12 @@ func (f *fakeStore) ListSegments(_ context.Context, _ domain.Principal) ([]domai
 func (f *fakeStore) SetSegmentMembers(_ context.Context, _ domain.Principal, _ string, _ []domain.SegmentMember) error {
 	return nil
 }
+func (f *fakeStore) PreviewSegment(_ context.Context, _ domain.Principal, _ string) (int, map[string]int, error) {
+	return 42, map[string]int{"profile_attributes": 30, "consent": 10, "event_history": 2}, nil
+}
+func (f *fakeStore) ResolveSegment(_ context.Context, _ domain.Principal, _ string) ([]string, error) {
+	return []string{"profile-1", "profile-2"}, nil
+}
 
 func TestAcceptEvents(t *testing.T) {
 	store := &fakeStore{}
@@ -354,5 +360,17 @@ func TestSegmentsEndpoints(t *testing.T) {
 	server.ServeHTTP(membersRes, membersReq)
 	if membersRes.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", membersRes.Code, membersRes.Body.String())
+	}
+
+	// Preview
+	previewReq := httptest.NewRequest(http.MethodPost, "/v1/segments/segment-1/preview", nil)
+	previewReq.Header.Set("Authorization", "Bearer test-key")
+	previewRes := httptest.NewRecorder()
+	server.ServeHTTP(previewRes, previewReq)
+	if previewRes.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", previewRes.Code, previewRes.Body.String())
+	}
+	if !strings.Contains(previewRes.Body.String(), `"count":42`) {
+		t.Fatalf("unexpected preview body=%s", previewRes.Body.String())
 	}
 }

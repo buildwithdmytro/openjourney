@@ -1,0 +1,1 @@
+SELECT external_id FROM profiles WHERE tenant_id=$1 AND workspace_id=$2 AND ((attributes->>'country' = $3 AND (attributes->>'age')::numeric > ($4)::numeric))

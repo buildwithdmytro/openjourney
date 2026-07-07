@@ -51,6 +51,8 @@ type Store interface {
 	UpdateSegment(context.Context, domain.Principal, domain.Segment) (domain.Segment, error)
 	ListSegments(context.Context, domain.Principal) ([]domain.Segment, error)
 	SetSegmentMembers(context.Context, domain.Principal, string, []domain.SegmentMember) error
+	PreviewSegment(context.Context, domain.Principal, string) (int, map[string]int, error)
+	ResolveSegment(context.Context, domain.Principal, string) ([]string, error)
 }
 
 type TokenVerifier interface {

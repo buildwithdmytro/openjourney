@@ -58,6 +58,7 @@ func NewWithSessionTTL(store ports.Store, maxBatchSize int, verifier ports.Token
 	mux.Handle("GET /v1/segments/{id}", s.authenticate("segments:read", http.HandlerFunc(s.getSegment)))
 	mux.Handle("PUT /v1/segments/{id}", s.authenticate("segments:write", http.HandlerFunc(s.updateSegment)))
 	mux.Handle("PUT /v1/segments/{id}/members", s.authenticate("segments:write", http.HandlerFunc(s.setSegmentMembers)))
+	mux.Handle("POST /v1/segments/{id}/preview", s.authenticate("segments:read", http.HandlerFunc(s.previewSegment)))
 	mux.Handle("GET /v1/api-keys", s.authenticate("api_keys:read", http.HandlerFunc(s.listAPIKeys)))
 	mux.Handle("POST /v1/api-keys", s.authenticate("api_keys:write", http.HandlerFunc(s.createAPIKey)))
 	mux.Handle("DELETE /v1/api-keys/{id}", s.authenticate("api_keys:write", http.HandlerFunc(s.revokeAPIKey)))

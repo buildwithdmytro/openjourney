@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 	"github.com/buildwithdmytro/openjourney/internal/schemas"
 	"github.com/jackc/pgx/v5"
@@ -33,6 +34,7 @@ type Store struct {
 	schemaMu         sync.RWMutex
 	schemaCache      map[string]*schemas.Validator
 	schemaCacheKnown map[string]bool
+	chConn           clickhouse.Conn
 }
 
 func Open(ctx context.Context, databaseURL string) (*Store, error) {

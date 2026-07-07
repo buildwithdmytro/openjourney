@@ -88,3 +88,21 @@ func (s *Server) setSegmentMembers(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
 }
+
+func (s *Server) previewSegment(w http.ResponseWriter, r *http.Request) {
+	principal := principalFrom(r)
+	id := r.PathValue("id")
+	count, perLeg, err := s.store.PreviewSegment(r.Context(), principal, id)
+	if errors.Is(err, postgres.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "segment not found")
+		return
+	}
+	if err != nil {
+		internalError(w, err, "preview segment", principal)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"count":          count,
+		"per_leg_counts": perLeg,
+	})
+}

@@ -455,20 +455,20 @@ order; each milestone should compile and pass `go build ./... && go vet ./...` b
 2. [x] **Parser + validator** `internal/audience/parse.go`: `Parse([]byte) (Node, error)`.
    Reject unknown `type`/`operator`, negative windows, empty `field`. *Done when:* unit
    tests cover one valid and three invalid DSLs.
-3. **Postgres profile compiler** `internal/audience/compile_pg.go`:
+3. [x] **Postgres profile compiler** `internal/audience/compile_pg.go`:
    `CompileProfile(Node) (sql string, args []any, err error)` producing a query that
    `SELECT external_id FROM profiles WHERE tenant_id=$1 AND workspace_id=$2 AND (<pred>)`.
    Map `equals`→`attributes->>'field' = $n`, etc. **Use parameters, never string-concat values.**
-4. **Postgres consent compiler** (same file): latest-wins per `(channel,topic)` using
+4. [x] **Postgres consent compiler** (same file): latest-wins per `(channel,topic)` using
    `DISTINCT ON (profile_id,channel,topic) ... ORDER BY occurred_at DESC`, filtered to
    `state='subscribed'` → `SELECT profile_id`.
-5. **ClickHouse event compiler** `internal/audience/compile_ch.go`:
+5. [x] **ClickHouse event compiler** `internal/audience/compile_ch.go`:
    `SELECT subject_hash FROM behavior_events WHERE tenant_id=? AND event_type=?
    AND occurred_at >= now()-INTERVAL ? DAY GROUP BY subject_hash HAVING count() >= ?`.
-6. **Golden tests** `internal/audience/compile_test.go`: for each operator and a nested
+6. [x] **Golden tests** `internal/audience/compile_test.go`: for each operator and a nested
    `and/or/not` case, assert the exact generated SQL string (store expected under
    `internal/audience/testdata/`). *Done when:* `go test ./internal/audience/...` passes.
-7. **Preview endpoint** `POST /v1/segments/{id}/preview` (Recipe 6.4) → run each leg,
+7. [x] **Preview endpoint** `POST /v1/segments/{id}/preview` (Recipe 6.4) → run each leg,
    intersect in Go (see §7.6 step 3 for the resolver), return `{count, per_leg_counts}`.
    *Done when:* preview returns a number against seed data.
 
