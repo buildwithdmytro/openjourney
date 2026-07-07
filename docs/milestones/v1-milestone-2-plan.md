@@ -448,7 +448,7 @@ order; each milestone should compile and pass `go build ./... && go vet ./...` b
    *Done when:* `npm run typecheck && npm run build` pass.
 
 ### Milestone 7.2 — Audience DSL compiler (highest risk — do carefully)
-1. **AST types** in new `internal/audience/ast.go`: `Node` interface; `And/Or/Not` with
+1. [x] **AST types** in new `internal/audience/ast.go`: `Node` interface; `And/Or/Not` with
    `[]Node`; leaf structs `ProfileAttribute{Field,Operator,Value}`,
    `EventHistory{EventType,Operator,TimeWindowDays,MinCount}`,
    `Consent{Channel,Topic,State}`. *Done when:* `go build ./...` passes.
