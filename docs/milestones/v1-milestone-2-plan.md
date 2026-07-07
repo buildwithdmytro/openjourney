@@ -490,9 +490,9 @@ order; each milestone should compile and pass `go build ./... && go vet ./...` b
    `tracked_links` row for a duplicated URL and a signed token in the output.
 6. [x] **Engagement event types:** extend `domain.Event.Validate` + `isBuiltInEvent` per §2.5.
    *Done when:* ingesting a `link.clicked` event succeeds.
-7. **Endpoints:** `POST /v1/templates/{id}/preview` (render vs. a sample profile);
+7. [x] **Endpoints:** `POST /v1/templates/{id}/preview` (render vs. a sample profile);
    `GET /r/{token}` (verify token → emit `link.clicked` via Recipe 6.9 → HTTP 302 to
-   original URL); `GET /o/{token}.gif` (emit `email.opened` → return a 1×1 GIF).
+   original URL); `GET /o/{token}` (emit `email.opened` → return a 1×1 GIF).
    *Done when:* clicking a redirect records an event and forwards the browser.
 8. **React:** template editor + live preview (Recipe 6.8).
 

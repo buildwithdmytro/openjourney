@@ -219,3 +219,64 @@ export async function updateSegment(baseURL: string, apiKey: string, id: string,
 export async function setSegmentMembers(baseURL: string, apiKey: string, id: string, members: Partial<SegmentMember>[]): Promise<void> {
   return requestJSON(baseURL, apiKey, `/v1/segments/${encodeURIComponent(id)}/members`, { method: "PUT", body: JSON.stringify(members) });
 }
+
+export type SendingIdentity = {
+  id: string;
+  tenant_id: string;
+  workspace_id: string;
+  channel: string;
+  display_name: string;
+  from_address: string;
+  reply_to?: string;
+  created_at: string;
+};
+
+export type Template = {
+  id: string;
+  tenant_id: string;
+  workspace_id: string;
+  name: string;
+  channel: string;
+  subject_template?: string;
+  html_template?: string;
+  text_template?: string;
+  body_template?: string;
+  sending_identity_id?: string;
+  version: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TemplatePreview = { subject: string; body: string };
+
+export async function listTemplates(baseURL: string, apiKey: string): Promise<Template[]> {
+  return (await requestJSON<{ templates: Template[] }>(baseURL, apiKey, "/v1/templates")).templates ?? [];
+}
+
+export async function getTemplate(baseURL: string, apiKey: string, id: string): Promise<Template> {
+  return requestJSON(baseURL, apiKey, `/v1/templates/${encodeURIComponent(id)}`);
+}
+
+export async function createTemplate(baseURL: string, apiKey: string, input: Partial<Template>): Promise<Template> {
+  return requestJSON(baseURL, apiKey, "/v1/templates", { method: "POST", body: JSON.stringify(input) });
+}
+
+export async function updateTemplate(baseURL: string, apiKey: string, id: string, input: Partial<Template>): Promise<Template> {
+  return requestJSON(baseURL, apiKey, `/v1/templates/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(input) });
+}
+
+export async function previewTemplate(baseURL: string, apiKey: string, id: string, externalId: string): Promise<TemplatePreview> {
+  return requestJSON(baseURL, apiKey, `/v1/templates/${encodeURIComponent(id)}/preview`, {
+    method: "POST",
+    body: JSON.stringify({ external_id: externalId }),
+  });
+}
+
+export async function listSendingIdentities(baseURL: string, apiKey: string): Promise<SendingIdentity[]> {
+  return (await requestJSON<{ identities?: SendingIdentity[] }>(baseURL, apiKey, "/v1/sending-identities")).identities ?? [];
+}
+
+export async function createSendingIdentity(baseURL: string, apiKey: string, input: Partial<SendingIdentity>): Promise<SendingIdentity> {
+  return requestJSON(baseURL, apiKey, "/v1/sending-identities", { method: "POST", body: JSON.stringify(input) });
+}
+

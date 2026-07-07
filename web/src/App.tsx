@@ -1,15 +1,17 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import {
   checkHealth, Consent, createAPIKey, createPrivacyRequest, createRole, createSchema, createUser,
   discardDeadLetter, getPrivacyRequest, getProfile, getQueueStatus, listAPIKeys, listAuditEvents,
   listDeadLetters, listRoles, listSchemas, listUsers, login, logout, Profile, replayVerify, retryDeadLetter, revokeAPIKey,
   APIKey, AuditEvent, DeadLetterItem, EventSchema, PrivacyRequest, QueueStatus, ReplayReport, Role, User,
   createSegment, listSegments, updateSegment, setSegmentMembers, Segment, SegmentMember,
+  listTemplates, getTemplate, createTemplate, updateTemplate, previewTemplate,
+  listSendingIdentities, createSendingIdentity, Template, SendingIdentity, TemplatePreview,
 } from "./api";
 import { oidcConfigured, restoreOIDCSession, signIn, signOut } from "./auth";
 
 const apiBase = import.meta.env.VITE_API_BASE_URL || "/api";
-type View = "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments";
+type View = "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "templates";
 type CredentialSource = "manual" | "session" | "oidc";
 
 const viewTitles: Record<View, [string, string]> = {
@@ -21,6 +23,7 @@ const viewTitles: Record<View, [string, string]> = {
   operations: ["Operations", "Inspect queues, DLQs, and replay determinism."],
   audit: ["Audit", "Review tenant-scoped security and operations activity."],
   segments: ["Segments", "Manage customer segments and membership rules."],
+  templates: ["Templates", "Design email templates with Liquid tags and live preview."],
 };
 
 export function App() {
@@ -130,6 +133,7 @@ export function App() {
         </section>
         {view === "profiles" && <Profiles apiKey={apiKey} />}
         {view === "segments" && <Segments apiKey={apiKey} />}
+        {view === "templates" && <Templates apiKey={apiKey} />}
         {view === "schemas" && <Schemas apiKey={apiKey} />}
         {view === "api-keys" && <APIKeys apiKey={apiKey} />}
         {view === "privacy" && <Privacy apiKey={apiKey} />}
@@ -660,4 +664,221 @@ function formatDate(value?: string): string {
 
 function message(cause: unknown): string {
   return cause instanceof Error ? cause.message : "The operation failed";
+}
+
+// ─── Templates ───────────────────────────────────────────────────────────────
+
+type TemplateEditorView = "list" | "new" | "edit";
+
+function Templates({ apiKey }: { apiKey: string }) {
+  const [items, setItems] = useState<Template[]>([]);
+  const [identities, setIdentities] = useState<SendingIdentity[]>([]);
+  const [editorView, setEditorView] = useState<TemplateEditorView>("list");
+  const [editing, setEditing] = useState<Partial<Template>>({});
+  const [preview, setPreview] = useState<TemplatePreview | null>(null);
+  const [previewProfileID, setPreviewProfileID] = useState("");
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const reload = async () => {
+    try {
+      const [ts, ids] = await Promise.all([
+        listTemplates(apiBase, apiKey),
+        listSendingIdentities(apiBase, apiKey),
+      ]);
+      setItems(ts);
+      setIdentities(ids);
+    } catch (e) { setError(message(e)); }
+  };
+
+  useEffect(() => { void reload(); }, [apiKey]);
+
+  const startNew = () => {
+    setEditing({ name: "", channel: "email", subject_template: "", html_template: "" });
+    setPreview(null);
+    setEditorView("new");
+  };
+
+  const startEdit = async (id: string) => {
+    try {
+      const t = await getTemplate(apiBase, apiKey, id);
+      setEditing(t);
+      setPreview(null);
+      setEditorView("edit");
+    } catch (e) { setError(message(e)); }
+  };
+
+  const handleSave = async (e: FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      if (editorView === "new") {
+        await createTemplate(apiBase, apiKey, editing);
+      } else if (editing.id) {
+        await updateTemplate(apiBase, apiKey, editing.id, editing);
+      }
+      await reload();
+      setEditorView("list");
+    } catch (e) { setError(message(e)); }
+    finally { setSaving(false); }
+  };
+
+  const handlePreview = async () => {
+    if (!editing.id || !previewProfileID.trim()) return;
+    setPreviewLoading(true);
+    try {
+      const p = await previewTemplate(apiBase, apiKey, editing.id, previewProfileID.trim());
+      setPreview(p);
+    } catch (e) { setError(message(e)); }
+    finally { setPreviewLoading(false); }
+  };
+
+  const schedulePreview = (next: Partial<Template>) => {
+    setEditing(next);
+    if (!next.id || !previewProfileID.trim()) return;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const p = await previewTemplate(apiBase, apiKey, next.id!, previewProfileID.trim());
+        setPreview(p);
+      } catch { /* silent */ }
+    }, 700);
+  };
+
+  if (editorView === "list") {
+    return (
+      <section id="templates-section">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+          <h2>Templates</h2>
+          <button id="new-template-btn" onClick={startNew}>+ New template</button>
+        </div>
+        {error && <p className="error">{error}</p>}
+        {items.length === 0 ? (
+          <p style={{ color: "var(--muted)" }}>No templates yet. Create one to get started.</p>
+        ) : (
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                {["Name", "Channel", "Version", "Updated"].map(h => (
+                  <th key={h} style={{ textAlign: "left", padding: "0.5rem 0.75rem", borderBottom: "1px solid var(--border)" }}>{h}</th>
+                ))}
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {items.map(t => (
+                <tr key={t.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                  <td style={{ padding: "0.5rem 0.75rem", fontWeight: 600 }}>{t.name}</td>
+                  <td style={{ padding: "0.5rem 0.75rem" }}><span className="badge">{t.channel}</span></td>
+                  <td style={{ padding: "0.5rem 0.75rem", color: "var(--muted)" }}>v{t.version}</td>
+                  <td style={{ padding: "0.5rem 0.75rem", color: "var(--muted)", fontSize: "0.8rem" }}>{formatDate(t.updated_at)}</td>
+                  <td style={{ padding: "0.5rem 0.75rem", textAlign: "right" }}>
+                    <button id={`edit-template-${t.id}`} className="secondary" onClick={() => void startEdit(t.id)}>Edit</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+    );
+  }
+
+  return (
+    <section id="template-editor-section" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem", alignItems: "start" }}>
+      <div>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem" }}>
+          <button className="secondary" id="back-to-templates-btn" onClick={() => setEditorView("list")}>← Back</button>
+          <h2 style={{ margin: 0 }}>{editorView === "new" ? "New template" : `Edit: ${editing.name}`}</h2>
+        </div>
+        {error && <p className="error">{error}</p>}
+        <form id="template-form" onSubmit={(e) => void handleSave(e)} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+          <label>Name
+            <input id="template-name" value={editing.name ?? ""} required
+              onChange={e => schedulePreview({ ...editing, name: e.target.value })} />
+          </label>
+          <label>Channel
+            <select id="template-channel" value={editing.channel ?? "email"}
+              onChange={e => schedulePreview({ ...editing, channel: e.target.value })}>
+              <option value="email">Email</option>
+              <option value="webhook">Webhook</option>
+            </select>
+          </label>
+          {identities.length > 0 && (
+            <label>Sending identity
+              <select id="template-identity" value={editing.sending_identity_id ?? ""}
+                onChange={e => schedulePreview({ ...editing, sending_identity_id: e.target.value || undefined })}>
+                <option value="">— None —</option>
+                {identities.map(id => (
+                  <option key={id.id} value={id.id}>{id.display_name} &lt;{id.from_address}&gt;</option>
+                ))}
+              </select>
+            </label>
+          )}
+          {editing.channel !== "webhook" && (
+            <label>Subject (Liquid)
+              <input id="template-subject" value={editing.subject_template ?? ""}
+                placeholder="Hello {{ profile.attributes.name }}!"
+                onChange={e => schedulePreview({ ...editing, subject_template: e.target.value })} />
+            </label>
+          )}
+          <label>
+            {editing.channel === "webhook" ? "Body (Liquid JSON)" : "HTML body (Liquid)"}
+            <textarea id="template-body" rows={14}
+              value={(editing.channel === "webhook" ? editing.body_template : editing.html_template) ?? ""}
+              placeholder={editing.channel === "webhook"
+                ? '{ "user_id": "{{ profile.external_id }}" }'
+                : "<p>Hello <strong>{{ profile.attributes.name }}</strong>!</p>"}
+              style={{ fontFamily: "monospace", fontSize: "0.85rem" }}
+              onChange={e => {
+                const key = editing.channel === "webhook" ? "body_template" : "html_template";
+                schedulePreview({ ...editing, [key]: e.target.value });
+              }} />
+          </label>
+          <button id="save-template-btn" type="submit" disabled={saving}>
+            {saving ? "Saving…" : "Save template"}
+          </button>
+        </form>
+      </div>
+
+      <div>
+        <h3 style={{ marginTop: 0, marginBottom: "0.75rem" }}>Live preview</h3>
+        <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.75rem" }}>
+          <input id="preview-profile-id" placeholder="Profile external_id"
+            value={previewProfileID} onChange={e => setPreviewProfileID(e.target.value)}
+            style={{ flex: 1 }} />
+          <button id="preview-btn" className="secondary"
+            onClick={() => void handlePreview()}
+            disabled={!editing.id || previewLoading || !previewProfileID.trim()}>
+            {previewLoading ? "…" : "Preview"}
+          </button>
+        </div>
+        {!editing.id && (
+          <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>Save the template first to enable live preview.</p>
+        )}
+        {preview && (
+          <div style={{ border: "1px solid var(--border)", borderRadius: "8px", overflow: "hidden" }}>
+            <div style={{ padding: "0.5rem 1rem", background: "rgba(255,255,255,0.05)", borderBottom: "1px solid var(--border)" }}>
+              <span style={{ fontSize: "0.75rem", color: "var(--muted)" }}>Subject: </span>
+              <strong style={{ fontSize: "0.9rem" }}>{preview.subject}</strong>
+            </div>
+            <iframe id="preview-iframe" title="Template preview" sandbox="allow-same-origin"
+              srcDoc={preview.body}
+              style={{ width: "100%", height: "480px", border: "none", background: "#fff" }} />
+          </div>
+        )}
+        {!preview && editing.id && (
+          <div style={{
+            border: "1px dashed var(--border)", borderRadius: "8px", padding: "3rem 1rem",
+            textAlign: "center", color: "var(--muted)"
+          }}>
+            Enter a profile external_id and click Preview to render the template.
+          </div>
+        )}
+      </div>
+    </section>
+  );
 }
