@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/buildwithdmytro/openjourney/internal/blob"
 	"github.com/buildwithdmytro/openjourney/internal/campaigns"
 	"github.com/buildwithdmytro/openjourney/internal/config"
@@ -39,6 +40,24 @@ func main() {
 		os.Exit(1)
 	}
 	defer store.Close()
+
+	if cfg.ClickHouseAddress != "" {
+		chConn, err := clickhouse.Open(&clickhouse.Options{
+			Addr:        []string{cfg.ClickHouseAddress},
+			Auth:        clickhouse.Auth{Database: cfg.ClickHouseDatabase, Username: cfg.ClickHouseUsername, Password: cfg.ClickHousePassword},
+			DialTimeout: 10 * time.Second,
+		})
+		if err != nil {
+			slog.Error("open ClickHouse", "error", err)
+			os.Exit(1)
+		}
+		if err := chConn.Ping(ctx); err != nil {
+			slog.Error("ping ClickHouse", "error", err)
+			os.Exit(1)
+		}
+		store.SetClickHouse(chConn)
+		defer chConn.Close()
+	}
 
 	blobs, err := blob.NewMinIO(ctx, cfg.S3Endpoint, cfg.S3AccessKey, cfg.S3SecretKey, cfg.S3Bucket, cfg.S3UseTLS)
 	if err != nil {

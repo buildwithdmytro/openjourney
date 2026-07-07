@@ -219,10 +219,13 @@ func (f *fakeStore) UpdateCampaign(ctx context.Context, p domain.Principal, c do
 func (f *fakeStore) ListCampaigns(ctx context.Context, p domain.Principal) ([]domain.Campaign, error) {
 	return []domain.Campaign{{ID: "campaign-1", Name: "Test Campaign", Status: "draft"}}, nil
 }
+func (f *fakeStore) GetCampaignSystem(ctx context.Context, tenantID, id string) (domain.Campaign, error) {
+	return domain.Campaign{ID: id, TenantID: tenantID, Status: "sending"}, nil
+}
 func (f *fakeStore) ClaimScheduledCampaign(ctx context.Context) (domain.Campaign, bool, error) {
 	return domain.Campaign{}, false, nil
 }
-func (f *fakeStore) SaveCampaignManifestAndJobs(ctx context.Context, campaignID string, manifestKey string, recipientCount int, jobs []domain.DeliveryJob) error {
+func (f *fakeStore) SaveCampaignManifestAndJobs(ctx context.Context, campaignID string, manifestKey string, recipientCount int, segmentVersion int, templateVersion int, jobs []domain.DeliveryJob) error {
 	return nil
 }
 func (f *fakeStore) ClaimDeliveryJob(ctx context.Context, workerID string) (domain.DeliveryJob, bool, error) {
@@ -237,7 +240,7 @@ func (f *fakeStore) FailDeliveryJob(ctx context.Context, jobID string, errMsg st
 func (f *fakeStore) CreateDeliveryAttempt(ctx context.Context, attempt domain.DeliveryAttempt) (bool, error) {
 	return true, nil
 }
-func (f *fakeStore) UpdateDeliveryAttempt(ctx context.Context, campaignID, profileID, channel, decision, reason, providerMsgID string) error {
+func (f *fakeStore) UpdateDeliveryAttempt(ctx context.Context, campaignID, profileID, channel, decision, reason, providerMsgID string, policySnapshot []byte) error {
 	return nil
 }
 func (f *fakeStore) GetProfileEmails(ctx context.Context, tenantID string, profileIDs []string) (map[string]string, error) {

@@ -155,7 +155,7 @@ func TestCampaignsIntegration(t *testing.T) {
 			},
 		},
 	}
-	err = store.SaveCampaignManifestAndJobs(ctx, claimedCamp.ID, "manifests/holiday-promo.json", 2, jobs)
+	err = store.SaveCampaignManifestAndJobs(ctx, claimedCamp.ID, "manifests/holiday-promo.json", 2, 1, 1, jobs)
 	if err != nil {
 		t.Fatalf("save manifest and jobs: %v", err)
 	}
@@ -187,6 +187,7 @@ func TestCampaignsIntegration(t *testing.T) {
 	// 8. Create Delivery Attempt
 	attempt := domain.DeliveryAttempt{
 		CampaignID: claimedCamp.ID,
+		TenantID:   tenantID,
 		ProfileID:  "550e8400-e29b-41d4-a716-446655440000",
 		Channel:    "email",
 		Endpoint:   "user1@example.com",
@@ -210,7 +211,7 @@ func TestCampaignsIntegration(t *testing.T) {
 	}
 
 	// Update delivery attempt
-	err = store.UpdateDeliveryAttempt(ctx, claimedCamp.ID, "550e8400-e29b-41d4-a716-446655440000", "email", "sent", "", "msg-12345")
+	err = store.UpdateDeliveryAttempt(ctx, claimedCamp.ID, "550e8400-e29b-41d4-a716-446655440000", "email", "sent", "", "msg-12345", nil)
 	if err != nil {
 		t.Fatalf("update delivery attempt: %v", err)
 	}

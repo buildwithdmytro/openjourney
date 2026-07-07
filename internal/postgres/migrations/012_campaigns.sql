@@ -26,10 +26,11 @@ CREATE TABLE IF NOT EXISTS delivery_jobs (
     campaign_id uuid NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
     tenant_id uuid NOT NULL,
     shard integer NOT NULL,
-    status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
+    status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'failed', 'dead')),
     recipients jsonb NOT NULL DEFAULT '[]'::jsonb,
-    claimed_at timestamptz,
-    claimed_by text,
+    attempts integer NOT NULL DEFAULT 0,
+    available_at timestamptz NOT NULL DEFAULT now(),
+    locked_until timestamptz,
     error_message text,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now()
@@ -41,14 +42,18 @@ CREATE INDEX IF NOT EXISTS delivery_jobs_campaign_idx ON delivery_jobs(campaign_
 CREATE TABLE IF NOT EXISTS delivery_attempts (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     campaign_id uuid NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+    tenant_id uuid NOT NULL,
     profile_id uuid NOT NULL,
     channel text NOT NULL,
     endpoint text NOT NULL,
-    decision text NOT NULL CHECK (decision IN ('sent', 'suppressed', 'no_consent', 'fatigued', 'failed')),
+    decision text NOT NULL CHECK (decision IN ('sent', 'suppressed', 'no_consent', 'fatigued', 'render_failed', 'send_failed', 'failed')),
     reason text,
     provider_message_id text,
+    policy_snapshot jsonb NOT NULL DEFAULT '{}'::jsonb,
+    attempted_at timestamptz NOT NULL DEFAULT now(),
     created_at timestamptz NOT NULL DEFAULT now(),
     UNIQUE (campaign_id, profile_id, channel)
 );
 
 CREATE INDEX IF NOT EXISTS delivery_attempts_lookup_idx ON delivery_attempts(campaign_id, profile_id);
+CREATE INDEX IF NOT EXISTS delivery_attempts_fatigue_idx ON delivery_attempts(tenant_id, profile_id, decision, attempted_at);

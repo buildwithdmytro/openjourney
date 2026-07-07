@@ -9,7 +9,9 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/openjourney-api ./
  && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/openjourney-dispatcher ./cmd/dispatcher \
  && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/openjourney-archive ./cmd/archive \
  && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/openjourney-analytics ./cmd/analytics \
- && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/openjourney-operations ./cmd/operations
+ && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/openjourney-operations ./cmd/operations \
+ && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/openjourney-campaigns-dispatcher ./cmd/campaigns-dispatcher \
+ && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/openjourney-campaigns-delivery ./cmd/campaigns-delivery
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/openjourney-api /usr/local/bin/openjourney-api
@@ -18,5 +20,7 @@ COPY --from=build /out/openjourney-dispatcher /usr/local/bin/openjourney-dispatc
 COPY --from=build /out/openjourney-archive /usr/local/bin/openjourney-archive
 COPY --from=build /out/openjourney-analytics /usr/local/bin/openjourney-analytics
 COPY --from=build /out/openjourney-operations /usr/local/bin/openjourney-operations
+COPY --from=build /out/openjourney-campaigns-dispatcher /usr/local/bin/openjourney-campaigns-dispatcher
+COPY --from=build /out/openjourney-campaigns-delivery /usr/local/bin/openjourney-campaigns-delivery
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/openjourney-api"]

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 	"github.com/jackc/pgx/v5"
@@ -42,6 +43,18 @@ func (s *Store) GetCampaign(ctx context.Context, p domain.Principal, id string) 
 	err := s.pool.QueryRow(ctx, `SELECT id, tenant_id, workspace_id, name, description, segment_id, template_id, status, scheduled_at, manifest_key, segment_version, template_version, evaluated_at, recipient_count, created_at, updated_at
 		FROM campaigns WHERE tenant_id=$1 AND workspace_id=$2 AND id=$3`,
 		p.TenantID, p.WorkspaceID, id).
+		Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.Name, &out.Description, &out.SegmentID, &out.TemplateID, &out.Status, &out.ScheduledAt, &out.ManifestKey, &out.SegmentVersion, &out.TemplateVersion, &out.EvaluatedAt, &out.RecipientCount, &out.CreatedAt, &out.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Campaign{}, ErrNotFound
+	}
+	return out, err
+}
+
+func (s *Store) GetCampaignSystem(ctx context.Context, tenantID, id string) (domain.Campaign, error) {
+	var out domain.Campaign
+	err := s.pool.QueryRow(ctx, `SELECT id, tenant_id, workspace_id, name, description, segment_id, template_id, status, scheduled_at, manifest_key, segment_version, template_version, evaluated_at, recipient_count, created_at, updated_at
+		FROM campaigns WHERE tenant_id=$1 AND id=$2`,
+		tenantID, id).
 		Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.Name, &out.Description, &out.SegmentID, &out.TemplateID, &out.Status, &out.ScheduledAt, &out.ManifestKey, &out.SegmentVersion, &out.TemplateVersion, &out.EvaluatedAt, &out.RecipientCount, &out.CreatedAt, &out.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Campaign{}, ErrNotFound
@@ -109,15 +122,15 @@ func (s *Store) ClaimScheduledCampaign(ctx context.Context) (domain.Campaign, bo
 	return out, true, nil
 }
 
-func (s *Store) SaveCampaignManifestAndJobs(ctx context.Context, campaignID string, manifestKey string, recipientCount int, jobs []domain.DeliveryJob) error {
+func (s *Store) SaveCampaignManifestAndJobs(ctx context.Context, campaignID string, manifestKey string, recipientCount int, segmentVersion int, templateVersion int, jobs []domain.DeliveryJob) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
 
-	_, err = tx.Exec(ctx, `UPDATE campaigns SET status='sending', manifest_key=$1, recipient_count=$2, evaluated_at=now(), updated_at=now() WHERE id=$3`,
-		manifestKey, recipientCount, campaignID)
+	_, err = tx.Exec(ctx, `UPDATE campaigns SET status='sending', manifest_key=$1, recipient_count=$2, segment_version=$3, template_version=$4, evaluated_at=now(), updated_at=now() WHERE id=$5`,
+		manifestKey, recipientCount, segmentVersion, templateVersion, campaignID)
 	if err != nil {
 		return err
 	}
@@ -140,16 +153,25 @@ func (s *Store) SaveCampaignManifestAndJobs(ctx context.Context, campaignID stri
 func (s *Store) ClaimDeliveryJob(ctx context.Context, workerID string) (domain.DeliveryJob, bool, error) {
 	var out domain.DeliveryJob
 	var recipientsBytes []byte
-	err := s.pool.QueryRow(ctx, `UPDATE delivery_jobs SET status='processing', claimed_by=$1, claimed_at=now(), updated_at=now()
+	// Claim next available job: either pending or failed with attempts < 3,
+	// or processing but lease expired (locked_until <= now()).
+	err := s.pool.QueryRow(ctx, `UPDATE delivery_jobs SET
+			status='processing',
+			attempts=attempts+1,
+			locked_until=now() + INTERVAL '5 minutes',
+			updated_at=now()
 		WHERE id = (
 			SELECT id FROM delivery_jobs
-			WHERE status='pending'
+			WHERE (
+				(status IN ('pending', 'failed') AND attempts < 3 AND available_at <= now())
+				OR (status='processing' AND locked_until <= now())
+			)
+			ORDER BY available_at ASC
 			FOR UPDATE SKIP LOCKED
 			LIMIT 1
 		)
-		RETURNING id, campaign_id, tenant_id, shard, status, recipients, claimed_at, claimed_by, error_message, created_at, updated_at`,
-		workerID).
-		Scan(&out.ID, &out.CampaignID, &out.TenantID, &out.Shard, &out.Status, &recipientsBytes, &out.ClaimedAt, &out.ClaimedBy, &out.ErrorMessage, &out.CreatedAt, &out.UpdatedAt)
+		RETURNING id, campaign_id, tenant_id, shard, status, recipients, attempts, available_at, locked_until, error_message, created_at, updated_at`).
+		Scan(&out.ID, &out.CampaignID, &out.TenantID, &out.Shard, &out.Status, &recipientsBytes, &out.Attempts, &out.AvailableAt, &out.LockedUntil, &out.ErrorMessage, &out.CreatedAt, &out.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.DeliveryJob{}, false, nil
 	}
@@ -171,19 +193,29 @@ func (s *Store) CompleteDeliveryJob(ctx context.Context, jobID string) error {
 	defer tx.Rollback(ctx)
 
 	var campaignID string
-	err = tx.QueryRow(ctx, `UPDATE delivery_jobs SET status='completed', updated_at=now() WHERE id=$1 RETURNING campaign_id`, jobID).Scan(&campaignID)
+	err = tx.QueryRow(ctx, `UPDATE delivery_jobs SET status='completed', locked_until=NULL, updated_at=now() WHERE id=$1 RETURNING campaign_id`, jobID).Scan(&campaignID)
 	if err != nil {
 		return err
 	}
 
-	var remaining int
-	err = tx.QueryRow(ctx, `SELECT COUNT(*) FROM delivery_jobs WHERE campaign_id=$1 AND status != 'completed'`, campaignID).Scan(&remaining)
+	var activeCount int
+	err = tx.QueryRow(ctx, `SELECT COUNT(*) FROM delivery_jobs WHERE campaign_id=$1 AND (status IN ('pending', 'processing') OR (status='failed' AND attempts < 3))`, campaignID).Scan(&activeCount)
 	if err != nil {
 		return err
 	}
 
-	if remaining == 0 {
-		_, err = tx.Exec(ctx, `UPDATE campaigns SET status='completed', updated_at=now() WHERE id=$1`, campaignID)
+	if activeCount == 0 {
+		var failedCount int
+		err = tx.QueryRow(ctx, `SELECT COUNT(*) FROM delivery_jobs WHERE campaign_id=$1 AND status IN ('failed', 'dead')`, campaignID).Scan(&failedCount)
+		if err != nil {
+			return err
+		}
+
+		if failedCount > 0 {
+			_, err = tx.Exec(ctx, `UPDATE campaigns SET status='failed', updated_at=now() WHERE id=$1`, campaignID)
+		} else {
+			_, err = tx.Exec(ctx, `UPDATE campaigns SET status='completed', updated_at=now() WHERE id=$1`, campaignID)
+		}
 		if err != nil {
 			return err
 		}
@@ -200,19 +232,38 @@ func (s *Store) FailDeliveryJob(ctx context.Context, jobID string, errMsg string
 	defer tx.Rollback(ctx)
 
 	var campaignID string
-	err = tx.QueryRow(ctx, `UPDATE delivery_jobs SET status='failed', error_message=$2, updated_at=now() WHERE id=$1 RETURNING campaign_id`, jobID, errMsg).Scan(&campaignID)
+	var attempts int
+	var status string
+	err = tx.QueryRow(ctx, `UPDATE delivery_jobs SET
+			status=CASE WHEN attempts >= 3 THEN 'dead'::text ELSE 'failed'::text END,
+			error_message=$2,
+			available_at=now() + INTERVAL '1 minute',
+			locked_until=NULL,
+			updated_at=now()
+		WHERE id=$1
+		RETURNING campaign_id, attempts, status`, jobID, errMsg).Scan(&campaignID, &attempts, &status)
 	if err != nil {
 		return err
 	}
 
 	var activeCount int
-	err = tx.QueryRow(ctx, `SELECT COUNT(*) FROM delivery_jobs WHERE campaign_id=$1 AND status IN ('pending', 'processing')`, campaignID).Scan(&activeCount)
+	err = tx.QueryRow(ctx, `SELECT COUNT(*) FROM delivery_jobs WHERE campaign_id=$1 AND (status IN ('pending', 'processing') OR (status='failed' AND attempts < 3))`, campaignID).Scan(&activeCount)
 	if err != nil {
 		return err
 	}
 
 	if activeCount == 0 {
-		_, err = tx.Exec(ctx, `UPDATE campaigns SET status='completed', updated_at=now() WHERE id=$1`, campaignID)
+		var failedCount int
+		err = tx.QueryRow(ctx, `SELECT COUNT(*) FROM delivery_jobs WHERE campaign_id=$1 AND status IN ('failed', 'dead')`, campaignID).Scan(&failedCount)
+		if err != nil {
+			return err
+		}
+
+		if failedCount > 0 {
+			_, err = tx.Exec(ctx, `UPDATE campaigns SET status='failed', updated_at=now() WHERE id=$1`, campaignID)
+		} else {
+			_, err = tx.Exec(ctx, `UPDATE campaigns SET status='completed', updated_at=now() WHERE id=$1`, campaignID)
+		}
 		if err != nil {
 			return err
 		}
@@ -222,19 +273,32 @@ func (s *Store) FailDeliveryJob(ctx context.Context, jobID string, errMsg string
 }
 
 func (s *Store) CreateDeliveryAttempt(ctx context.Context, attempt domain.DeliveryAttempt) (bool, error) {
-	res, err := s.pool.Exec(ctx, `INSERT INTO delivery_attempts (campaign_id, profile_id, channel, endpoint, decision, reason, provider_message_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+	if attempt.TenantID == "" {
+		return false, errors.New("tenant_id is required for delivery attempt")
+	}
+	if attempt.AttemptedAt.IsZero() {
+		attempt.AttemptedAt = time.Now().UTC()
+	}
+	policySnapshot := attempt.PolicySnapshot
+	if len(policySnapshot) == 0 {
+		policySnapshot = []byte("{}")
+	}
+	res, err := s.pool.Exec(ctx, `INSERT INTO delivery_attempts (campaign_id, tenant_id, profile_id, channel, endpoint, decision, reason, provider_message_id, policy_snapshot, attempted_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		ON CONFLICT (campaign_id, profile_id, channel) DO NOTHING`,
-		attempt.CampaignID, attempt.ProfileID, attempt.Channel, attempt.Endpoint, attempt.Decision, attempt.Reason, attempt.ProviderMessageID)
+		attempt.CampaignID, attempt.TenantID, attempt.ProfileID, attempt.Channel, attempt.Endpoint, attempt.Decision, attempt.Reason, attempt.ProviderMessageID, policySnapshot, attempt.AttemptedAt)
 	if err != nil {
 		return false, err
 	}
 	return res.RowsAffected() > 0, nil
 }
 
-func (s *Store) UpdateDeliveryAttempt(ctx context.Context, campaignID, profileID, channel, decision, reason, providerMsgID string) error {
-	_, err := s.pool.Exec(ctx, `UPDATE delivery_attempts SET decision=$4, reason=$5, provider_message_id=$6 WHERE campaign_id=$1 AND profile_id=$2 AND channel=$3`,
-		campaignID, profileID, channel, decision, reason, providerMsgID)
+func (s *Store) UpdateDeliveryAttempt(ctx context.Context, campaignID, profileID, channel, decision, reason, providerMsgID string, policySnapshot []byte) error {
+	if len(policySnapshot) == 0 {
+		policySnapshot = []byte("{}")
+	}
+	_, err := s.pool.Exec(ctx, `UPDATE delivery_attempts SET decision=$4, reason=$5, provider_message_id=$6, policy_snapshot=$7 WHERE campaign_id=$1 AND profile_id=$2 AND channel=$3`,
+		campaignID, profileID, channel, decision, reason, providerMsgID, policySnapshot)
 	return err
 }
 

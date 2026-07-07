@@ -71,6 +71,11 @@ func DispatchNext(ctx context.Context, store ports.Store, blobStore BlobStore) (
 		return true, fmt.Errorf("get segment: %w", err)
 	}
 
+	template, err := store.GetTemplate(ctx, p, camp.TemplateID)
+	if err != nil {
+		return true, fmt.Errorf("get template: %w", err)
+	}
+
 	var dslStr string
 	if len(seg.DSL) > 0 {
 		dslStr = string(seg.DSL)
@@ -83,6 +88,8 @@ func DispatchNext(ctx context.Context, store ports.Store, blobStore BlobStore) (
 			compiledSQL = sql
 		}
 	}
+
+	profileLegs, consentLegs, clickhouseLegs := compileSegmentLegs(node)
 
 	// Build Manifest
 	type ManifestRecipient struct {
@@ -99,23 +106,29 @@ func DispatchNext(ctx context.Context, store ports.Store, blobStore BlobStore) (
 	}
 
 	manifest := struct {
-		SegmentID       string              `json:"segment_id"`
-		SegmentVersion  int                 `json:"segment_version"`
-		DSL             string              `json:"dsl"`
-		CompiledSQL     string              `json:"compiled_sql"`
-		TemplateID      string              `json:"template_id"`
-		TemplateVersion int                 `json:"template_version"`
-		EvaluatedAt     time.Time           `json:"evaluated_at"`
-		Recipients      []ManifestRecipient `json:"recipients"`
+		SegmentID              string              `json:"segment_id"`
+		SegmentVersion         int                 `json:"segment_version"`
+		DSL                    string              `json:"dsl"`
+		CompiledSQL            string              `json:"compiled_sql"`
+		CompiledProfileLegs    []string            `json:"compiled_profile_legs"`
+		CompiledConsentLegs    []string            `json:"compiled_consent_legs"`
+		CompiledClickHouseLegs []string            `json:"compiled_clickhouse_legs"`
+		TemplateID             string              `json:"template_id"`
+		TemplateVersion        int                 `json:"template_version"`
+		EvaluatedAt            time.Time           `json:"evaluated_at"`
+		Recipients             []ManifestRecipient `json:"recipients"`
 	}{
-		SegmentID:       camp.SegmentID,
-		SegmentVersion:  camp.SegmentVersion,
-		DSL:             dslStr,
-		CompiledSQL:     compiledSQL,
-		TemplateID:      camp.TemplateID,
-		TemplateVersion: camp.TemplateVersion,
-		EvaluatedAt:     time.Now().UTC(),
-		Recipients:      manifestRecipients,
+		SegmentID:              camp.SegmentID,
+		SegmentVersion:         seg.Version,
+		DSL:                    dslStr,
+		CompiledSQL:            compiledSQL,
+		CompiledProfileLegs:    profileLegs,
+		CompiledConsentLegs:    consentLegs,
+		CompiledClickHouseLegs: clickhouseLegs,
+		TemplateID:             camp.TemplateID,
+		TemplateVersion:        template.Version,
+		EvaluatedAt:            time.Now().UTC(),
+		Recipients:             manifestRecipients,
 	}
 
 	manifestData, err := json.Marshal(manifest)
@@ -153,11 +166,55 @@ func DispatchNext(ctx context.Context, store ports.Store, blobStore BlobStore) (
 		shardIndex++
 	}
 
-	err = store.SaveCampaignManifestAndJobs(ctx, camp.ID, manifestKey, len(recipients), jobs)
+	err = store.SaveCampaignManifestAndJobs(ctx, camp.ID, manifestKey, len(recipients), seg.Version, template.Version, jobs)
 	if err != nil {
 		return true, fmt.Errorf("save manifest and jobs: %w", err)
 	}
 
 	slog.Info("campaign dispatched successfully", "campaign_id", camp.ID, "recipients_count", len(recipients), "shards_count", len(jobs))
 	return true, nil
+}
+
+func compileSegmentLegs(n audience.Node) ([]string, []string, []string) {
+	var profiles []string
+	var consents []string
+	var clickhouses []string
+
+	if n == nil {
+		return nil, nil, nil
+	}
+
+	switch nodeType := n.(type) {
+	case *audience.And:
+		for _, cond := range nodeType.Conditions {
+			p, c, ch := compileSegmentLegs(cond)
+			profiles = append(profiles, p...)
+			consents = append(consents, c...)
+			clickhouses = append(clickhouses, ch...)
+		}
+	case *audience.Or:
+		for _, cond := range nodeType.Conditions {
+			p, c, ch := compileSegmentLegs(cond)
+			profiles = append(profiles, p...)
+			consents = append(consents, c...)
+			clickhouses = append(clickhouses, ch...)
+		}
+	case *audience.Not:
+		p, c, ch := compileSegmentLegs(nodeType.Condition)
+		profiles = append(profiles, p...)
+		consents = append(consents, c...)
+		clickhouses = append(clickhouses, ch...)
+	case *audience.ProfileAttribute:
+		if sql, _, err := audience.CompileProfile(nodeType); err == nil {
+			profiles = append(profiles, sql)
+		}
+	case *audience.Consent:
+		sql, _ := audience.CompileConsent(nodeType)
+		consents = append(consents, sql)
+	case *audience.EventHistory:
+		sql, _ := audience.CompileClickHouse(nodeType)
+		clickhouses = append(clickhouses, sql)
+	}
+
+	return profiles, consents, clickhouses
 }

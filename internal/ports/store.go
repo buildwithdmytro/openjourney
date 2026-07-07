@@ -76,16 +76,17 @@ type Store interface {
 
 	CreateCampaign(ctx context.Context, p domain.Principal, c domain.Campaign) (domain.Campaign, error)
 	GetCampaign(ctx context.Context, p domain.Principal, id string) (domain.Campaign, error)
+	GetCampaignSystem(ctx context.Context, tenantID, id string) (domain.Campaign, error)
 	UpdateCampaign(ctx context.Context, p domain.Principal, c domain.Campaign) (domain.Campaign, error)
 	ListCampaigns(ctx context.Context, p domain.Principal) ([]domain.Campaign, error)
 
 	ClaimScheduledCampaign(ctx context.Context) (domain.Campaign, bool, error)
-	SaveCampaignManifestAndJobs(ctx context.Context, campaignID string, manifestKey string, recipientCount int, jobs []domain.DeliveryJob) error
+	SaveCampaignManifestAndJobs(ctx context.Context, campaignID string, manifestKey string, recipientCount int, segmentVersion int, templateVersion int, jobs []domain.DeliveryJob) error
 	ClaimDeliveryJob(ctx context.Context, workerID string) (domain.DeliveryJob, bool, error)
 	CompleteDeliveryJob(ctx context.Context, jobID string) error
 	FailDeliveryJob(ctx context.Context, jobID string, errMsg string) error
 	CreateDeliveryAttempt(ctx context.Context, attempt domain.DeliveryAttempt) (bool, error)
-	UpdateDeliveryAttempt(ctx context.Context, campaignID, profileID, channel, decision, reason, providerMsgID string) error
+	UpdateDeliveryAttempt(ctx context.Context, campaignID, profileID, channel, decision, reason, providerMsgID string, policySnapshot []byte) error
 }
 
 

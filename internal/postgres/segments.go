@@ -310,12 +310,6 @@ func (s *Store) resolveSegmentIDs(ctx context.Context, p domain.Principal, seg d
 						matchingProfileIDs[pID] = true
 					}
 				}
-			} else {
-				if nodeType.Operator == "has_not_occurred" {
-					for k := range allProfileIDs {
-						matchingProfileIDs[k] = true
-					}
-				}
 			}
 
 			if nodeType.Operator == "has_not_occurred" {

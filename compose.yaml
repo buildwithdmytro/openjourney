@@ -76,6 +76,37 @@ services:
       object-store:
         condition: service_started
 
+  campaigns-dispatcher:
+    build: .
+    entrypoint: ["/usr/local/bin/openjourney-campaigns-dispatcher"]
+    command: ["-watch", "-max-duration=1h"]
+    restart: unless-stopped
+    environment:
+      OPENJOURNEY_DATABASE_URL: postgres://openjourney:openjourney@postgres:5432/openjourney?sslmode=disable
+      OPENJOURNEY_AUTO_MIGRATE: "false"
+      OPENJOURNEY_S3_ENDPOINT: object-store:9000
+      OPENJOURNEY_S3_ACCESS_KEY: openjourney
+      OPENJOURNEY_S3_SECRET_KEY: openjourney-secret
+      OPENJOURNEY_S3_BUCKET: openjourney
+      OPENJOURNEY_S3_USE_TLS: "false"
+    depends_on:
+      api:
+        condition: service_started
+      object-store:
+        condition: service_started
+
+  campaigns-delivery:
+    build: .
+    entrypoint: ["/usr/local/bin/openjourney-campaigns-delivery"]
+    command: ["-watch", "-max-duration=1h"]
+    restart: unless-stopped
+    environment:
+      OPENJOURNEY_DATABASE_URL: postgres://openjourney:openjourney@postgres:5432/openjourney?sslmode=disable
+      OPENJOURNEY_AUTO_MIGRATE: "false"
+    depends_on:
+      api:
+        condition: service_started
+
   web:
     build: ./web
     depends_on:

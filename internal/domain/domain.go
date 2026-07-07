@@ -460,24 +460,28 @@ type DeliveryJob struct {
 	CampaignID   string      `json:"campaign_id"`
 	TenantID     string      `json:"tenant_id"`
 	Shard        int         `json:"shard"`
-	Status       string      `json:"status"` // pending, processing, completed, failed
+	Status       string      `json:"status"` // pending, processing, completed, failed, dead
 	Recipients   []Recipient `json:"recipients"`
-	ClaimedAt    *time.Time  `json:"claimed_at,omitempty"`
-	ClaimedBy    *string     `json:"claimed_by,omitempty"`
+	Attempts     int         `json:"attempts"`
+	AvailableAt  time.Time   `json:"available_at"`
+	LockedUntil  *time.Time  `json:"locked_until,omitempty"`
 	ErrorMessage *string     `json:"error_message,omitempty"`
 	CreatedAt    time.Time   `json:"created_at"`
 	UpdatedAt    time.Time   `json:"updated_at"`
 }
 
 type DeliveryAttempt struct {
-	ID                string    `json:"id"`
-	CampaignID        string    `json:"campaign_id"`
-	ProfileID         string    `json:"profile_id"`
-	Channel           string    `json:"channel"`
-	Endpoint          string    `json:"endpoint"`
-	Decision          string    `json:"decision"` // sent, suppressed, no_consent, fatigued, failed
-	Reason            string    `json:"reason,omitempty"`
-	ProviderMessageID string    `json:"provider_message_id,omitempty"`
-	CreatedAt         time.Time `json:"created_at"`
+	ID                string          `json:"id"`
+	CampaignID        string          `json:"campaign_id"`
+	TenantID          string          `json:"tenant_id"`
+	ProfileID         string          `json:"profile_id"`
+	Channel           string          `json:"channel"`
+	Endpoint          string          `json:"endpoint"`
+	Decision          string          `json:"decision"` // sent, suppressed, no_consent, fatigued, render_failed, send_failed, failed
+	Reason            string          `json:"reason,omitempty"`
+	ProviderMessageID string          `json:"provider_message_id,omitempty"`
+	PolicySnapshot    json.RawMessage `json:"policy_snapshot,omitempty"`
+	AttemptedAt       time.Time       `json:"attempted_at"`
+	CreatedAt         time.Time       `json:"created_at"`
 }
 
