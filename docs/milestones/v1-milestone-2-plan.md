@@ -473,7 +473,7 @@ order; each milestone should compile and pass `go build ./... && go vet ./...` b
    *Done when:* preview returns a number against seed data.
 
 ### Milestone 7.3 — Templates, Liquid & link tracking
-1. **Migration** `010_templates.sql` per §2.2 (`sending_identities`, `templates`,
+1. [x] **Migration** `010_templates.sql` per §2.2 (`sending_identities`, `templates`,
    `tracked_links`). *Done when:* tables exist.
 2. **Domain + scopes:** `Template`, `SendingIdentity` structs; `templates:read/write`
    scopes.
