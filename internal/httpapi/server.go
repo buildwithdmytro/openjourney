@@ -86,6 +86,7 @@ func (s *Server) buildMux() http.Handler {
 	mux.Handle("POST /v1/templates/{id}/preview", s.authenticate("templates:read", http.HandlerFunc(s.previewTemplate)))
 	mux.HandleFunc("GET /r/{token}", s.redirectLink)
 	mux.HandleFunc("GET /o/{token}", s.openPixel)
+	mux.HandleFunc("POST /v1/callbacks/ses", s.handleSESCallback)
 	mux.Handle("GET /v1/suppressions", s.authenticate("suppressions:read", http.HandlerFunc(s.listSuppressions)))
 	mux.Handle("POST /v1/suppressions", s.authenticate("suppressions:write", http.HandlerFunc(s.createSuppression)))
 	mux.Handle("DELETE /v1/suppressions", s.authenticate("suppressions:write", http.HandlerFunc(s.deleteSuppression)))

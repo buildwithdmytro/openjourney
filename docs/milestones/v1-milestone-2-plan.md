@@ -514,21 +514,21 @@ order; each milestone should compile and pass `go build ./... && go vet ./...` b
 6. [x] **React:** suppression + sender-identity management views.
 
 ### Milestone 7.5 — Channel adapters & callbacks
-1. **Adapter interface** `internal/ports/store.go` (or `ports/adapter.go`):
+1. [x] **Adapter interface** `internal/ports/store.go` (or `ports/adapter.go`):
    `type ChannelAdapter interface { Send(ctx, RenderedMessage) (providerID string, error);
    ValidateConfig(SendingIdentity) error }`. Define `RenderedMessage{Channel, Endpoint,
    Subject, HTML, Text, Body, Identity}`.
-2. **Fake adapter** `internal/channels/fake.go`: records sends in a slice, returns a fake id.
+2. [x] **Fake adapter** `internal/channels/fake.go`: records sends in a slice, returns a fake id.
    *Done when:* used by unit tests without network.
-3. **SES adapter** `internal/channels/ses.go` (AWS SDK v2): send via `SendEmail`, set the
+3. [x] **SES adapter** `internal/channels/ses.go` (AWS SDK v2): send via `SendEmail`, set the
    `ses_configuration_set` from identity config, wrap a per-identity token-bucket limiter
    (`golang.org/x/time/rate`, rate = `max_send_rate`). Map throttling/5xx → retryable,
    invalid-address → permanent. *Done when:* `ValidateConfig` rejects an unverified sender.
-4. **Webhook adapter** `internal/channels/webhook.go`: POST `body_template` to the endpoint;
+4. [x] **Webhook adapter** `internal/channels/webhook.go`: POST `body_template` to the endpoint;
    **SSRF guard** (resolve host, reject private/loopback/link-local ranges, re-check after
    redirect), `X-Signature: hmac-sha256(...)` header, bounded exponential retry.
    *Done when:* a unit test blocks `http://169.254.169.254` and signs a request.
-5. **SES callback** `POST /v1/callbacks/ses`: verify **SNS X.509 signature** and handle
+5. [x] **SES callback** `POST /v1/callbacks/ses`: verify **SNS X.509 signature** and handle
    `SubscriptionConfirmation`; translate `Bounce`/`Complaint`/`Delivery` into ingested
    `message.*` events (Recipe 6.9). *Done when:* a sample SNS bounce payload creates a
    suppression (via 7.4 step 2).
