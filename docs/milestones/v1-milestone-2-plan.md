@@ -494,7 +494,7 @@ order; each milestone should compile and pass `go build ./... && go vet ./...` b
    `GET /r/{token}` (verify token → emit `link.clicked` via Recipe 6.9 → HTTP 302 to
    original URL); `GET /o/{token}` (emit `email.opened` → return a 1×1 GIF).
    *Done when:* clicking a redirect records an event and forwards the browser.
-8. **React:** template editor + live preview (Recipe 6.8).
+8. [x] **React:** template editor + live preview (Recipe 6.8).
 
 ### Milestone 7.4 — Policy engine & suppressions
 1. **Migration** `011_delivery_policy.sql` (`suppressions`). *Done when:* table exists.
