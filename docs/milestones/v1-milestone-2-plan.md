@@ -475,7 +475,7 @@ order; each milestone should compile and pass `go build ./... && go vet ./...` b
 ### Milestone 7.3 — Templates, Liquid & link tracking
 1. [x] **Migration** `010_templates.sql` per §2.2 (`sending_identities`, `templates`,
    `tracked_links`). *Done when:* tables exist.
-2. **Domain + scopes:** `Template`, `SendingIdentity` structs; `templates:read/write`
+2. [x] **Domain + scopes:** `Template`, `SendingIdentity` structs; `templates:read/write`
    scopes.
 3. **Store + HTTP** for `templates` and `sending_identities` CRUD (Recipes 6.3, 6.4).
 4. **Liquid render util** `internal/render/render.go`: add dependency

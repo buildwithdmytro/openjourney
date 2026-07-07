@@ -187,6 +187,37 @@ type SegmentMember struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
+type SendingIdentity struct {
+	ID          string          `json:"id"`
+	TenantID    string          `json:"tenant_id"`
+	WorkspaceID string          `json:"workspace_id"`
+	Channel     string          `json:"channel"` // email, webhook
+	FromAddress *string         `json:"from_address,omitempty"`
+	FromName    *string         `json:"from_name,omitempty"`
+	ReplyTo     *string         `json:"reply_to,omitempty"`
+	Provider    string          `json:"provider"` // ses, webhook
+	Config      json.RawMessage `json:"config"`
+	MaxSendRate int             `json:"max_send_rate"`
+	Verified    bool            `json:"verified"`
+	CreatedAt   time.Time       `json:"created_at"`
+}
+
+type Template struct {
+	ID                string     `json:"id"`
+	TenantID          string     `json:"tenant_id"`
+	WorkspaceID       string     `json:"workspace_id"`
+	Name              string     `json:"name"`
+	Channel           string     `json:"channel"` // email, webhook
+	SubjectTemplate   *string    `json:"subject_template,omitempty"`
+	HTMLTemplate      *string    `json:"html_template,omitempty"`
+	TextTemplate      *string    `json:"text_template,omitempty"`
+	BodyTemplate      *string    `json:"body_template,omitempty"`
+	SendingIdentityID *string    `json:"sending_identity_id,omitempty"`
+	Version           int        `json:"version"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
+}
+
 type APIKey struct {
 	ID         string     `json:"id"`
 	Name       string     `json:"name"`
