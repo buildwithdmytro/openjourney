@@ -433,7 +433,7 @@ order; each milestone should compile and pass `go build ./... && go vet ./...` b
 ### Milestone 7.1 — Segments schema & CRUD
 1. [x] **Migration.** Write `009_audiences.sql` per §2.1 (Recipe 6.1). *Done when:* app starts
    and the three tables exist.
-2. **Domain models.** Add `Segment` and `SegmentMember` structs to `domain.go` (Recipe 6.2).
+2. [x] **Domain models.** Add `Segment` and `SegmentMember` structs to `domain.go` (Recipe 6.2).
    Fields mirror the columns; `DSL json.RawMessage`. *Done when:* `go build ./...` passes.
 3. **Scopes.** Add `segments:read` / `segments:write` (Recipe 6.5). *Done when:* new keys
    carry them.

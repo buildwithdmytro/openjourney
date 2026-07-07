@@ -165,6 +165,28 @@ type EventSchema struct {
 	CreatedAt     time.Time       `json:"created_at"`
 }
 
+type Segment struct {
+	ID          string          `json:"id"`
+	TenantID    string          `json:"tenant_id"`
+	WorkspaceID string          `json:"workspace_id"`
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	Type        string          `json:"type"` // static, dynamic, snapshot
+	Status      string          `json:"status"` // draft, active, archived
+	DSL         json.RawMessage `json:"dsl"`
+	Version     int             `json:"version"`
+	CreatedAt   time.Time       `json:"created_at"`
+	UpdatedAt   time.Time       `json:"updated_at"`
+}
+
+type SegmentMember struct {
+	SegmentID  string    `json:"segment_id"`
+	ProfileID  string    `json:"profile_id"`
+	TenantID   string    `json:"tenant_id"`
+	Membership string    `json:"membership"` // include, exclude
+	CreatedAt  time.Time `json:"created_at"`
+}
+
 type APIKey struct {
 	ID         string     `json:"id"`
 	Name       string     `json:"name"`
