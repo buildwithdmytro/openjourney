@@ -53,6 +53,15 @@ type Store interface {
 	SetSegmentMembers(context.Context, domain.Principal, string, []domain.SegmentMember) error
 	PreviewSegment(context.Context, domain.Principal, string) (int, map[string]int, error)
 	ResolveSegment(context.Context, domain.Principal, string) ([]string, error)
+
+	CreateSendingIdentity(context.Context, domain.Principal, domain.SendingIdentity) (domain.SendingIdentity, error)
+	GetSendingIdentity(context.Context, domain.Principal, string) (domain.SendingIdentity, error)
+	ListSendingIdentities(context.Context, domain.Principal) ([]domain.SendingIdentity, error)
+
+	CreateTemplate(context.Context, domain.Principal, domain.Template) (domain.Template, error)
+	GetTemplate(context.Context, domain.Principal, string) (domain.Template, error)
+	UpdateTemplate(context.Context, domain.Principal, domain.Template) (domain.Template, error)
+	ListTemplates(context.Context, domain.Principal) ([]domain.Template, error)
 }
 
 type TokenVerifier interface {

@@ -158,6 +158,29 @@ func (f *fakeStore) PreviewSegment(_ context.Context, _ domain.Principal, _ stri
 func (f *fakeStore) ResolveSegment(_ context.Context, _ domain.Principal, _ string) ([]string, error) {
 	return []string{"profile-1", "profile-2"}, nil
 }
+func (f *fakeStore) CreateSendingIdentity(_ context.Context, _ domain.Principal, iden domain.SendingIdentity) (domain.SendingIdentity, error) {
+	iden.ID = "iden-1"
+	return iden, nil
+}
+func (f *fakeStore) GetSendingIdentity(_ context.Context, _ domain.Principal, id string) (domain.SendingIdentity, error) {
+	return domain.SendingIdentity{ID: id, Channel: "email"}, nil
+}
+func (f *fakeStore) ListSendingIdentities(_ context.Context, _ domain.Principal) ([]domain.SendingIdentity, error) {
+	return []domain.SendingIdentity{{ID: "iden-1", Channel: "email"}}, nil
+}
+func (f *fakeStore) CreateTemplate(_ context.Context, _ domain.Principal, tmpl domain.Template) (domain.Template, error) {
+	tmpl.ID = "tmpl-1"
+	return tmpl, nil
+}
+func (f *fakeStore) GetTemplate(_ context.Context, _ domain.Principal, id string) (domain.Template, error) {
+	return domain.Template{ID: id, Name: "Test Template", Channel: "email"}, nil
+}
+func (f *fakeStore) UpdateTemplate(_ context.Context, _ domain.Principal, tmpl domain.Template) (domain.Template, error) {
+	return tmpl, nil
+}
+func (f *fakeStore) ListTemplates(_ context.Context, _ domain.Principal) ([]domain.Template, error) {
+	return []domain.Template{{ID: "tmpl-1", Name: "Test Template", Channel: "email"}}, nil
+}
 
 func TestAcceptEvents(t *testing.T) {
 	store := &fakeStore{}

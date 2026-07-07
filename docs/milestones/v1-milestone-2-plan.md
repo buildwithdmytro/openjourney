@@ -477,7 +477,7 @@ order; each milestone should compile and pass `go build ./... && go vet ./...` b
    `tracked_links`). *Done when:* tables exist.
 2. [x] **Domain + scopes:** `Template`, `SendingIdentity` structs; `templates:read/write`
    scopes.
-3. **Store + HTTP** for `templates` and `sending_identities` CRUD (Recipes 6.3, 6.4).
+3. [x] **Store + HTTP** for `templates` and `sending_identities` CRUD (Recipes 6.3, 6.4).
 4. **Liquid render util** `internal/render/render.go`: add dependency
    `github.com/osteele/liquid`; `Render(tmpl string, vars map[string]any) (string, error)`.
    Build `vars` from `profile.attributes`. *Done when:* a unit test renders
