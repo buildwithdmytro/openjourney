@@ -1,0 +1,290 @@
+package httpapi
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/buildwithdmytro/openjourney/internal/domain"
+	"github.com/buildwithdmytro/openjourney/internal/postgres"
+)
+
+type fakeStore struct {
+	accepted      int
+	scopes        []string
+	oidcPrincipal *domain.Principal
+	localSession  domain.AuthSession
+	revokedToken  string
+}
+
+func (f *fakeStore) Ready(context.Context) error { return nil }
+func (f *fakeStore) Authenticate(_ context.Context, key string) (domain.Principal, error) {
+	if key != "test-key" {
+		return domain.Principal{}, errors.New("unauthorized")
+	}
+	scopes := f.scopes
+	if scopes == nil {
+		scopes = []string{"events:write", "profiles:read"}
+	}
+	return domain.Principal{
+		TenantID: "tenant", WorkspaceID: "workspace", AppID: "app",
+		Scopes: scopes,
+	}, nil
+}
+func (f *fakeStore) AuthenticateOIDC(context.Context, domain.OIDCClaims) (domain.Principal, error) {
+	if f.oidcPrincipal != nil {
+		return *f.oidcPrincipal, nil
+	}
+	return domain.Principal{}, errors.New("unauthorized")
+}
+func (f *fakeStore) CreateLocalSession(context.Context, string, string, time.Duration) (domain.AuthSession, error) {
+	if f.localSession.AccessToken != "" {
+		return f.localSession, nil
+	}
+	return domain.AuthSession{}, postgres.ErrUnauthorized
+}
+func (f *fakeStore) RevokeLocalSession(_ context.Context, token string) error {
+	f.revokedToken = token
+	return nil
+}
+func (f *fakeStore) AcceptEvents(_ context.Context, _ domain.Principal, events []domain.Event) ([]string, error) {
+	f.accepted += len(events)
+	return []string{"event-1"}, nil
+}
+func (f *fakeStore) GetProfile(context.Context, domain.Principal, string) (domain.Profile, []domain.Consent, error) {
+	return domain.Profile{ID: "profile-1", Attributes: json.RawMessage(`{}`)}, nil, nil
+}
+func (f *fakeStore) ClaimProjectionJob(context.Context) (domain.AcceptedEvent, bool, error) {
+	return domain.AcceptedEvent{}, false, nil
+}
+func (f *fakeStore) ProjectEvent(context.Context, domain.AcceptedEvent) error { return nil }
+func (f *fakeStore) FailProjectionJob(context.Context, string, error) error   { return nil }
+func (f *fakeStore) ValidateEventSchema(context.Context, domain.Principal, domain.Event) error {
+	return nil
+}
+func (f *fakeStore) ListEventSchemas(context.Context, domain.Principal) ([]domain.EventSchema, error) {
+	return nil, nil
+}
+func (f *fakeStore) CreateEventSchema(_ context.Context, _ domain.Principal, schema domain.EventSchema) (domain.EventSchema, error) {
+	schema.ID = "schema-1"
+	return schema, nil
+}
+func (f *fakeStore) ListAPIKeys(context.Context, domain.Principal) ([]domain.APIKey, error) {
+	return nil, nil
+}
+func (f *fakeStore) CreateAPIKey(_ context.Context, _ domain.Principal, name string, scopes []string, _ *time.Time) (domain.APIKey, string, error) {
+	return domain.APIKey{ID: "key-1", Name: name, Scopes: scopes}, "secret", nil
+}
+func (f *fakeStore) RevokeAPIKey(context.Context, domain.Principal, string) error { return nil }
+func (f *fakeStore) CreatePrivacyRequest(_ context.Context, _ domain.Principal, externalID, kind string) (domain.PrivacyRequest, error) {
+	return domain.PrivacyRequest{ID: "privacy-1", ExternalID: externalID, RequestType: kind}, nil
+}
+func (f *fakeStore) GetPrivacyRequest(context.Context, domain.Principal, string) (domain.PrivacyRequest, error) {
+	return domain.PrivacyRequest{ID: "privacy-1"}, nil
+}
+func (f *fakeStore) QueueStatus(context.Context, domain.Principal) ([]domain.QueueStatus, error) {
+	return nil, nil
+}
+func (f *fakeStore) ListDeadLetters(context.Context, domain.Principal, string, int) ([]domain.DeadLetterItem, error) {
+	return []domain.DeadLetterItem{{Queue: "projection", ID: "event-1", Kind: "profile.updated"}}, nil
+}
+func (f *fakeStore) RetryDeadLetter(context.Context, domain.Principal, string, string) error {
+	return nil
+}
+func (f *fakeStore) DiscardDeadLetter(context.Context, domain.Principal, string, string) error {
+	return nil
+}
+func (f *fakeStore) ClaimOutboxEvent(context.Context) (domain.OutboxEvent, bool, error) {
+	return domain.OutboxEvent{}, false, nil
+}
+func (f *fakeStore) CompleteOutboxEvent(context.Context, string) error    { return nil }
+func (f *fakeStore) FailOutboxEvent(context.Context, string, error) error { return nil }
+func (f *fakeStore) ClaimOperationJob(context.Context) (domain.OperationJob, bool, error) {
+	return domain.OperationJob{}, false, nil
+}
+func (f *fakeStore) CompleteOperationJob(context.Context, string) error    { return nil }
+func (f *fakeStore) FailOperationJob(context.Context, string, error) error { return nil }
+func (f *fakeStore) ExportPrivacyData(context.Context, string) (domain.PrivacyData, error) {
+	return domain.PrivacyData{}, nil
+}
+func (f *fakeStore) CompletePrivacyExport(context.Context, string, string) error { return nil }
+func (f *fakeStore) DeletePrivacyData(context.Context, string) ([]string, error) { return nil, nil }
+func (f *fakeStore) EnforceRetention(context.Context, string) (domain.RetentionReport, error) {
+	return domain.RetentionReport{}, nil
+}
+func (f *fakeStore) VerifyReplay(context.Context, domain.Principal) (domain.ReplayReport, error) {
+	return domain.ReplayReport{Match: true}, nil
+}
+func (f *fakeStore) ListRoles(context.Context, domain.Principal) ([]domain.Role, error) {
+	return nil, nil
+}
+func (f *fakeStore) CreateRole(_ context.Context, _ domain.Principal, name string, permissions []string) (domain.Role, error) {
+	return domain.Role{ID: "role-1", Name: name, Permissions: permissions}, nil
+}
+func (f *fakeStore) ListUsers(context.Context, domain.Principal) ([]domain.User, error) {
+	return nil, nil
+}
+func (f *fakeStore) CreateUser(_ context.Context, _ domain.Principal, user domain.User) (domain.User, error) {
+	user.ID = "user-1"
+	return user, nil
+}
+func (f *fakeStore) ListAuditEvents(context.Context, domain.Principal, int) ([]domain.AuditEvent, error) {
+	return nil, nil
+}
+
+func TestAcceptEvents(t *testing.T) {
+	store := &fakeStore{}
+	server := New(store, 75)
+	body := `{"events":[{"event_type":"profile.updated","schema_version":1,"external_id":"u1",
+		"idempotency_key":"k1","occurred_at":"2025-01-01T00:00:00Z","payload":{"attributes":{"name":"Ada"}}}]}`
+	request := httptest.NewRequest(http.MethodPost, "/v1/events/batch", strings.NewReader(body))
+	request.Header.Set("Authorization", "Bearer test-key")
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if store.accepted != 1 {
+		t.Fatalf("accepted=%d", store.accepted)
+	}
+}
+
+func TestAcceptEventsRequiresAuthentication(t *testing.T) {
+	server := New(&fakeStore{}, 75)
+	request := httptest.NewRequest(http.MethodPost, "/v1/events/batch", strings.NewReader(`{"events":[]}`))
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("status=%d", response.Code)
+	}
+}
+
+func TestAcceptEventsRequiresScope(t *testing.T) {
+	server := New(&fakeStore{scopes: []string{"profiles:read"}}, 75)
+	request := httptest.NewRequest(http.MethodPost, "/v1/events/batch", strings.NewReader(`{"events":[]}`))
+	request.Header.Set("Authorization", "Bearer test-key")
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status=%d", response.Code)
+	}
+}
+
+func TestLocalLoginReturnsSession(t *testing.T) {
+	expiresAt := time.Now().Add(time.Hour).UTC()
+	server := New(&fakeStore{localSession: domain.AuthSession{
+		AccessToken: "session-token", TokenType: "Bearer", ExpiresAt: expiresAt,
+	}}, 75)
+	request := httptest.NewRequest(http.MethodPost, "/v1/auth/login",
+		strings.NewReader(`{"email":"admin@example.test","password":"correct horse battery staple"}`))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), "session-token") {
+		t.Fatalf("unexpected body=%s", response.Body.String())
+	}
+}
+
+func TestLocalLoginRejectsInvalidCredentials(t *testing.T) {
+	server := New(&fakeStore{}, 75)
+	request := httptest.NewRequest(http.MethodPost, "/v1/auth/login",
+		strings.NewReader(`{"email":"admin@example.test","password":"wrong"}`))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestLocalLogoutRevokesSession(t *testing.T) {
+	store := &fakeStore{}
+	server := New(store, 75)
+	request := httptest.NewRequest(http.MethodPost, "/v1/auth/logout", nil)
+	request.Header.Set("Authorization", "Bearer ojs_session")
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if store.revokedToken != "ojs_session" {
+		t.Fatalf("revoked token=%q", store.revokedToken)
+	}
+}
+
+type fakeTokenVerifier struct{}
+
+func (fakeTokenVerifier) Verify(context.Context, string) (domain.OIDCClaims, error) {
+	return domain.OIDCClaims{Issuer: "issuer", Subject: "subject"}, nil
+}
+
+func TestOIDCFallbackUsesRoleScopes(t *testing.T) {
+	principal := domain.Principal{TenantID: "tenant", WorkspaceID: "workspace", AppID: "app",
+		UserID: "user", ActorType: "user", Scopes: []string{"profiles:read"}}
+	server := NewWithOptions(&fakeStore{oidcPrincipal: &principal}, 75, fakeTokenVerifier{}, "https://app.test")
+	request := httptest.NewRequest(http.MethodGet, "/v1/profiles/customer", nil)
+	request.Header.Set("Authorization", "Bearer signed.jwt.token")
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestListDeadLettersRequiresOperationsRead(t *testing.T) {
+	server := New(&fakeStore{scopes: []string{"operations:read"}}, 75)
+	request := httptest.NewRequest(http.MethodGet, "/v1/operations/dlq?queue=projection", nil)
+	request.Header.Set("Authorization", "Bearer test-key")
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), "event-1") {
+		t.Fatalf("unexpected body=%s", response.Body.String())
+	}
+}
+
+func TestRetryDeadLetterRequiresOperationsWrite(t *testing.T) {
+	server := New(&fakeStore{scopes: []string{"operations:read"}}, 75)
+	request := httptest.NewRequest(http.MethodPost, "/v1/operations/dlq/projection/event-1/retry", nil)
+	request.Header.Set("Authorization", "Bearer test-key")
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+
+	server = New(&fakeStore{scopes: []string{"operations:write"}}, 75)
+	response = httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestCORSAllowsOnlyConfiguredOrigin(t *testing.T) {
+	server := NewWithOptions(&fakeStore{}, 75, nil, "https://app.test")
+	allowed := httptest.NewRequest(http.MethodOptions, "/v1/events/batch", nil)
+	allowed.Header.Set("Origin", "https://app.test")
+	allowedResponse := httptest.NewRecorder()
+	server.ServeHTTP(allowedResponse, allowed)
+	if allowedResponse.Header().Get("Access-Control-Allow-Origin") != "https://app.test" {
+		t.Fatal("configured origin was not allowed")
+	}
+	denied := httptest.NewRequest(http.MethodOptions, "/v1/events/batch", nil)
+	denied.Header.Set("Origin", "https://attacker.test")
+	deniedResponse := httptest.NewRecorder()
+	server.ServeHTTP(deniedResponse, denied)
+	if deniedResponse.Header().Get("Access-Control-Allow-Origin") != "" {
+		t.Fatal("unconfigured origin was allowed")
+	}
+}

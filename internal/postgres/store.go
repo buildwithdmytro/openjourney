@@ -1,0 +1,569 @@
+package postgres
+
+import (
+	"context"
+	"crypto/sha256"
+	"embed"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io/fs"
+	"reflect"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/buildwithdmytro/openjourney/internal/domain"
+	"github.com/buildwithdmytro/openjourney/internal/schemas"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+//go:embed migrations/*.sql
+var migrations embed.FS
+
+var ErrUnauthorized = errors.New("unauthorized")
+var ErrNotFound = errors.New("not found")
+var ErrQuotaExceeded = errors.New("quota exceeded")
+var ErrIdempotencyConflict = errors.New("idempotency key reused with different event")
+
+type Store struct {
+	pool             *pgxpool.Pool
+	schemaMu         sync.RWMutex
+	schemaCache      map[string]*schemas.Validator
+	schemaCacheKnown map[string]bool
+}
+
+func Open(ctx context.Context, databaseURL string) (*Store, error) {
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		return nil, err
+	}
+	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
+		return nil, err
+	}
+	return &Store{
+		pool: pool, schemaCache: map[string]*schemas.Validator{},
+		schemaCacheKnown: map[string]bool{},
+	}, nil
+}
+
+func (s *Store) Close() { s.pool.Close() }
+
+func (s *Store) Ready(ctx context.Context) error { return s.pool.Ping(ctx) }
+
+func (s *Store) Migrate(ctx context.Context) error {
+	conn, err := s.pool.Acquire(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Release()
+	if _, err := conn.Exec(ctx, "SELECT pg_advisory_lock(hashtext('openjourney:migrations'))"); err != nil {
+		return err
+	}
+	defer conn.Exec(context.Background(), "SELECT pg_advisory_unlock(hashtext('openjourney:migrations'))")
+	if _, err := conn.Exec(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
+		version text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())`); err != nil {
+		return err
+	}
+	entries, err := fs.ReadDir(migrations, "migrations")
+	if err != nil {
+		return err
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") {
+			continue
+		}
+		var applied bool
+		if err := conn.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version=$1)", entry.Name()).Scan(&applied); err != nil {
+			return err
+		}
+		if applied {
+			continue
+		}
+		content, err := migrations.ReadFile("migrations/" + entry.Name())
+		if err != nil {
+			return err
+		}
+		tx, err := conn.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		if _, err = tx.Exec(ctx, string(content)); err != nil {
+			_ = tx.Rollback(ctx)
+			return fmt.Errorf("migration %s: %w", entry.Name(), err)
+		}
+		if _, err = tx.Exec(ctx, "INSERT INTO schema_migrations(version) VALUES($1)", entry.Name()); err != nil {
+			_ = tx.Rollback(ctx)
+			return err
+		}
+		if err = tx.Commit(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) EnsureDevelopmentTenant(ctx context.Context, rawKey string) error {
+	if rawKey == "" {
+		return nil
+	}
+	hash := sha256.Sum256([]byte(rawKey))
+	var exists bool
+	if err := s.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM api_keys WHERE key_hash=$1)", hash[:]).Scan(&exists); err != nil || exists {
+		return err
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	var tenantID, workspaceID, appID string
+	if err := tx.QueryRow(ctx, "INSERT INTO tenants(name) VALUES('Development') RETURNING id").Scan(&tenantID); err != nil {
+		return err
+	}
+	if err := tx.QueryRow(ctx, "INSERT INTO workspaces(tenant_id,name) VALUES($1,'Default') RETURNING id", tenantID).Scan(&workspaceID); err != nil {
+		return err
+	}
+	if err := tx.QueryRow(ctx, "INSERT INTO applications(tenant_id,workspace_id,name) VALUES($1,$2,'Web') RETURNING id", tenantID, workspaceID).Scan(&appID); err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO api_keys(tenant_id,workspace_id,app_id,name,key_hash)
+		VALUES($1,$2,$3,'Development key',$4)`, tenantID, workspaceID, appID, hash[:])
+	if err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, `INSERT INTO tenant_quotas(tenant_id) VALUES($1)
+		ON CONFLICT(tenant_id) DO NOTHING`, tenantID); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	return s.seedDevelopmentRole(ctx, tenantID)
+}
+
+func (s *Store) Authenticate(ctx context.Context, rawKey string) (domain.Principal, error) {
+	hash := sha256.Sum256([]byte(rawKey))
+	var p domain.Principal
+	err := s.pool.QueryRow(ctx, `UPDATE api_keys SET last_used_at=now()
+		WHERE key_hash=$1 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())
+		RETURNING tenant_id, workspace_id, app_id, id, scopes`, hash[:]).
+		Scan(&p.TenantID, &p.WorkspaceID, &p.AppID, &p.KeyID, &p.Scopes)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return s.authenticateSession(ctx, hash[:])
+	}
+	p.ActorType = "api_key"
+	return p, err
+}
+
+func (s *Store) authenticateSession(ctx context.Context, tokenHash []byte) (domain.Principal, error) {
+	var p domain.Principal
+	err := s.pool.QueryRow(ctx, `WITH matched AS (
+			UPDATE user_sessions SET last_used_at=now()
+			WHERE token_hash=$1 AND revoked_at IS NULL AND expires_at > now()
+			RETURNING tenant_id,workspace_id,app_id,user_id
+		)
+		SELECT m.tenant_id,m.workspace_id,m.app_id,m.user_id,
+			COALESCE(array_agg(DISTINCT permission) FILTER (WHERE permission IS NOT NULL),'{}')
+		FROM matched m
+		JOIN users u ON u.id=m.user_id AND u.tenant_id=m.tenant_id AND u.disabled_at IS NULL
+		JOIN role_bindings b ON b.user_id=u.id AND b.tenant_id=u.tenant_id
+			AND (b.workspace_id IS NULL OR b.workspace_id=m.workspace_id)
+		JOIN roles r ON r.id=b.role_id AND r.tenant_id=u.tenant_id
+		LEFT JOIN LATERAL unnest(r.permissions) permission ON true
+		GROUP BY m.tenant_id,m.workspace_id,m.app_id,m.user_id`, tokenHash).
+		Scan(&p.TenantID, &p.WorkspaceID, &p.AppID, &p.UserID, &p.Scopes)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Principal{}, ErrUnauthorized
+	}
+	p.ActorType = "user"
+	return p, err
+}
+
+func (s *Store) AcceptEvents(ctx context.Context, p domain.Principal, events []domain.Event) ([]string, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+	var maxBatch, perMinute int
+	if err := tx.QueryRow(ctx, `SELECT max_batch_size,events_per_minute FROM tenant_quotas WHERE tenant_id=$1`,
+		p.TenantID).Scan(&maxBatch, &perMinute); err != nil {
+		return nil, err
+	}
+	if len(events) > maxBatch {
+		return nil, fmt.Errorf("%w: maximum batch size is %d", ErrQuotaExceeded, maxBatch)
+	}
+	ids := make([]string, 0, len(events))
+	for _, event := range events {
+		event.OccurredAt = event.OccurredAt.UTC().Truncate(time.Microsecond)
+		if event.Source == "" {
+			event.Source = "api"
+		}
+		if event.DataClassification == "" {
+			event.DataClassification = "internal"
+		}
+		if len(event.ConsentContext) == 0 {
+			event.ConsentContext = json.RawMessage(`{}`)
+		}
+		var id string
+		var receivedAt time.Time
+		query := `INSERT INTO accepted_events
+			(tenant_id,workspace_id,app_id,event_type,schema_version,external_id,anonymous_id,idempotency_key,
+			 occurred_at,source,source_event_id,correlation_id,causation_id,traceparent,data_classification,consent_context,payload)
+			VALUES($1,$2,$3,$4,$5,NULLIF($6,''),NULLIF($7,''),$8,$9,$10,NULLIF($11,''),
+			       NULLIF($12,''),NULLIF($13,''),NULLIF($14,''),$15,$16,$17)
+			ON CONFLICT (tenant_id,app_id,idempotency_key)
+			DO NOTHING
+			RETURNING id,received_at`
+		err := tx.QueryRow(ctx, query, p.TenantID, p.WorkspaceID, p.AppID, event.Type, event.SchemaVersion,
+			event.ExternalID, event.AnonymousID, event.IdempotencyKey, event.OccurredAt, event.Source,
+			event.SourceEventID, event.CorrelationID, event.CausationID, event.Traceparent,
+			event.DataClassification, event.ConsentContext, event.Payload).Scan(&id, &receivedAt)
+		if errors.Is(err, pgx.ErrNoRows) {
+			var existingType, existingExternal, existingAnonymous string
+			var existingVersion int
+			var existingOccurred time.Time
+			var existingPayload json.RawMessage
+			if err := tx.QueryRow(ctx, `SELECT id,received_at,event_type,schema_version,COALESCE(external_id,''),
+				COALESCE(anonymous_id,''),occurred_at,payload FROM accepted_events
+				WHERE tenant_id=$1 AND app_id=$2 AND idempotency_key=$3`,
+				p.TenantID, p.AppID, event.IdempotencyKey).
+				Scan(&id, &receivedAt, &existingType, &existingVersion, &existingExternal, &existingAnonymous,
+					&existingOccurred, &existingPayload); err != nil {
+				return nil, err
+			}
+			var incomingValue, existingValue any
+			_ = json.Unmarshal(event.Payload, &incomingValue)
+			_ = json.Unmarshal(existingPayload, &existingValue)
+			if existingType != event.Type || existingVersion != event.SchemaVersion ||
+				existingExternal != event.ExternalID || existingAnonymous != event.AnonymousID ||
+				!existingOccurred.Equal(event.OccurredAt) || !reflect.DeepEqual(existingValue, incomingValue) {
+				return nil, ErrIdempotencyConflict
+			}
+		} else if err != nil {
+			return nil, err
+		}
+		partitionKey := event.ExternalID
+		if partitionKey == "" {
+			partitionKey = event.AnonymousID
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO projection_jobs(event_id,tenant_id,partition_key) VALUES($1,$2,$3)
+			ON CONFLICT(event_id) DO NOTHING`, id, p.TenantID, partitionKey); err != nil {
+			return nil, err
+		}
+		envelope, _ := json.Marshal(map[string]any{
+			"event_id": id, "tenant_id": p.TenantID, "workspace_id": p.WorkspaceID, "app_id": p.AppID,
+			"event_type": event.Type, "schema_version": event.SchemaVersion, "external_id": event.ExternalID,
+			"anonymous_id": event.AnonymousID, "occurred_at": event.OccurredAt, "received_at": receivedAt,
+			"source": event.Source, "source_event_id": event.SourceEventID, "correlation_id": event.CorrelationID,
+			"causation_id": event.CausationID, "traceparent": event.Traceparent,
+			"data_classification": event.DataClassification, "consent_context": event.ConsentContext,
+			"payload": event.Payload,
+		})
+		if _, err := tx.Exec(ctx, `INSERT INTO outbox_events
+			(tenant_id,topic,partition_key,event_id,payload) VALUES($1,'events.accepted.v1',$2,$3,$4)
+			ON CONFLICT(topic,event_id) DO NOTHING`, p.TenantID, partitionKey, id, envelope); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	var windowCount int
+	if err := tx.QueryRow(ctx, `INSERT INTO quota_windows(tenant_id,window_start,event_count)
+		VALUES($1,date_trunc('minute',now()),$2)
+		ON CONFLICT(tenant_id,window_start) DO UPDATE
+		SET event_count=quota_windows.event_count+EXCLUDED.event_count
+		RETURNING event_count`, p.TenantID, len(events)).Scan(&windowCount); err != nil {
+		return nil, err
+	}
+	if windowCount > perMinute {
+		return nil, fmt.Errorf("%w: events per minute", ErrQuotaExceeded)
+	}
+	metadata, _ := json.Marshal(map[string]int{"count": len(events)})
+	_, err = tx.Exec(ctx, `INSERT INTO audit_events
+		(tenant_id,workspace_id,app_id,actor_type,actor_id,action,resource_type,metadata)
+		VALUES($1,$2,$3,$4,$5,'events.accept','event_batch',$6)`,
+		p.TenantID, p.WorkspaceID, p.AppID, actorType(p), actorID(p), metadata)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+func (s *Store) GetProfile(ctx context.Context, p domain.Principal, externalID string) (domain.Profile, []domain.Consent, error) {
+	var profile domain.Profile
+	err := s.pool.QueryRow(ctx, `SELECT id,COALESCE(external_id,''),COALESCE(anonymous_id,''),attributes,version,updated_at
+		FROM profiles WHERE tenant_id=$1 AND app_id=$2 AND external_id=$3`,
+		p.TenantID, p.AppID, externalID).
+		Scan(&profile.ID, &profile.ExternalID, &profile.AnonymousID, &profile.Attributes, &profile.Version, &profile.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Profile{}, nil, ErrNotFound
+	}
+	if err != nil {
+		return domain.Profile{}, nil, err
+	}
+	rows, err := s.pool.Query(ctx, `SELECT DISTINCT ON (channel,topic)
+		profile_id,channel,topic,state,occurred_at
+		FROM consent_ledger WHERE tenant_id=$1 AND profile_id=$2
+		ORDER BY channel,topic,occurred_at DESC,created_at DESC`, p.TenantID, profile.ID)
+	if err != nil {
+		return domain.Profile{}, nil, err
+	}
+	defer rows.Close()
+	var consents []domain.Consent
+	for rows.Next() {
+		var consent domain.Consent
+		if err := rows.Scan(&consent.ProfileID, &consent.Channel, &consent.Topic, &consent.State, &consent.OccurredAt); err != nil {
+			return domain.Profile{}, nil, err
+		}
+		consents = append(consents, consent)
+	}
+	return profile, consents, rows.Err()
+}
+
+func (s *Store) ClaimProjectionJob(ctx context.Context) (domain.AcceptedEvent, bool, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.AcceptedEvent{}, false, err
+	}
+	defer tx.Rollback(ctx)
+	var event domain.AcceptedEvent
+	query := `SELECT e.id,e.tenant_id,e.workspace_id,e.app_id,e.event_type,e.schema_version,
+		COALESCE(e.external_id,''),COALESCE(e.anonymous_id,''),e.idempotency_key,e.occurred_at,e.received_at,
+		e.source,COALESCE(e.source_event_id,''),COALESCE(e.correlation_id,''),COALESCE(e.causation_id,''),
+		COALESCE(e.traceparent,''),e.data_classification,e.consent_context,e.payload
+		FROM projection_jobs j JOIN accepted_events e ON e.id=j.event_id
+		WHERE (j.status='pending' OR (j.status='processing' AND j.locked_until < now()))
+		  AND j.available_at <= now()
+		  AND NOT EXISTS (
+			SELECT 1 FROM projection_jobs earlier
+			JOIN accepted_events earlier_event ON earlier_event.id=earlier.event_id
+			WHERE earlier.tenant_id=j.tenant_id
+			  AND earlier.sequence < j.sequence AND earlier.status NOT IN ('done','dead')
+			  AND (
+			    earlier.partition_key=j.partition_key
+			    OR (e.external_id IS NOT NULL AND earlier_event.external_id=e.external_id)
+			    OR (e.anonymous_id IS NOT NULL AND earlier_event.anonymous_id=e.anonymous_id)
+			  )
+		  )
+		ORDER BY j.sequence
+		FOR UPDATE OF j SKIP LOCKED LIMIT 1`
+	err = tx.QueryRow(ctx, query).Scan(&event.ID, &event.Principal.TenantID, &event.Principal.WorkspaceID,
+		&event.Principal.AppID, &event.Type, &event.SchemaVersion, &event.ExternalID, &event.AnonymousID,
+		&event.IdempotencyKey, &event.OccurredAt, &event.ReceivedAt, &event.Source, &event.SourceEventID,
+		&event.CorrelationID, &event.CausationID, &event.Traceparent, &event.DataClassification,
+		&event.ConsentContext, &event.Payload)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.AcceptedEvent{}, false, nil
+	}
+	if err != nil {
+		return domain.AcceptedEvent{}, false, err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE projection_jobs SET status='processing',attempts=attempts+1,
+		locked_until=now()+interval '30 seconds' WHERE event_id=$1`, event.ID); err != nil {
+		return domain.AcceptedEvent{}, false, err
+	}
+	return event, true, tx.Commit(ctx)
+}
+
+func (s *Store) ProjectEvent(ctx context.Context, event domain.AcceptedEvent) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	profileID, err := ensureProfile(ctx, tx, event)
+	if err != nil {
+		return err
+	}
+	switch event.Type {
+	case "profile.updated":
+		var body struct {
+			Attributes map[string]any `json:"attributes"`
+		}
+		if err := json.Unmarshal(event.Payload, &body); err != nil || body.Attributes == nil {
+			return errors.New("profile.updated payload requires an attributes object")
+		}
+		attributes, _ := json.Marshal(body.Attributes)
+		if _, err := tx.Exec(ctx, `UPDATE profiles SET attributes=attributes || $1::jsonb,
+			version=version+1,updated_at=now() WHERE id=$2`, attributes, profileID); err != nil {
+			return err
+		}
+	case "consent.changed":
+		var body struct {
+			Channel  string         `json:"channel"`
+			Topic    string         `json:"topic"`
+			State    string         `json:"state"`
+			Evidence map[string]any `json:"evidence"`
+		}
+		if err := json.Unmarshal(event.Payload, &body); err != nil {
+			return err
+		}
+		if body.Channel == "" || (body.State != "subscribed" && body.State != "unsubscribed") {
+			return errors.New("consent.changed requires channel and subscribed/unsubscribed state")
+		}
+		if body.Topic == "" {
+			body.Topic = "marketing"
+		}
+		evidence, _ := json.Marshal(body.Evidence)
+		_, err = tx.Exec(ctx, `INSERT INTO consent_ledger
+			(tenant_id,workspace_id,app_id,profile_id,source_event_id,channel,topic,state,occurred_at,evidence)
+			VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+			ON CONFLICT(source_event_id,channel,topic) DO NOTHING`,
+			event.Principal.TenantID, event.Principal.WorkspaceID, event.Principal.AppID, profileID,
+			event.ID, strings.ToLower(body.Channel), body.Topic, body.State, event.OccurredAt, evidence)
+		if err != nil {
+			return err
+		}
+	case "identity.alias":
+		var body struct {
+			Namespace string `json:"namespace"`
+			Value     string `json:"value"`
+		}
+		if err := json.Unmarshal(event.Payload, &body); err != nil {
+			return err
+		}
+		_, err = tx.Exec(ctx, `INSERT INTO identity_aliases
+			(tenant_id,app_id,namespace,value,profile_id,source_event_id)
+			VALUES($1,$2,$3,$4,$5,$6)
+			ON CONFLICT(tenant_id,app_id,namespace,value)
+			DO UPDATE SET profile_id=EXCLUDED.profile_id,source_event_id=EXCLUDED.source_event_id`,
+			event.Principal.TenantID, event.Principal.AppID, body.Namespace, body.Value, profileID, event.ID)
+		if err != nil {
+			return err
+		}
+	case "identity.merge":
+		var body struct {
+			SourceExternalID string `json:"source_external_id"`
+		}
+		if err := json.Unmarshal(event.Payload, &body); err != nil {
+			return err
+		}
+		var sourceID string
+		err := tx.QueryRow(ctx, `SELECT id FROM profiles
+			WHERE tenant_id=$1 AND app_id=$2 AND external_id=$3 FOR UPDATE`,
+			event.Principal.TenantID, event.Principal.AppID, body.SourceExternalID).Scan(&sourceID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		if sourceID != profileID {
+			if _, err := tx.Exec(ctx, `UPDATE profiles target SET
+				attributes=source.attributes || target.attributes,
+				version=target.version+1,updated_at=now()
+				FROM profiles source WHERE target.id=$1 AND source.id=$2`, profileID, sourceID); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx, "UPDATE consent_ledger SET profile_id=$1 WHERE profile_id=$2", profileID, sourceID); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx, "UPDATE identity_aliases SET profile_id=$1 WHERE profile_id=$2", profileID, sourceID); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx, `INSERT INTO identity_merges
+				(tenant_id,app_id,source_profile_id,target_profile_id,source_event_id)
+				VALUES($1,$2,$3,$4,$5) ON CONFLICT(source_event_id) DO NOTHING`,
+				event.Principal.TenantID, event.Principal.AppID, sourceID, profileID, event.ID); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx, "DELETE FROM profiles WHERE id=$1", sourceID); err != nil {
+				return err
+			}
+		}
+	}
+	if _, err := tx.Exec(ctx, `UPDATE projection_jobs SET status='done',locked_until=NULL,
+		completed_at=now(),last_error=NULL WHERE event_id=$1`, event.ID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func ensureProfile(ctx context.Context, tx pgx.Tx, event domain.AcceptedEvent) (string, error) {
+	var id string
+	if event.ExternalID != "" {
+		if event.AnonymousID != "" {
+			var anonymousProfileID string
+			err := tx.QueryRow(ctx, `SELECT id FROM profiles
+				WHERE tenant_id=$1 AND app_id=$2 AND anonymous_id=$3 FOR UPDATE`,
+				event.Principal.TenantID, event.Principal.AppID, event.AnonymousID).Scan(&anonymousProfileID)
+			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+				return "", err
+			}
+			if err == nil {
+				var externalProfileID string
+				extErr := tx.QueryRow(ctx, `SELECT id FROM profiles
+					WHERE tenant_id=$1 AND app_id=$2 AND external_id=$3 FOR UPDATE`,
+					event.Principal.TenantID, event.Principal.AppID, event.ExternalID).Scan(&externalProfileID)
+				if errors.Is(extErr, pgx.ErrNoRows) {
+					_, updateErr := tx.Exec(ctx, `UPDATE profiles SET external_id=$1,updated_at=now()
+						WHERE id=$2`, event.ExternalID, anonymousProfileID)
+					return anonymousProfileID, updateErr
+				}
+				if extErr != nil {
+					return "", extErr
+				}
+				if externalProfileID != anonymousProfileID {
+					if _, err := tx.Exec(ctx, `UPDATE profiles target SET
+						attributes=anonymous.attributes || target.attributes,
+						anonymous_id=COALESCE(target.anonymous_id,anonymous.anonymous_id),
+						version=target.version+1,updated_at=now()
+						FROM profiles anonymous WHERE target.id=$1 AND anonymous.id=$2`,
+						externalProfileID, anonymousProfileID); err != nil {
+						return "", err
+					}
+					if _, err := tx.Exec(ctx, "UPDATE consent_ledger SET profile_id=$1 WHERE profile_id=$2",
+						externalProfileID, anonymousProfileID); err != nil {
+						return "", err
+					}
+					if _, err := tx.Exec(ctx, "UPDATE identity_aliases SET profile_id=$1 WHERE profile_id=$2",
+						externalProfileID, anonymousProfileID); err != nil {
+						return "", err
+					}
+					if _, err := tx.Exec(ctx, "DELETE FROM profiles WHERE id=$1", anonymousProfileID); err != nil {
+						return "", err
+					}
+				}
+				return externalProfileID, nil
+			}
+		}
+		err := tx.QueryRow(ctx, `INSERT INTO profiles(tenant_id,workspace_id,app_id,external_id,anonymous_id)
+			VALUES($1,$2,$3,$4,NULLIF($5,''))
+			ON CONFLICT(tenant_id,app_id,external_id) WHERE external_id IS NOT NULL
+			DO UPDATE SET updated_at=profiles.updated_at RETURNING id`,
+			event.Principal.TenantID, event.Principal.WorkspaceID, event.Principal.AppID, event.ExternalID, event.AnonymousID).Scan(&id)
+		return id, err
+	}
+	err := tx.QueryRow(ctx, `INSERT INTO profiles(tenant_id,workspace_id,app_id,anonymous_id)
+		VALUES($1,$2,$3,$4)
+		ON CONFLICT(tenant_id,app_id,anonymous_id) WHERE anonymous_id IS NOT NULL
+		DO UPDATE SET updated_at=profiles.updated_at RETURNING id`,
+		event.Principal.TenantID, event.Principal.WorkspaceID, event.Principal.AppID, event.AnonymousID).Scan(&id)
+	return id, err
+}
+
+func (s *Store) FailProjectionJob(ctx context.Context, eventID string, jobErr error) error {
+	message := jobErr.Error()
+	if len(message) > 1000 {
+		message = message[:1000]
+	}
+	tag, err := s.pool.Exec(ctx, `UPDATE projection_jobs SET
+		status=CASE WHEN attempts >= 10 THEN 'dead' ELSE 'pending' END,
+		available_at=now()+(LEAST(attempts,10) * interval '5 seconds'),
+		locked_until=NULL,last_error=$2 WHERE event_id=$1`, eventID, message)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != 1 {
+		return fmt.Errorf("projection job %s not found", eventID)
+	}
+	return nil
+}

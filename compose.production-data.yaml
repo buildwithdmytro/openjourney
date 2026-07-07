@@ -1,0 +1,103 @@
+services:
+  redpanda:
+    image: redpandadata/redpanda:v24.3.18
+    command:
+      - redpanda
+      - start
+      - --overprovisioned
+      - --smp=1
+      - --memory=1G
+      - --reserve-memory=0M
+      - --node-id=0
+      - --check=false
+      - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr=internal://redpanda:9092,external://localhost:19092
+    ports:
+      - "19092:19092"
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD", "rpk", "-X", "brokers=localhost:9092", "cluster", "health"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  redpanda-init:
+    image: redpandadata/redpanda:v24.3.18
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        until rpk -X brokers=redpanda:9092 cluster info >/dev/null 2>&1; do sleep 1; done
+        rpk -X brokers=redpanda:9092 topic create events.accepted.v1 --partitions 12 --replicas 1 || true
+    depends_on:
+      redpanda:
+        condition: service_healthy
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.5-alpine
+    environment:
+      CLICKHOUSE_DB: openjourney
+      CLICKHOUSE_USER: openjourney
+      CLICKHOUSE_PASSWORD: openjourney-secret
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    ports:
+      - "8123:8123"
+      - "9009:9000"
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--user", "openjourney", "--password", "openjourney-secret", "--query", "SELECT 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  dispatcher:
+    build: .
+    entrypoint: ["/usr/local/bin/openjourney-dispatcher"]
+    command: ["-watch", "-max-items=1000000", "-max-duration=1h"]
+    restart: unless-stopped
+    environment:
+      OPENJOURNEY_DATABASE_URL: postgres://openjourney:openjourney@postgres:5432/openjourney?sslmode=disable
+      OPENJOURNEY_KAFKA_BROKERS: redpanda:9092
+    depends_on:
+      api:
+        condition: service_started
+      redpanda-init:
+        condition: service_completed_successfully
+
+  archive:
+    build: .
+    entrypoint: ["/usr/local/bin/openjourney-archive"]
+    restart: unless-stopped
+    environment:
+      OPENJOURNEY_KAFKA_BROKERS: redpanda:9092
+      OPENJOURNEY_S3_ENDPOINT: object-store:9000
+      OPENJOURNEY_S3_ACCESS_KEY: openjourney
+      OPENJOURNEY_S3_SECRET_KEY: openjourney-secret
+      OPENJOURNEY_S3_BUCKET: openjourney
+      OPENJOURNEY_S3_USE_TLS: "false"
+    depends_on:
+      object-store:
+        condition: service_started
+      redpanda-init:
+        condition: service_completed_successfully
+
+  analytics:
+    build: .
+    entrypoint: ["/usr/local/bin/openjourney-analytics"]
+    restart: unless-stopped
+    environment:
+      OPENJOURNEY_KAFKA_BROKERS: redpanda:9092
+      OPENJOURNEY_CLICKHOUSE_ADDRESS: clickhouse:9000
+      OPENJOURNEY_CLICKHOUSE_DATABASE: openjourney
+      OPENJOURNEY_CLICKHOUSE_USERNAME: openjourney
+      OPENJOURNEY_CLICKHOUSE_PASSWORD: openjourney-secret
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
+
+volumes:
+  redpanda-data:
+  clickhouse-data:

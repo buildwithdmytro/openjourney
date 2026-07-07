@@ -1,0 +1,123 @@
+package config
+
+import (
+	"fmt"
+	"os"
+	"strconv"
+	"strings"
+)
+
+type Config struct {
+	HTTPAddress        string
+	DatabaseURL        string
+	DevelopmentAPIKey  string
+	AdminEmail         string
+	AdminPassword      string
+	SessionTTL         string
+	MaxBatchSize       int
+	AutoMigrate        bool
+	OIDCIssuer         string
+	OIDCClientID       string
+	CORSAllowedOrigin  string
+	KafkaBrokers       string
+	S3Endpoint         string
+	S3AccessKey        string
+	S3SecretKey        string
+	S3Bucket           string
+	S3UseTLS           bool
+	ClickHouseAddress  string
+	ClickHouseDatabase string
+	ClickHouseUsername string
+	ClickHousePassword string
+	OTLPEndpoint       string
+	ServiceVersion     string
+}
+
+func Load() (Config, error) {
+	cfg := Config{
+		HTTPAddress:        env("OPENJOURNEY_HTTP_ADDRESS", ":8080"),
+		DatabaseURL:        env("OPENJOURNEY_DATABASE_URL", "postgres://openjourney:openjourney@localhost:5432/openjourney?sslmode=disable"),
+		DevelopmentAPIKey:  os.Getenv("OPENJOURNEY_DEV_API_KEY"),
+		AdminEmail:         os.Getenv("OPENJOURNEY_ADMIN_EMAIL"),
+		AdminPassword:      os.Getenv("OPENJOURNEY_ADMIN_PASSWORD"),
+		SessionTTL:         env("OPENJOURNEY_SESSION_TTL", "12h"),
+		MaxBatchSize:       75,
+		AutoMigrate:        true,
+		OIDCIssuer:         os.Getenv("OPENJOURNEY_OIDC_ISSUER"),
+		OIDCClientID:       os.Getenv("OPENJOURNEY_OIDC_CLIENT_ID"),
+		CORSAllowedOrigin:  env("OPENJOURNEY_CORS_ALLOWED_ORIGIN", "http://localhost:3000"),
+		KafkaBrokers:       os.Getenv("OPENJOURNEY_KAFKA_BROKERS"),
+		S3Endpoint:         os.Getenv("OPENJOURNEY_S3_ENDPOINT"),
+		S3AccessKey:        os.Getenv("OPENJOURNEY_S3_ACCESS_KEY"),
+		S3SecretKey:        os.Getenv("OPENJOURNEY_S3_SECRET_KEY"),
+		S3Bucket:           env("OPENJOURNEY_S3_BUCKET", "openjourney"),
+		ClickHouseAddress:  os.Getenv("OPENJOURNEY_CLICKHOUSE_ADDRESS"),
+		ClickHouseDatabase: env("OPENJOURNEY_CLICKHOUSE_DATABASE", "openjourney"),
+		ClickHouseUsername: env("OPENJOURNEY_CLICKHOUSE_USERNAME", "default"),
+		ClickHousePassword: os.Getenv("OPENJOURNEY_CLICKHOUSE_PASSWORD"),
+		OTLPEndpoint:       os.Getenv("OPENJOURNEY_OTLP_ENDPOINT"),
+		ServiceVersion:     env("OPENJOURNEY_SERVICE_VERSION", "dev"),
+	}
+	for key, target := range map[string]*string{
+		"OPENJOURNEY_DATABASE_URL":        &cfg.DatabaseURL,
+		"OPENJOURNEY_DEV_API_KEY":         &cfg.DevelopmentAPIKey,
+		"OPENJOURNEY_ADMIN_PASSWORD":      &cfg.AdminPassword,
+		"OPENJOURNEY_S3_ACCESS_KEY":       &cfg.S3AccessKey,
+		"OPENJOURNEY_S3_SECRET_KEY":       &cfg.S3SecretKey,
+		"OPENJOURNEY_CLICKHOUSE_PASSWORD": &cfg.ClickHousePassword,
+	} {
+		value, configured, err := secretEnv(key)
+		if err != nil {
+			return Config{}, err
+		}
+		if configured {
+			*target = value
+		}
+	}
+	if (cfg.OIDCIssuer == "") != (cfg.OIDCClientID == "") {
+		return Config{}, fmt.Errorf("OPENJOURNEY_OIDC_ISSUER and OPENJOURNEY_OIDC_CLIENT_ID must be configured together")
+	}
+	var err error
+	if raw := os.Getenv("OPENJOURNEY_MAX_BATCH_SIZE"); raw != "" {
+		cfg.MaxBatchSize, err = strconv.Atoi(raw)
+		if err != nil || cfg.MaxBatchSize < 1 || cfg.MaxBatchSize > 1000 {
+			return Config{}, fmt.Errorf("OPENJOURNEY_MAX_BATCH_SIZE must be between 1 and 1000")
+		}
+	}
+	if raw := os.Getenv("OPENJOURNEY_AUTO_MIGRATE"); raw != "" {
+		cfg.AutoMigrate, err = strconv.ParseBool(raw)
+		if err != nil {
+			return Config{}, fmt.Errorf("OPENJOURNEY_AUTO_MIGRATE: %w", err)
+		}
+	}
+	if raw := os.Getenv("OPENJOURNEY_S3_USE_TLS"); raw != "" {
+		cfg.S3UseTLS, err = strconv.ParseBool(raw)
+		if err != nil {
+			return Config{}, fmt.Errorf("OPENJOURNEY_S3_USE_TLS: %w", err)
+		}
+	}
+	return cfg, nil
+}
+
+func env(key, fallback string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return fallback
+}
+
+func secretEnv(key string) (string, bool, error) {
+	value := os.Getenv(key)
+	file := os.Getenv(key + "_FILE")
+	if value != "" && file != "" {
+		return "", false, fmt.Errorf("%s and %s_FILE cannot both be set", key, key)
+	}
+	if file == "" {
+		return value, value != "", nil
+	}
+	content, err := os.ReadFile(file)
+	if err != nil {
+		return "", false, fmt.Errorf("read %s_FILE: %w", key, err)
+	}
+	return strings.TrimSpace(string(content)), true, nil
+}

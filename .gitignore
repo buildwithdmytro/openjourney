@@ -1,0 +1,11 @@
+.env
+.DS_Store
+*.log
+coverage.out
+bin/
+dist/
+web/node_modules/
+web/dist/
+sdk/javascript/node_modules/
+sdk/javascript/dist/
+*.tsbuildinfo

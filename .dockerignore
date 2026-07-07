@@ -1,0 +1,10 @@
+.git
+.github
+.env
+mautic
+plan.md
+product-decisions.md
+web
+**/node_modules
+**/dist
+

@@ -1,0 +1,88 @@
+name: openjourney
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: openjourney
+      POSTGRES_USER: openjourney
+      POSTGRES_PASSWORD: openjourney
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openjourney"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  object-store:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: openjourney
+      MINIO_ROOT_PASSWORD: openjourney-secret
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - object-data:/data
+
+  api:
+    build: .
+    environment:
+      OPENJOURNEY_DATABASE_URL: postgres://openjourney:openjourney@postgres:5432/openjourney?sslmode=disable
+      OPENJOURNEY_DEV_API_KEY: ${OPENJOURNEY_DEV_API_KEY:-local-development-key}
+      OPENJOURNEY_ADMIN_EMAIL: ${OPENJOURNEY_ADMIN_EMAIL:-admin@example.test}
+      OPENJOURNEY_ADMIN_PASSWORD: ${OPENJOURNEY_ADMIN_PASSWORD:-local-development-password}
+      OPENJOURNEY_SESSION_TTL: ${OPENJOURNEY_SESSION_TTL:-12h}
+      OPENJOURNEY_OTLP_ENDPOINT: ${OPENJOURNEY_OTLP_ENDPOINT:-}
+      OPENJOURNEY_SERVICE_VERSION: ${OPENJOURNEY_SERVICE_VERSION:-dev}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+
+  worker:
+    build: .
+    entrypoint: ["/usr/local/bin/openjourney-worker"]
+    command: ["-watch", "-max-items=1000000", "-max-duration=1h"]
+    restart: unless-stopped
+    environment:
+      OPENJOURNEY_DATABASE_URL: postgres://openjourney:openjourney@postgres:5432/openjourney?sslmode=disable
+      OPENJOURNEY_AUTO_MIGRATE: "false"
+    depends_on:
+      api:
+        condition: service_started
+
+  operations:
+    build: .
+    entrypoint: ["/usr/local/bin/openjourney-operations"]
+    command: ["-watch", "-max-items=100000", "-max-duration=1h"]
+    restart: unless-stopped
+    environment:
+      OPENJOURNEY_DATABASE_URL: postgres://openjourney:openjourney@postgres:5432/openjourney?sslmode=disable
+      OPENJOURNEY_AUTO_MIGRATE: "false"
+      OPENJOURNEY_S3_ENDPOINT: object-store:9000
+      OPENJOURNEY_S3_ACCESS_KEY: openjourney
+      OPENJOURNEY_S3_SECRET_KEY: openjourney-secret
+      OPENJOURNEY_S3_BUCKET: openjourney
+      OPENJOURNEY_S3_USE_TLS: "false"
+    depends_on:
+      api:
+        condition: service_started
+      object-store:
+        condition: service_started
+
+  web:
+    build: ./web
+    depends_on:
+      - api
+    ports:
+      - "3000:80"
+
+volumes:
+  postgres-data:
+  object-data:
