@@ -488,7 +488,7 @@ order; each milestone should compile and pass `go build ./... && go vet ./...` b
    original_url) DO UPDATE RETURNING id`), replace href with `/r/{token}` where `token` is
    HMAC-signed `campaignID|profileID|linkID|url`. *Done when:* unit test shows one
    `tracked_links` row for a duplicated URL and a signed token in the output.
-6. **Engagement event types:** extend `domain.Event.Validate` + `isBuiltInEvent` per §2.5.
+6. [x] **Engagement event types:** extend `domain.Event.Validate` + `isBuiltInEvent` per §2.5.
    *Done when:* ingesting a `link.clicked` event succeeds.
 7. **Endpoints:** `POST /v1/templates/{id}/preview` (render vs. a sample profile);
    `GET /r/{token}` (verify token → emit `link.clicked` via Recipe 6.9 → HTTP 302 to

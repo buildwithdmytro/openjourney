@@ -26,6 +26,18 @@ func TestEventValidate(t *testing.T) {
 		{"invalid payload", func(e *Event) { e.Payload = json.RawMessage(`{`) }},
 		{"non-object payload", func(e *Event) { e.Payload = json.RawMessage(`[]`) }},
 		{"invalid profile payload", func(e *Event) { e.Payload = json.RawMessage(`{}`) }},
+		{"invalid email.sent payload", func(e *Event) {
+			e.Type = "email.sent"
+			e.Payload = json.RawMessage(`{"template_id":"t1"}`)
+		}},
+		{"invalid email.opened payload", func(e *Event) {
+			e.Type = "email.opened"
+			e.Payload = json.RawMessage(`{"dispatch_id":"d1"}`)
+		}},
+		{"invalid link.clicked payload", func(e *Event) {
+			e.Type = "link.clicked"
+			e.Payload = json.RawMessage(`{"template_id":"t1","dispatch_id":"d1"}`)
+		}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -36,4 +48,22 @@ func TestEventValidate(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("valid email.sent", func(t *testing.T) {
+		e := valid
+		e.Type = "email.sent"
+		e.Payload = json.RawMessage(`{"template_id":"t1","dispatch_id":"d1","channel":"email"}`)
+		if err := e.Validate(now); err != nil {
+			t.Fatalf("expected valid, got %v", err)
+		}
+	})
+
+	t.Run("valid link.clicked", func(t *testing.T) {
+		e := valid
+		e.Type = "link.clicked"
+		e.Payload = json.RawMessage(`{"template_id":"t1","dispatch_id":"d1","url":"http://x.com"}`)
+		if err := e.Validate(now); err != nil {
+			t.Fatalf("expected valid, got %v", err)
+		}
+	})
 }

@@ -114,6 +114,40 @@ func (e Event) Validate(now time.Time) error {
 			strings.TrimSpace(body.SourceExternalID) == "" || strings.TrimSpace(e.ExternalID) == "" {
 			return errors.New("identity.merge requires event external_id as target and source_external_id")
 		}
+	case "email.sent":
+		var body struct {
+			TemplateID string `json:"template_id"`
+			DispatchID string `json:"dispatch_id"`
+			Channel    string `json:"channel"`
+		}
+		if err := json.Unmarshal(e.Payload, &body); err != nil ||
+			strings.TrimSpace(body.TemplateID) == "" ||
+			strings.TrimSpace(body.DispatchID) == "" ||
+			strings.TrimSpace(body.Channel) == "" {
+			return errors.New("email.sent payload requires template_id, dispatch_id, and channel")
+		}
+	case "email.opened":
+		var body struct {
+			TemplateID string `json:"template_id"`
+			DispatchID string `json:"dispatch_id"`
+		}
+		if err := json.Unmarshal(e.Payload, &body); err != nil ||
+			strings.TrimSpace(body.TemplateID) == "" ||
+			strings.TrimSpace(body.DispatchID) == "" {
+			return errors.New("email.opened payload requires template_id and dispatch_id")
+		}
+	case "link.clicked":
+		var body struct {
+			TemplateID string `json:"template_id"`
+			DispatchID string `json:"dispatch_id"`
+			URL        string `json:"url"`
+		}
+		if err := json.Unmarshal(e.Payload, &body); err != nil ||
+			strings.TrimSpace(body.TemplateID) == "" ||
+			strings.TrimSpace(body.DispatchID) == "" ||
+			strings.TrimSpace(body.URL) == "" {
+			return errors.New("link.clicked payload requires template_id, dispatch_id, and url")
+		}
 	}
 	return nil
 }
