@@ -177,3 +177,45 @@ export async function createUser(baseURL: string, apiKey: string, user: UserInpu
 export async function listAuditEvents(baseURL: string, apiKey: string, limit = 100): Promise<AuditEvent[]> {
   return (await requestJSON<{ audit_events: AuditEvent[] }>(baseURL, apiKey, `/v1/audit?limit=${limit}`)).audit_events;
 }
+
+export type Segment = {
+  id: string;
+  tenant_id: string;
+  workspace_id: string;
+  name: string;
+  description?: string;
+  type: "static" | "dynamic" | "snapshot";
+  status: "draft" | "active" | "archived";
+  dsl: Record<string, unknown>;
+  version: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SegmentMember = {
+  segment_id: string;
+  profile_id: string;
+  tenant_id: string;
+  membership: "include" | "exclude";
+  created_at: string;
+};
+
+export async function listSegments(baseURL: string, apiKey: string): Promise<Segment[]> {
+  return (await requestJSON<{ segments: Segment[] }>(baseURL, apiKey, "/v1/segments")).segments;
+}
+
+export async function createSegment(baseURL: string, apiKey: string, input: Partial<Segment>): Promise<Segment> {
+  return requestJSON(baseURL, apiKey, "/v1/segments", { method: "POST", body: JSON.stringify(input) });
+}
+
+export async function getSegment(baseURL: string, apiKey: string, id: string): Promise<Segment> {
+  return requestJSON(baseURL, apiKey, `/v1/segments/${encodeURIComponent(id)}`);
+}
+
+export async function updateSegment(baseURL: string, apiKey: string, id: string, input: Partial<Segment>): Promise<Segment> {
+  return requestJSON(baseURL, apiKey, `/v1/segments/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(input) });
+}
+
+export async function setSegmentMembers(baseURL: string, apiKey: string, id: string, members: Partial<SegmentMember>[]): Promise<void> {
+  return requestJSON(baseURL, apiKey, `/v1/segments/${encodeURIComponent(id)}/members`, { method: "PUT", body: JSON.stringify(members) });
+}

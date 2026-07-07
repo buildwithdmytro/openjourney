@@ -444,7 +444,7 @@ order; each milestone should compile and pass `go build ./... && go vet ./...` b
 5. [x] **HTTP endpoints** in new `internal/httpapi/segments.go` + routes in `server.go` (Recipe 6.4):
    `POST /v1/segments`, `GET /v1/segments`, `GET /v1/segments/{id}`, `PUT /v1/segments/{id}`,
    `PUT /v1/segments/{id}/members`. *Done when:* each returns the expected JSON in a manual curl.
-6. **React view** (Recipe 6.8): list + create/edit segment with a raw-JSON DSL textarea.
+6. [x] **React view** (Recipe 6.8): list + create/edit segment with a raw-JSON DSL textarea.
    *Done when:* `npm run typecheck && npm run build` pass.
 
 ### Milestone 7.2 — Audience DSL compiler (highest risk — do carefully)

@@ -4,11 +4,12 @@ import {
   discardDeadLetter, getPrivacyRequest, getProfile, getQueueStatus, listAPIKeys, listAuditEvents,
   listDeadLetters, listRoles, listSchemas, listUsers, login, logout, Profile, replayVerify, retryDeadLetter, revokeAPIKey,
   APIKey, AuditEvent, DeadLetterItem, EventSchema, PrivacyRequest, QueueStatus, ReplayReport, Role, User,
+  createSegment, listSegments, updateSegment, setSegmentMembers, Segment, SegmentMember,
 } from "./api";
 import { oidcConfigured, restoreOIDCSession, signIn, signOut } from "./auth";
 
 const apiBase = import.meta.env.VITE_API_BASE_URL || "/api";
-type View = "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit";
+type View = "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments";
 type CredentialSource = "manual" | "session" | "oidc";
 
 const viewTitles: Record<View, [string, string]> = {
@@ -19,6 +20,7 @@ const viewTitles: Record<View, [string, string]> = {
   access: ["Access", "Provision local/OIDC users and tenant roles."],
   operations: ["Operations", "Inspect queues, DLQs, and replay determinism."],
   audit: ["Audit", "Review tenant-scoped security and operations activity."],
+  segments: ["Segments", "Manage customer segments and membership rules."],
 };
 
 export function App() {
@@ -85,11 +87,10 @@ export function App() {
       <aside>
         <div className="brand"><span>O</span> OpenJourney</div>
         <nav aria-label="Primary">
-          {(["profiles", "schemas", "api-keys", "privacy", "access", "operations", "audit"] as View[]).map((item) => (
+          {(["profiles", "segments", "schemas", "api-keys", "privacy", "access", "operations", "audit"] as View[]).map((item) => (
             <button key={item} className={view === item ? "active" : ""}
               onClick={() => setView(item)}>{viewTitles[item][0]}</button>
           ))}
-          <button disabled>Audiences <small>next</small></button>
           <button disabled>Journeys <small>next</small></button>
         </nav>
         <div className={`health ${healthy ? "up" : ""}`}>
@@ -128,6 +129,7 @@ export function App() {
           </div>}
         </section>
         {view === "profiles" && <Profiles apiKey={apiKey} />}
+        {view === "segments" && <Segments apiKey={apiKey} />}
         {view === "schemas" && <Schemas apiKey={apiKey} />}
         {view === "api-keys" && <APIKeys apiKey={apiKey} />}
         {view === "privacy" && <Privacy apiKey={apiKey} />}
@@ -435,6 +437,210 @@ function Audit({ apiKey }: { apiKey: string }) {
       new Date(item.occurred_at).toLocaleString(), `${item.actor_type}:${item.actor_id}`,
       item.action, `${item.resource_type}:${item.resource_id || ""}`,
     ])} /></section>;
+}
+
+function Segments({ apiKey }: { apiKey: string }) {
+  const [items, setItems] = useState<Segment[]>([]);
+  const [editingSegment, setEditingSegment] = useState<Segment | null>(null);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [type, setType] = useState<"static" | "dynamic" | "snapshot">("dynamic");
+  const [status, setStatus] = useState<"draft" | "active" | "archived">("draft");
+  const [dsl, setDsl] = useState("{}");
+  const [memberProfileID, setMemberProfileID] = useState("");
+  const [membership, setMembership] = useState<"include" | "exclude">("include");
+  const [error, setError] = useState("");
+
+  async function refresh() {
+    try {
+      setItems(await listSegments(apiBase, apiKey));
+      setError("");
+    } catch (cause) {
+      setError(message(cause));
+    }
+  }
+
+  useEffect(() => {
+    if (apiKey) void refresh();
+  }, [apiKey]);
+
+  async function handleCreate(event: FormEvent) {
+    event.preventDefault();
+    try {
+      let parsedDSL = {};
+      try {
+        parsedDSL = JSON.parse(dsl);
+      } catch (e) {
+        throw new Error("Invalid DSL JSON: " + (e as Error).message);
+      }
+      await createSegment(apiBase, apiKey, {
+        name,
+        description,
+        type,
+        status,
+        dsl: parsedDSL,
+      });
+      setName("");
+      setDescription("");
+      setDsl("{}");
+      await refresh();
+    } catch (cause) {
+      setError(message(cause));
+    }
+  }
+
+  async function handleUpdate(event: FormEvent) {
+    event.preventDefault();
+    if (!editingSegment) return;
+    try {
+      let parsedDSL = {};
+      try {
+        parsedDSL = JSON.parse(dsl);
+      } catch (e) {
+        throw new Error("Invalid DSL JSON: " + (e as Error).message);
+      }
+      await updateSegment(apiBase, apiKey, editingSegment.id, {
+        name,
+        description,
+        type,
+        status,
+        dsl: parsedDSL,
+      });
+      setEditingSegment(null);
+      setName("");
+      setDescription("");
+      setDsl("{}");
+      await refresh();
+    } catch (cause) {
+      setError(message(cause));
+    }
+  }
+
+  async function handleAddMember(event: FormEvent) {
+    event.preventDefault();
+    if (!editingSegment) return;
+    try {
+      if (!memberProfileID) throw new Error("Profile ID is required");
+      await setSegmentMembers(apiBase, apiKey, editingSegment.id, [
+        { profile_id: memberProfileID, membership: membership }
+      ]);
+      setMemberProfileID("");
+      alert("Members updated successfully");
+    } catch (cause) {
+      setError(message(cause));
+    }
+  }
+
+  function startEdit(seg: Segment) {
+    setEditingSegment(seg);
+    setName(seg.name);
+    setDescription(seg.description || "");
+    setType(seg.type);
+    setStatus(seg.status);
+    setDsl(JSON.stringify(seg.dsl, null, 2));
+  }
+
+  return (
+    <section className="stack">
+      <article className="card">
+        <h2>{editingSegment ? "Edit segment" : "Create segment"}</h2>
+        <form onSubmit={editingSegment ? handleUpdate : handleCreate} className="schema-form">
+          <label>Name
+            <input value={name} onChange={(e) => setName(e.target.value)} required placeholder="SaaS Purchasers" />
+          </label>
+          <label>Description
+            <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Customers who bought SaaS subscription" />
+          </label>
+          <label>Type
+            <select value={type} onChange={(e) => setType(e.target.value as any)}>
+              <option value="dynamic">dynamic</option>
+              <option value="static">static</option>
+              <option value="snapshot">snapshot</option>
+            </select>
+          </label>
+          <label>Status
+            <select value={status} onChange={(e) => setStatus(e.target.value as any)}>
+              <option value="draft">draft</option>
+              <option value="active">active</option>
+              <option value="archived">archived</option>
+            </select>
+          </label>
+          <label className="full">DSL Definition (JSON)
+            <textarea value={dsl} onChange={(e) => setDsl(e.target.value)} rows={7} />
+          </label>
+          <div className="form-actions full">
+            <button disabled={!apiKey}>{editingSegment ? "Update Segment" : "Create Segment"}</button>
+            {editingSegment && <button type="button" className="secondary" onClick={() => {
+              setEditingSegment(null);
+              setName("");
+              setDescription("");
+              setDsl("{}");
+            }}>Cancel</button>}
+          </div>
+        </form>
+        <ErrorMessage value={error} />
+      </article>
+
+      {editingSegment && (
+        <article className="card">
+          <h2>Segment Membership</h2>
+          <form onSubmit={handleAddMember} className="schema-form">
+            <label>Profile ID
+              <input value={memberProfileID} onChange={(e) => setMemberProfileID(e.target.value)} required placeholder="profile-uuid" />
+            </label>
+            <label>Membership
+              <select value={membership} onChange={(e) => setMembership(e.target.value as any)}>
+                <option value="include">include</option>
+                <option value="exclude">exclude</option>
+              </select>
+            </label>
+            <button disabled={!apiKey}>Set Member</button>
+          </form>
+        </article>
+      )}
+
+      <article className="card">
+        <div className="section-title">
+          <div>
+            <div className="eyebrow">List</div>
+            <h2>Segments</h2>
+          </div>
+          <button onClick={() => void refresh()}>Refresh</button>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Type</th>
+              <th>Status</th>
+              <th>Version</th>
+              <th>Updated</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((seg) => (
+              <tr key={seg.id}>
+                <td><strong>{seg.name}</strong><br/><small className="muted">{seg.description || "No description"}</small></td>
+                <td><span className="pill">{seg.type}</span></td>
+                <td><span className={`pill ${seg.status}`}>{seg.status}</span></td>
+                <td>{seg.version}</td>
+                <td>{new Date(seg.updated_at).toLocaleString()}</td>
+                <td>
+                  <button onClick={() => startEdit(seg)}>Edit / Members</button>
+                </td>
+              </tr>
+            ))}
+            {items.length === 0 && (
+              <tr>
+                <td colSpan={6} className="muted text-center">No segments configured.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </article>
+    </section>
+  );
 }
 
 function ResourceTable({ headers, rows }: { headers: string[]; rows: (string | number)[][] }) {
