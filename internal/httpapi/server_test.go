@@ -184,6 +184,9 @@ func (f *fakeStore) ListTemplates(_ context.Context, _ domain.Principal) ([]doma
 func (f *fakeStore) UpsertTrackedLink(_ context.Context, _ string, _ string, _ string) (string, error) {
 	return "link-123", nil
 }
+func (f *fakeStore) GetProfileByID(_ context.Context, _, _, _ string) (domain.Profile, error) {
+	return domain.Profile{ID: "profile-1", ExternalID: "user-1", Attributes: json.RawMessage(`{}`)}, nil
+}
 
 func TestAcceptEvents(t *testing.T) {
 	store := &fakeStore{}

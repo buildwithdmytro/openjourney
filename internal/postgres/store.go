@@ -330,6 +330,20 @@ func (s *Store) GetProfile(ctx context.Context, p domain.Principal, externalID s
 	return profile, consents, rows.Err()
 }
 
+func (s *Store) GetProfileByID(ctx context.Context, tenantID, appID, profileID string) (domain.Profile, error) {
+	var profile domain.Profile
+	err := s.pool.QueryRow(ctx, `SELECT id,COALESCE(external_id,''),COALESCE(anonymous_id,''),attributes,version,updated_at
+		FROM profiles WHERE tenant_id=$1 AND app_id=$2 AND id=$3`,
+		tenantID, appID, profileID).
+		Scan(&profile.ID, &profile.ExternalID, &profile.AnonymousID, &profile.Attributes, &profile.Version, &profile.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Profile{}, ErrNotFound
+	}
+	return profile, err
+}
+
+
+
 func (s *Store) ClaimProjectionJob(ctx context.Context) (domain.AcceptedEvent, bool, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {

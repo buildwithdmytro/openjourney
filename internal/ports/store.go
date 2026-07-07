@@ -15,6 +15,7 @@ type Store interface {
 	RevokeLocalSession(context.Context, string) error
 	AcceptEvents(context.Context, domain.Principal, []domain.Event) ([]string, error)
 	GetProfile(context.Context, domain.Principal, string) (domain.Profile, []domain.Consent, error)
+	GetProfileByID(ctx context.Context, tenantID, appID, profileID string) (domain.Profile, error)
 	ClaimProjectionJob(context.Context) (domain.AcceptedEvent, bool, error)
 	ProjectEvent(context.Context, domain.AcceptedEvent) error
 	FailProjectionJob(context.Context, string, error) error

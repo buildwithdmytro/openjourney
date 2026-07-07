@@ -29,8 +29,10 @@ type Config struct {
 	ClickHouseDatabase string
 	ClickHouseUsername string
 	ClickHousePassword string
-	OTLPEndpoint       string
-	ServiceVersion     string
+	OTLPEndpoint        string
+	ServiceVersion      string
+	TrackingSecretKey   string
+	TrackingBaseURL     string
 }
 
 func Load() (Config, error) {
@@ -55,8 +57,10 @@ func Load() (Config, error) {
 		ClickHouseDatabase: env("OPENJOURNEY_CLICKHOUSE_DATABASE", "openjourney"),
 		ClickHouseUsername: env("OPENJOURNEY_CLICKHOUSE_USERNAME", "default"),
 		ClickHousePassword: os.Getenv("OPENJOURNEY_CLICKHOUSE_PASSWORD"),
-		OTLPEndpoint:       os.Getenv("OPENJOURNEY_OTLP_ENDPOINT"),
-		ServiceVersion:     env("OPENJOURNEY_SERVICE_VERSION", "dev"),
+		OTLPEndpoint:        os.Getenv("OPENJOURNEY_OTLP_ENDPOINT"),
+		ServiceVersion:      env("OPENJOURNEY_SERVICE_VERSION", "dev"),
+		TrackingSecretKey:   env("OPENJOURNEY_TRACKING_SECRET_KEY", "change-me-in-production"),
+		TrackingBaseURL:     env("OPENJOURNEY_TRACKING_BASE_URL", "http://localhost:8080"),
 	}
 	for key, target := range map[string]*string{
 		"OPENJOURNEY_DATABASE_URL":        &cfg.DatabaseURL,

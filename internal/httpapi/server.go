@@ -23,11 +23,13 @@ import (
 type principalKey struct{}
 
 type Server struct {
-	store             ports.Store
-	maxBatchSize      int
-	tokenVerifier     ports.TokenVerifier
-	corsAllowedOrigin string
-	sessionTTL        time.Duration
+	store              ports.Store
+	maxBatchSize       int
+	tokenVerifier      ports.TokenVerifier
+	corsAllowedOrigin  string
+	sessionTTL         time.Duration
+	trackingSecretKey  []byte
+	trackingBaseURL    string
 }
 
 func New(store ports.Store, maxBatchSize int) http.Handler {
@@ -38,11 +40,26 @@ func NewWithOptions(store ports.Store, maxBatchSize int, verifier ports.TokenVer
 	return NewWithSessionTTL(store, maxBatchSize, verifier, corsAllowedOrigin, 12*time.Hour)
 }
 
-func NewWithSessionTTL(store ports.Store, maxBatchSize int, verifier ports.TokenVerifier, corsAllowedOrigin string, sessionTTL time.Duration) http.Handler {
+func NewWithSessionTTL(store ports.Store, maxBatchSize int, verifier ports.TokenVerifier, corsAllowedOrigin string, sessionTTL time.Duration, opts ...func(*Server)) http.Handler {
 	s := &Server{
 		store: store, maxBatchSize: maxBatchSize,
 		tokenVerifier: verifier, corsAllowedOrigin: corsAllowedOrigin, sessionTTL: sessionTTL,
+		trackingSecretKey: []byte("change-me-in-production"),
+		trackingBaseURL:   "http://localhost:8080",
 	}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s.buildMux()
+}
+
+// SetTracking sets the HMAC secret key and tracking base URL used by link redirect and open pixel handlers.
+func (s *Server) SetTracking(secretKey []byte, baseURL string) {
+	s.trackingSecretKey = secretKey
+	s.trackingBaseURL = baseURL
+}
+
+func (s *Server) buildMux() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health/live", s.live)
 	mux.HandleFunc("GET /health/ready", s.ready)
@@ -66,6 +83,9 @@ func NewWithSessionTTL(store ports.Store, maxBatchSize int, verifier ports.Token
 	mux.Handle("GET /v1/templates", s.authenticate("templates:read", http.HandlerFunc(s.listTemplates)))
 	mux.Handle("GET /v1/templates/{id}", s.authenticate("templates:read", http.HandlerFunc(s.getTemplate)))
 	mux.Handle("PUT /v1/templates/{id}", s.authenticate("templates:write", http.HandlerFunc(s.updateTemplate)))
+	mux.Handle("POST /v1/templates/{id}/preview", s.authenticate("templates:read", http.HandlerFunc(s.previewTemplate)))
+	mux.HandleFunc("GET /r/{token}", s.redirectLink)
+	mux.HandleFunc("GET /o/{token}", s.openPixel)
 	mux.Handle("GET /v1/api-keys", s.authenticate("api_keys:read", http.HandlerFunc(s.listAPIKeys)))
 	mux.Handle("POST /v1/api-keys", s.authenticate("api_keys:write", http.HandlerFunc(s.createAPIKey)))
 	mux.Handle("DELETE /v1/api-keys/{id}", s.authenticate("api_keys:write", http.HandlerFunc(s.revokeAPIKey)))

@@ -76,7 +76,10 @@ func main() {
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddress,
-		Handler:           httpapi.NewWithSessionTTL(store, cfg.MaxBatchSize, tokenVerifier, cfg.CORSAllowedOrigin, sessionTTL),
+		Handler: httpapi.NewWithSessionTTL(store, cfg.MaxBatchSize, tokenVerifier, cfg.CORSAllowedOrigin, sessionTTL,
+				func(s *httpapi.Server) {
+					s.SetTracking([]byte(cfg.TrackingSecretKey), cfg.TrackingBaseURL)
+				}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      30 * time.Second,
