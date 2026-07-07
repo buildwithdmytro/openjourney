@@ -181,6 +181,9 @@ func (f *fakeStore) UpdateTemplate(_ context.Context, _ domain.Principal, tmpl d
 func (f *fakeStore) ListTemplates(_ context.Context, _ domain.Principal) ([]domain.Template, error) {
 	return []domain.Template{{ID: "tmpl-1", Name: "Test Template", Channel: "email"}}, nil
 }
+func (f *fakeStore) UpsertTrackedLink(_ context.Context, _ string, _ string, _ string) (string, error) {
+	return "link-123", nil
+}
 
 func TestAcceptEvents(t *testing.T) {
 	store := &fakeStore{}

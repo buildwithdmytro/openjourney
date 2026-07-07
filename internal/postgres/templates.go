@@ -155,3 +155,13 @@ func valueOrEmpty(s *string) string {
 	}
 	return *s
 }
+
+func (s *Store) UpsertTrackedLink(ctx context.Context, tenantID string, templateID string, originalURL string) (string, error) {
+	var id string
+	err := s.pool.QueryRow(ctx, `INSERT INTO tracked_links (tenant_id, template_id, original_url)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (template_id, original_url) DO UPDATE SET original_url = EXCLUDED.original_url
+		RETURNING id`,
+		tenantID, templateID, originalURL).Scan(&id)
+	return id, err
+}

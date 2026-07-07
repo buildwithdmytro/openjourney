@@ -62,6 +62,7 @@ type Store interface {
 	GetTemplate(context.Context, domain.Principal, string) (domain.Template, error)
 	UpdateTemplate(context.Context, domain.Principal, domain.Template) (domain.Template, error)
 	ListTemplates(context.Context, domain.Principal) ([]domain.Template, error)
+	UpsertTrackedLink(ctx context.Context, tenantID string, templateID string, originalURL string) (string, error)
 }
 
 type TokenVerifier interface {

@@ -482,7 +482,7 @@ order; each milestone should compile and pass `go build ./... && go vet ./...` b
    `github.com/osteele/liquid`; `Render(tmpl string, vars map[string]any) (string, error)`.
    Build `vars` from `profile.attributes`. *Done when:* a unit test renders
    `Hello {{ name }}` → `Hello Ada`.
-5. **Link rewriter** `internal/render/links.go`:
+5. [x] **Link rewriter** `internal/render/links.go`:
    `RewriteLinks(html string, campaignID, profileID string, upsert func(url) (linkID string)) string`
    — find `href="..."`, call `upsert` (which does `INSERT ... ON CONFLICT (template_id,
    original_url) DO UPDATE RETURNING id`), replace href with `/r/{token}` where `token` is
