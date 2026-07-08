@@ -152,6 +152,15 @@ func (s *SESAdapter) Send(ctx context.Context, msg ports.RenderedMessage) (strin
 		input.ReplyToAddresses = []string{*msg.Identity.ReplyTo}
 	}
 
+	if msg.IdempotencyKey != "" {
+		input.EmailTags = []types.MessageTag{
+			{
+				Name:  aws.String("IdempotencyKey"),
+				Value: aws.String(msg.IdempotencyKey),
+			},
+		}
+	}
+
 	output, err := client.SendEmail(ctx, input)
 	if err != nil {
 		return "", s.mapError(err)

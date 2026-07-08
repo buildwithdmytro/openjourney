@@ -308,6 +308,18 @@ func (s *Store) DeleteDeliveryAttempt(ctx context.Context, tenantID, campaignID,
 	return err
 }
 
+func (s *Store) GetDeliveryAttempt(ctx context.Context, campaignID, profileID, channel string) (domain.DeliveryAttempt, error) {
+	var out domain.DeliveryAttempt
+	err := s.pool.QueryRow(ctx, `SELECT id, campaign_id, tenant_id, profile_id, channel, endpoint, decision, reason, provider_message_id, policy_snapshot, attempted_at, created_at
+		FROM delivery_attempts WHERE campaign_id=$1 AND profile_id=$2 AND channel=$3`,
+		campaignID, profileID, channel).
+		Scan(&out.ID, &out.CampaignID, &out.TenantID, &out.ProfileID, &out.Channel, &out.Endpoint, &out.Decision, &out.Reason, &out.ProviderMessageID, &out.PolicySnapshot, &out.AttemptedAt, &out.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.DeliveryAttempt{}, ErrNotFound
+	}
+	return out, err
+}
+
 func (s *Store) GetProfileEmails(ctx context.Context, tenantID string, profileIDs []string) (map[string]string, error) {
 	if len(profileIDs) == 0 {
 		return map[string]string{}, nil

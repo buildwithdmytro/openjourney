@@ -88,19 +88,21 @@ func (s *Server) handleSESCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 1b. Verify Topic ARN matches the allowlist if configured
-	if len(s.allowedTopicARNs) > 0 {
-		allowed := false
-		for _, arn := range s.allowedTopicARNs {
-			if snsMsg.TopicArn == arn {
-				allowed = true
-				break
-			}
+	// 1b. Verify Topic ARN matches the allowlist (must be configured and non-empty)
+	if len(s.allowedTopicARNs) == 0 {
+		http.Error(w, "forbidden: SNS TopicARN allowlist is empty/unconfigured", http.StatusForbidden)
+		return
+	}
+	allowed := false
+	for _, arn := range s.allowedTopicARNs {
+		if snsMsg.TopicArn == arn {
+			allowed = true
+			break
 		}
-		if !allowed {
-			http.Error(w, fmt.Sprintf("forbidden: topic ARN %q not in allowlist", snsMsg.TopicArn), http.StatusForbidden)
-			return
-		}
+	}
+	if !allowed {
+		http.Error(w, fmt.Sprintf("forbidden: topic ARN %q not in allowlist", snsMsg.TopicArn), http.StatusForbidden)
+		return
 	}
 
 	// 2. Handle SubscriptionConfirmation

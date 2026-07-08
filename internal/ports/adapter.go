@@ -14,7 +14,8 @@ type RenderedMessage struct {
 	HTML     string                 `json:"html,omitempty"`
 	Text     string                 `json:"text,omitempty"`
 	Body     string                 `json:"body,omitempty"`
-	Identity domain.SendingIdentity `json:"identity"`
+	Identity       domain.SendingIdentity `json:"identity"`
+	IdempotencyKey string                 `json:"idempotency_key,omitempty"`
 }
 
 // ChannelAdapter is the interface that message delivery channel integrations (like SES, Webhooks) must implement.

@@ -106,6 +106,15 @@ func (m *mockStore) DeleteDeliveryAttempt(ctx context.Context, tenantID, campaig
 	return nil
 }
 
+func (m *mockStore) GetDeliveryAttempt(ctx context.Context, campaignID, profileID, channel string) (domain.DeliveryAttempt, error) {
+	key := campaignID + ":" + profileID + ":" + channel
+	att, ok := m.deliveryAttempts[key]
+	if !ok {
+		return domain.DeliveryAttempt{}, ports.ErrNotFound
+	}
+	return att, nil
+}
+
 func (m *mockStore) UpdateDeliveryAttempt(ctx context.Context, campaignID, profileID, channel, decision, reason, providerMsgID string, policySnapshot []byte) error {
 	m.updatedAttempts = append(m.updatedAttempts, profileID+":"+decision)
 	key := campaignID + ":" + profileID + ":" + channel
@@ -221,8 +230,18 @@ func TestDeliverNext_RetryableError(t *testing.T) {
 		t.Fatalf("expected transient delivery failure error, got: %v", err)
 	}
 
-	if len(store.deletedAttempts) != 1 || store.deletedAttempts[0] != profID {
-		t.Errorf("expected attempt for profile %s to be deleted, got: %v", profID, store.deletedAttempts)
+	if len(store.deletedAttempts) != 0 {
+		t.Errorf("expected no deleted attempts, got: %v", store.deletedAttempts)
+	}
+
+	foundRetryableFailed := false
+	for _, up := range store.updatedAttempts {
+		if up == profID+":retryable_failed" {
+			foundRetryableFailed = true
+		}
+	}
+	if !foundRetryableFailed {
+		t.Errorf("expected attempt for profile %s to transition to retryable_failed, got: %v", profID, store.updatedAttempts)
 	}
 
 	if _, ok := store.completedJobs[jobID]; ok {
@@ -232,6 +251,101 @@ func TestDeliverNext_RetryableError(t *testing.T) {
 		t.Errorf("expected job %s to be failed/requeued", jobID)
 	}
 }
+
+func TestDeliverNext_RetryableAndReconcile(t *testing.T) {
+	store := newMockStore()
+
+	campID := "camp-1"
+	tmplID := "tmpl-1"
+	profID := "prof-1"
+	jobID := "job-1"
+
+	store.campaigns[campID] = domain.Campaign{
+		ID:          campID,
+		TenantID:    "tenant-1",
+		WorkspaceID: "workspace-1",
+		TemplateID:  tmplID,
+	}
+
+	htmlTmpl := "hello world"
+	store.templates[tmplID] = domain.Template{
+		ID:           tmplID,
+		Channel:      "email",
+		HTMLTemplate: &htmlTmpl,
+	}
+
+	store.profiles[profID] = domain.Profile{
+		ID:         profID,
+		ExternalID: "ext-1",
+	}
+
+	store.jobs[jobID] = domain.DeliveryJob{
+		ID:         jobID,
+		CampaignID: campID,
+		TenantID:   "tenant-1",
+		Recipients: []domain.Recipient{
+			{
+				ProfileID: profID,
+				Endpoint:  "test@example.com",
+			},
+		},
+	}
+
+	// 1. Simulate a previous run that reached 'provider_sent' state (e.g. sent message to SES, received providerMsgID, but crashed before emitting event)
+	key := campID + ":" + profID + ":email"
+	store.deliveryAttempts[key] = domain.DeliveryAttempt{
+		CampaignID:        campID,
+		TenantID:          "tenant-1",
+		ProfileID:         profID,
+		Channel:           "email",
+		Endpoint:          "test@example.com",
+		Decision:          "provider_sent",
+		ProviderMessageID: "ses-12345",
+	}
+
+	// Create adapter that counts number of actual sends
+	sendCount := 0
+	adapter := &countingAdapter{sendCount: &sendCount}
+	cfg := Config{
+		Adapter: adapter,
+	}
+
+	processed, err := DeliverNext(context.Background(), store, "worker-1", cfg)
+	if !processed {
+		t.Fatalf("expected processed")
+	}
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify that Send was NOT called on the adapter (reconciled!)
+	if sendCount != 0 {
+		t.Errorf("expected 0 sends, got: %d", sendCount)
+	}
+
+	// Verify that the final status is 'sent'
+	att := store.deliveryAttempts[key]
+	if att.Decision != "sent" {
+		t.Errorf("expected state to transition to 'sent', got: %s", att.Decision)
+	}
+	if att.ProviderMessageID != "ses-12345" {
+		t.Errorf("expected provider message ID to be preserved, got: %s", att.ProviderMessageID)
+	}
+}
+
+type countingAdapter struct {
+	sendCount *int
+}
+
+func (a *countingAdapter) Send(ctx context.Context, msg ports.RenderedMessage) (string, error) {
+	*a.sendCount++
+	return "ses-999", nil
+}
+
+func (a *countingAdapter) ValidateConfig(identity domain.SendingIdentity) error {
+	return nil
+}
+
 
 func TestDeliverNext_PermanentError(t *testing.T) {
 	store := newMockStore()

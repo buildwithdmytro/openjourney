@@ -126,6 +126,9 @@ func (w *WebhookAdapter) Send(ctx context.Context, msg ports.RenderedMessage) (s
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "OpenJourney-Webhook-Adapter/1.0")
+	if msg.IdempotencyKey != "" {
+		req.Header.Set("X-Idempotency-Key", msg.IdempotencyKey)
+	}
 
 	// Sign payload with HMAC if secret is configured
 	if webCfg.HMACSecret != "" {

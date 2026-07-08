@@ -92,6 +92,7 @@ type Store interface {
 	CreateDeliveryAttempt(ctx context.Context, attempt domain.DeliveryAttempt) (bool, error)
 	UpdateDeliveryAttempt(ctx context.Context, campaignID, profileID, channel, decision, reason, providerMsgID string, policySnapshot []byte) error
 	DeleteDeliveryAttempt(ctx context.Context, tenantID, campaignID, profileID, channel string) error
+	GetDeliveryAttempt(ctx context.Context, campaignID, profileID, channel string) (domain.DeliveryAttempt, error)
 }
 
 type TokenVerifier interface {

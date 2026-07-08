@@ -145,16 +145,33 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 			ProfileID:  rec.ProfileID,
 			Channel:    template.Channel,
 			Endpoint:   rec.Endpoint,
-			Decision:   "failed",
+			Decision:   "processing",
 		}
 		inserted, err := store.CreateDeliveryAttempt(ctx, attempt)
 		if err != nil {
 			slog.Error("failed to create delivery attempt", "error", err, "campaign_id", camp.ID, "profile_id", rec.ProfileID)
 			continue
 		}
+
+		var existing domain.DeliveryAttempt
 		if !inserted {
-			// Already handled or currently being processed (effectively-once skip)
-			continue
+			existing, err = store.GetDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel)
+			if err != nil {
+				slog.Error("failed to get existing delivery attempt", "error", err, "campaign_id", camp.ID, "profile_id", rec.ProfileID)
+				continue
+			}
+
+			switch existing.Decision {
+			case "sent", "suppressed", "no_consent", "fatigued", "render_failed", "send_failed", "failed":
+				// Terminal state, skip
+				continue
+			case "processing", "provider_sent", "retryable_failed":
+				// intermediate state, reconcile
+				attempt = existing
+			default:
+				// other state, skip to be safe
+				continue
+			}
 		}
 
 		prof, err := store.GetProfileByID(ctx, camp.TenantID, p.AppID, rec.ProfileID)
@@ -255,40 +272,42 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 			}
 		}
 
-		msg := ports.RenderedMessage{
-			Channel:  template.Channel,
-			Endpoint: rec.Endpoint,
-			Subject:  subject,
-			HTML:     htmlBody,
-			Text:     textBody,
-			Body:     bodyPayload,
-			Identity: identity,
-		}
-
-		providerMsgID, err := adapter.Send(ctx, msg)
-		if err != nil {
-			slog.Error("failed to send message via adapter", "error", err, "profile_id", rec.ProfileID)
-			if channels.IsRetryableError(err) {
-				deleteErr := store.DeleteDeliveryAttempt(ctx, camp.TenantID, camp.ID, rec.ProfileID, template.Channel)
-				if deleteErr != nil {
-					slog.Error("failed to delete delivery attempt on retryable error", "error", deleteErr)
-				}
-				hasRetryableError = true
-				retryableErrMsg = err.Error()
-			} else {
-				_ = store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, "send_failed", fmt.Sprintf("adapter send error: %v", err), "", nil)
-			}
-			continue
-		}
-
-		err = store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, "sent", "eligible", providerMsgID, verdictSnapshotBytes)
-		if err != nil {
-			slog.Error("failed to update delivery attempt status to sent", "error", err)
+		var providerMsgID string
+		if attempt.Decision == "provider_sent" {
+			providerMsgID = attempt.ProviderMessageID
+			slog.Info("reconciling previously sent message", "campaign_id", camp.ID, "profile_id", rec.ProfileID, "provider_msg_id", providerMsgID)
 		} else {
-			telemetry.MessagesSent.Add(ctx, 1, otelmetric.WithAttributes(
-				attribute.String("channel", template.Channel),
-				attribute.String("campaign_id", camp.ID),
-			))
+			msg := ports.RenderedMessage{
+				Channel:        template.Channel,
+				Endpoint:       rec.Endpoint,
+				Subject:        subject,
+				HTML:           htmlBody,
+				Text:           textBody,
+				Body:           bodyPayload,
+				Identity:       identity,
+				IdempotencyKey: fmt.Sprintf("sent-%s-%s", camp.ID, rec.ProfileID),
+			}
+
+			providerMsgID, err = adapter.Send(ctx, msg)
+			if err != nil {
+				slog.Error("failed to send message via adapter", "error", err, "profile_id", rec.ProfileID)
+				if channels.IsRetryableError(err) {
+					updateErr := store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, "retryable_failed", fmt.Sprintf("transient send error: %v", err), "", nil)
+					if updateErr != nil {
+						slog.Error("failed to update delivery attempt on transient error", "error", updateErr)
+					}
+					hasRetryableError = true
+					retryableErrMsg = err.Error()
+				} else {
+					_ = store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, "send_failed", fmt.Sprintf("adapter send error: %v", err), "", nil)
+				}
+				continue
+			}
+
+			err = store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, "provider_sent", "eligible", providerMsgID, verdictSnapshotBytes)
+			if err != nil {
+				slog.Error("failed to update delivery attempt status to provider_sent", "error", err)
+			}
 		}
 
 		eventPayload, _ := json.Marshal(map[string]any{
@@ -309,6 +328,17 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 		_, err = store.AcceptEvents(ctx, p, []domain.Event{emittedEvent})
 		if err != nil {
 			slog.Error("failed to emit message.sent event", "error", err, "profile_id", rec.ProfileID)
+			continue
+		}
+
+		err = store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, "sent", "eligible", providerMsgID, verdictSnapshotBytes)
+		if err != nil {
+			slog.Error("failed to update delivery attempt status to sent", "error", err)
+		} else {
+			telemetry.MessagesSent.Add(ctx, 1, otelmetric.WithAttributes(
+				attribute.String("channel", template.Channel),
+				attribute.String("campaign_id", camp.ID),
+			))
 		}
 	}
 

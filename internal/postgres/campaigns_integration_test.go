@@ -452,7 +452,7 @@ func TestCampaignsEndToEnd(t *testing.T) {
 
 	// Assert message.sent event is emitted
 	var eventType string
-	err = store.pool.QueryRow(ctx, `SELECT type FROM events WHERE tenant_id = $1 AND external_id = $2 AND type = 'message.sent'`, tenantID, prof.ExternalID).Scan(&eventType)
+	err = store.pool.QueryRow(ctx, `SELECT event_type FROM accepted_events WHERE tenant_id = $1 AND external_id = $2 AND event_type = 'message.sent'`, tenantID, prof.ExternalID).Scan(&eventType)
 	if err != nil {
 		t.Fatalf("query events: %v", err)
 	}
