@@ -869,3 +869,49 @@ func TestCampaignsExplainability(t *testing.T) {
 		t.Errorf("expected 2 delivery attempts for campaign 2, got %d", attemptsCount2)
 	}
 }
+
+func TestTenantFatigueQuotas(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer store.Close()
+
+	tenantID := "tenant-quota-test-" + time.Now().Format("20060102-150405")
+	p := domain.Principal{TenantID: tenantID, WorkspaceID: "workspace-1", AppID: "app-1"}
+
+	_, err = store.pool.Exec(ctx, `INSERT INTO tenants(id, name) VALUES($1, 'Test Tenant Quotas')`, tenantID)
+	if err != nil {
+		t.Fatalf("insert tenant: %v", err)
+	}
+
+	// 1. Get fatigue quotas before creating entry (should return defaults: 5, 20)
+	maxSends24h, maxSends7d, err := store.GetTenantFatigueQuotas(ctx, p)
+	if err != nil {
+		t.Fatalf("GetTenantFatigueQuotas defaults: %v", err)
+	}
+	if maxSends24h != 5 || maxSends7d != 20 {
+		t.Errorf("expected default quotas 5, 20; got %d, %d", maxSends24h, maxSends7d)
+	}
+
+	// 2. Insert custom quota values into tenant_quotas
+	_, err = store.pool.Exec(ctx, `INSERT INTO tenant_quotas(tenant_id, max_sends_24h, max_sends_7d) VALUES($1, $2, $3)`, tenantID, 12, 42)
+	if err != nil {
+		t.Fatalf("insert tenant_quotas: %v", err)
+	}
+
+	// 3. Get quotas again (should return custom values 12, 42)
+	maxSends24h, maxSends7d, err = store.GetTenantFatigueQuotas(ctx, p)
+	if err != nil {
+		t.Fatalf("GetTenantFatigueQuotas custom: %v", err)
+	}
+	if maxSends24h != 12 || maxSends7d != 42 {
+		t.Errorf("expected custom quotas 12, 42; got %d, %d", maxSends24h, maxSends7d)
+	}
+}
+

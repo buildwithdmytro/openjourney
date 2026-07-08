@@ -74,6 +74,7 @@ type Store interface {
 	ListSuppressions(ctx context.Context, p domain.Principal) ([]domain.Suppression, error)
 	LatestConsent(ctx context.Context, p domain.Principal, profileID, channel, topic string) (domain.Consent, error)
 	SentCountSince(ctx context.Context, p domain.Principal, profileID string, since time.Time) (int, error)
+	GetTenantFatigueQuotas(ctx context.Context, p domain.Principal) (int, int, error)
 	GetProfileEmails(ctx context.Context, tenantID string, profileIDs []string) (map[string]string, error)
 	GetFirstAppID(ctx context.Context, tenantID, workspaceID string) (string, error)
 

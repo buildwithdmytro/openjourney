@@ -86,3 +86,16 @@ func (s *Store) SentCountSince(ctx context.Context, p domain.Principal, profileI
 		p.TenantID, profileID, since).Scan(&count)
 	return count, err
 }
+
+func (s *Store) GetTenantFatigueQuotas(ctx context.Context, p domain.Principal) (int, int, error) {
+	var maxSends24h, maxSends7d int
+	err := s.pool.QueryRow(ctx, `SELECT max_sends_24h, max_sends_7d FROM tenant_quotas WHERE tenant_id=$1`, p.TenantID).Scan(&maxSends24h, &maxSends7d)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 5, 20, nil
+	}
+	if err != nil {
+		return 0, 0, err
+	}
+	return maxSends24h, maxSends7d, nil
+}
+

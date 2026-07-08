@@ -102,6 +102,9 @@ func Load() (Config, error) {
 			return Config{}, fmt.Errorf("OPENJOURNEY_S3_USE_TLS: %w", err)
 		}
 	}
+	if cfg.ServiceVersion != "dev" && cfg.TrackingSecretKey == "change-me-in-production" {
+		return Config{}, fmt.Errorf("OPENJOURNEY_TRACKING_SECRET_KEY cannot be set to 'change-me-in-production' when OPENJOURNEY_SERVICE_VERSION is %q", cfg.ServiceVersion)
+	}
 	return cfg, nil
 }
 

@@ -205,6 +205,10 @@ func (f *fakeStore) LatestConsent(ctx context.Context, p domain.Principal, profi
 func (f *fakeStore) SentCountSince(ctx context.Context, p domain.Principal, profileID string, since time.Time) (int, error) {
 	return 0, nil
 }
+func (f *fakeStore) GetTenantFatigueQuotas(ctx context.Context, p domain.Principal) (int, int, error) {
+	return 5, 20, nil
+}
+
 
 func (f *fakeStore) CreateCampaign(ctx context.Context, p domain.Principal, c domain.Campaign) (domain.Campaign, error) {
 	c.ID = "campaign-1"

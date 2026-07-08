@@ -94,6 +94,11 @@ func (m *mockStore) GetProfileByID(ctx context.Context, tenantID, appID, profile
 	return p, nil
 }
 
+func (m *mockStore) GetTenantFatigueQuotas(ctx context.Context, p domain.Principal) (int, int, error) {
+	return 5, 20, nil
+}
+
+
 func (m *mockStore) DeleteDeliveryAttempt(ctx context.Context, tenantID, campaignID, profileID, channel string) error {
 	m.deletedAttempts = append(m.deletedAttempts, profileID)
 	key := campaignID + ":" + profileID + ":" + channel

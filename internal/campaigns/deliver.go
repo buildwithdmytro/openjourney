@@ -117,13 +117,22 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 		}
 	}
 
-	// Fatigue checks caps
+	// Fatigue checks caps from tenant_quotas configuration
+	maxSends24h, maxSends7d, err := store.GetTenantFatigueQuotas(ctx, p)
+	if err != nil {
+		slog.Error("failed to get tenant fatigue quotas", "error", err, "tenant_id", p.TenantID)
+		// fall back to default limits if we fail to fetch them
+		maxSends24h = 5
+		maxSends7d = 20
+	}
+
 	caps := policy.Caps{
 		Channel:     template.Channel,
 		Topic:       "marketing",
-		MaxSends24h: 5,
-		MaxSends7d:  20,
+		MaxSends24h: maxSends24h,
+		MaxSends7d:  maxSends7d,
 	}
+
 
 	var hasRetryableError bool
 	var retryableErrMsg string
