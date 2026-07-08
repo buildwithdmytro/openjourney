@@ -53,6 +53,14 @@ func TestWebhookAdapter_SSRFBlocks(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected Send to fail for AWS metadata link-local address 169.254.169.254")
 	}
+
+	// Try sending to Carrier-Grade NAT (CGNAT) 100.64.0.0/10 IP
+	msgCGNAT := msgPrivate
+	msgCGNAT.Endpoint = "http://100.64.1.2:8080/webhook"
+	_, err = w.Send(context.Background(), msgCGNAT)
+	if err == nil {
+		t.Fatal("expected Send to fail for CGNAT address 100.64.1.2")
+	}
 }
 
 func TestWebhookAdapter_HMACSignature(t *testing.T) {

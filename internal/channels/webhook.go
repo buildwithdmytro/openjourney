@@ -256,6 +256,10 @@ func IsPrivateIP(ip net.IP) bool {
 		if ip4[0] == 192 && ip4[1] == 168 {
 			return true
 		}
+		// 100.64.0.0/10 (Carrier-Grade NAT / CGNAT RFC 6598)
+		if ip4[0] == 100 && ip4[1] >= 64 && ip4[1] <= 127 {
+			return true
+		}
 		return false
 	}
 

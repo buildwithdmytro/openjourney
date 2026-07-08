@@ -698,7 +698,7 @@ and P1 before signing off 7.7.**
 10. [x] **`go mod tidy`** — `github.com/osteele/liquid` is marked `// indirect` despite direct use.
 11. [x] **Strengthen the golden test.** `internal/audience/compile_test.go:TestGoldenQueries`
     self-writes the golden file when absent, so it can't fail on drift. Make it fail-on-missing.
-12. [ ] **(Optional)** Block CGNAT `100.64.0.0/10` in the webhook SSRF guard; add
+12. [x] **(Optional)** Block CGNAT `100.64.0.0/10` in the webhook SSRF guard; add
     sending-identity update/delete and campaign delete routes if the UI needs them.
 
 ## 9. Open items to confirm before coding
