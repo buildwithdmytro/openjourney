@@ -676,12 +676,12 @@ and P1 before signing off 7.7.**
    `DeliverNext` (`deliver.go:84`), so the per-identity token bucket resets every job; effective
    rate ≈ `jobs × workers × max_send_rate`, which can exceed the SES account limit. **Fix:**
    construct the adapter (and its limiter map) once per worker process and pass it in. — done: instantiated adapters once per campaigns-delivery worker process and passed them via Config
-5. [ ] **Compiler arg/placeholder contract mismatch (latent footgun).** `CompileConsent`
+5. [x] **Compiler arg/placeholder contract mismatch (latent footgun).** `CompileConsent`
    (`internal/audience/compile_pg.go`) emits `$1..$5` but returns only 3 args;
    `CompileClickHouse` emits 4 `?` but returns 3 — correct only because the two current callers
    in `segments.go` manually prepend tenant params in the exact order. **Fix:** make each
    compiler return the full, correctly-ordered arg list (or document the prepend contract and
-   assert it in a test) so a future caller can't bind the wrong columns.
+   assert it in a test) so a future caller can't bind the wrong columns. — done: updated CompileConsent/CompileClickHouse to return full arg list and updated all callers
 6. [ ] **Brittle consent-not-found detection.** `internal/policy/policy.go:61` uses
    `errors.Is(err, errors.New("not found"))` (dead — new identity each call) plus an exact
    `err.Error() == "not found"` string match. If `LatestConsent`'s error is ever wrapped,
