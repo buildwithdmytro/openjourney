@@ -459,3 +459,163 @@ func TestCampaignsEndToEnd(t *testing.T) {
 		t.Errorf("expected event type 'message.sent', got %q", eventType)
 	}
 }
+
+func TestCampaignsReproducibility(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer store.Close()
+
+	tenantID := "tenant-rep-" + time.Now().Format("20060102-150405")
+	p := domain.Principal{TenantID: tenantID, WorkspaceID: "workspace-1", AppID: "app-1", Scopes: []string{"*"}}
+
+	_, err = store.pool.Exec(ctx, `INSERT INTO tenants(id, name) VALUES($1, 'Rep Tenant')`, tenantID)
+	if err != nil {
+		t.Fatalf("insert tenant: %v", err)
+	}
+	defer func() {
+		_, _ = store.pool.Exec(ctx, "DELETE FROM tenants WHERE id=$1", tenantID)
+	}()
+
+	_, err = store.pool.Exec(ctx, `INSERT INTO workspaces(id, tenant_id, name) VALUES($1, $2, 'Rep Workspace')`, p.WorkspaceID, tenantID)
+	if err != nil {
+		t.Fatalf("insert workspace: %v", err)
+	}
+
+	// Create 3 profiles (p1, p2, p3) in segment
+	for _, extID := range []string{"p1", "p2", "p3"} {
+		events := []domain.Event{
+			{
+				Type: "profile.updated", SchemaVersion: 1, ExternalID: extID,
+				IdempotencyKey: "identify-rep-" + extID, OccurredAt: time.Now().UTC(),
+				Payload: json.RawMessage(`{"attributes":{"country":"US", "email":"` + extID + `@example.com"}}`),
+			},
+			{
+				Type: "consent.changed", SchemaVersion: 1, ExternalID: extID,
+				IdempotencyKey: "consent-rep-" + extID, OccurredAt: time.Now().UTC(),
+				Payload: json.RawMessage(`{"channel":"email","topic":"marketing","state":"subscribed"}`),
+			},
+		}
+		_, err = store.AcceptEvents(ctx, p, events)
+		if err != nil {
+			t.Fatalf("accept events for %s: %v", extID, err)
+		}
+	}
+
+	_, err = projector.Drain(ctx, store, 6, false)
+	if err != nil {
+		t.Fatalf("projector drain: %v", err)
+	}
+
+	seg, err := store.CreateSegment(ctx, p, domain.Segment{
+		Name: "Rep Dynamic Segment",
+		Type: "dynamic",
+		DSL:  []byte(`{"type":"profile_attribute","field":"country","operator":"equals","value":"US"}`),
+	})
+	if err != nil {
+		t.Fatalf("create segment: %v", err)
+	}
+
+	iden, err := store.CreateSendingIdentity(ctx, p, domain.SendingIdentity{
+		Channel:     "email",
+		FromAddress: ptr("sender@example.com"),
+		FromName:    ptr("Sender"),
+		Provider:    "fake",
+		MaxSendRate: 10,
+	})
+	if err != nil {
+		t.Fatalf("create sending identity: %v", err)
+	}
+
+	htmlTmpl := "Hello Rep!"
+	tmpl, err := store.CreateTemplate(ctx, p, domain.Template{
+		Name:              "Rep Template",
+		Channel:           "email",
+		HTMLTemplate:      &htmlTmpl,
+		SendingIdentityID: &iden.ID,
+	})
+	if err != nil {
+		t.Fatalf("create template: %v", err)
+	}
+
+	camp, err := store.CreateCampaign(ctx, p, domain.Campaign{
+		Name:            "Rep Campaign",
+		SegmentID:       seg.ID,
+		TemplateID:      tmpl.ID,
+		Status:          "draft",
+		SegmentVersion:  1,
+		TemplateVersion: 1,
+	})
+	if err != nil {
+		t.Fatalf("create campaign: %v", err)
+	}
+
+	pastTime := time.Now().Add(-1 * time.Minute)
+	camp.Status = "scheduled"
+	camp.ScheduledAt = &pastTime
+	camp, err = store.UpdateCampaign(ctx, p, camp)
+	if err != nil {
+		t.Fatalf("update campaign: %v", err)
+	}
+
+	blob := &mockBlobStore{}
+	dispatched, err := campaigns.DispatchNext(ctx, store, blob)
+	if err != nil {
+		t.Fatalf("DispatchNext: %v", err)
+	}
+	if !dispatched {
+		t.Fatal("expected to dispatch a campaign")
+	}
+
+	// 1. Verify original dispatch recipient list is stored in the jobs
+	var countBefore int
+	err = store.pool.QueryRow(ctx, "SELECT count(*) FROM delivery_jobs WHERE campaign_id = $1", camp.ID).Scan(&countBefore)
+	if err != nil {
+		t.Fatalf("query jobs before: %v", err)
+	}
+	if countBefore != 1 {
+		t.Errorf("expected 1 delivery job, got %d", countBefore)
+	}
+
+	// 2. Change the database state: delete the profiles and update dynamic segment so they no longer match
+	_, err = store.pool.Exec(ctx, "DELETE FROM consent_ledger WHERE tenant_id = $1", tenantID)
+	if err != nil {
+		t.Fatalf("delete consent: %v", err)
+	}
+	_, err = store.pool.Exec(ctx, "DELETE FROM profiles WHERE tenant_id = $1", tenantID)
+	if err != nil {
+		t.Fatalf("delete profiles: %v", err)
+	}
+
+	// 3. Clear existing delivery jobs to simulate redispatching
+	_, err = store.pool.Exec(ctx, "DELETE FROM delivery_jobs WHERE campaign_id = $1", camp.ID)
+	if err != nil {
+		t.Fatalf("clear jobs: %v", err)
+	}
+
+	// 4. Redispatch from the stored manifest
+	recipients, err := campaigns.RedispatchFromManifest(ctx, store, blob, tenantID, camp.ID)
+	if err != nil {
+		t.Fatalf("RedispatchFromManifest: %v", err)
+	}
+
+	if len(recipients) != 3 {
+		t.Errorf("expected 3 recipients from manifest, got %d", len(recipients))
+	}
+
+	// 5. Verify the sharded delivery jobs were recreated and are identical
+	var countAfter int
+	err = store.pool.QueryRow(ctx, "SELECT count(*) FROM delivery_jobs WHERE campaign_id = $1", camp.ID).Scan(&countAfter)
+	if err != nil {
+		t.Fatalf("query jobs after: %v", err)
+	}
+	if countAfter != 1 {
+		t.Errorf("expected 1 delivery job recreated, got %d", countAfter)
+	}
+}

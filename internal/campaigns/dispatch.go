@@ -17,6 +17,11 @@ type BlobStore interface {
 	Get(ctx context.Context, key string) ([]byte, error)
 }
 
+type ManifestRecipient struct {
+	ProfileID string `json:"profile_id"`
+	Endpoint  string `json:"endpoint"`
+}
+
 func DispatchNext(ctx context.Context, store ports.Store, blobStore BlobStore) (bool, error) {
 	camp, found, err := store.ClaimScheduledCampaign(ctx)
 	if err != nil {
@@ -101,11 +106,7 @@ func DispatchNext(ctx context.Context, store ports.Store, blobStore BlobStore) (
 
 	profileLegs, consentLegs, clickhouseLegs := compileSegmentLegs(node)
 
-	// Build Manifest
-	type ManifestRecipient struct {
-		ProfileID string `json:"profile_id"`
-		Endpoint  string `json:"endpoint"`
-	}
+
 
 	manifestRecipients := make([]ManifestRecipient, len(recipients))
 	for i, r := range recipients {
@@ -228,4 +229,70 @@ func compileSegmentLegs(n audience.Node) ([]string, []string, []string) {
 	}
 
 	return profiles, consents, clickhouses
+}
+
+// RedispatchFromManifest reads the campaign's manifest file from BlobStore,
+// decodes the frozen recipient list, and Recreates the sharded delivery jobs.
+func RedispatchFromManifest(ctx context.Context, store ports.Store, blobStore BlobStore, tenantID, campaignID string) ([]domain.Recipient, error) {
+	camp, err := store.GetCampaignSystem(ctx, tenantID, campaignID)
+	if err != nil {
+		return nil, fmt.Errorf("get campaign: %w", err)
+	}
+	if camp.ManifestKey == nil || *camp.ManifestKey == "" {
+		return nil, fmt.Errorf("campaign manifest key is not set")
+	}
+
+	manifestData, err := blobStore.Get(ctx, *camp.ManifestKey)
+	if err != nil {
+		return nil, fmt.Errorf("fetch manifest from blob store: %w", err)
+	}
+
+	var manifest struct {
+		CampaignID             string              `json:"campaign_id"`
+		SegmentID              string              `json:"segment_id"`
+		SegmentVersion         int                 `json:"segment_version"`
+		TemplateVersion        int                 `json:"template_version"`
+		Recipients             []ManifestRecipient `json:"recipients"`
+	}
+	if err := json.Unmarshal(manifestData, &manifest); err != nil {
+		return nil, fmt.Errorf("unmarshal manifest: %w", err)
+	}
+
+	recipients := make([]domain.Recipient, len(manifest.Recipients))
+	for i, r := range manifest.Recipients {
+		recipients[i] = domain.Recipient{
+			ProfileID: r.ProfileID,
+			Endpoint:  r.Endpoint,
+		}
+	}
+
+	// Shard recipients into delivery jobs
+	var jobs []domain.DeliveryJob
+	shardSize := 500
+	shardIndex := 0
+	for i := 0; i < len(recipients); i += shardSize {
+		end := i + shardSize
+		if end > len(recipients) {
+			end = len(recipients)
+		}
+		jobRecipients := make([]domain.Recipient, 0, end-i)
+		for _, r := range recipients[i:end] {
+			jobRecipients = append(jobRecipients, r)
+		}
+		jobs = append(jobs, domain.DeliveryJob{
+			CampaignID: camp.ID,
+			TenantID:   camp.TenantID,
+			Shard:      shardIndex,
+			Status:     "pending",
+			Recipients: jobRecipients,
+		})
+		shardIndex++
+	}
+
+	err = store.SaveCampaignManifestAndJobs(ctx, camp.ID, *camp.ManifestKey, len(recipients), manifest.SegmentVersion, manifest.TemplateVersion, jobs)
+	if err != nil {
+		return nil, fmt.Errorf("save manifest and jobs: %w", err)
+	}
+
+	return recipients, nil
 }
