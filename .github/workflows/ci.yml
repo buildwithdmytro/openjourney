@@ -101,6 +101,7 @@ jobs:
       - run: docker compose up -d --build api worker
       - run: ./scripts/smoke.sh
       - run: ./scripts/smoke-worker-termination.sh
+      - run: ./scripts/smoke-campaign-delivery.sh
       - run: ./scripts/rehearse-backup-restore.sh
       - if: always()
         run: docker compose down -v --remove-orphans
