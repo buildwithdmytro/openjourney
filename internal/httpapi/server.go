@@ -30,6 +30,7 @@ type Server struct {
 	sessionTTL         time.Duration
 	trackingSecretKey  []byte
 	trackingBaseURL    string
+	snsVerifier        snsSignatureVerifier
 }
 
 func New(store ports.Store, maxBatchSize int) http.Handler {
@@ -46,6 +47,7 @@ func NewWithSessionTTL(store ports.Store, maxBatchSize int, verifier ports.Token
 		tokenVerifier: verifier, corsAllowedOrigin: corsAllowedOrigin, sessionTTL: sessionTTL,
 		trackingSecretKey: []byte("change-me-in-production"),
 		trackingBaseURL:   "http://localhost:8080",
+		snsVerifier:       realSNSSignatureVerifier{},
 	}
 	for _, opt := range opts {
 		opt(s)

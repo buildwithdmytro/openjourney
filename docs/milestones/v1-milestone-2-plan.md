@@ -1,22 +1,32 @@
 # Phase 2 Implementation Plan: Audiences and Reliable Email
 
-Status: implementation mostly complete; closeout evidence still in progress.
+Status: 7.1–7.6 implemented and audited (2026-07-08); one CRITICAL security fix (§8) plus
+the 7.7 closeout evidence are outstanding before Phase 2 can be called complete.
 
 This plan details the architecture, schemas, and atomic tasks to deliver Phase 2 of
 OpenJourney: **audiences, templates, and reliable multi-channel delivery**. It is written
 to build directly on the Milestone 1 platform kernel and to satisfy the Phase 2 exit
 criteria in `plan.md`.
 
-Current reality as of commit `b8e9528`:
+Current reality as of the `phase2` branch audit (2026-07-08):
 
-- Milestones 7.1 through 7.5 are implemented and checked below.
-- Milestone 7.6 is implemented in code: campaign schema/store/API/UI, dispatcher binary,
-  delivery worker, immutable manifest writing, sharded `delivery_jobs`, effectively-once
-  `delivery_attempts`, policy evaluation, rendering, adapter send, and `message.sent`
-  emission exist.
-- Milestone 7.7 remains open: the final end-to-end integration, load/effectively-once
-  smoke, reproducibility, explainability, telemetry, and audit-document evidence still
-  need to be added before Phase 2 should be called complete.
+- **Milestones 7.1–7.6 are implemented and were audited against the actual code.** Schema,
+  domain models, `ports.Store` methods, HTTP routes + RBAC scopes, the three-leg audience
+  compiler, Liquid render + signed link tracking, the policy engine, SES + webhook adapters,
+  the SNS callback, the dispatcher + sharded delivery worker, and the effectively-once
+  `delivery_attempts` guard all exist and are wired. The React control plane typechecks and
+  builds. No SQL-injection, open-redirect, double-send, or tenant-isolation defect was found.
+- **The audit surfaced defects that must be fixed before closeout — see §8.** One is a
+  **CRITICAL** security hole (an SNS signature-verification bypass reachable in production);
+  the rest are correctness/reliability/config issues. **Do the §8 P0/P1 items before signing
+  off 7.7.**
+- **Milestone 7.7 (closeout evidence) is genuinely open.** The existing
+  `internal/postgres/campaigns_integration_test.go` exercises only the store layer — it never
+  drives `DispatchNext`/`DeliverNext` or the `FakeAdapter`, so there is no true end-to-end
+  proof. There are no delivery telemetry counters, no `internal/campaigns` unit tests, and no
+  audit document yet.
+- **Not yet verified:** `go build/vet/test ./...` could not be executed during the audit (no
+  Go toolchain in the audit sandbox). Run the full Go suite in CI/locally before sign-off.
 
 > **How to use this document.** Sections 1–5 explain *what* we are building and *why*.
 > Section 6 is a **recipe book**: the exact, copy-paste patterns this codebase already
@@ -293,6 +303,29 @@ skip schema-registry lookup:
 | `message.complained` | SES SNS callback | `campaign_id, endpoint` | insert `suppressions(reason='complaint')` |
 | `email.opened` | tracking pixel | `campaign_id, link_id?` | none |
 | `link.clicked` | `/r/{token}` redirect | `campaign_id, link_id, url` | none |
+
+### 2.6 As-built deviations from this spec
+
+The implementation is internally consistent but differs from the SQL above in a few places.
+**The code is the source of truth**; this list keeps the doc honest for the next reader:
+
+- **`sending_identity_id` lives on `templates`, not `campaigns`.** A campaign's sender is
+  derived from its template. `campaigns` has no `sending_identity_id` column or struct field.
+- **`delivery_jobs`**: recipient batch column is `recipients` (not `payload`); status set is
+  `('pending','processing','completed','failed','dead')` (not `.../'done'`); it uses
+  `error_message` + `updated_at` (not `last_error` + `completed_at`); indexes are
+  `_status_idx` + `_campaign_idx`.
+- **`delivery_attempts`**: `decision` also allows `'failed'` (7 values total); has an extra
+  `created_at`; the fatigue index includes `decision`.
+- **`campaigns`** adds `description` and `evaluated_at`; `status` also allows `'archived'`.
+- **Segment resolution** (sha256 subject mapping, boolean-tree intersection, member
+  include/exclude subtraction) lives in `resolveSegmentIDs`/`ResolveSegment` in
+  `internal/postgres/segments.go`, not in `dispatch.go`.
+- **Tracking tokens** bind a wider tuple than specified
+  (`tenant|app|campaign|profile|link|template|dispatch|url`), HMAC-keyed by
+  `OPENJOURNEY_TRACKING_SECRET_KEY`.
+- **Missing routes:** no sending-identity update/delete, no campaign delete (only
+  create/get/list, plus campaign update).
 
 ---
 
@@ -583,26 +616,96 @@ order; each milestone should compile and pass `go build ./... && go vet ./...` b
    Implemented; remaining proof for worker-kill/restart and full fake-adapter journey is
    tracked in 7.7.
 
-### Milestone 7.7 — Integration, load & audit
-1. [ ] **Integration test** (live Postgres + ClickHouse, copy `store_integration_test.go`):
-   segment → template → campaign → dispatch → deliver (fake adapter) → assert
-   `delivery_attempts` rows and emitted `message.sent` events.
-2. [ ] **Load/effectively-once smoke:** 10,000-recipient sharded broadcast; kill a delivery
-   worker mid-shard, restart, and assert **no duplicate `decision='sent'` rows**.
-3. [ ] **Reproducibility test:** re-run dispatch from the stored manifest → identical recipient
-   set (checksum equal).
-4. [ ] **Explainability test:** every recipient has exactly one `delivery_attempts` row with a
-   non-empty `reason`.
-5. [ ] **Telemetry:** counters for send rate, bounce/complaint rate, policy rejections.
-6. [ ] **Audit doc** `docs/milestones/v1-milestone-2-audit.md` mirroring the Milestone-1
-   acceptance-evidence format.
+### Milestone 7.7 — Integration, load & audit (all OPEN)
+1. [ ] **True end-to-end integration test.** The current `campaigns_integration_test.go` only
+   drives store methods; it never calls the real code paths. Add a test that runs
+   `campaigns.DispatchNext` then `campaigns.DeliverNext` with the `FakeAdapter`, over a real
+   segment→template→campaign, and asserts: manifest object written, `delivery_attempts` rows
+   present, and `message.sent` events emitted. *Done when:* the fake-adapter journey passes.
+2. [ ] **`internal/campaigns` unit tests.** `dispatch.go` and `deliver.go` currently have **no
+   tests**. Cover: effectively-once skip (`inserted=false`), policy-rejection short-circuit,
+   render-failure path, and (after the §8 P1 fix) transient-send-failure requeue.
+3. [ ] **Load / effectively-once smoke.** New script (`scripts/smoke-campaign-delivery.sh`):
+   10,000-recipient sharded broadcast; kill a `campaigns-delivery` worker mid-shard, restart,
+   assert **no duplicate `decision='sent'` rows**. *Note:* existing `smoke-worker-termination.sh`
+   only covers the projection worker, not delivery.
+4. [ ] **Reproducibility test:** re-run dispatch from the stored MinIO manifest → identical
+   recipient set (checksum equal).
+5. [ ] **Explainability test:** assert every recipient has exactly one `delivery_attempts` row
+   with a non-empty `reason`.
+6. [ ] **Delivery telemetry.** No delivery metrics exist today. Register counters for
+   messages sent, bounces/complaints, and policy rejections (per decision) via the existing
+   OTel meter; expose on `/metrics`.
+7. [ ] **CI wiring.** Dockerfile/compose build `campaigns-dispatcher` + `campaigns-delivery`,
+   but no CI smoke **starts or exercises** them. Add them to a smoke job (or the new script in
+   step 3) so delivery is actually run in CI.
+8. [ ] **Run the Go suite.** Execute `go build ./... && go vet ./... && go test ./...`
+   (the audit could not run these) and record the result. Also `go mod tidy` (see §8 P2).
+9. [ ] **Audit doc** `docs/milestones/v1-milestone-2-audit.md` mirroring the Milestone-1
+   acceptance-evidence format, including the §8 fixes and the evidence above.
 
 ---
 
-## 8. Open items to confirm before coding
+## 8. Audit findings — defects to fix before closeout (2026-07-08)
+
+Ordered by priority. Each names the file and the fix. **P0 blocks any production use; do P0
+and P1 before signing off 7.7.**
+
+### P0 — security (must fix)
+1. [x] **SNS signature-verification bypass (CRITICAL).** `internal/httpapi/callbacks.go:233`
+   short-circuits `verifySNSSignature` whenever `Signature == "mock-valid-signature"` — in the
+   production handler, no build tag. Anyone POSTing that literal to `/v1/callbacks/ses` skips
+   all verification and can forge `message.bounced`/`complained`/`delivered` for an
+   attacker-chosen tenant (query/`x-*` headers), poisoning suppression lists and analytics.
+   **Fix:** remove the bypass; make tests inject a fake verifier (interface) or use a
+   `//go:build test`-gated stub — never a magic string in prod code. — done: removed production signature bypass and injected mock verifier interface in callbacks.go/server.go
+
+### P1 — correctness / reliability
+2. [ ] **SNS cert host check too loose.** `callbacks.go:247` (and `:349` for `SubscribeURL`)
+   accepts any `*.amazonaws.com` host — including attacker-writable `bucket.s3.amazonaws.com`.
+   **Fix:** require `sns.<region>.amazonaws.com` and add a TopicARN allowlist.
+3. [ ] **Transient send failures are silently dropped.** `internal/campaigns/deliver.go:225-228`
+   marks `send_failed` and `continue`s on any adapter error, then `CompleteDeliveryJob` runs
+   unconditionally at `:257` — so a throttled/5xx recipient is never retried and the shard is
+   marked `completed`. The retryable/permanent classification (`IsRetryableError`,
+   `DeliveryError.Retryable`) is computed but ignored. **Fix:** on a *retryable* error, leave
+   the recipient un-`sent` and requeue the job (don't complete it) so the lease re-drives it;
+   only mark permanent failures terminal. Note this interacts with the effectively-once row —
+   design the retry to clear/re-open the attempt for retryable cases only.
+4. [ ] **SES rate limiter is per-job, not fleet-wide.** `NewSESAdapter()` is constructed inside
+   `DeliverNext` (`deliver.go:84`), so the per-identity token bucket resets every job; effective
+   rate ≈ `jobs × workers × max_send_rate`, which can exceed the SES account limit. **Fix:**
+   construct the adapter (and its limiter map) once per worker process and pass it in.
+5. [ ] **Compiler arg/placeholder contract mismatch (latent footgun).** `CompileConsent`
+   (`internal/audience/compile_pg.go`) emits `$1..$5` but returns only 3 args;
+   `CompileClickHouse` emits 4 `?` but returns 3 — correct only because the two current callers
+   in `segments.go` manually prepend tenant params in the exact order. **Fix:** make each
+   compiler return the full, correctly-ordered arg list (or document the prepend contract and
+   assert it in a test) so a future caller can't bind the wrong columns.
+6. [ ] **Brittle consent-not-found detection.** `internal/policy/policy.go:61` uses
+   `errors.Is(err, errors.New("not found"))` (dead — new identity each call) plus an exact
+   `err.Error() == "not found"` string match. If `LatestConsent`'s error is ever wrapped,
+   genuinely-missing consent misclassifies as `send_failed` instead of `no_consent`. **Fix:**
+   compare against the exported `postgres.ErrNotFound` sentinel with `errors.Is`.
+
+### P2 — hardening / hygiene
+7. [ ] **Fail-fast on default tracking key.** `OPENJOURNEY_TRACKING_SECRET_KEY` defaults to
+   `"change-me-in-production"` (`config.go`, `server.go`). Refuse to start in production if unset.
+8. [ ] **Move fatigue caps to config.** Caps are hard-coded (`deliver.go` `MaxSends24h:5,
+   MaxSends7d:20`). Store per-tenant on `tenant_quotas` per the original design.
+9. [ ] **Assert the Liquid sandbox.** `internal/render/render.go` uses a bare engine; no file/
+   `{% include %}` vector exists today but it's implicit. Add an explicit lockdown + a test.
+10. [ ] **`go mod tidy`** — `github.com/osteele/liquid` is marked `// indirect` despite direct use.
+11. [ ] **Strengthen the golden test.** `internal/audience/compile_test.go:TestGoldenQueries`
+    self-writes the golden file when absent, so it can't fail on drift. Make it fail-on-missing.
+12. [ ] **(Optional)** Block CGNAT `100.64.0.0/10` in the webhook SSRF guard; add
+    sending-identity update/delete and campaign delete routes if the UI needs them.
+
+## 9. Open items to confirm before coding
 
 - **SES account for CI:** build against `ChannelAdapter` with the fake in CI; gate a real
   SES send behind an opt-in `make send-ses-smoke` target (mirrors `make validate-oidc-provider`).
-- **Fatigue defaults:** proposed caps of N sends / 24h and M / 7d per profile — confirm
-  values (store on `tenant_quotas`).
-- **Webhook channel:** shipping this milestone; SSRF + HMAC + retry are mandatory before enabling.
+- **Fatigue defaults:** current caps are 5 sends / 24h and 20 / 7d per profile (hard-coded — see
+  §8 item 8). Confirm the values and move them to `tenant_quotas`.
+- **Webhook channel:** shipping this milestone; SSRF + HMAC + retry are implemented (SSRF guard
+  verified solid). Keep them mandatory before enabling.

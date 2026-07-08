@@ -25,10 +25,19 @@ func (c *callbacksMockStore) AcceptEvents(ctx context.Context, p domain.Principa
 	return []string{"event-1"}, nil
 }
 
+type mockSNSSignatureVerifier struct {
+	err error
+}
+
+func (m mockSNSSignatureVerifier) Verify(msg SNSMessage) error {
+	return m.err
+}
+
 func TestHandleSESCallback_Bounce(t *testing.T) {
 	store := &callbacksMockStore{}
 	server := &Server{
-		store: store,
+		store:       store,
+		snsVerifier: mockSNSSignatureVerifier{},
 	}
 
 	sesMessageJSON := `{
@@ -110,7 +119,8 @@ func TestHandleSESCallback_Bounce(t *testing.T) {
 func TestHandleSESCallback_Complaint(t *testing.T) {
 	store := &callbacksMockStore{}
 	server := &Server{
-		store: store,
+		store:       store,
+		snsVerifier: mockSNSSignatureVerifier{},
 	}
 
 	sesMessageJSON := `{
@@ -216,7 +226,8 @@ func TestTrackerEventsUseCampaignWorkspace(t *testing.T) {
 func TestHandleSESCallback_SSRFBlockOnSubscriptionConfirmation(t *testing.T) {
 	store := &callbacksMockStore{}
 	server := &Server{
-		store: store,
+		store:       store,
+		snsVerifier: mockSNSSignatureVerifier{},
 	}
 
 	// Craft confirmation targeting localhost (non-AWS URL)

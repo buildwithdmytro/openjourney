@@ -79,7 +79,7 @@ func (s *Server) handleSESCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 1. Verify SNS signature (critical security safeguard)
-	if err := verifySNSSignature(snsMsg); err != nil {
+	if err := s.snsVerifier.Verify(snsMsg); err != nil {
 		http.Error(w, fmt.Sprintf("signature verification failed: %v", err), http.StatusBadRequest)
 		return
 	}
@@ -227,13 +227,18 @@ func (s *Server) handleSESCallback(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+type snsSignatureVerifier interface {
+	Verify(msg SNSMessage) error
+}
+
+type realSNSSignatureVerifier struct{}
+
+func (v realSNSSignatureVerifier) Verify(msg SNSMessage) error {
+	return verifySNSSignature(msg)
+}
+
 // verifySNSSignature validates the cryptographical origin of the SNS notification payload.
 func verifySNSSignature(msg SNSMessage) error {
-	// Let test suite bypass heavy cryptographic validation
-	if msg.Signature == "mock-valid-signature" {
-		return nil
-	}
-
 	if msg.Signature == "" {
 		return errors.New("missing signature")
 	}
