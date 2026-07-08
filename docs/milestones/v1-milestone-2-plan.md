@@ -695,7 +695,7 @@ and P1 before signing off 7.7.**
    MaxSends7d:20`). Store per-tenant on `tenant_quotas` per the original design.
 9. [x] **Assert the Liquid sandbox.** `internal/render/render.go` uses a bare engine; no file/
    `{% include %}` vector exists today but it's implicit. Add an explicit lockdown + a test.
-10. [ ] **`go mod tidy`** — `github.com/osteele/liquid` is marked `// indirect` despite direct use.
+10. [x] **`go mod tidy`** — `github.com/osteele/liquid` is marked `// indirect` despite direct use.
 11. [ ] **Strengthen the golden test.** `internal/audience/compile_test.go:TestGoldenQueries`
     self-writes the golden file when absent, so it can't fail on drift. Make it fail-on-missing.
 12. [ ] **(Optional)** Block CGNAT `100.64.0.0/10` in the webhook SSRF guard; add
