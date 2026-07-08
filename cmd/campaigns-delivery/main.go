@@ -13,6 +13,7 @@ import (
 	"github.com/buildwithdmytro/openjourney/internal/campaigns"
 	"github.com/buildwithdmytro/openjourney/internal/channels"
 	"github.com/buildwithdmytro/openjourney/internal/config"
+	"github.com/buildwithdmytro/openjourney/internal/ports"
 	"github.com/buildwithdmytro/openjourney/internal/postgres"
 )
 
@@ -47,7 +48,10 @@ func main() {
 	}
 	workerID := fmt.Sprintf("delivery-worker-%s-%d", hostname, os.Getpid())
 
-	sesAdapter := channels.NewSESAdapter()
+	var sesAdapter ports.ChannelAdapter = channels.NewSESAdapter()
+	if os.Getenv("OPENJOURNEY_MOCK_SES") == "true" {
+		sesAdapter = channels.NewFakeAdapter()
+	}
 	webhookAdapter := channels.NewWebhookAdapter()
 	fakeAdapter := channels.NewFakeAdapter()
 
