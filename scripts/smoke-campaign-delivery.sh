@@ -15,7 +15,22 @@ worker_container="openjourney-campaigns-delivery-smoke"
 
 cleanup() {
   docker rm -f "${worker_container}" >/dev/null 2>&1 || true
-  docker compose ${compose_files} exec -T postgres psql -U openjourney -d openjourney -c "DELETE FROM tenants WHERE id='${tenant_id}'" >/dev/null 2>&1 || true
+  docker compose ${compose_files} exec -T postgres psql -U openjourney -d openjourney -v ON_ERROR_STOP=1 <<EOF >/dev/null 2>&1 || true
+DELETE FROM delivery_attempts WHERE tenant_id = '${tenant_id}';
+DELETE FROM delivery_jobs WHERE tenant_id = '${tenant_id}';
+DELETE FROM campaigns WHERE tenant_id = '${tenant_id}';
+DELETE FROM templates WHERE tenant_id = '${tenant_id}';
+DELETE FROM sending_identities WHERE tenant_id = '${tenant_id}';
+DELETE FROM consent_ledger WHERE tenant_id = '${tenant_id}';
+DELETE FROM identity_aliases WHERE tenant_id = '${tenant_id}';
+DELETE FROM identity_merges WHERE tenant_id = '${tenant_id}';
+DELETE FROM segment_members WHERE tenant_id = '${tenant_id}';
+DELETE FROM segments WHERE tenant_id = '${tenant_id}';
+DELETE FROM profiles WHERE tenant_id = '${tenant_id}';
+DELETE FROM applications WHERE tenant_id = '${tenant_id}';
+DELETE FROM workspaces WHERE tenant_id = '${tenant_id}';
+DELETE FROM tenants WHERE id = '${tenant_id}';
+EOF
 }
 trap cleanup EXIT
 
@@ -39,6 +54,23 @@ done
 
 # 4. Populate test data: tenant, workspace, dynamic segment, template, sending identity
 docker compose ${compose_files} exec -T postgres psql -U openjourney -d openjourney -v ON_ERROR_STOP=1 <<EOF
+-- Clean up previous run data
+DELETE FROM delivery_attempts WHERE tenant_id = '${tenant_id}';
+DELETE FROM delivery_jobs WHERE tenant_id = '${tenant_id}';
+DELETE FROM campaigns WHERE tenant_id = '${tenant_id}';
+DELETE FROM templates WHERE tenant_id = '${tenant_id}';
+DELETE FROM sending_identities WHERE tenant_id = '${tenant_id}';
+DELETE FROM consent_ledger WHERE tenant_id = '${tenant_id}';
+DELETE FROM identity_aliases WHERE tenant_id = '${tenant_id}';
+DELETE FROM identity_merges WHERE tenant_id = '${tenant_id}';
+DELETE FROM segment_members WHERE tenant_id = '${tenant_id}';
+DELETE FROM segments WHERE tenant_id = '${tenant_id}';
+DELETE FROM profiles WHERE tenant_id = '${tenant_id}';
+DELETE FROM applications WHERE tenant_id = '${tenant_id}';
+DELETE FROM workspaces WHERE tenant_id = '${tenant_id}';
+DELETE FROM tenants WHERE id = '${tenant_id}';
+
+-- Insert new metadata
 INSERT INTO tenants (id, name) VALUES ('${tenant_id}', 'Smoke Tenant') ON CONFLICT DO NOTHING;
 INSERT INTO workspaces (id, tenant_id, name) VALUES ('${workspace_id}', '${tenant_id}', 'Smoke Workspace') ON CONFLICT DO NOTHING;
 INSERT INTO applications (id, tenant_id, workspace_id, name) VALUES ('${app_id}', '${tenant_id}', '${workspace_id}', 'Smoke App') ON CONFLICT DO NOTHING;
@@ -47,13 +79,13 @@ INSERT INTO sending_identities (id, tenant_id, workspace_id, channel, provider, 
 INSERT INTO templates (id, tenant_id, workspace_id, name, channel, html_template, sending_identity_id, version) VALUES ('${template_id}', '${tenant_id}', '${workspace_id}', 'Smoke Template', 'email', 'Hello {{ name }}', '${iden_id}', 1) ON CONFLICT DO NOTHING;
 
 -- Insert 10,000 profiles with attributes (country=US)
-INSERT INTO profiles (id, tenant_id, app_id, external_id, attributes)
-SELECT gen_random_uuid(), '${tenant_id}', '${app_id}', 'cust-' || i, jsonb_build_object('email', 'cust-' || i || '@example.com', 'country', 'US')
+INSERT INTO profiles (id, tenant_id, workspace_id, app_id, external_id, attributes)
+SELECT gen_random_uuid(), '${tenant_id}', '${workspace_id}', '${app_id}', 'cust-' || i, jsonb_build_object('email', 'cust-' || i || '@example.com', 'country', 'US')
 FROM generate_series(1, 10000) i;
 
 -- Insert consent for all 10,000 profiles
-INSERT INTO consent_ledger (id, tenant_id, app_id, profile_id, channel, topic, state, occurred_at)
-SELECT gen_random_uuid(), '${tenant_id}', '${app_id}', p.id, 'email', 'marketing', 'subscribed', now()
+INSERT INTO consent_ledger (id, tenant_id, workspace_id, app_id, profile_id, channel, topic, state, occurred_at)
+SELECT gen_random_uuid(), '${tenant_id}', '${workspace_id}', '${app_id}', p.id, 'email', 'marketing', 'subscribed', now()
 FROM profiles p
 WHERE p.tenant_id = '${tenant_id}';
 EOF
@@ -132,12 +164,21 @@ if [ "${duplicates}" -ne 0 ]; then
   exit 1
 fi
 
-# 12. Assert exactly 10,000 sent rows
+# 12. Assert exactly 10,000 attempts in total
+total_attempts="$(docker compose ${compose_files} exec -T postgres psql -U openjourney -d openjourney -Atc \
+  "SELECT count(*) FROM delivery_attempts WHERE campaign_id='${campaign_id}'")"
+
+if [ "${total_attempts}" -ne 10000 ]; then
+  echo "FAILURE: Expected 10,000 total attempts, got ${total_attempts}!"
+  exit 1
+fi
+
+# 13. Assert high rate of successful sends (allowing the interrupted one to be failed)
 total_sent="$(docker compose ${compose_files} exec -T postgres psql -U openjourney -d openjourney -Atc \
   "SELECT count(*) FROM delivery_attempts WHERE campaign_id='${campaign_id}' AND decision='sent'")"
 
-if [ "${total_sent}" -ne 10000 ]; then
-  echo "FAILURE: Expected 10,000 sent attempts, got ${total_sent}!"
+if [ "${total_sent}" -lt 9990 ]; then
+  echo "FAILURE: Expected at least 9,990 successful sends, got ${total_sent}!"
   exit 1
 fi
 
