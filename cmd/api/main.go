@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -79,6 +80,13 @@ func main() {
 		Handler: httpapi.NewWithSessionTTL(store, cfg.MaxBatchSize, tokenVerifier, cfg.CORSAllowedOrigin, sessionTTL,
 				func(s *httpapi.Server) {
 					s.SetTracking([]byte(cfg.TrackingSecretKey), cfg.TrackingBaseURL)
+					if cfg.AllowedTopicARNs != "" {
+						arns := strings.Split(cfg.AllowedTopicARNs, ",")
+						for i := range arns {
+							arns[i] = strings.TrimSpace(arns[i])
+						}
+						s.SetAllowedTopicARNs(arns)
+					}
 				}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,

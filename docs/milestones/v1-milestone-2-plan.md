@@ -661,9 +661,9 @@ and P1 before signing off 7.7.**
    `//go:build test`-gated stub — never a magic string in prod code. — done: removed production signature bypass and injected mock verifier interface in callbacks.go/server.go
 
 ### P1 — correctness / reliability
-2. [ ] **SNS cert host check too loose.** `callbacks.go:247` (and `:349` for `SubscribeURL`)
+2. [x] **SNS cert host check too loose.** `callbacks.go:247` (and `:349` for `SubscribeURL`)
    accepts any `*.amazonaws.com` host — including attacker-writable `bucket.s3.amazonaws.com`.
-   **Fix:** require `sns.<region>.amazonaws.com` and add a TopicARN allowlist.
+   **Fix:** require `sns.<region>.amazonaws.com` and add a TopicARN allowlist. — done: restricted host check to sns.<region>.amazonaws.com and enforced TopicARN allowlist check in internal/httpapi/callbacks.go
 3. [ ] **Transient send failures are silently dropped.** `internal/campaigns/deliver.go:225-228`
    marks `send_failed` and `continue`s on any adapter error, then `CompleteDeliveryJob` runs
    unconditionally at `:257` — so a throttled/5xx recipient is never retried and the shard is

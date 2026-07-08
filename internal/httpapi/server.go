@@ -31,6 +31,7 @@ type Server struct {
 	trackingSecretKey  []byte
 	trackingBaseURL    string
 	snsVerifier        snsSignatureVerifier
+	allowedTopicARNs   []string
 }
 
 func New(store ports.Store, maxBatchSize int) http.Handler {
@@ -59,6 +60,11 @@ func NewWithSessionTTL(store ports.Store, maxBatchSize int, verifier ports.Token
 func (s *Server) SetTracking(secretKey []byte, baseURL string) {
 	s.trackingSecretKey = secretKey
 	s.trackingBaseURL = baseURL
+}
+
+// SetAllowedTopicARNs configures the allowed Topic ARNs for incoming SNS callbacks.
+func (s *Server) SetAllowedTopicARNs(arns []string) {
+	s.allowedTopicARNs = arns
 }
 
 func (s *Server) buildMux() http.Handler {

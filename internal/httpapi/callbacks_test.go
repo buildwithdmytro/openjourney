@@ -259,3 +259,111 @@ func TestHandleSESCallback_SSRFBlockOnSubscriptionConfirmation(t *testing.T) {
 		t.Errorf("expected subscription rejection error, got: %s", w.Body.String())
 	}
 }
+
+func TestVerifySNSSignature_HostChecking(t *testing.T) {
+	tests := []struct {
+		name    string
+		certURL string
+		wantErr bool
+	}{
+		{"valid standard region", "https://sns.us-east-1.amazonaws.com/cert.pem", false},
+		{"valid other region", "https://sns.ap-southeast-2.amazonaws.com/cert.pem", false},
+		{"invalid host s3", "https://bucket.s3.amazonaws.com/cert.pem", true},
+		{"invalid host other domain", "https://sns.us-east-1.random.com/cert.pem", true},
+		{"invalid host suffix bypass attempt", "https://sns.us-east-1.amazonaws.com.attacker.com/cert.pem", true},
+		{"invalid non-https scheme", "http://sns.us-east-1.amazonaws.com/cert.pem", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			msg := SNSMessage{
+				Signature:      "some-signature",
+				SigningCertURL: tt.certURL,
+			}
+			err := verifySNSSignature(msg)
+			if tt.wantErr {
+				if err == nil || !strings.Contains(err.Error(), "invalid cert host") {
+					t.Fatalf("expected host validation error, got: %v", err)
+				}
+			} else {
+				if err == nil || strings.Contains(err.Error(), "invalid cert host") {
+					t.Fatalf("expected host check to pass, got: %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestConfirmSNSSubscription_HostChecking(t *testing.T) {
+	tests := []struct {
+		name    string
+		subURL  string
+		wantErr bool
+	}{
+		{"valid standard region", "https://sns.us-east-1.amazonaws.com/confirm", false},
+		{"invalid host s3", "https://bucket.s3.amazonaws.com/confirm", true},
+		{"invalid host other domain", "https://sns.us-east-1.random.com/confirm", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := confirmSNSSubscription(tt.subURL)
+			if tt.wantErr {
+				if err == nil || !strings.Contains(err.Error(), "invalid subscription target host") {
+					t.Fatalf("expected host validation error, got: %v", err)
+				}
+			} else {
+				if err == nil || strings.Contains(err.Error(), "invalid subscription target host") {
+					t.Fatalf("expected host check to pass, got: %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestHandleSESCallback_TopicARNAllowlist(t *testing.T) {
+	store := &callbacksMockStore{}
+	server := &Server{
+		store:            store,
+		snsVerifier:      mockSNSSignatureVerifier{},
+		allowedTopicARNs: []string{"arn:aws:sns:us-east-1:123456789012:allowed-topic"},
+	}
+
+	sesMessageJSON := `{"eventType": "Bounce", "mail": {"messageId": "msg-123"}}`
+
+	tests := []struct {
+		name       string
+		topicARN   string
+		expectCode int
+	}{
+		{"allowed topic", "arn:aws:sns:us-east-1:123456789012:allowed-topic", http.StatusOK},
+		{"forbidden topic", "arn:aws:sns:us-east-1:123456789012:other-topic", http.StatusForbidden},
+		{"empty topic", "", http.StatusForbidden},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			snsEnvelope := SNSMessage{
+				Type:             "Notification",
+				MessageId:        "sns-msg-id",
+				TopicArn:         tt.topicARN,
+				Message:          sesMessageJSON,
+				Timestamp:        "2026-07-07T12:00:00Z",
+				SignatureVersion: "1",
+				Signature:        "mock-valid-signature",
+				SigningCertURL:   "https://sns.us-east-1.amazonaws.com/SimpleNotificationService-abcdef.pem",
+			}
+
+			bodyBytes, _ := json.Marshal(snsEnvelope)
+			req := httptest.NewRequest("POST", "/v1/callbacks/ses?tenant_id=t1&workspace_id=w1", bytes.NewReader(bodyBytes))
+			w := httptest.NewRecorder()
+
+			server.handleSESCallback(w, req)
+
+			if w.Code != tt.expectCode {
+				t.Errorf("expected HTTP %d, got: %d (%s)", tt.expectCode, w.Code, w.Body.String())
+			}
+		})
+	}
+}
+

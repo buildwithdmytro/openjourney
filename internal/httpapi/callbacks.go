@@ -11,12 +11,16 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 )
+
+var snsHostRegex = regexp.MustCompile(`^sns\.[a-z0-9-]+\.amazonaws\.com$`)
+
 
 // SNSMessage represents the standard JSON envelope sent by AWS SNS.
 type SNSMessage struct {
@@ -82,6 +86,21 @@ func (s *Server) handleSESCallback(w http.ResponseWriter, r *http.Request) {
 	if err := s.snsVerifier.Verify(snsMsg); err != nil {
 		http.Error(w, fmt.Sprintf("signature verification failed: %v", err), http.StatusBadRequest)
 		return
+	}
+
+	// 1b. Verify Topic ARN matches the allowlist if configured
+	if len(s.allowedTopicARNs) > 0 {
+		allowed := false
+		for _, arn := range s.allowedTopicARNs {
+			if snsMsg.TopicArn == arn {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			http.Error(w, fmt.Sprintf("forbidden: topic ARN %q not in allowlist", snsMsg.TopicArn), http.StatusForbidden)
+			return
+		}
 	}
 
 	// 2. Handle SubscriptionConfirmation
@@ -249,8 +268,8 @@ func verifySNSSignature(msg SNSMessage) error {
 		return fmt.Errorf("failed to parse SigningCertURL: %w", err)
 	}
 
-	if certURL.Scheme != "https" || !strings.HasSuffix(certURL.Host, ".amazonaws.com") {
-		return fmt.Errorf("invalid cert host: %s (must be an amazonaws.com domain)", certURL.Host)
+	if certURL.Scheme != "https" || !snsHostRegex.MatchString(certURL.Host) {
+		return fmt.Errorf("invalid cert host: %s (must match sns.<region>.amazonaws.com)", certURL.Host)
 	}
 
 	// 2. Fetch/Retrieve Certificate
@@ -351,8 +370,8 @@ func confirmSNSSubscription(subscribeURL string) error {
 		return err
 	}
 
-	if u.Scheme != "https" || !strings.HasSuffix(u.Host, ".amazonaws.com") {
-		return fmt.Errorf("invalid subscription target host: %s", u.Host)
+	if u.Scheme != "https" || !snsHostRegex.MatchString(u.Host) {
+		return fmt.Errorf("invalid subscription target host: %s (must match sns.<region>.amazonaws.com)", u.Host)
 	}
 
 	resp, err := http.Get(subscribeURL)

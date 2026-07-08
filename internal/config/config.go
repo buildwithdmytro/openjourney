@@ -33,6 +33,7 @@ type Config struct {
 	ServiceVersion      string
 	TrackingSecretKey   string
 	TrackingBaseURL     string
+	AllowedTopicARNs    string
 }
 
 func Load() (Config, error) {
@@ -61,6 +62,7 @@ func Load() (Config, error) {
 		ServiceVersion:      env("OPENJOURNEY_SERVICE_VERSION", "dev"),
 		TrackingSecretKey:   env("OPENJOURNEY_TRACKING_SECRET_KEY", "change-me-in-production"),
 		TrackingBaseURL:     env("OPENJOURNEY_TRACKING_BASE_URL", "http://localhost:8080"),
+		AllowedTopicARNs:    env("OPENJOURNEY_ALLOWED_TOPIC_ARNS", ""),
 	}
 	for key, target := range map[string]*string{
 		"OPENJOURNEY_DATABASE_URL":        &cfg.DatabaseURL,
