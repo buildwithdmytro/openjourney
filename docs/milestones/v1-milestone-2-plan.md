@@ -693,7 +693,7 @@ and P1 before signing off 7.7.**
    `"change-me-in-production"` (`config.go`, `server.go`). Refuse to start in production if unset.
 8. [x] **Move fatigue caps to config.** Caps are hard-coded (`deliver.go` `MaxSends24h:5,
    MaxSends7d:20`). Store per-tenant on `tenant_quotas` per the original design.
-9. [ ] **Assert the Liquid sandbox.** `internal/render/render.go` uses a bare engine; no file/
+9. [x] **Assert the Liquid sandbox.** `internal/render/render.go` uses a bare engine; no file/
    `{% include %}` vector exists today but it's implicit. Add an explicit lockdown + a test.
 10. [ ] **`go mod tidy`** — `github.com/osteele/liquid` is marked `// indirect` despite direct use.
 11. [ ] **Strengthen the golden test.** `internal/audience/compile_test.go:TestGoldenQueries`
