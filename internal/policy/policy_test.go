@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
-	"github.com/buildwithdmytro/openjourney/internal/postgres"
 	"github.com/buildwithdmytro/openjourney/internal/ports"
 )
 
@@ -67,7 +66,7 @@ func TestEvaluate(t *testing.T) {
 	t.Run("no explicit consent", func(t *testing.T) {
 		store := &fakeStore{
 			suppressed: false,
-			consentErr: postgres.ErrNotFound,
+			consentErr: ports.ErrNotFound,
 		}
 		verdict := Evaluate(context.Background(), store, principal, recipient, caps)
 		if verdict.Decision != "no_consent" {

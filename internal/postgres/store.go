@@ -16,6 +16,7 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/buildwithdmytro/openjourney/internal/domain"
+	"github.com/buildwithdmytro/openjourney/internal/ports"
 	"github.com/buildwithdmytro/openjourney/internal/schemas"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -25,7 +26,7 @@ import (
 var migrations embed.FS
 
 var ErrUnauthorized = errors.New("unauthorized")
-var ErrNotFound = errors.New("not found")
+var ErrNotFound = ports.ErrNotFound
 var ErrQuotaExceeded = errors.New("quota exceeded")
 var ErrIdempotencyConflict = errors.New("idempotency key reused with different event")
 

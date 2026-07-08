@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
-	"github.com/buildwithdmytro/openjourney/internal/postgres"
 	"github.com/buildwithdmytro/openjourney/internal/ports"
 )
 
@@ -59,7 +58,7 @@ func Evaluate(ctx context.Context, store ports.Store, p domain.Principal, recipi
 	}
 	consent, err := store.LatestConsent(ctx, p, recipient.ProfileID, caps.Channel, topic)
 	if err != nil {
-		if errors.Is(err, postgres.ErrNotFound) {
+		if errors.Is(err, ports.ErrNotFound) {
 			snapshot["consent"] = "missing"
 			return Verdict{
 				Decision: "no_consent",

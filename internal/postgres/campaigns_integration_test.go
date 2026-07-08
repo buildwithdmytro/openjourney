@@ -2,11 +2,16 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"os"
 	"testing"
 	"time"
 
+	"github.com/buildwithdmytro/openjourney/internal/campaigns"
+	"github.com/buildwithdmytro/openjourney/internal/channels"
 	"github.com/buildwithdmytro/openjourney/internal/domain"
+	"github.com/buildwithdmytro/openjourney/internal/projector"
 )
 
 func TestCampaignsIntegration(t *testing.T) {
@@ -233,4 +238,224 @@ func TestCampaignsIntegration(t *testing.T) {
 
 	// Clean up
 	_, _ = store.pool.Exec(ctx, "DELETE FROM tenants WHERE id=$1", tenantID)
+}
+
+type mockBlobStore struct {
+	data map[string][]byte
+}
+
+func (m *mockBlobStore) Put(ctx context.Context, key string, data []byte, contentType string) error {
+	if m.data == nil {
+		m.data = make(map[string][]byte)
+	}
+	m.data[key] = data
+	return nil
+}
+
+func (m *mockBlobStore) Get(ctx context.Context, key string) ([]byte, error) {
+	if m.data == nil {
+		return nil, fmt.Errorf("not found")
+	}
+	val, ok := m.data[key]
+	if !ok {
+		return nil, fmt.Errorf("not found")
+	}
+	return val, nil
+}
+
+func TestCampaignsEndToEnd(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer store.Close()
+
+	tenantID := "tenant-e2e-" + time.Now().Format("20060102-150405")
+	p := domain.Principal{TenantID: tenantID, WorkspaceID: "workspace-1", AppID: "app-1", Scopes: []string{"*"}}
+
+	_, err = store.pool.Exec(ctx, `INSERT INTO tenants(id, name) VALUES($1, 'E2E Tenant')`, tenantID)
+	if err != nil {
+		t.Fatalf("insert tenant: %v", err)
+	}
+	defer func() {
+		_, _ = store.pool.Exec(ctx, "DELETE FROM tenants WHERE id=$1", tenantID)
+	}()
+
+	_, err = store.pool.Exec(ctx, `INSERT INTO workspaces(id, tenant_id, name) VALUES($1, $2, 'E2E Workspace')`, p.WorkspaceID, tenantID)
+	if err != nil {
+		t.Fatalf("insert workspace: %v", err)
+	}
+
+	// 1. Create a profile and accept event to project attributes & consent
+	events := []domain.Event{
+		{
+			Type: "profile.updated", SchemaVersion: 1, ExternalID: "cust-e2e-1",
+			IdempotencyKey: "identify-e2e-1", OccurredAt: time.Now().UTC(),
+			Payload: json.RawMessage(`{"attributes":{"country":"US", "email":"e2e-rec@example.com"}}`),
+		},
+		{
+			Type: "consent.changed", SchemaVersion: 1, ExternalID: "cust-e2e-1",
+			IdempotencyKey: "consent-e2e-1", OccurredAt: time.Now().UTC(),
+			Payload: json.RawMessage(`{"channel":"email","topic":"marketing","state":"subscribed"}`),
+		},
+	}
+	_, err = store.AcceptEvents(ctx, p, events)
+	if err != nil {
+		t.Fatalf("accept events: %v", err)
+	}
+
+	// Project the events
+	_, err = projector.Drain(ctx, store, 2, false)
+	if err != nil {
+		t.Fatalf("projector drain: %v", err)
+	}
+
+	// Get profile to verify creation and find the profile ID
+	prof, _, err := store.GetProfile(ctx, p, "cust-e2e-1")
+	if err != nil {
+		t.Fatalf("get profile: %v", err)
+	}
+
+	// 2. Create dynamic segment selector
+	seg, err := store.CreateSegment(ctx, p, domain.Segment{
+		Name: "E2E Dynamic Segment",
+		Type: "dynamic",
+		DSL:  []byte(`{"type":"profile_attribute","field":"country","operator":"equals","value":"US"}`),
+	})
+	if err != nil {
+		t.Fatalf("create segment: %v", err)
+	}
+
+	// 3. Create dependent sending identity and template
+	iden, err := store.CreateSendingIdentity(ctx, p, domain.SendingIdentity{
+		Channel:     "email",
+		FromAddress: ptr("sender@example.com"),
+		FromName:    ptr("Sender"),
+		Provider:    "fake",
+		MaxSendRate: 10,
+	})
+	if err != nil {
+		t.Fatalf("create sending identity: %v", err)
+	}
+
+	htmlTmpl := "Hello E2E!"
+	tmpl, err := store.CreateTemplate(ctx, p, domain.Template{
+		Name:              "E2E Template",
+		Channel:           "email",
+		HTMLTemplate:      &htmlTmpl,
+		SendingIdentityID: &iden.ID,
+	})
+	if err != nil {
+		t.Fatalf("create template: %v", err)
+	}
+
+	// 4. Create Campaign and schedule it
+	camp, err := store.CreateCampaign(ctx, p, domain.Campaign{
+		Name:            "E2E Campaign",
+		SegmentID:       seg.ID,
+		TemplateID:      tmpl.ID,
+		Status:          "draft",
+		SegmentVersion:  1,
+		TemplateVersion: 1,
+	})
+	if err != nil {
+		t.Fatalf("create campaign: %v", err)
+	}
+
+	pastTime := time.Now().Add(-1 * time.Minute)
+	camp.Status = "scheduled"
+	camp.ScheduledAt = &pastTime
+	camp, err = store.UpdateCampaign(ctx, p, camp)
+	if err != nil {
+		t.Fatalf("update campaign: %v", err)
+	}
+
+	// 5. Run campaigns.DispatchNext (e2e dispatching)
+	blob := &mockBlobStore{}
+	dispatched, err := campaigns.DispatchNext(ctx, store, blob)
+	if err != nil {
+		t.Fatalf("DispatchNext: %v", err)
+	}
+	if !dispatched {
+		t.Fatal("expected to dispatch a campaign")
+	}
+
+	// Assert manifest was written to the blob store
+	campFetched, err := store.GetCampaign(ctx, p, camp.ID)
+	if err != nil {
+		t.Fatalf("get campaign after dispatch: %v", err)
+	}
+	if campFetched.Status != "sending" {
+		t.Errorf("expected campaign status to be 'sending', got %s", campFetched.Status)
+	}
+	if campFetched.ManifestKey == nil || *campFetched.ManifestKey == "" {
+		t.Fatal("expected manifest key to be set on campaign")
+	}
+	manifestData, err := blob.Get(ctx, *campFetched.ManifestKey)
+	if err != nil {
+		t.Fatalf("get manifest data from blob: %v", err)
+	}
+	if len(manifestData) == 0 {
+		t.Error("expected manifest data to be non-empty")
+	}
+
+	// 6. Run campaigns.DeliverNext (e2e delivery)
+	fakeAdapter := channels.NewFakeAdapter()
+	cfg := campaigns.Config{
+		TrackingSecretKey: []byte("tracking-secret-key-12345"),
+		TrackingBaseURL:   "http://localhost:8080",
+		FakeAdapter:       fakeAdapter,
+	}
+
+	delivered, err := campaigns.DeliverNext(ctx, store, "worker-1", cfg)
+	if err != nil {
+		t.Fatalf("DeliverNext: %v", err)
+	}
+	if !delivered {
+		t.Fatal("expected to deliver a job")
+	}
+
+	// Assert campaign is completed
+	campCompleted, err := store.GetCampaign(ctx, p, camp.ID)
+	if err != nil {
+		t.Fatalf("get campaign after delivery: %v", err)
+	}
+	if campCompleted.Status != "completed" {
+		t.Errorf("expected campaign status to be 'completed', got %s", campCompleted.Status)
+	}
+
+	// Assert delivery attempt row is present with decision 'sent'
+	rows, err := store.pool.Query(ctx, `SELECT decision, reason FROM delivery_attempts WHERE campaign_id = $1 AND profile_id = $2`, camp.ID, prof.ID)
+	if err != nil {
+		t.Fatalf("query delivery attempts: %v", err)
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		t.Fatal("expected a delivery attempt row to be inserted")
+	}
+	var decision, reason string
+	if err := rows.Scan(&decision, &reason); err != nil {
+		t.Fatalf("scan delivery attempt: %v", err)
+	}
+	if decision != "sent" {
+		t.Errorf("expected decision 'sent', got %s", decision)
+	}
+	if reason != "eligible" {
+		t.Errorf("expected reason 'eligible', got %s", reason)
+	}
+
+	// Assert message.sent event is emitted
+	var eventType string
+	err = store.pool.QueryRow(ctx, `SELECT type FROM events WHERE tenant_id = $1 AND external_id = $2 AND type = 'message.sent'`, tenantID, prof.ExternalID).Scan(&eventType)
+	if err != nil {
+		t.Fatalf("query events: %v", err)
+	}
+	if eventType != "message.sent" {
+		t.Errorf("expected event type 'message.sent', got %q", eventType)
+	}
 }

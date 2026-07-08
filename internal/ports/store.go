@@ -2,10 +2,13 @@ package ports
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 )
+
+var ErrNotFound = errors.New("not found")
 
 type Store interface {
 	Ready(context.Context) error
