@@ -664,14 +664,14 @@ and P1 before signing off 7.7.**
 2. [x] **SNS cert host check too loose.** `callbacks.go:247` (and `:349` for `SubscribeURL`)
    accepts any `*.amazonaws.com` host — including attacker-writable `bucket.s3.amazonaws.com`.
    **Fix:** require `sns.<region>.amazonaws.com` and add a TopicARN allowlist. — done: restricted host check to sns.<region>.amazonaws.com and enforced TopicARN allowlist check in internal/httpapi/callbacks.go
-3. [ ] **Transient send failures are silently dropped.** `internal/campaigns/deliver.go:225-228`
+3. [x] **Transient send failures are silently dropped.** `internal/campaigns/deliver.go:225-228`
    marks `send_failed` and `continue`s on any adapter error, then `CompleteDeliveryJob` runs
    unconditionally at `:257` — so a throttled/5xx recipient is never retried and the shard is
    marked `completed`. The retryable/permanent classification (`IsRetryableError`,
    `DeliveryError.Retryable`) is computed but ignored. **Fix:** on a *retryable* error, leave
    the recipient un-`sent` and requeue the job (don't complete it) so the lease re-drives it;
    only mark permanent failures terminal. Note this interacts with the effectively-once row —
-   design the retry to clear/re-open the attempt for retryable cases only.
+   design the retry to clear/re-open the attempt for retryable cases only. — done: cleared retryable delivery attempts and failed the delivery job to trigger requeueing in internal/campaigns/deliver.go
 4. [ ] **SES rate limiter is per-job, not fleet-wide.** `NewSESAdapter()` is constructed inside
    `DeliverNext` (`deliver.go:84`), so the per-identity token bucket resets every job; effective
    rate ≈ `jobs × workers × max_send_rate`, which can exceed the SES account limit. **Fix:**

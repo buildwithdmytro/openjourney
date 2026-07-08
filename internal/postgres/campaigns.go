@@ -302,6 +302,12 @@ func (s *Store) UpdateDeliveryAttempt(ctx context.Context, campaignID, profileID
 	return err
 }
 
+func (s *Store) DeleteDeliveryAttempt(ctx context.Context, tenantID, campaignID, profileID, channel string) error {
+	_, err := s.pool.Exec(ctx, `DELETE FROM delivery_attempts WHERE tenant_id=$1 AND campaign_id=$2 AND profile_id=$3 AND channel=$4`,
+		tenantID, campaignID, profileID, channel)
+	return err
+}
+
 func (s *Store) GetProfileEmails(ctx context.Context, tenantID string, profileIDs []string) (map[string]string, error) {
 	if len(profileIDs) == 0 {
 		return map[string]string{}, nil

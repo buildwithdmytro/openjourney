@@ -18,6 +18,7 @@ import (
 type Config struct {
 	TrackingSecretKey []byte
 	TrackingBaseURL   string
+	Adapter           ports.ChannelAdapter
 }
 
 func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Config) (bool, error) {
@@ -79,15 +80,19 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 
 	// Resolve appropriate channel adapter
 	var adapter ports.ChannelAdapter
-	switch identity.Provider {
-	case "ses":
-		adapter = channels.NewSESAdapter()
-	case "webhook":
-		adapter = channels.NewWebhookAdapter()
-	case "fake", "":
-		adapter = channels.NewFakeAdapter()
-	default:
-		adapter = channels.NewFakeAdapter()
+	if cfg.Adapter != nil {
+		adapter = cfg.Adapter
+	} else {
+		switch identity.Provider {
+		case "ses":
+			adapter = channels.NewSESAdapter()
+		case "webhook":
+			adapter = channels.NewWebhookAdapter()
+		case "fake", "":
+			adapter = channels.NewFakeAdapter()
+		default:
+			adapter = channels.NewFakeAdapter()
+		}
 	}
 
 	// Fatigue checks caps
@@ -97,6 +102,9 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 		MaxSends24h: 5,
 		MaxSends7d:  20,
 	}
+
+	var hasRetryableError bool
+	var retryableErrMsg string
 
 	// Process recipients
 	for _, rec := range job.Recipients {
@@ -224,7 +232,16 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 		providerMsgID, err := adapter.Send(ctx, msg)
 		if err != nil {
 			slog.Error("failed to send message via adapter", "error", err, "profile_id", rec.ProfileID)
-			_ = store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, "send_failed", fmt.Sprintf("adapter send error: %v", err), "", nil)
+			if channels.IsRetryableError(err) {
+				deleteErr := store.DeleteDeliveryAttempt(ctx, camp.TenantID, camp.ID, rec.ProfileID, template.Channel)
+				if deleteErr != nil {
+					slog.Error("failed to delete delivery attempt on retryable error", "error", deleteErr)
+				}
+				hasRetryableError = true
+				retryableErrMsg = err.Error()
+			} else {
+				_ = store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, "send_failed", fmt.Sprintf("adapter send error: %v", err), "", nil)
+			}
 			continue
 		}
 
@@ -252,6 +269,16 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 		if err != nil {
 			slog.Error("failed to emit message.sent event", "error", err, "profile_id", rec.ProfileID)
 		}
+	}
+
+	if hasRetryableError {
+		err = store.FailDeliveryJob(ctx, job.ID, fmt.Sprintf("transient send failure: %s", retryableErrMsg))
+		if err != nil {
+			slog.Error("failed to fail delivery job on transient error", "error", err, "job_id", job.ID)
+			return true, err
+		}
+		slog.Info("delivery job failed with transient error and marked for retry", "job_id", job.ID)
+		return true, fmt.Errorf("transient delivery failure: %s", retryableErrMsg)
 	}
 
 	err = store.CompleteDeliveryJob(ctx, job.ID)

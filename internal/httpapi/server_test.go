@@ -243,6 +243,9 @@ func (f *fakeStore) CreateDeliveryAttempt(ctx context.Context, attempt domain.De
 func (f *fakeStore) UpdateDeliveryAttempt(ctx context.Context, campaignID, profileID, channel, decision, reason, providerMsgID string, policySnapshot []byte) error {
 	return nil
 }
+func (f *fakeStore) DeleteDeliveryAttempt(ctx context.Context, tenantID, campaignID, profileID, channel string) error {
+	return nil
+}
 func (f *fakeStore) GetProfileEmails(ctx context.Context, tenantID string, profileIDs []string) (map[string]string, error) {
 	return map[string]string{}, nil
 }
