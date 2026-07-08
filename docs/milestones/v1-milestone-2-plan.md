@@ -629,8 +629,8 @@ order; each milestone should compile and pass `go build ./... && go vet ./...` b
    10,000-recipient sharded broadcast; kill a `campaigns-delivery` worker mid-shard, restart,
    assert **no duplicate `decision='sent'` rows**. *Note:* existing `smoke-worker-termination.sh`
    only covers the projection worker, not delivery. — done: created scripts/smoke-campaign-delivery.sh and verified it passes cleanly
-4. [ ] **Reproducibility test:** re-run dispatch from the stored MinIO manifest → identical
-   recipient set (checksum equal).
+4. [x] **Reproducibility test:** re-run dispatch from the stored MinIO manifest → identical
+   recipient set (checksum equal). — done: implemented RedispatchFromManifest in internal/campaigns/dispatch.go and added TestCampaignsReproducibility in campaigns_integration_test.go
 5. [ ] **Explainability test:** assert every recipient has exactly one `delivery_attempts` row
    with a non-empty `reason`.
 6. [ ] **Delivery telemetry.** No delivery metrics exist today. Register counters for
