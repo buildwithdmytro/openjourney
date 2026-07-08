@@ -622,9 +622,9 @@ order; each milestone should compile and pass `go build ./... && go vet ./...` b
    `campaigns.DispatchNext` then `campaigns.DeliverNext` with the `FakeAdapter`, over a real
    segment→template→campaign, and asserts: manifest object written, `delivery_attempts` rows
    present, and `message.sent` events emitted. *Done when:* the fake-adapter journey passes. — done: added TestCampaignsEndToEnd in internal/postgres/campaigns_integration_test.go
-2. [ ] **`internal/campaigns` unit tests.** `dispatch.go` and `deliver.go` currently have **no
+2. [x] **`internal/campaigns` unit tests.** `dispatch.go` and `deliver.go` currently have **no
    tests**. Cover: effectively-once skip (`inserted=false`), policy-rejection short-circuit,
-   render-failure path, and (after the §8 P1 fix) transient-send-failure requeue.
+   render-failure path, and (after the §8 P1 fix) transient-send-failure requeue. — done: added comprehensive unit tests covering all paths in internal/campaigns/deliver_test.go
 3. [ ] **Load / effectively-once smoke.** New script (`scripts/smoke-campaign-delivery.sh`):
    10,000-recipient sharded broadcast; kill a `campaigns-delivery` worker mid-shard, restart,
    assert **no duplicate `decision='sent'` rows**. *Note:* existing `smoke-worker-termination.sh`
