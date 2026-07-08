@@ -682,11 +682,11 @@ and P1 before signing off 7.7.**
    in `segments.go` manually prepend tenant params in the exact order. **Fix:** make each
    compiler return the full, correctly-ordered arg list (or document the prepend contract and
    assert it in a test) so a future caller can't bind the wrong columns. — done: updated CompileConsent/CompileClickHouse to return full arg list and updated all callers
-6. [ ] **Brittle consent-not-found detection.** `internal/policy/policy.go:61` uses
+6. [x] **Brittle consent-not-found detection.** `internal/policy/policy.go:61` uses
    `errors.Is(err, errors.New("not found"))` (dead — new identity each call) plus an exact
    `err.Error() == "not found"` string match. If `LatestConsent`'s error is ever wrapped,
    genuinely-missing consent misclassifies as `send_failed` instead of `no_consent`. **Fix:**
-   compare against the exported `postgres.ErrNotFound` sentinel with `errors.Is`.
+   compare against the exported `postgres.ErrNotFound` sentinel with `errors.Is`. — done: used errors.Is with postgres.ErrNotFound and fixed policy unit test
 
 ### P2 — hardening / hygiene
 7. [ ] **Fail-fast on default tracking key.** `OPENJOURNEY_TRACKING_SECRET_KEY` defaults to
