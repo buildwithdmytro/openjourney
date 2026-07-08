@@ -1,9 +1,22 @@
 # Phase 2 Implementation Plan: Audiences and Reliable Email
 
+Status: implementation mostly complete; closeout evidence still in progress.
+
 This plan details the architecture, schemas, and atomic tasks to deliver Phase 2 of
 OpenJourney: **audiences, templates, and reliable multi-channel delivery**. It is written
 to build directly on the Milestone 1 platform kernel and to satisfy the Phase 2 exit
 criteria in `plan.md`.
+
+Current reality as of commit `b8e9528`:
+
+- Milestones 7.1 through 7.5 are implemented and checked below.
+- Milestone 7.6 is implemented in code: campaign schema/store/API/UI, dispatcher binary,
+  delivery worker, immutable manifest writing, sharded `delivery_jobs`, effectively-once
+  `delivery_attempts`, policy evaluation, rendering, adapter send, and `message.sent`
+  emission exist.
+- Milestone 7.7 remains open: the final end-to-end integration, load/effectively-once
+  smoke, reproducibility, explainability, telemetry, and audit-document evidence still
+  need to be added before Phase 2 should be called complete.
 
 > **How to use this document.** Sections 1–5 explain *what* we are building and *why*.
 > Section 6 is a **recipe book**: the exact, copy-paste patterns this codebase already
@@ -534,10 +547,13 @@ order; each milestone should compile and pass `go build ./... && go vet ./...` b
    suppression (via 7.4 step 2).
 
 ### Milestone 7.6 — Campaigns, dispatcher & sharded delivery
-1. **Migration** `012_campaigns.sql` (`campaigns`, `delivery_jobs`, `delivery_attempts`).
-2. **Domain + scopes + CRUD + UI** for campaigns (`campaigns:read/write`); status
+1. [x] **Migration** `012_campaigns.sql` (`campaigns`, `delivery_jobs`, `delivery_attempts`).
+   Implemented in `internal/postgres/migrations/012_campaigns.sql`.
+2. [x] **Domain + scopes + CRUD + UI** for campaigns (`campaigns:read/write`); status
    transitions draft→scheduled, scheduled→paused (Recipes 6.2–6.4, 6.8).
-3. **Dispatcher binary** `cmd/campaigns-dispatcher/main.go` + `internal/campaigns/dispatch.go`
+   Implemented through `domain.Campaign`, `domain.DeliveryJob`, `domain.DeliveryAttempt`,
+   campaign store methods, HTTP routes, RBAC scopes, and React campaign management.
+3. [x] **Dispatcher binary** `cmd/campaigns-dispatcher/main.go` + `internal/campaigns/dispatch.go`
    (Recipe 6.6). Loop:
    a. Claim a campaign `WHERE status='scheduled' AND scheduled_at<=now()` (Recipe 6.7 shape);
       set `status='building'`.
@@ -550,7 +566,10 @@ order; each milestone should compile and pass `go build ./... && go vet ./...` b
    d. Insert sharded `delivery_jobs` (e.g. 500 recipients per row, `shard = i % N`); set
       campaign `status='sending'`.
    *Done when:* scheduling a campaign produces a manifest object and pending delivery jobs.
-4. **Delivery worker** `cmd/campaigns-delivery/main.go` + `internal/campaigns/deliver.go`
+   Basic store-level integration coverage exists in
+   `internal/postgres/campaigns_integration_test.go`; final end-to-end evidence is tracked
+   in 7.7.
+4. [x] **Delivery worker** `cmd/campaigns-delivery/main.go` + `internal/campaigns/deliver.go`
    (Recipes 6.6, 6.7). For each claimed `delivery_jobs` batch, per recipient:
    a. `INSERT INTO delivery_attempts (...) ON CONFLICT (campaign_id,profile_id,channel)
       DO NOTHING`; if 0 rows affected → **skip** (already handled → effectively-once).
@@ -561,19 +580,21 @@ order; each milestone should compile and pass `go build ./... && go vet ./...` b
    d. Mark the job `done`; when all shards are done, set campaign `status='completed'`.
    *Done when:* a small campaign delivers via the fake adapter and every recipient has one
    `delivery_attempts` row.
+   Implemented; remaining proof for worker-kill/restart and full fake-adapter journey is
+   tracked in 7.7.
 
 ### Milestone 7.7 — Integration, load & audit
-1. **Integration test** (live Postgres + ClickHouse, copy `store_integration_test.go`):
+1. [ ] **Integration test** (live Postgres + ClickHouse, copy `store_integration_test.go`):
    segment → template → campaign → dispatch → deliver (fake adapter) → assert
    `delivery_attempts` rows and emitted `message.sent` events.
-2. **Load/effectively-once smoke:** 10,000-recipient sharded broadcast; kill a delivery
+2. [ ] **Load/effectively-once smoke:** 10,000-recipient sharded broadcast; kill a delivery
    worker mid-shard, restart, and assert **no duplicate `decision='sent'` rows**.
-3. **Reproducibility test:** re-run dispatch from the stored manifest → identical recipient
+3. [ ] **Reproducibility test:** re-run dispatch from the stored manifest → identical recipient
    set (checksum equal).
-4. **Explainability test:** every recipient has exactly one `delivery_attempts` row with a
+4. [ ] **Explainability test:** every recipient has exactly one `delivery_attempts` row with a
    non-empty `reason`.
-5. **Telemetry:** counters for send rate, bounce/complaint rate, policy rejections.
-6. **Audit doc** `docs/milestones/v1-milestone-2-audit.md` mirroring the Milestone-1
+5. [ ] **Telemetry:** counters for send rate, bounce/complaint rate, policy rejections.
+6. [ ] **Audit doc** `docs/milestones/v1-milestone-2-audit.md` mirroring the Milestone-1
    acceptance-evidence format.
 
 ---
