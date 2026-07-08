@@ -25,6 +25,7 @@ type mockStore struct {
 	completedJobs          map[string]bool
 	createdAttempts        []domain.DeliveryAttempt
 	updatedAttempts        []string
+	isSuppressedFunc       func(ctx context.Context, p domain.Principal, channel, endpoint string) (bool, error)
 }
 
 func newMockStore() *mockStore {
@@ -137,6 +138,9 @@ func (m *mockStore) LatestConsent(ctx context.Context, p domain.Principal, profi
 }
 
 func (m *mockStore) IsSuppressed(ctx context.Context, p domain.Principal, channel, endpoint string) (bool, error) {
+	if m.isSuppressedFunc != nil {
+		return m.isSuppressedFunc(ctx, p, channel, endpoint)
+	}
 	return false, nil
 }
 
@@ -296,5 +300,203 @@ func TestDeliverNext_PermanentError(t *testing.T) {
 
 	if _, ok := store.completedJobs[jobID]; !ok {
 		t.Errorf("expected job %s to be completed", jobID)
+	}
+}
+
+func TestDeliverNext_EffectivelyOnceSkip(t *testing.T) {
+	store := newMockStore()
+
+	campID := "camp-1"
+	tmplID := "tmpl-1"
+	profID := "prof-1"
+	jobID := "job-1"
+
+	store.campaigns[campID] = domain.Campaign{
+		ID:          campID,
+		TenantID:    "tenant-1",
+		WorkspaceID: "workspace-1",
+		TemplateID:  tmplID,
+	}
+
+	htmlTmpl := "hello world"
+	store.templates[tmplID] = domain.Template{
+		ID:           tmplID,
+		Channel:      "email",
+		HTMLTemplate: &htmlTmpl,
+	}
+
+	store.profiles[profID] = domain.Profile{
+		ID:         profID,
+		ExternalID: "ext-1",
+	}
+
+	store.jobs[jobID] = domain.DeliveryJob{
+		ID:         jobID,
+		CampaignID: campID,
+		TenantID:   "tenant-1",
+		Recipients: []domain.Recipient{
+			{
+				ProfileID: profID,
+				Endpoint:  "test@example.com",
+			},
+		},
+	}
+
+	// Seed the delivery attempts map so CreateDeliveryAttempt returns false (already exists)
+	key := campID + ":" + profID + ":email"
+	store.deliveryAttempts[key] = domain.DeliveryAttempt{
+		CampaignID: campID,
+		ProfileID:  profID,
+		Channel:    "email",
+	}
+
+	adapter := &testAdapter{}
+	cfg := Config{
+		Adapter: adapter,
+	}
+
+	processed, err := DeliverNext(context.Background(), store, "worker-1", cfg)
+	if !processed {
+		t.Fatalf("expected processed=true")
+	}
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Since it was skipped, updatedAttempts should be empty (no updates to sent, suppressed, failed, etc.)
+	if len(store.updatedAttempts) != 0 {
+		t.Errorf("expected no updated attempts, got: %v", store.updatedAttempts)
+	}
+
+	if _, ok := store.completedJobs[jobID]; !ok {
+		t.Errorf("expected job %s to be completed", jobID)
+	}
+}
+
+func TestDeliverNext_PolicyRejection(t *testing.T) {
+	// 1. Suppression case
+	{
+		store := newMockStore()
+		campID := "camp-1"
+		tmplID := "tmpl-1"
+		profID := "prof-1"
+		jobID := "job-1"
+
+		store.campaigns[campID] = domain.Campaign{
+			ID:          campID,
+			TenantID:    "tenant-1",
+			WorkspaceID: "workspace-1",
+			TemplateID:  tmplID,
+		}
+
+		htmlTmpl := "hello world"
+		store.templates[tmplID] = domain.Template{
+			ID:           tmplID,
+			Channel:      "email",
+			HTMLTemplate: &htmlTmpl,
+		}
+
+		store.profiles[profID] = domain.Profile{
+			ID:         profID,
+			ExternalID: "ext-1",
+		}
+
+		store.jobs[jobID] = domain.DeliveryJob{
+			ID:         jobID,
+			CampaignID: campID,
+			TenantID:   "tenant-1",
+			Recipients: []domain.Recipient{
+				{
+					ProfileID: profID,
+					Endpoint:  "test@example.com",
+				},
+			},
+		}
+
+		// Mock IsSuppressed helper on store
+		store.isSuppressedFunc = func(ctx context.Context, p domain.Principal, channel, endpoint string) (bool, error) {
+			return true, nil
+		}
+
+		adapter := &testAdapter{}
+		cfg := Config{
+			Adapter: adapter,
+		}
+
+		processed, err := DeliverNext(context.Background(), store, "worker-1", cfg)
+		if !processed || err != nil {
+			t.Fatalf("unexpected err: %v", err)
+		}
+
+		foundSuppressed := false
+		for _, up := range store.updatedAttempts {
+			if up == profID+":suppressed" {
+				foundSuppressed = true
+			}
+		}
+		if !foundSuppressed {
+			t.Errorf("expected attempt to be updated to suppressed, got: %v", store.updatedAttempts)
+		}
+	}
+}
+
+func TestDeliverNext_RenderFailure(t *testing.T) {
+	store := newMockStore()
+
+	campID := "camp-1"
+	tmplID := "tmpl-1"
+	profID := "prof-1"
+	jobID := "job-1"
+
+	store.campaigns[campID] = domain.Campaign{
+		ID:          campID,
+		TenantID:    "tenant-1",
+		WorkspaceID: "workspace-1",
+		TemplateID:  tmplID,
+	}
+
+	// Invalid Liquid tag will trigger render failure
+	htmlTmpl := "{% invalid_tag %}"
+	store.templates[tmplID] = domain.Template{
+		ID:           tmplID,
+		Channel:      "email",
+		HTMLTemplate: &htmlTmpl,
+	}
+
+	store.profiles[profID] = domain.Profile{
+		ID:         profID,
+		ExternalID: "ext-1",
+	}
+
+	store.jobs[jobID] = domain.DeliveryJob{
+		ID:         jobID,
+		CampaignID: campID,
+		TenantID:   "tenant-1",
+		Recipients: []domain.Recipient{
+			{
+				ProfileID: profID,
+				Endpoint:  "test@example.com",
+			},
+		},
+	}
+
+	adapter := &testAdapter{}
+	cfg := Config{
+		Adapter: adapter,
+	}
+
+	processed, err := DeliverNext(context.Background(), store, "worker-1", cfg)
+	if !processed || err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+
+	foundRenderFailed := false
+	for _, up := range store.updatedAttempts {
+		if up == profID+":render_failed" {
+			foundRenderFailed = true
+		}
+	}
+	if !foundRenderFailed {
+		t.Errorf("expected attempt to be updated to render_failed, got: %v", store.updatedAttempts)
 	}
 }
