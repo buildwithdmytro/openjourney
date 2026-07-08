@@ -157,9 +157,14 @@ func (s *Store) SetClickHouse(conn clickhouse.Conn) {
 }
 
 func (s *Store) resolveSegmentIDs(ctx context.Context, p domain.Principal, seg domain.Segment) (map[string]bool, map[string]int, error) {
-	node, err := audience.Parse(seg.DSL)
-	if err != nil {
-		return nil, nil, err
+	var node audience.Node
+	var err error
+	isDSL := len(seg.DSL) > 0 && string(seg.DSL) != "{}" && string(seg.DSL) != "null"
+	if isDSL {
+		node, err = audience.Parse(seg.DSL)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 
 	rows, err := s.pool.Query(ctx, `SELECT id, COALESCE(external_id, '') FROM profiles
@@ -291,24 +296,25 @@ func (s *Store) resolveSegmentIDs(ctx context.Context, p domain.Principal, seg d
 			return matchingProfileIDs, nil
 
 		case *audience.EventHistory:
+			if s.chConn == nil {
+				return nil, fmt.Errorf("ClickHouse connection not available for event-history evaluation")
+			}
 			sql, args := audience.CompileClickHouse(nodeType)
 			matchingProfileIDs := make(map[string]bool)
 
-			if s.chConn != nil {
-				rows, err := s.chConn.Query(ctx, sql, p.TenantID, args[0], args[1], args[2])
-				if err != nil {
+			rows, err := s.chConn.Query(ctx, sql, p.TenantID, args[0], args[1], args[2])
+			if err != nil {
+				return nil, err
+			}
+			defer rows.Close()
+
+			for rows.Next() {
+				var subjectHash string
+				if err := rows.Scan(&subjectHash); err != nil {
 					return nil, err
 				}
-				defer rows.Close()
-
-				for rows.Next() {
-					var subjectHash string
-					if err := rows.Scan(&subjectHash); err != nil {
-						return nil, err
-					}
-					if pID, exists := hashToProfileID[subjectHash]; exists {
-						matchingProfileIDs[pID] = true
-					}
+				if pID, exists := hashToProfileID[subjectHash]; exists {
+					matchingProfileIDs[pID] = true
 				}
 			}
 
@@ -330,9 +336,13 @@ func (s *Store) resolveSegmentIDs(ctx context.Context, p domain.Principal, seg d
 		}
 	}
 
-	eligibleProfileIDs, err := eval(node)
-	if err != nil {
-		return nil, nil, err
+	eligibleProfileIDs := make(map[string]bool)
+	if isDSL {
+		var err error
+		eligibleProfileIDs, err = eval(node)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 
 	mRows, err := s.pool.Query(ctx, `SELECT profile_id, membership FROM segment_members

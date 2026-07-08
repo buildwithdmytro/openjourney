@@ -10,15 +10,18 @@ import (
 	"testing"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
+	"github.com/buildwithdmytro/openjourney/internal/render"
 )
 
 type callbacksMockStore struct {
 	fakeStore
-	capturedEvents []domain.Event
+	capturedEvents     []domain.Event
+	capturedPrincipals []domain.Principal
 }
 
 func (c *callbacksMockStore) AcceptEvents(ctx context.Context, p domain.Principal, events []domain.Event) ([]string, error) {
 	c.capturedEvents = append(c.capturedEvents, events...)
+	c.capturedPrincipals = append(c.capturedPrincipals, p)
 	return []string{"event-1"}, nil
 }
 
@@ -77,6 +80,15 @@ func TestHandleSESCallback_Bounce(t *testing.T) {
 	ev := store.capturedEvents[0]
 	if ev.Type != "message.bounced" {
 		t.Errorf("expected event type 'message.bounced', got: %s", ev.Type)
+	}
+	if ev.SchemaVersion != 1 {
+		t.Errorf("expected schema version 1, got: %d", ev.SchemaVersion)
+	}
+	if ev.ExternalID != "bounced-recipient@example.com" {
+		t.Errorf("expected external id from recipient, got: %s", ev.ExternalID)
+	}
+	if store.capturedPrincipals[0].TenantID != "test-tenant-456" || store.capturedPrincipals[0].WorkspaceID != "test-workspace-789" {
+		t.Errorf("unexpected principal: %+v", store.capturedPrincipals[0])
 	}
 
 	var payload map[string]any
@@ -149,6 +161,12 @@ func TestHandleSESCallback_Complaint(t *testing.T) {
 	if ev.Type != "message.complained" {
 		t.Errorf("expected event type 'message.complained', got: %s", ev.Type)
 	}
+	if ev.SchemaVersion != 1 {
+		t.Errorf("expected schema version 1, got: %d", ev.SchemaVersion)
+	}
+	if ev.ExternalID != "complaining-recipient@example.com" {
+		t.Errorf("expected external id from recipient, got: %s", ev.ExternalID)
+	}
 
 	var payload map[string]any
 	if err := json.Unmarshal(ev.Payload, &payload); err != nil {
@@ -160,6 +178,38 @@ func TestHandleSESCallback_Complaint(t *testing.T) {
 	}
 	if payload["endpoint"] != "complaining-recipient@example.com" {
 		t.Errorf("expected endpoint 'complaining-recipient@example.com', got: %v", payload["endpoint"])
+	}
+}
+
+func TestTrackerEventsUseCampaignWorkspace(t *testing.T) {
+	store := &callbacksMockStore{}
+	server := &Server{
+		store:             store,
+		trackingSecretKey: []byte("test-tracking-secret"),
+	}
+
+	token, err := render.SignOpenToken("tenant", "app", "campaign-1", "profile-1", "template-1", "dispatch-1", server.trackingSecretKey)
+	if err != nil {
+		t.Fatalf("sign token: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/o/"+token+".gif", nil)
+	req.SetPathValue("token", token+".gif")
+	w := httptest.NewRecorder()
+
+	server.openPixel(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+	if len(store.capturedEvents) != 1 {
+		t.Fatalf("expected 1 tracker event, got %d", len(store.capturedEvents))
+	}
+	if store.capturedEvents[0].Type != "email.opened" {
+		t.Fatalf("unexpected event type: %s", store.capturedEvents[0].Type)
+	}
+	if store.capturedPrincipals[0].WorkspaceID != "workspace" {
+		t.Fatalf("expected campaign workspace, got principal %+v", store.capturedPrincipals[0])
 	}
 }
 

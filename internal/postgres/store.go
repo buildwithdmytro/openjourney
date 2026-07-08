@@ -342,8 +342,6 @@ func (s *Store) GetProfileByID(ctx context.Context, tenantID, appID, profileID s
 	return profile, err
 }
 
-
-
 func (s *Store) ClaimProjectionJob(ctx context.Context) (domain.AcceptedEvent, bool, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -395,9 +393,13 @@ func (s *Store) ProjectEvent(ctx context.Context, event domain.AcceptedEvent) er
 		return err
 	}
 	defer tx.Rollback(ctx)
-	profileID, err := ensureProfile(ctx, tx, event)
-	if err != nil {
-		return err
+	var profileID string
+	if event.Type != "message.bounced" && event.Type != "message.complained" {
+		var err error
+		profileID, err = ensureProfile(ctx, tx, event)
+		if err != nil {
+			return err
+		}
 	}
 	switch event.Type {
 	case "profile.updated":

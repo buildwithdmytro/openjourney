@@ -220,7 +220,7 @@ func (f *fakeStore) ListCampaigns(ctx context.Context, p domain.Principal) ([]do
 	return []domain.Campaign{{ID: "campaign-1", Name: "Test Campaign", Status: "draft"}}, nil
 }
 func (f *fakeStore) GetCampaignSystem(ctx context.Context, tenantID, id string) (domain.Campaign, error) {
-	return domain.Campaign{ID: id, TenantID: tenantID, Status: "sending"}, nil
+	return domain.Campaign{ID: id, TenantID: tenantID, WorkspaceID: "workspace", Status: "sending"}, nil
 }
 func (f *fakeStore) ClaimScheduledCampaign(ctx context.Context) (domain.Campaign, bool, error) {
 	return domain.Campaign{}, false, nil
@@ -249,10 +249,6 @@ func (f *fakeStore) GetProfileEmails(ctx context.Context, tenantID string, profi
 func (f *fakeStore) GetFirstAppID(ctx context.Context, tenantID, workspaceID string) (string, error) {
 	return "app-1", nil
 }
-
-
-
-
 func TestAcceptEvents(t *testing.T) {
 	store := &fakeStore{}
 	server := New(store, 75)
@@ -428,6 +424,15 @@ func TestSegmentsEndpoints(t *testing.T) {
 	if !strings.Contains(listRes.Body.String(), "Test Segment") {
 		t.Fatalf("expected Test Segment in body=%s", listRes.Body.String())
 	}
+	var listBody struct {
+		Segments []domain.Segment `json:"segments"`
+	}
+	if err := json.Unmarshal(listRes.Body.Bytes(), &listBody); err != nil {
+		t.Fatalf("decode list body: %v", err)
+	}
+	if len(listBody.Segments) != 1 || listBody.Segments[0].ID != "segment-1" {
+		t.Fatalf("unexpected list body=%s", listRes.Body.String())
+	}
 
 	// Get
 	getReq := httptest.NewRequest(http.MethodGet, "/v1/segments/segment-1", nil)
@@ -466,5 +471,43 @@ func TestSegmentsEndpoints(t *testing.T) {
 	}
 	if !strings.Contains(previewRes.Body.String(), `"count":42`) {
 		t.Fatalf("unexpected preview body=%s", previewRes.Body.String())
+	}
+}
+
+func TestTemplateListEndpointsUseResponseEnvelopes(t *testing.T) {
+	server := New(&fakeStore{scopes: []string{"templates:read"}}, 75)
+
+	templatesReq := httptest.NewRequest(http.MethodGet, "/v1/templates", nil)
+	templatesReq.Header.Set("Authorization", "Bearer test-key")
+	templatesRes := httptest.NewRecorder()
+	server.ServeHTTP(templatesRes, templatesReq)
+	if templatesRes.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", templatesRes.Code, templatesRes.Body.String())
+	}
+	var templatesBody struct {
+		Templates []domain.Template `json:"templates"`
+	}
+	if err := json.Unmarshal(templatesRes.Body.Bytes(), &templatesBody); err != nil {
+		t.Fatalf("decode templates body: %v", err)
+	}
+	if len(templatesBody.Templates) != 1 || templatesBody.Templates[0].ID != "tmpl-1" {
+		t.Fatalf("unexpected templates body=%s", templatesRes.Body.String())
+	}
+
+	identitiesReq := httptest.NewRequest(http.MethodGet, "/v1/sending-identities", nil)
+	identitiesReq.Header.Set("Authorization", "Bearer test-key")
+	identitiesRes := httptest.NewRecorder()
+	server.ServeHTTP(identitiesRes, identitiesReq)
+	if identitiesRes.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", identitiesRes.Code, identitiesRes.Body.String())
+	}
+	var identitiesBody struct {
+		Identities []domain.SendingIdentity `json:"identities"`
+	}
+	if err := json.Unmarshal(identitiesRes.Body.Bytes(), &identitiesBody); err != nil {
+		t.Fatalf("decode identities body: %v", err)
+	}
+	if len(identitiesBody.Identities) != 1 || identitiesBody.Identities[0].ID != "iden-1" {
+		t.Fatalf("unexpected identities body=%s", identitiesRes.Body.String())
 	}
 }

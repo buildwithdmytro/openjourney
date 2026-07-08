@@ -2,6 +2,7 @@ package audience
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -63,6 +64,9 @@ func compileProfileNode(node Node, args *[]any) (string, error) {
 		return "NOT (" + part + ")", nil
 
 	case *ProfileAttribute:
+		if !fieldSafetyRegex.MatchString(n.Field) {
+			return "", fmt.Errorf("unsafe or invalid profile field name: %s", n.Field)
+		}
 		*args = append(*args, n.Value)
 		paramNum := len(*args) + 2 // $1 is tenant_id, $2 is workspace_id
 		placeholder := fmt.Sprintf("$%d", paramNum)
@@ -86,6 +90,8 @@ func compileProfileNode(node Node, args *[]any) (string, error) {
 		return "", nil
 	}
 }
+
+var fieldSafetyRegex = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
 
 func CompileConsent(n *Consent) (string, []any) {
 	sql := `SELECT profile_id FROM (

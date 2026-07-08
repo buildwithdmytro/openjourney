@@ -42,6 +42,16 @@ func DispatchNext(ctx context.Context, store ports.Store, blobStore BlobStore) (
 		Scopes:      []string{"*"},
 	}
 
+	var success bool
+	defer func() {
+		if !success {
+			camp.Status = "failed"
+			if _, err := store.UpdateCampaign(ctx, p, camp); err != nil {
+				slog.Error("failed to mark campaign as failed", "campaign_id", camp.ID, "error", err)
+			}
+		}
+	}()
+
 	// 1. Resolve Segment profiles
 	profileIDs, err := store.ResolveSegment(ctx, p, camp.SegmentID)
 	if err != nil {
@@ -172,6 +182,7 @@ func DispatchNext(ctx context.Context, store ports.Store, blobStore BlobStore) (
 	}
 
 	slog.Info("campaign dispatched successfully", "campaign_id", camp.ID, "recipients_count", len(recipients), "shards_count", len(jobs))
+	success = true
 	return true, nil
 }
 

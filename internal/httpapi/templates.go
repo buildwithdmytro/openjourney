@@ -58,7 +58,7 @@ func (s *Server) listSendingIdentities(w http.ResponseWriter, r *http.Request) {
 		internalError(w, err, "list sending identities", principal)
 		return
 	}
-	writeJSON(w, http.StatusOK, res)
+	writeJSON(w, http.StatusOK, map[string]any{"identities": res})
 }
 
 func (s *Server) createTemplate(w http.ResponseWriter, r *http.Request) {
@@ -119,7 +119,7 @@ func (s *Server) listTemplates(w http.ResponseWriter, r *http.Request) {
 		internalError(w, err, "list templates", principal)
 		return
 	}
-	writeJSON(w, http.StatusOK, res)
+	writeJSON(w, http.StatusOK, map[string]any{"templates": res})
 }
 
 // previewTemplate renders the template body with Liquid using a sample profile.
@@ -206,10 +206,15 @@ func (s *Server) redirectLink(w http.ResponseWriter, r *http.Request) {
 	profile, profErr := s.store.GetProfileByID(r.Context(), tenantID, appID, profileID)
 
 	if profErr == nil && profile.ExternalID != "" {
+		workspaceID := "workspace-1"
+		if campaign, campErr := s.store.GetCampaignSystem(r.Context(), tenantID, campaignID); campErr == nil {
+			workspaceID = campaign.WorkspaceID
+		}
 		now := time.Now()
 		_, _ = s.store.AcceptEvents(r.Context(), domain.Principal{
-			TenantID: tenantID,
-			AppID:    appID,
+			TenantID:    tenantID,
+			WorkspaceID: workspaceID,
+			AppID:       appID,
 		}, []domain.Event{
 			{
 				Type:           "link.clicked",
@@ -238,10 +243,15 @@ func (s *Server) openPixel(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		profile, profErr := s.store.GetProfileByID(r.Context(), tenantID, appID, profileID)
 		if profErr == nil && profile.ExternalID != "" {
+			workspaceID := "workspace-1"
+			if campaign, campErr := s.store.GetCampaignSystem(r.Context(), tenantID, campaignID); campErr == nil {
+				workspaceID = campaign.WorkspaceID
+			}
 			now := time.Now()
 			_, _ = s.store.AcceptEvents(r.Context(), domain.Principal{
-				TenantID: tenantID,
-				AppID:    appID,
+				TenantID:    tenantID,
+				WorkspaceID: workspaceID,
+				AppID:       appID,
 			}, []domain.Event{
 				{
 					Type:           "email.opened",

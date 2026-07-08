@@ -66,7 +66,7 @@ func (s *Server) listSegments(w http.ResponseWriter, r *http.Request) {
 		internalError(w, err, "list segments", principal)
 		return
 	}
-	writeJSON(w, http.StatusOK, res)
+	writeJSON(w, http.StatusOK, map[string]any{"segments": res})
 }
 
 func (s *Server) setSegmentMembers(w http.ResponseWriter, r *http.Request) {

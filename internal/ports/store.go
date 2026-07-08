@@ -89,7 +89,6 @@ type Store interface {
 	UpdateDeliveryAttempt(ctx context.Context, campaignID, profileID, channel, decision, reason, providerMsgID string, policySnapshot []byte) error
 }
 
-
 type TokenVerifier interface {
 	Verify(context.Context, string) (domain.OIDCClaims, error)
 }

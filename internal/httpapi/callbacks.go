@@ -164,6 +164,8 @@ func (s *Server) handleSESCallback(w http.ResponseWriter, r *http.Request) {
 					})
 					event := domain.Event{
 						Type:           "message.bounced",
+						SchemaVersion:  1,
+						ExternalID:     bRec.EmailAddress,
 						IdempotencyKey: fmt.Sprintf("bounce-%s-%s-%s", campaignID, bRec.EmailAddress, sesNotify.Mail.MessageId),
 						OccurredAt:     time.Now(),
 						Payload:        payload,
@@ -183,6 +185,8 @@ func (s *Server) handleSESCallback(w http.ResponseWriter, r *http.Request) {
 					})
 					event := domain.Event{
 						Type:           "message.complained",
+						SchemaVersion:  1,
+						ExternalID:     cRec.EmailAddress,
 						IdempotencyKey: fmt.Sprintf("complaint-%s-%s-%s", campaignID, cRec.EmailAddress, sesNotify.Mail.MessageId),
 						OccurredAt:     time.Now(),
 						Payload:        payload,
@@ -202,6 +206,8 @@ func (s *Server) handleSESCallback(w http.ResponseWriter, r *http.Request) {
 					})
 					event := domain.Event{
 						Type:           "message.delivered",
+						SchemaVersion:  1,
+						ExternalID:     dRec,
 						IdempotencyKey: fmt.Sprintf("delivered-%s-%s-%s", campaignID, dRec, sesNotify.Mail.MessageId),
 						OccurredAt:     time.Now(),
 						Payload:        payload,
