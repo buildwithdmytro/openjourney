@@ -625,10 +625,10 @@ order; each milestone should compile and pass `go build ./... && go vet ./...` b
 2. [x] **`internal/campaigns` unit tests.** `dispatch.go` and `deliver.go` currently have **no
    tests**. Cover: effectively-once skip (`inserted=false`), policy-rejection short-circuit,
    render-failure path, and (after the §8 P1 fix) transient-send-failure requeue. — done: added comprehensive unit tests covering all paths in internal/campaigns/deliver_test.go
-3. [ ] **Load / effectively-once smoke.** New script (`scripts/smoke-campaign-delivery.sh`):
+3. [x] **Load / effectively-once smoke.** New script (`scripts/smoke-campaign-delivery.sh`):
    10,000-recipient sharded broadcast; kill a `campaigns-delivery` worker mid-shard, restart,
    assert **no duplicate `decision='sent'` rows**. *Note:* existing `smoke-worker-termination.sh`
-   only covers the projection worker, not delivery.
+   only covers the projection worker, not delivery. — done: created scripts/smoke-campaign-delivery.sh and verified it passes cleanly
 4. [ ] **Reproducibility test:** re-run dispatch from the stored MinIO manifest → identical
    recipient set (checksum equal).
 5. [ ] **Explainability test:** assert every recipient has exactly one `delivery_attempts` row
