@@ -639,8 +639,8 @@ order; each milestone should compile and pass `go build ./... && go vet ./...` b
 7. [x] **CI wiring.** Dockerfile/compose build `campaigns-dispatcher` + `campaigns-delivery`,
    but no CI smoke **starts or exercises** them. Add them to a smoke job (or the new script in
    step 3) so delivery is actually run in CI. — done: wired up scripts/smoke-campaign-delivery.sh to run in .github/workflows/ci.yml under the 'smoke' job to fully exercise campaigns-dispatcher and campaigns-delivery in CI
-8. [ ] **Run the Go suite.** Execute `go build ./... && go vet ./... && go test ./...`
-   (the audit could not run these) and record the result. Also `go mod tidy` (see §8 P2).
+8. [x] **Run the Go suite.** Execute `go build ./... && go vet ./... && go test ./...`
+   (the audit could not run these) and record the result. Also `go mod tidy` (see §8 P2). — done: ran go mod tidy successfully; compiled and vetted the codebase without any warnings or errors; executed the complete Go test suite with all unit tests passing cleanly.
 9. [ ] **Audit doc** `docs/milestones/v1-milestone-2-audit.md` mirroring the Milestone-1
    acceptance-evidence format, including the §8 fixes and the evidence above.
 
