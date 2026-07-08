@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -617,5 +618,254 @@ func TestCampaignsReproducibility(t *testing.T) {
 	}
 	if countAfter != 1 {
 		t.Errorf("expected 1 delivery job recreated, got %d", countAfter)
+	}
+}
+
+func TestCampaignsExplainability(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer store.Close()
+
+	tenantID := "tenant-exp-" + time.Now().Format("20060102-150405")
+	p := domain.Principal{TenantID: tenantID, WorkspaceID: "workspace-1", AppID: "app-1", Scopes: []string{"*"}}
+
+	_, err = store.pool.Exec(ctx, `INSERT INTO tenants(id, name) VALUES($1, 'Exp Tenant')`, tenantID)
+	if err != nil {
+		t.Fatalf("insert tenant: %v", err)
+	}
+	defer func() {
+		_, _ = store.pool.Exec(ctx, "DELETE FROM tenants WHERE id=$1", tenantID)
+	}()
+
+	_, err = store.pool.Exec(ctx, `INSERT INTO workspaces(id, tenant_id, name) VALUES($1, $2, 'Exp Workspace')`, p.WorkspaceID, tenantID)
+	if err != nil {
+		t.Fatalf("insert workspace: %v", err)
+	}
+
+	// 1. Create two profiles (p1, p2)
+	for _, extID := range []string{"p1", "p2"} {
+		events := []domain.Event{
+			{
+				Type: "profile.updated", SchemaVersion: 1, ExternalID: extID,
+				IdempotencyKey: "identify-exp-" + extID, OccurredAt: time.Now().UTC(),
+				Payload: json.RawMessage(`{"attributes":{"country":"US", "email":"` + extID + `@example.com"}}`),
+			},
+			{
+				Type: "consent.changed", SchemaVersion: 1, ExternalID: extID,
+				IdempotencyKey: "consent-exp-" + extID, OccurredAt: time.Now().UTC(),
+				Payload: json.RawMessage(`{"channel":"email","topic":"marketing","state":"subscribed"}`),
+			},
+		}
+		_, err = store.AcceptEvents(ctx, p, events)
+		if err != nil {
+			t.Fatalf("accept events for %s: %v", extID, err)
+		}
+	}
+
+	_, err = projector.Drain(ctx, store, 4, false)
+	if err != nil {
+		t.Fatalf("projector drain: %v", err)
+	}
+
+	// Profile 2 is suppressed
+	err = store.SuppressEndpoint(ctx, p, "email", "p2@example.com", "unsubscribe")
+	if err != nil {
+		t.Fatalf("suppress endpoint: %v", err)
+	}
+
+	seg, err := store.CreateSegment(ctx, p, domain.Segment{
+		Name: "Exp Dynamic Segment",
+		Type: "dynamic",
+		DSL:  []byte(`{"type":"profile_attribute","field":"country","operator":"equals","value":"US"}`),
+	})
+	if err != nil {
+		t.Fatalf("create segment: %v", err)
+	}
+
+	iden, err := store.CreateSendingIdentity(ctx, p, domain.SendingIdentity{
+		Channel:     "email",
+		FromAddress: ptr("sender@example.com"),
+		FromName:    ptr("Sender"),
+		Provider:    "fake",
+		MaxSendRate: 10,
+	})
+	if err != nil {
+		t.Fatalf("create sending identity: %v", err)
+	}
+
+	// Campaign 1: Valid Template (p1 should be sent/eligible, p2 suppressed)
+	htmlTmpl1 := "Hello Exp!"
+	tmpl1, err := store.CreateTemplate(ctx, p, domain.Template{
+		Name:              "Exp Template 1",
+		Channel:           "email",
+		HTMLTemplate:      &htmlTmpl1,
+		SendingIdentityID: &iden.ID,
+	})
+	if err != nil {
+		t.Fatalf("create template 1: %v", err)
+	}
+
+	camp1, err := store.CreateCampaign(ctx, p, domain.Campaign{
+		Name:            "Exp Campaign 1",
+		SegmentID:       seg.ID,
+		TemplateID:      tmpl1.ID,
+		Status:          "draft",
+		SegmentVersion:  1,
+		TemplateVersion: 1,
+	})
+	if err != nil {
+		t.Fatalf("create campaign 1: %v", err)
+	}
+
+	pastTime := time.Now().Add(-1 * time.Minute)
+	camp1.Status = "scheduled"
+	camp1.ScheduledAt = &pastTime
+	camp1, err = store.UpdateCampaign(ctx, p, camp1)
+	if err != nil {
+		t.Fatalf("update campaign 1: %v", err)
+	}
+
+	blob := &mockBlobStore{}
+	dispatched, err := campaigns.DispatchNext(ctx, store, blob)
+	if err != nil {
+		t.Fatalf("DispatchNext 1: %v", err)
+	}
+	if !dispatched {
+		t.Fatal("expected to dispatch campaign 1")
+	}
+
+	fakeAdapter := channels.NewFakeAdapter()
+	cfg := campaigns.Config{
+		TrackingSecretKey: []byte("tracking-secret-key-12345"),
+		TrackingBaseURL:   "http://localhost:8080",
+		FakeAdapter:       fakeAdapter,
+	}
+
+	delivered, err := campaigns.DeliverNext(ctx, store, "worker-1", cfg)
+	if err != nil {
+		t.Fatalf("DeliverNext 1: %v", err)
+	}
+	if !delivered {
+		t.Fatal("expected to deliver campaign 1 jobs")
+	}
+
+	// 2. Query delivery attempts for Campaign 1 and assert explainability
+	rows, err := store.pool.Query(ctx, "SELECT profile_id, decision, reason FROM delivery_attempts WHERE campaign_id = $1", camp1.ID)
+	if err != nil {
+		t.Fatalf("query attempts 1: %v", err)
+	}
+	defer rows.Close()
+
+	attemptsCount := 0
+	for rows.Next() {
+		var profID, decision, reason string
+		if err := rows.Scan(&profID, &decision, &reason); err != nil {
+			t.Fatalf("scan attempt 1: %v", err)
+		}
+		attemptsCount++
+		if reason == "" {
+			t.Errorf("expected non-empty reason for profile %s, decision %s", profID, decision)
+		}
+		prof, err := store.GetProfileByID(ctx, tenantID, p.AppID, profID)
+		if err != nil {
+			t.Fatalf("get profile: %v", err)
+		}
+		if prof.ExternalID == "p1" {
+			if decision != "sent" || reason != "eligible" {
+				t.Errorf("p1 expected sent/eligible, got %s/%s", decision, reason)
+			}
+		} else if prof.ExternalID == "p2" {
+			if decision != "suppressed" || reason != "endpoint is suppressed" {
+				t.Errorf("p2 expected suppressed/endpoint is suppressed, got %s/%s", decision, reason)
+			}
+		}
+	}
+	if attemptsCount != 2 {
+		t.Errorf("expected 2 delivery attempts for campaign 1, got %d", attemptsCount)
+	}
+
+	// Campaign 2: Invalid Template (p1 should fail rendering)
+	htmlTmpl2 := "Hello {% invalid_tag %}"
+	tmpl2, err := store.CreateTemplate(ctx, p, domain.Template{
+		Name:              "Exp Template 2",
+		Channel:           "email",
+		HTMLTemplate:      &htmlTmpl2,
+		SendingIdentityID: &iden.ID,
+	})
+	if err != nil {
+		t.Fatalf("create template 2: %v", err)
+	}
+
+	camp2, err := store.CreateCampaign(ctx, p, domain.Campaign{
+		Name:            "Exp Campaign 2",
+		SegmentID:       seg.ID,
+		TemplateID:      tmpl2.ID,
+		Status:          "draft",
+		SegmentVersion:  1,
+		TemplateVersion: 1,
+	})
+	if err != nil {
+		t.Fatalf("create campaign 2: %v", err)
+	}
+
+	camp2.Status = "scheduled"
+	camp2.ScheduledAt = &pastTime
+	camp2, err = store.UpdateCampaign(ctx, p, camp2)
+	if err != nil {
+		t.Fatalf("update campaign 2: %v", err)
+	}
+
+	dispatched, err = campaigns.DispatchNext(ctx, store, blob)
+	if err != nil {
+		t.Fatalf("DispatchNext 2: %v", err)
+	}
+	if !dispatched {
+		t.Fatal("expected to dispatch campaign 2")
+	}
+
+	delivered, err = campaigns.DeliverNext(ctx, store, "worker-1", cfg)
+	if err != nil {
+		t.Fatalf("DeliverNext 2: %v", err)
+	}
+	if !delivered {
+		t.Fatal("expected to deliver campaign 2 jobs")
+	}
+
+	// Query delivery attempts for Campaign 2 and assert explainability
+	rows2, err := store.pool.Query(ctx, "SELECT profile_id, decision, reason FROM delivery_attempts WHERE campaign_id = $1", camp2.ID)
+	if err != nil {
+		t.Fatalf("query attempts 2: %v", err)
+	}
+	defer rows2.Close()
+
+	attemptsCount2 := 0
+	for rows2.Next() {
+		var profID, decision, reason string
+		if err := rows2.Scan(&profID, &decision, &reason); err != nil {
+			t.Fatalf("scan attempt 2: %v", err)
+		}
+		attemptsCount2++
+		if reason == "" {
+			t.Errorf("expected non-empty reason for profile %s, decision %s", profID, decision)
+		}
+		prof, err := store.GetProfileByID(ctx, tenantID, p.AppID, profID)
+		if err != nil {
+			t.Fatalf("get profile: %v", err)
+		}
+		if prof.ExternalID == "p1" {
+			if decision != "render_failed" || !strings.Contains(reason, "render error") {
+				t.Errorf("p1 expected render_failed/render error, got %s/%s", decision, reason)
+			}
+		}
+	}
+	if attemptsCount2 != 2 {
+		t.Errorf("expected 2 delivery attempts for campaign 2, got %d", attemptsCount2)
 	}
 }
