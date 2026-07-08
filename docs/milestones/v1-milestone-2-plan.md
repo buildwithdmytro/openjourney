@@ -617,11 +617,11 @@ order; each milestone should compile and pass `go build ./... && go vet ./...` b
    tracked in 7.7.
 
 ### Milestone 7.7 — Integration, load & audit (all OPEN)
-1. [ ] **True end-to-end integration test.** The current `campaigns_integration_test.go` only
+1. [x] **True end-to-end integration test.** The current `campaigns_integration_test.go` only
    drives store methods; it never calls the real code paths. Add a test that runs
    `campaigns.DispatchNext` then `campaigns.DeliverNext` with the `FakeAdapter`, over a real
    segment→template→campaign, and asserts: manifest object written, `delivery_attempts` rows
-   present, and `message.sent` events emitted. *Done when:* the fake-adapter journey passes.
+   present, and `message.sent` events emitted. *Done when:* the fake-adapter journey passes. — done: added TestCampaignsEndToEnd in internal/postgres/campaigns_integration_test.go
 2. [ ] **`internal/campaigns` unit tests.** `dispatch.go` and `deliver.go` currently have **no
    tests**. Cover: effectively-once skip (`inserted=false`), policy-rejection short-circuit,
    render-failure path, and (after the §8 P1 fix) transient-send-failure requeue.
