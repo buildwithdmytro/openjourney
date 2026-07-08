@@ -19,6 +19,9 @@ type Config struct {
 	TrackingSecretKey []byte
 	TrackingBaseURL   string
 	Adapter           ports.ChannelAdapter
+	SESAdapter        ports.ChannelAdapter
+	WebhookAdapter    ports.ChannelAdapter
+	FakeAdapter       ports.ChannelAdapter
 }
 
 func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Config) (bool, error) {
@@ -85,13 +88,29 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 	} else {
 		switch identity.Provider {
 		case "ses":
-			adapter = channels.NewSESAdapter()
+			if cfg.SESAdapter != nil {
+				adapter = cfg.SESAdapter
+			} else {
+				adapter = channels.NewSESAdapter()
+			}
 		case "webhook":
-			adapter = channels.NewWebhookAdapter()
+			if cfg.WebhookAdapter != nil {
+				adapter = cfg.WebhookAdapter
+			} else {
+				adapter = channels.NewWebhookAdapter()
+			}
 		case "fake", "":
-			adapter = channels.NewFakeAdapter()
+			if cfg.FakeAdapter != nil {
+				adapter = cfg.FakeAdapter
+			} else {
+				adapter = channels.NewFakeAdapter()
+			}
 		default:
-			adapter = channels.NewFakeAdapter()
+			if cfg.FakeAdapter != nil {
+				adapter = cfg.FakeAdapter
+			} else {
+				adapter = channels.NewFakeAdapter()
+			}
 		}
 	}
 

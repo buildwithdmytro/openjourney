@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/buildwithdmytro/openjourney/internal/campaigns"
+	"github.com/buildwithdmytro/openjourney/internal/channels"
 	"github.com/buildwithdmytro/openjourney/internal/config"
 	"github.com/buildwithdmytro/openjourney/internal/postgres"
 )
@@ -46,9 +47,16 @@ func main() {
 	}
 	workerID := fmt.Sprintf("delivery-worker-%s-%d", hostname, os.Getpid())
 
+	sesAdapter := channels.NewSESAdapter()
+	webhookAdapter := channels.NewWebhookAdapter()
+	fakeAdapter := channels.NewFakeAdapter()
+
 	deliveryCfg := campaigns.Config{
 		TrackingSecretKey: []byte(cfg.TrackingSecretKey),
 		TrackingBaseURL:   cfg.TrackingBaseURL,
+		SESAdapter:        sesAdapter,
+		WebhookAdapter:    webhookAdapter,
+		FakeAdapter:       fakeAdapter,
 	}
 
 	slog.Info("starting campaigns delivery worker", "worker_id", workerID, "watch", watch)
