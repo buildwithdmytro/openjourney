@@ -139,14 +139,16 @@ func TestGoldenQueries(t *testing.T) {
 
 	goldenPath := filepath.Join("testdata", "nested_profile.sql")
 
-	_ = os.MkdirAll("testdata", 0755)
-
-	if _, err := os.Stat(goldenPath); os.IsNotExist(err) {
+	if os.Getenv("UPDATE_GOLDEN") == "true" {
+		_ = os.MkdirAll("testdata", 0755)
 		_ = os.WriteFile(goldenPath, []byte(sql), 0644)
 	}
 
 	expected, err := os.ReadFile(goldenPath)
 	if err != nil {
+		if os.IsNotExist(err) {
+			t.Fatalf("golden file is missing: %s. Run with UPDATE_GOLDEN=true env var to generate.", goldenPath)
+		}
 		t.Fatalf("failed to read golden file: %v", err)
 	}
 
