@@ -631,8 +631,8 @@ order; each milestone should compile and pass `go build ./... && go vet ./...` b
    only covers the projection worker, not delivery. — done: created scripts/smoke-campaign-delivery.sh and verified it passes cleanly
 4. [x] **Reproducibility test:** re-run dispatch from the stored MinIO manifest → identical
    recipient set (checksum equal). — done: implemented RedispatchFromManifest in internal/campaigns/dispatch.go and added TestCampaignsReproducibility in campaigns_integration_test.go
-5. [ ] **Explainability test:** assert every recipient has exactly one `delivery_attempts` row
-   with a non-empty `reason`.
+5. [x] **Explainability test:** assert every recipient has exactly one `delivery_attempts` row
+   with a non-empty `reason`. — done: added TestCampaignsExplainability in internal/postgres/campaigns_integration_test.go verifying sent/suppressed/render_failed decisions and their non-empty explainability reasons
 6. [ ] **Delivery telemetry.** No delivery metrics exist today. Register counters for
    messages sent, bounces/complaints, and policy rejections (per decision) via the existing
    OTel meter; expose on `/metrics`.
