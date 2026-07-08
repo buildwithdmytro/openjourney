@@ -274,8 +274,7 @@ func (s *Store) resolveSegmentIDs(ctx context.Context, p domain.Principal, seg d
 			return matchingProfileIDs, nil
 
 		case *audience.Consent:
-			sql, args := audience.CompileConsent(nodeType)
-			pgArgs := []any{p.TenantID, p.AppID, args[0], args[1], args[2]}
+			sql, pgArgs := audience.CompileConsent(nodeType, p.TenantID, p.AppID)
 			cRows, err := s.pool.Query(ctx, sql, pgArgs...)
 			if err != nil {
 				return nil, err
@@ -299,10 +298,10 @@ func (s *Store) resolveSegmentIDs(ctx context.Context, p domain.Principal, seg d
 			if s.chConn == nil {
 				return nil, fmt.Errorf("ClickHouse connection not available for event-history evaluation")
 			}
-			sql, args := audience.CompileClickHouse(nodeType)
+			sql, pgArgs := audience.CompileClickHouse(nodeType, p.TenantID)
 			matchingProfileIDs := make(map[string]bool)
 
-			rows, err := s.chConn.Query(ctx, sql, p.TenantID, args[0], args[1], args[2])
+			rows, err := s.chConn.Query(ctx, sql, pgArgs...)
 			if err != nil {
 				return nil, err
 			}

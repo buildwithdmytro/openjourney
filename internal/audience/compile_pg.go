@@ -93,13 +93,13 @@ func compileProfileNode(node Node, args *[]any) (string, error) {
 
 var fieldSafetyRegex = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
 
-func CompileConsent(n *Consent) (string, []any) {
+func CompileConsent(n *Consent, tenantID, appID string) (string, []any) {
 	sql := `SELECT profile_id FROM (
 		SELECT DISTINCT ON (profile_id) profile_id, state
 		FROM consent_ledger
 		WHERE tenant_id = $1 AND app_id = $2 AND channel = $3 AND topic = $4
 		ORDER BY profile_id, occurred_at DESC
 	) latest WHERE state = $5`
-	args := []any{n.Channel, n.Topic, n.State}
+	args := []any{tenantID, appID, n.Channel, n.Topic, n.State}
 	return sql, args
 }

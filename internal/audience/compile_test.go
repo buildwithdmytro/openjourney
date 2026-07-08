@@ -94,7 +94,7 @@ func TestCompileProfile(t *testing.T) {
 
 func TestCompileConsent(t *testing.T) {
 	node := &Consent{Channel: "email", Topic: "marketing", State: "subscribed"}
-	sql, args := CompileConsent(node)
+	sql, args := CompileConsent(node, "tenant-1", "app-1")
 	expected := `SELECT profile_id FROM (
 		SELECT DISTINCT ON (profile_id) profile_id, state
 		FROM consent_ledger
@@ -105,14 +105,14 @@ func TestCompileConsent(t *testing.T) {
 	if sql != expected {
 		t.Errorf("expected SQL:\n%s\ngot:\n%s", expected, sql)
 	}
-	if len(args) != 3 || args[0] != "email" || args[1] != "marketing" || args[2] != "subscribed" {
+	if len(args) != 5 || args[0] != "tenant-1" || args[1] != "app-1" || args[2] != "email" || args[3] != "marketing" || args[4] != "subscribed" {
 		t.Errorf("unexpected args: %v", args)
 	}
 }
 
 func TestCompileClickHouse(t *testing.T) {
 	node := &EventHistory{EventType: "purchase", Operator: "has_occurred", TimeWindowDays: 30, MinCount: 2}
-	sql, args := CompileClickHouse(node)
+	sql, args := CompileClickHouse(node, "tenant-1")
 	expected := `SELECT subject_hash FROM behavior_events
 		WHERE tenant_id = ? AND event_type = ? AND occurred_at >= now() - INTERVAL ? DAY
 		GROUP BY subject_hash HAVING count() >= ?`
@@ -120,7 +120,7 @@ func TestCompileClickHouse(t *testing.T) {
 	if sql != expected {
 		t.Errorf("expected SQL:\n%s\ngot:\n%s", expected, sql)
 	}
-	if len(args) != 3 || args[0] != "purchase" || args[1] != 30 || args[2] != 2 {
+	if len(args) != 4 || args[0] != "tenant-1" || args[1] != "purchase" || args[2] != 30 || args[3] != 2 {
 		t.Errorf("unexpected args: %v", args)
 	}
 }

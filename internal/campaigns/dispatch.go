@@ -220,10 +220,10 @@ func compileSegmentLegs(n audience.Node) ([]string, []string, []string) {
 			profiles = append(profiles, sql)
 		}
 	case *audience.Consent:
-		sql, _ := audience.CompileConsent(nodeType)
+		sql, _ := audience.CompileConsent(nodeType, "", "")
 		consents = append(consents, sql)
 	case *audience.EventHistory:
-		sql, _ := audience.CompileClickHouse(nodeType)
+		sql, _ := audience.CompileClickHouse(nodeType, "")
 		clickhouses = append(clickhouses, sql)
 	}
 

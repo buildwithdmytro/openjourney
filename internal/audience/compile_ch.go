@@ -1,6 +1,6 @@
 package audience
 
-func CompileClickHouse(n *EventHistory) (string, []any) {
+func CompileClickHouse(n *EventHistory, tenantID string) (string, []any) {
 	sql := `SELECT subject_hash FROM behavior_events
 		WHERE tenant_id = ? AND event_type = ? AND occurred_at >= now() - INTERVAL ? DAY
 		GROUP BY subject_hash HAVING count() >= ?`
@@ -10,6 +10,6 @@ func CompileClickHouse(n *EventHistory) (string, []any) {
 		minCount = 1
 	}
 
-	args := []any{n.EventType, n.TimeWindowDays, minCount}
+	args := []any{tenantID, n.EventType, n.TimeWindowDays, minCount}
 	return sql, args
 }
