@@ -633,9 +633,9 @@ order; each milestone should compile and pass `go build ./... && go vet ./...` b
    recipient set (checksum equal). — done: implemented RedispatchFromManifest in internal/campaigns/dispatch.go and added TestCampaignsReproducibility in campaigns_integration_test.go
 5. [x] **Explainability test:** assert every recipient has exactly one `delivery_attempts` row
    with a non-empty `reason`. — done: added TestCampaignsExplainability in internal/postgres/campaigns_integration_test.go verifying sent/suppressed/render_failed decisions and their non-empty explainability reasons
-6. [ ] **Delivery telemetry.** No delivery metrics exist today. Register counters for
+6. [x] **Delivery telemetry.** No delivery metrics exist today. Register counters for
    messages sent, bounces/complaints, and policy rejections (per decision) via the existing
-   OTel meter; expose on `/metrics`.
+   OTel meter; expose on `/metrics`. — done: added global counters to internal/telemetry/telemetry.go and registered/recorded them during campaign delivery processing and event ingestion. Exposed via background metrics server in cmd/campaigns-delivery/main.go and cmd/campaigns-dispatcher/main.go
 7. [ ] **CI wiring.** Dockerfile/compose build `campaigns-dispatcher` + `campaigns-delivery`,
    but no CI smoke **starts or exercises** them. Add them to a smoke job (or the new script in
    step 3) so delivery is actually run in CI.
