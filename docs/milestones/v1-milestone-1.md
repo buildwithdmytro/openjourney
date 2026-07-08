@@ -17,7 +17,7 @@ Initial vertical slice: 2026-07-06
 - React control-plane shell with API readiness, profile/consent inspection, schemas, API keys, privacy requests, access administration, operations/DLQ, replay, and audit views.
 - Cloud-neutral Docker Compose profile using PostgreSQL.
 - Unit/API tests, end-to-end smoke test, container builds, and CI.
-- Apache-2.0 project declaration and explicit Mautic GPL isolation.
+- Apache-2.0 project declaration and explicit third-party GPL isolation.
 
 ## Acceptance evidence
 

@@ -6,7 +6,7 @@ Applies to: initial stable self-hosted release
 
 ## Product and audience
 
-- The first production release is a reliable messaging core, not complete Braze or Mautic parity.
+- The first production release is a reliable messaging core, not complete broad-platform parity.
 - Primary users are technical growth teams: engineers and lifecycle marketers comfortable with SDKs, schemas, providers, and infrastructure.
 - The first release includes a core visual UI for profiles, audiences, templates, campaigns, journeys, and operations. Advanced administration may remain API-driven.
 - The release bar is a stable self-hosted v1 with upgrade compatibility, backup/restore procedures, security controls, migration tooling, and published SLO and capacity limits.
@@ -15,7 +15,7 @@ Applies to: initial stable self-hosted release
 
 - First channels: email and webhook.
 - First email provider: Amazon SES.
-- Initial compatibility: migrate Mautic data and configuration; do not emulate Braze or Mautic APIs and do not support Mautic plugins.
+- Initial compatibility: provide migration tooling for common marketing-automation data and configuration; do not emulate third-party APIs or support third-party plugins.
 - Companies, B2B relationships, forms, landing pages, assets, and lead scoring follow the reliable messaging core.
 - Native iOS and Android SDKs follow the core journey release. The initial release uses web and server-side ingestion.
 
@@ -52,7 +52,7 @@ Load tests must also cover burst traffic, provider throttling, queue recovery, t
 - The first production architecture is GDPR-ready and HIPAA-ready at the technical-control level.
 - Required controls include data classification, PHI/PII handling, encryption, access controls, immutable audit records, consent evidence, retention, DSAR, deletion propagation, backup/restore, and deployment guidance.
 - A hosted BAA program, certifications, and legal assurances are separate operational milestones; technical readiness does not claim certification.
-- Mautic remains a GPL-3.0 behavioral reference. Its source must not be copied into OpenJourney without explicit legal review.
+- Third-party GPL source must not be copied into OpenJourney without explicit legal review.
 
 ## Consequences
 
@@ -60,4 +60,3 @@ Load tests must also cover burst traffic, provider throttling, queue recovery, t
 - Cloud-specific managed-service optimizations cannot become required runtime dependencies.
 - Scale-to-zero applies to stateless compute, not durable state.
 - Later features must use the same identity, consent, event, workflow, delivery, and audit contracts established by the messaging core.
-

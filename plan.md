@@ -2,14 +2,13 @@
 
 Status: proposed architecture and delivery plan  
 Research date: 2026-07-06  
-Reference checkout: `mautic/`, Mautic branch `7.x`, commit `f5e01e6a1347e2a98b73d76da75af703b94318a8`
 
 ## 1. Objective
 
 OpenJourney will be an open-source, self-hostable customer engagement platform combining:
 
 - Braze-style real-time customer profiles, segmentation, cross-channel messaging, journey orchestration, experimentation, content cards, feature flags, and high-volume event activation.
-- Mautic-style contacts and companies, forms, landing pages, assets, lead scoring, static and dynamic segments, campaign automation, broad integrations, and operator-owned deployment.
+- Contacts and companies, forms, landing pages, assets, lead scoring, static and dynamic segments, campaign automation, broad integrations, and operator-owned deployment.
 - AI-native creation, analysis, decision support, and automation with strict authorization, auditability, evaluation, and human approval controls.
 
 The platform must support both a small installation that runs work periodically and a large installation with continuously warm workers. Application compute will be stateless; durable state will live in databases, event logs, object storage, and a workflow/timer subsystem.
@@ -109,7 +108,7 @@ openjourney reconcile --domain audiences --shard 42 --max-duration 15m
 
 Durable infrastructure remains available in all useful modes. Universal scale-to-zero is not a valid goal for Braze-class sustained traffic.
 
-## 4. Findings from Braze and Mautic
+## 4. Findings from Braze and Marketing Automation Platforms
 
 ### 4.1 Braze capabilities to reproduce
 
@@ -134,9 +133,11 @@ Required capability groups:
 
 Public scale figures provide architectural headroom, not MVP acceptance criteria. Braze reports 25.8 trillion data points, 10.2 trillion API calls, 4.5 trillion messages/Canvas actions, about 13 trillion exported events, more than 7.8 billion monthly active users, and 99.99%+ uptime during 2025. This implies tenant-aware partitioning, cells, independent scaling, noisy-neighbor controls, and replayable pipelines from the beginning.
 
-### 4.2 Mautic capabilities to preserve
+### 4.2 Marketing automation capabilities to preserve
 
-Mautic 7 is a PHP 8.2/Symfony 7.4 modular monolith using Doctrine, API Platform, Symfony Messenger, Twig, and GrapesJS. Its modules under `mautic/app/bundles/` cover contacts, companies, campaigns, email, SMS, notifications, forms, pages, assets, dynamic content, APIs, webhooks, integrations, reporting, scoring, and users.
+Established self-hosted marketing automation platforms commonly cover contacts, companies,
+campaigns, email, SMS, notifications, forms, pages, assets, dynamic content, APIs,
+webhooks, integrations, reporting, scoring, and users.
 
 The useful semantics to retain are:
 
@@ -158,7 +159,9 @@ The implementation must avoid:
 - In-process extensions with unrestricted access to core internals.
 - Mixed legacy and new API generations.
 
-Mautic is GPL-3.0 and is a behavioral/domain reference unless OpenJourney intentionally adopts a compatible license. Do not copy Mautic source into a permissively licensed codebase without legal review. Maintain a design-provenance log. “Mautic” is also a trademark; compatibility claims must be neutral and precise.
+Do not copy third-party source into OpenJourney without legal review and license
+compatibility approval. Maintain a design-provenance log, and keep compatibility claims
+neutral and precise.
 
 ## 5. Product model and bounded contexts
 
@@ -506,7 +509,7 @@ Reports:
 
 Attribution model and conversion window must be stored with every published campaign/journey version.
 
-### 5.12 Forms, pages, scoring, and Mautic parity
+### 5.12 Forms, pages, scoring, and baseline automation
 
 After reliable ingestion, audiences, email, and journeys:
 
@@ -515,9 +518,10 @@ After reliable ingestion, audiences, email, and journeys:
 - Redirect/link tracking and UTM attribution.
 - Rules-based points, stages, score history, and score-triggered audiences/journeys.
 - Company/account profiles and relationship targeting.
-- Imports for Mautic contacts, custom fields, companies, tags, segments, templates, suppression, and supported basic campaigns.
+- Imports for contacts, custom fields, companies, tags, segments, templates, suppressions, and supported basic campaigns.
 
-Mautic plugins will not be binary-compatible. Migration and documented extension equivalents are the target.
+Third-party plugins will not be binary-compatible. Migration and documented extension
+equivalents are the target.
 
 ## 6. AI-first specification
 
@@ -747,7 +751,9 @@ Remote extensions use signed HTTP or Connect RPC. Pure deterministic transforms 
 - Generated server SDKs; handwritten web/mobile SDKs where lifecycle behavior matters.
 - Raw event export with stable schemas.
 
-Do not emulate Braze or Mautic API surfaces in v1. Mautic compatibility means migration tools and concept mapping, not plugin or API binary compatibility. Reconsider compatibility endpoints only through a later versioned product decision backed by conformance tests.
+Do not emulate third-party API surfaces in v1. Compatibility means migration tools and
+concept mapping, not plugin or API binary compatibility. Reconsider compatibility
+endpoints only through a later versioned product decision backed by conformance tests.
 
 ## 12. Repository and module layout
 
@@ -801,7 +807,6 @@ Proposed layout:
   /security
   /operations
   /compatibility
-/mautic
 ```
 
 Modules expose ports/interfaces and own their migrations/contracts. Direct cross-module table access is forbidden; in-process calls use typed application interfaces and extracted services retain the same contracts.
@@ -849,7 +854,7 @@ Deliver:
 - Threat model, data classification model, event contracts, and benchmark harness.
 - Prototype: Go ingest -> Kafka/Redpanda -> profile projector -> PostgreSQL/ClickHouse.
 - Prototype both PostgreSQL due-job and Temporal runtime behind one interface.
-- Mautic behavior inventory and migration mapping.
+- Migration inventory and concept mapping for common self-hosted marketing automation data.
 
 Exit:
 
@@ -911,7 +916,7 @@ Exit:
 - No resident process owns workflow truth or sleeping timers.
 - Duplicate/reordered events and late callbacks have deterministic outcomes.
 
-### Phase 4 — channel and Mautic baseline (10–16 weeks)
+### Phase 4 — channel and acquisition baseline (10–16 weeks)
 
 Deliver:
 
@@ -919,13 +924,13 @@ Deliver:
 - Forms, tracking, landing pages, assets, scoring/stages.
 - Companies/account relationships.
 - Imports, exports, warehouse/object-store connectors.
-- Mautic contacts/custom fields/companies/tags/segments/templates/basic-campaign migration.
+- Contacts/custom fields/companies/tags/segments/templates/basic-campaign migration.
 - Remote/Wasm extension protocol.
 - Experimentation, holdouts, attribution, and richer analytics.
 
 Exit:
 
-- A credible combined Mautic/Braze functional baseline.
+- A credible combined messaging and acquisition functional baseline.
 - Provider contract suite and migration reconciliation reports.
 
 ### Phase 5 — governed AI layer (8–12 weeks)
@@ -972,7 +977,7 @@ Exit:
 | SDK and acquisition | Web/mobile SDKs, tracking, forms, pages |
 | AI and optimization | Gateway, tools, retrieval, evaluation, recommendations |
 | Security and operations | Threat model, secrets, privacy, observability, DR, cells |
-| Migration and ecosystem | Mautic importer, compatibility tests, extension protocol |
+| Migration and ecosystem | Importer, compatibility tests, extension protocol |
 
 Each phase should ship vertical slices across these workstreams instead of independently completing large horizontal frameworks.
 
@@ -991,7 +996,7 @@ Each phase should ship vertical slices across these workstreams instead of indep
 | AI placed unbounded on send path | Latency, cost, nondeterminism | Precompute; strict timeout/schema/budget/fallback |
 | Model sees excessive PII | Regulatory and trust failure | Classification, retrieval ACL, redaction, audit |
 | Workflow upgrade breaks replay | Stuck live journeys | Versioned graphs/code and replay release gates |
-| Full Braze and Mautic parity attempted at once | Program never reaches reliable core | Phase-gated vertical slices and explicit exclusions |
+| Full broad-platform parity attempted at once | Program never reaches reliable core | Phase-gated vertical slices and explicit exclusions |
 | Extensions run in the main process | Security and availability loss | Remote/Wasm capability sandbox |
 | Provider retry duplicates messages | Customer harm | Stable intent, provider idempotency, reconciliation |
 | Analytics load affects control plane | Outages | Separate analytical storage and resource pools |
@@ -1004,8 +1009,8 @@ The authoritative decision record is [`product-decisions.md`](product-decisions.
 - Build a stable self-hosted messaging-core v1 for technical growth teams.
 - Provide a core visual UI backed by complete typed APIs.
 - Ship email and webhooks first, with Amazon SES as the first email adapter.
-- Support Mautic migration only; do not promise Mautic plugin/API or Braze API compatibility.
-- Use Apache-2.0 and keep GPL Mautic code as a behavioral reference only.
+- Support migration tooling only; do not promise plugin/API compatibility with third-party platforms.
+- Use Apache-2.0 and keep third-party GPL source out of the codebase unless legally approved.
 - Remain strictly cloud-neutral.
 - Support a reduced PostgreSQL plus object-storage deployment profile.
 - Implement PostgreSQL durable jobs first and qualify Temporal behind the same interface for higher scale.
@@ -1034,17 +1039,6 @@ Braze:
 - [Job queue resiliency](https://www.braze.com/resources/articles/building-braze-job-queues-resiliency)
 - [2025 scale figures](https://www.braze.com/resources/articles/2025-how-braze-powered-exceptional-marketing-at-scale)
 - [GDPR capabilities](https://www.braze.com/resources/articles/braze-gdpr-compliance)
-
-Mautic:
-
-- [Mautic repository](https://github.com/mautic/mautic)
-- [Campaign creation](https://docs.mautic.org/en/7.1/campaigns/creating_campaigns.html)
-- [Segment management](https://docs.mautic.org/en/7.2/segments/manage_segments.html)
-- [Cron jobs](https://docs.mautic.org/en/6.0/configuration/cron_jobs.html)
-- [Queues](https://docs.mautic.org/en/7.0/queue/queue.html)
-- [Message queue](https://docs.mautic.org/en/7.1/queue/message_queue.html)
-- [Mautic API v2](https://devdocs.mautic.org/en/7.0/rest_api/api_v2.html)
-- [Plugin development](https://devdocs.mautic.org/en/7.2/plugins/getting_started.html)
 
 Architecture:
 
