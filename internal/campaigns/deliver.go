@@ -13,6 +13,9 @@ import (
 	"github.com/buildwithdmytro/openjourney/internal/policy"
 	"github.com/buildwithdmytro/openjourney/internal/ports"
 	"github.com/buildwithdmytro/openjourney/internal/render"
+	"github.com/buildwithdmytro/openjourney/internal/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	otelmetric "go.opentelemetry.io/otel/metric"
 )
 
 type Config struct {
@@ -164,6 +167,11 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 			verdictSnapshotBytes, _ = json.Marshal(verdict.Snapshot)
 		}
 		if verdict.Decision != "sent" {
+			telemetry.PolicyRejections.Add(ctx, 1, otelmetric.WithAttributes(
+				attribute.String("decision", verdict.Decision),
+				attribute.String("campaign_id", camp.ID),
+				attribute.String("channel", template.Channel),
+			))
 			err = store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, verdict.Decision, verdict.Reason, "", verdictSnapshotBytes)
 			if err != nil {
 				slog.Error("failed to update delivery attempt with policy rejection", "error", err)
@@ -267,6 +275,11 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 		err = store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, "sent", "eligible", providerMsgID, verdictSnapshotBytes)
 		if err != nil {
 			slog.Error("failed to update delivery attempt status to sent", "error", err)
+		} else {
+			telemetry.MessagesSent.Add(ctx, 1, otelmetric.WithAttributes(
+				attribute.String("channel", template.Channel),
+				attribute.String("campaign_id", camp.ID),
+			))
 		}
 
 		eventPayload, _ := json.Marshal(map[string]any{

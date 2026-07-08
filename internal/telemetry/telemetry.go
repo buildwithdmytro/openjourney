@@ -7,12 +7,37 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	otelprom "go.opentelemetry.io/otel/exporters/prometheus"
+	otelmetric "go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.30.0"
 )
+
+var (
+	Meter = otel.Meter("openjourney")
+
+	MessagesSent = mustCounter(Meter.Int64Counter("openjourney_delivery_messages_sent_total",
+		otelmetric.WithDescription("Total number of messages successfully sent")))
+
+	Bounces = mustCounter(Meter.Int64Counter("openjourney_delivery_bounces_total",
+		otelmetric.WithDescription("Total number of message bounces")))
+
+	Complaints = mustCounter(Meter.Int64Counter("openjourney_delivery_complaints_total",
+		otelmetric.WithDescription("Total number of complaints")))
+
+	PolicyRejections = mustCounter(Meter.Int64Counter("openjourney_delivery_policy_rejections_total",
+		otelmetric.WithDescription("Total number of policy rejections by decision")))
+)
+
+func mustCounter(c otelmetric.Int64Counter, err error) otelmetric.Int64Counter {
+	if err != nil {
+		panic(err)
+	}
+	return c
+}
+
 
 type Shutdown func(context.Context) error
 

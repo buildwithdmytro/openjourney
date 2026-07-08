@@ -18,8 +18,11 @@ import (
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 	"github.com/buildwithdmytro/openjourney/internal/ports"
 	"github.com/buildwithdmytro/openjourney/internal/schemas"
+	"github.com/buildwithdmytro/openjourney/internal/telemetry"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.opentelemetry.io/otel/attribute"
+	otelmetric "go.opentelemetry.io/otel/metric"
 )
 
 //go:embed migrations/*.sql
@@ -460,6 +463,14 @@ func (s *Store) ProjectEvent(ctx context.Context, event domain.AcceptedEvent) er
 		reason := "bounce"
 		if event.Type == "message.complained" {
 			reason = "complaint"
+			telemetry.Complaints.Add(ctx, 1, otelmetric.WithAttributes(
+				attribute.String("channel", channel),
+			))
+		} else {
+			telemetry.Bounces.Add(ctx, 1, otelmetric.WithAttributes(
+				attribute.String("channel", channel),
+				attribute.String("bounce_type", body.BounceType),
+			))
 		}
 		_, err = tx.Exec(ctx, `INSERT INTO suppressions
 			(tenant_id, channel, endpoint, reason, source_event_id)
