@@ -496,6 +496,79 @@ func TestSegmentsEndpoints(t *testing.T) {
 	}
 }
 
+func TestJourneyEndpoints(t *testing.T) {
+	server := New(&fakeStore{scopes: []string{"journeys:read", "journeys:write"}}, 75)
+
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/journeys", strings.NewReader(`{"name":"Welcome","graph":{"entry_node_id":"n1"}}`))
+	createReq.Header.Set("Authorization", "Bearer test-key")
+	createRes := httptest.NewRecorder()
+	server.ServeHTTP(createRes, createReq)
+	if createRes.Code != http.StatusCreated {
+		t.Fatalf("status=%d body=%s", createRes.Code, createRes.Body.String())
+	}
+	var created domain.Journey
+	if err := json.Unmarshal(createRes.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode create body: %v", err)
+	}
+	if created.ID != "journey-1" || created.Name != "Welcome" {
+		t.Fatalf("unexpected create body=%s", createRes.Body.String())
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/v1/journeys", nil)
+	listReq.Header.Set("Authorization", "Bearer test-key")
+	listRes := httptest.NewRecorder()
+	server.ServeHTTP(listRes, listReq)
+	if listRes.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", listRes.Code, listRes.Body.String())
+	}
+	var listBody struct {
+		Journeys []domain.Journey `json:"journeys"`
+	}
+	if err := json.Unmarshal(listRes.Body.Bytes(), &listBody); err != nil {
+		t.Fatalf("decode list body: %v", err)
+	}
+	if len(listBody.Journeys) != 1 || listBody.Journeys[0].ID != "journey-1" {
+		t.Fatalf("unexpected list body=%s", listRes.Body.String())
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/v1/journeys/journey-1", nil)
+	getReq.Header.Set("Authorization", "Bearer test-key")
+	getRes := httptest.NewRecorder()
+	server.ServeHTTP(getRes, getReq)
+	if getRes.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", getRes.Code, getRes.Body.String())
+	}
+	if !strings.Contains(getRes.Body.String(), "Test Journey") {
+		t.Fatalf("unexpected get body=%s", getRes.Body.String())
+	}
+
+	updateReq := httptest.NewRequest(http.MethodPut, "/v1/journeys/journey-1", strings.NewReader(`{"name":"Updated Welcome","graph":{"entry_node_id":"n2"}}`))
+	updateReq.Header.Set("Authorization", "Bearer test-key")
+	updateRes := httptest.NewRecorder()
+	server.ServeHTTP(updateRes, updateReq)
+	if updateRes.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", updateRes.Code, updateRes.Body.String())
+	}
+	var updated domain.Journey
+	if err := json.Unmarshal(updateRes.Body.Bytes(), &updated); err != nil {
+		t.Fatalf("decode update body: %v", err)
+	}
+	if updated.ID != "journey-1" || updated.Name != "Updated Welcome" {
+		t.Fatalf("unexpected update body=%s", updateRes.Body.String())
+	}
+}
+
+func TestJourneyEndpointsRequireScopes(t *testing.T) {
+	server := New(&fakeStore{scopes: []string{"journeys:read"}}, 75)
+	request := httptest.NewRequest(http.MethodPost, "/v1/journeys", strings.NewReader(`{"name":"Welcome"}`))
+	request.Header.Set("Authorization", "Bearer test-key")
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
 func TestTemplateListEndpointsUseResponseEnvelopes(t *testing.T) {
 	server := New(&fakeStore{scopes: []string{"templates:read"}}, 75)
 

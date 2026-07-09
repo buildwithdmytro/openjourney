@@ -513,9 +513,9 @@ task ends with a **Done when** check.
    `GetJourney`, `UpdateJourney` (writes the draft `graph`; blocks edits when
    `status='published'` unless reverting to draft), `ListJourneys`. Add to `ports.Store`.
    *Done when:* `go build ./...` passes. — done: `journeys.go` implements tenant/workspace-scoped CRUD, `ports.Store` includes methods, and `TestJourneysStoreIntegration` passes.
-5. **HTTP endpoints** in new `internal/httpapi/journeys.go` + routes in `server.go`
+5. [x] **HTTP endpoints** in new `internal/httpapi/journeys.go` + routes in `server.go`
    `buildMux()` (Recipe 6.4): `POST/GET /v1/journeys`, `GET/PUT /v1/journeys/{id}`.
-   *Done when:* each returns expected JSON via curl.
+   *Done when:* each returns expected JSON via curl. — done: journey CRUD routes wired; HTTP tests pass; curl POST/list/get/update returned expected JSON against local API.
 6. **React scaffold** (Recipe 6.16, list + create only for now; builder in 8.4). Add nav
    entry, delete the disabled placeholder. *Done when:* `npm run build` passes and the list renders.
 7. **OpenAPI.** Add the new paths to `api/openapi.yaml` (CI `contracts` job runs redocly).

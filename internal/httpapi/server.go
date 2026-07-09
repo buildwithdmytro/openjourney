@@ -23,15 +23,15 @@ import (
 type principalKey struct{}
 
 type Server struct {
-	store              ports.Store
-	maxBatchSize       int
-	tokenVerifier      ports.TokenVerifier
-	corsAllowedOrigin  string
-	sessionTTL         time.Duration
-	trackingSecretKey  []byte
-	trackingBaseURL    string
-	snsVerifier        snsSignatureVerifier
-	allowedTopicARNs   []string
+	store             ports.Store
+	maxBatchSize      int
+	tokenVerifier     ports.TokenVerifier
+	corsAllowedOrigin string
+	sessionTTL        time.Duration
+	trackingSecretKey []byte
+	trackingBaseURL   string
+	snsVerifier       snsSignatureVerifier
+	allowedTopicARNs  []string
 }
 
 func New(store ports.Store, maxBatchSize int) http.Handler {
@@ -96,6 +96,10 @@ func (s *Server) buildMux() http.Handler {
 	mux.Handle("GET /v1/campaigns", s.authenticate("campaigns:read", http.HandlerFunc(s.listCampaigns)))
 	mux.Handle("GET /v1/campaigns/{id}", s.authenticate("campaigns:read", http.HandlerFunc(s.getCampaign)))
 	mux.Handle("PUT /v1/campaigns/{id}", s.authenticate("campaigns:write", http.HandlerFunc(s.updateCampaign)))
+	mux.Handle("POST /v1/journeys", s.authenticate("journeys:write", http.HandlerFunc(s.createJourney)))
+	mux.Handle("GET /v1/journeys", s.authenticate("journeys:read", http.HandlerFunc(s.listJourneys)))
+	mux.Handle("GET /v1/journeys/{id}", s.authenticate("journeys:read", http.HandlerFunc(s.getJourney)))
+	mux.Handle("PUT /v1/journeys/{id}", s.authenticate("journeys:write", http.HandlerFunc(s.updateJourney)))
 
 	mux.HandleFunc("GET /r/{token}", s.redirectLink)
 	mux.HandleFunc("GET /o/{token}", s.openPixel)
