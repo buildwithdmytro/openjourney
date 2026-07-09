@@ -555,12 +555,10 @@ task ends with a **Done when** check.
 4. [x] **Clock seam** `internal/journey/clock.go`: `type Clock interface { Now() time.Time }`,
    a real impl and a `FakeClock` (advanceable). Inject into the runtime so tests control time
    (satisfies "fake-clock simulation"). — done: created `internal/journey/clock.go` defining the `Clock` interface, `RealClock`, and `FakeClock`.
-5. **Runtime skeleton** `internal/journey/runtime.go`: `TickNext(ctx, store, deps) (bool, error)`
+5. [x] **Runtime skeleton** `internal/journey/runtime.go`: `TickNext(ctx, store, deps) (bool, error)`
    returning `(processed, err)` in the `DeliverNext` convention (`deliver.go:30`). Claim a due
    step → load run + pinned version graph (from `journey_versions.graph` or blob) → dispatch to
-   the node executor (stub: only `entry`/`exit` for now) → `AdvanceRunTx`. *Done when:* a
-   manually-inserted run + step for a two-node `entry→exit` journey reaches `status='completed'`
-   after one `TickNext`.
+   the node executor (stub: only `entry`/`exit` for now) → `AdvanceRunTx`. — done: `TickNext` skeleton implemented, added `GetJourneyVersion` and `GetJourneyRunSystem` to `ports.Store` + `internal/postgres/`, and verified by `TestTickNextSkeleton` in `runtime_test.go`.
 
 ### Milestone 8.4 — Node executors (core set) + visual builder
 1. **Executors** in `internal/journey/nodes.go` — implement `Execute` per §4 for: `entry`,

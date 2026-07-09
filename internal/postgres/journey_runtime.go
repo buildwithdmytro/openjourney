@@ -223,3 +223,21 @@ func (s *Store) AdvanceRunTx(ctx context.Context, runID string, run domain.Journ
 
 	return tx.Commit(ctx)
 }
+
+func (s *Store) GetJourneyRunSystem(ctx context.Context, tenantID, runID string) (domain.JourneyRun, error) {
+	var out domain.JourneyRun
+	err := s.pool.QueryRow(ctx, `SELECT id, tenant_id, workspace_id, journey_id, journey_version_id, profile_id,
+			subject_external_id, entry_key, reentry_sequence, status, current_node_id,
+			state, wait_event_type, wait_until, goal_reached, entered_at, updated_at, completed_at
+		FROM journey_runs
+		WHERE tenant_id=$1 AND id=$2`,
+		tenantID, runID).
+		Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.JourneyID, &out.JourneyVersionID, &out.ProfileID,
+			&out.SubjectExternalID, &out.EntryKey, &out.ReentrySequence, &out.Status, &out.CurrentNodeID,
+			&out.State, &out.WaitEventType, &out.WaitUntil, &out.GoalReached, &out.EnteredAt, &out.UpdatedAt, &out.CompletedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.JourneyRun{}, ErrNotFound
+	}
+	return out, err
+}
+

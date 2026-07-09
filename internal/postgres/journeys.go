@@ -221,3 +221,21 @@ func publishEntryConfig(graph *journeygraph.Graph) (publishEntry, error) {
 	}
 	return publishEntry{}, errors.New("entry node not found")
 }
+
+func (s *Store) GetJourneyVersion(ctx context.Context, tenantID, versionID string) (domain.JourneyVersion, error) {
+	var out domain.JourneyVersion
+	err := s.pool.QueryRow(ctx, `SELECT id, journey_id, tenant_id, workspace_id, version, graph, manifest_key,
+			entry_kind, entry_event_type, entry_segment_id, entry_schedule, reentry_policy,
+			max_reentries, late_policy, status, published_by, published_at
+		FROM journey_versions
+		WHERE tenant_id=$1 AND id=$2`,
+		tenantID, versionID).
+		Scan(&out.ID, &out.JourneyID, &out.TenantID, &out.WorkspaceID, &out.Version, &out.Graph, &out.ManifestKey,
+			&out.EntryKind, &out.EntryEventType, &out.EntrySegmentID, &out.EntrySchedule, &out.ReentryPolicy,
+			&out.MaxReentries, &out.LatePolicy, &out.Status, &out.PublishedBy, &out.PublishedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.JourneyVersion{}, ErrNotFound
+	}
+	return out, err
+}
+
