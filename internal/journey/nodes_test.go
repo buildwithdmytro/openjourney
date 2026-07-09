@@ -495,3 +495,59 @@ func TestExecuteWaitEvent(t *testing.T) {
 	}
 }
 
+func TestExecuteMessage(t *testing.T) {
+	store := &executorMockStore{}
+	now := time.Now()
+	run := &domain.JourneyRun{
+		ID:               "r1",
+		TenantID:         "t1",
+		WorkspaceID:      "w1",
+		JourneyID:        "j1",
+		JourneyVersionID: "v1",
+		ProfileID:        "p1",
+		Status:           "active",
+	}
+	graph := &Graph{
+		Nodes: []Node{
+			{
+				ID:   "n1",
+				Type: NodeTypeMessage,
+				Config: json.RawMessage(`{
+					"template_id": "tmpl-123",
+					"channel": "email",
+					"transactional": false
+				}`),
+			},
+			{ID: "n2", Type: NodeTypeExit},
+		},
+		Edges: []Edge{
+			{From: "n1", To: "n2"},
+		},
+	}
+
+	res, err := graph.Nodes[0].Execute(context.Background(), store, run, graph, now, "advance")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.NextNodeID != "n2" {
+		t.Errorf("expected NextNodeID 'n2', got %q", res.NextNodeID)
+	}
+	if res.MessageIntent == nil {
+		t.Fatalf("expected MessageIntent to be populated, but got nil")
+	}
+	intent := res.MessageIntent
+	if intent.TemplateID != "tmpl-123" {
+		t.Errorf("expected TemplateID 'tmpl-123', got %q", intent.TemplateID)
+	}
+	if intent.Channel != "email" {
+		t.Errorf("expected Channel 'email', got %q", intent.Channel)
+	}
+	if intent.Endpoint != "test@example.com" {
+		t.Errorf("expected Endpoint 'test@example.com', got %q", intent.Endpoint)
+	}
+	if intent.Transactional {
+		t.Errorf("expected Transactional to be false")
+	}
+}
+
+

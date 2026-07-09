@@ -20,6 +20,7 @@ type Store interface {
 	AcceptEvents(context.Context, domain.Principal, []domain.Event) ([]string, error)
 	GetProfile(context.Context, domain.Principal, string) (domain.Profile, []domain.Consent, error)
 	GetProfileByID(ctx context.Context, tenantID, appID, profileID string) (domain.Profile, error)
+	GetProfileByIDSystem(ctx context.Context, tenantID, workspaceID, profileID string) (domain.Profile, error)
 	ClaimProjectionJob(context.Context) (domain.AcceptedEvent, bool, error)
 	ProjectEvent(context.Context, domain.AcceptedEvent) error
 	FailProjectionJob(context.Context, string, error) error
@@ -104,7 +105,7 @@ type Store interface {
 	FailJourneyStep(ctx context.Context, stepID string, errMsg string) error
 	InsertJourneyStep(ctx context.Context, step domain.JourneyStep) error
 	RecordTransition(ctx context.Context, trans domain.JourneyTransition) error
-	AdvanceRunTx(ctx context.Context, runID string, run domain.JourneyRun, stepID string, nextStep *domain.JourneyStep, trans domain.JourneyTransition) error
+	AdvanceRunTx(ctx context.Context, runID string, run domain.JourneyRun, stepID string, nextStep *domain.JourneyStep, trans domain.JourneyTransition, messageIntent *domain.JourneyMessageIntent) error
 
 	ClaimScheduledCampaign(ctx context.Context) (domain.Campaign, bool, error)
 	SaveCampaignManifestAndJobs(ctx context.Context, campaignID string, manifestKey string, recipientCount int, segmentVersion int, templateVersion int, jobs []domain.DeliveryJob) error

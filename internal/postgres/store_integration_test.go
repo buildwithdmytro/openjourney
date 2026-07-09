@@ -704,8 +704,18 @@ func TestPublishJourneyIntegration(t *testing.T) {
 }
 
 func TestMain(m *testing.M) {
-	if os.Getenv("OPENJOURNEY_TEST_DATABASE_URL") != "" {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL != "" {
 		fmt.Println("running PostgreSQL integration tests")
+		ctx := context.Background()
+		store, err := Open(ctx, databaseURL)
+		if err == nil {
+			_ = store.Migrate(ctx)
+			_, _ = store.pool.Exec(ctx, `TRUNCATE tenants, workspaces, applications, api_keys, accepted_events, 
+				projection_jobs, profiles, segments, templates, campaigns, tenant_quotas, quota_windows, 
+				identity_aliases, journey_runs, journey_steps, journey_transitions, journey_message_intents CASCADE`)
+			store.Close()
+		}
 	}
 	os.Exit(m.Run())
 }

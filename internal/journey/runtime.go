@@ -77,7 +77,7 @@ func TickNext(ctx context.Context, store ports.Store, deps Deps) (bool, error) {
 	run.WaitEventType = res.WaitEventType
 	run.WaitUntil = res.WaitUntil
 
-	err = store.AdvanceRunTx(ctx, run.ID, run, step.ID, res.NextStep, res.Transition)
+	err = store.AdvanceRunTx(ctx, run.ID, run, step.ID, res.NextStep, res.Transition, res.MessageIntent)
 	if err != nil {
 		slog.Error("failed to advance run transaction", "error", err, "run_id", run.ID)
 		_ = store.FailJourneyStep(ctx, step.ID, fmt.Sprintf("advance run tx: %v", err))

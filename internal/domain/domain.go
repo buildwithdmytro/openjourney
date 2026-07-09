@@ -567,3 +567,29 @@ type JourneyTransition struct {
 	OccurredAt time.Time       `json:"occurred_at"`
 }
 
+type JourneyMessageIntent struct {
+	ID                string          `json:"id"`
+	RunID             string          `json:"run_id"`
+	TenantID          string          `json:"tenant_id"`
+	WorkspaceID       string          `json:"workspace_id"`
+	JourneyID         string          `json:"journey_id"`
+	JourneyVersionID  string          `json:"journey_version_id"`
+	NodeID            string          `json:"node_id"`
+	ProfileID         string          `json:"profile_id"`
+	TemplateID        string          `json:"template_id"`
+	Channel           string          `json:"channel"`
+	Endpoint          string          `json:"endpoint"`
+	Transactional     bool            `json:"transactional"`
+	Status            string          `json:"status"`
+	Attempts          int             `json:"attempts"`
+	AvailableAt       time.Time       `json:"available_at"`
+	LockedUntil       *time.Time      `json:"locked_until,omitempty"`
+	Decision          *string         `json:"decision,omitempty"`
+	Reason            *string         `json:"reason,omitempty"`
+	ProviderMessageID *string         `json:"provider_message_id,omitempty"`
+	PolicySnapshot    json.RawMessage `json:"policy_snapshot"`
+	ErrorMessage      *string         `json:"error_message,omitempty"`
+	CreatedAt         time.Time       `json:"created_at"`
+	UpdatedAt         time.Time       `json:"updated_at"`
+}
+

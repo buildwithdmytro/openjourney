@@ -161,7 +161,7 @@ func (s *Store) RecordTransition(ctx context.Context, trans domain.JourneyTransi
 	return err
 }
 
-func (s *Store) AdvanceRunTx(ctx context.Context, runID string, run domain.JourneyRun, stepID string, nextStep *domain.JourneyStep, trans domain.JourneyTransition) error {
+func (s *Store) AdvanceRunTx(ctx context.Context, runID string, run domain.JourneyRun, stepID string, nextStep *domain.JourneyStep, trans domain.JourneyTransition, messageIntent *domain.JourneyMessageIntent) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -220,6 +220,24 @@ func (s *Store) AdvanceRunTx(ctx context.Context, runID string, run domain.Journ
 		trans.RunID, trans.TenantID, trans.FromNode, trans.ToNode, trans.NodeType, trans.Outcome, trans.Detail)
 	if err != nil {
 		return fmt.Errorf("advance record transition: %w", err)
+	}
+
+	if messageIntent != nil {
+		if len(messageIntent.PolicySnapshot) == 0 {
+			messageIntent.PolicySnapshot = json.RawMessage("{}")
+		}
+		_, err = tx.Exec(ctx, `INSERT INTO journey_message_intents (
+				run_id, tenant_id, workspace_id, journey_id, journey_version_id, node_id, profile_id,
+				template_id, channel, endpoint, transactional, status, attempts, available_at, locked_until, policy_snapshot
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+			ON CONFLICT (run_id, node_id) DO NOTHING`,
+			messageIntent.RunID, messageIntent.TenantID, messageIntent.WorkspaceID, messageIntent.JourneyID,
+			messageIntent.JourneyVersionID, messageIntent.NodeID, messageIntent.ProfileID, messageIntent.TemplateID,
+			messageIntent.Channel, messageIntent.Endpoint, messageIntent.Transactional, messageIntent.Status,
+			messageIntent.Attempts, messageIntent.AvailableAt, messageIntent.LockedUntil, messageIntent.PolicySnapshot)
+		if err != nil {
+			return fmt.Errorf("advance insert message intent: %w", err)
+		}
 	}
 
 	return tx.Commit(ctx)
@@ -326,6 +344,18 @@ func (s *Store) GetProfileExternalID(ctx context.Context, tenantID, workspaceID,
 		return "", err
 	}
 	return extID, nil
+}
+
+func (s *Store) GetProfileByIDSystem(ctx context.Context, tenantID, workspaceID, profileID string) (domain.Profile, error) {
+	var profile domain.Profile
+	err := s.pool.QueryRow(ctx, `SELECT id, COALESCE(external_id, ''), COALESCE(anonymous_id, ''), attributes, version, updated_at
+		FROM profiles WHERE tenant_id=$1 AND workspace_id=$2 AND id=$3`,
+		tenantID, workspaceID, profileID).
+		Scan(&profile.ID, &profile.ExternalID, &profile.AnonymousID, &profile.Attributes, &profile.Version, &profile.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Profile{}, ErrNotFound
+	}
+	return profile, err
 }
 
 func (s *Store) IsProfileInSegment(ctx context.Context, p domain.Principal, segmentID string, profileID string) (bool, error) {

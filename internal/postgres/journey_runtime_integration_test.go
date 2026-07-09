@@ -248,7 +248,7 @@ func TestJourneyRuntimeIntegration(t *testing.T) {
 		Outcome:  "waited",
 	}
 
-	err = store.AdvanceRunTx(ctx, run.ID, runForAdvance, claimedStep3.ID, nextStep, transForAdvance)
+	err = store.AdvanceRunTx(ctx, run.ID, runForAdvance, claimedStep3.ID, nextStep, transForAdvance, nil)
 	if err != nil {
 		t.Fatalf("AdvanceRunTx: %v", err)
 	}
@@ -764,6 +764,200 @@ func TestJourneyScheduledEntryIntegration(t *testing.T) {
 	_, _ = store.pool.Exec(ctx, "DELETE FROM tenants WHERE id=$1", p.TenantID)
 }
 
+func TestJourneyMessageNodeExecutorIntegration(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	key := fmt.Sprintf("journey-msg-%d", time.Now().UnixNano())
+	if err := store.EnsureDevelopmentTenant(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	p, err := store.Authenticate(ctx, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, _ = store.pool.Exec(ctx, "DELETE FROM journey_steps WHERE tenant_id=$1", p.TenantID)
+	_, _ = store.pool.Exec(ctx, "DELETE FROM journey_runs WHERE tenant_id=$1", p.TenantID)
+	_, _ = store.pool.Exec(ctx, "DELETE FROM journey_message_intents WHERE tenant_id=$1", p.TenantID)
+
+	t.Cleanup(func() {
+		_, _ = store.pool.Exec(context.Background(), "DELETE FROM journey_steps WHERE tenant_id=$1", p.TenantID)
+		_, _ = store.pool.Exec(context.Background(), "DELETE FROM journey_runs WHERE tenant_id=$1", p.TenantID)
+		_, _ = store.pool.Exec(context.Background(), "DELETE FROM journey_message_intents WHERE tenant_id=$1", p.TenantID)
+		_, _ = store.pool.Exec(context.Background(), "DELETE FROM tenants WHERE id=$1", p.TenantID)
+	})
+	appID, err := store.GetFirstAppID(ctx, p.TenantID, p.WorkspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.AppID = appID
+
+	// 1. Create a Template
+	tmpl, err := store.CreateTemplate(ctx, p, domain.Template{
+		Name:            "Test Message Node Template",
+		SubjectTemplate: ptrStr("Hello journey-flow!"),
+		HTMLTemplate:    ptrStr("Welcome to the journey."),
+		Channel:         "email",
+	})
+	if err != nil {
+		t.Fatalf("CreateTemplate: %v", err)
+	}
+
+	// 2. Create a Profile with an email attribute
+	events := []domain.Event{
+		{
+			Type: "profile.updated", SchemaVersion: 1, ExternalID: "p-msg-node",
+			IdempotencyKey: "identify-msg-node", OccurredAt: time.Now().UTC(),
+			Payload: json.RawMessage(`{"attributes":{"email":"user@example.com"}}`),
+		},
+	}
+	_, err = store.AcceptEvents(ctx, p, events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, _, _ := store.ClaimProjectionJob(ctx)
+	_ = store.ProjectEvent(ctx, job)
+
+	var profileID string
+	err = store.pool.QueryRow(ctx, `SELECT id FROM profiles WHERE tenant_id=$1 AND external_id='p-msg-node'`, p.TenantID).Scan(&profileID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 3. Create and Publish a Journey with NodeTypeMessage
+	graphJSON := []byte(fmt.Sprintf(`{
+		"entry_node_id": "n1",
+		"nodes": [
+			{"id": "n1", "type": "entry", "config": {"trigger": "event", "event_type": "user.signup"}},
+			{"id": "n2", "type": "message", "config": {"template_id": "%s", "channel": "email", "transactional": false}},
+			{"id": "n3", "type": "exit", "config": {}}
+		],
+		"edges": [
+			{"from": "n1", "to": "n2"},
+			{"from": "n2", "to": "n3"}
+		]
+	}`, tmpl.ID))
+
+	journey, err := store.CreateJourney(ctx, p, domain.Journey{
+		Name: "Message Node Journey Integration",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = store.pool.Exec(ctx, `UPDATE journeys SET graph=$1, status='published' WHERE id=$2`, graphJSON, journey.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	version, err := store.PublishJourney(ctx, p, journey.ID, "00000000-0000-0000-0000-000000000001", "manifest-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 4. Create a Journey Run and pending step on the message node (n2)
+	run := domain.JourneyRun{
+		TenantID:         p.TenantID,
+		WorkspaceID:      p.WorkspaceID,
+		JourneyID:        journey.ID,
+		JourneyVersionID: version.ID,
+		ProfileID:        profileID,
+		Status:           "active",
+		CurrentNodeID:    "n2",
+		EntryKey:         "test-msg-key",
+	}
+	inserted, err := store.CreateJourneyRun(ctx, run)
+	if err != nil || !inserted {
+		t.Fatalf("CreateJourneyRun failed: %v, inserted=%v", err, inserted)
+	}
+
+	var runID string
+	err = store.pool.QueryRow(ctx, `SELECT id FROM journey_runs WHERE tenant_id=$1 AND entry_key='test-msg-key'`, p.TenantID).Scan(&runID)
+	if err != nil {
+		t.Fatalf("failed to fetch run ID: %v", err)
+	}
+
+	step := domain.JourneyStep{
+		RunID:       runID,
+		TenantID:    p.TenantID,
+		NodeID:      "n2",
+		Kind:        "advance",
+		Status:      "pending",
+		AvailableAt: time.Now().Add(-5 * time.Second),
+	}
+	err = store.InsertJourneyStep(ctx, step)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 5. Execute TickNext
+	clock := journeyflow.NewFakeClock(time.Now())
+	processed, err := journeyflow.TickNext(ctx, store, journeyflow.Deps{Clock: clock})
+	if err != nil {
+		t.Fatalf("TickNext: %v", err)
+	}
+	if !processed {
+		t.Fatalf("expected step to be processed")
+	}
+
+	// 6. Assert exactly one row was added to journey_message_intents
+	var intent domain.JourneyMessageIntent
+	err = store.pool.QueryRow(ctx, `SELECT id, run_id, tenant_id, workspace_id, journey_id, journey_version_id, node_id, profile_id, template_id, channel, endpoint, transactional, status, attempts, policy_snapshot
+		FROM journey_message_intents WHERE tenant_id=$1 AND run_id=$2`, p.TenantID, runID).
+		Scan(&intent.ID, &intent.RunID, &intent.TenantID, &intent.WorkspaceID, &intent.JourneyID, &intent.JourneyVersionID, &intent.NodeID, &intent.ProfileID, &intent.TemplateID, &intent.Channel, &intent.Endpoint, &intent.Transactional, &intent.Status, &intent.Attempts, &intent.PolicySnapshot)
+	if err != nil {
+		t.Fatalf("failed to fetch message intent: %v", err)
+	}
+
+	if intent.NodeID != "n2" {
+		t.Errorf("expected NodeID 'n2', got %q", intent.NodeID)
+	}
+	if intent.ProfileID != profileID {
+		t.Errorf("expected ProfileID %q, got %q", profileID, intent.ProfileID)
+	}
+	if intent.TemplateID != tmpl.ID {
+		t.Errorf("expected TemplateID %q, got %q", tmpl.ID, intent.TemplateID)
+	}
+	if intent.Channel != "email" {
+		t.Errorf("expected Channel 'email', got %q", intent.Channel)
+	}
+	if intent.Endpoint != "user@example.com" {
+		t.Errorf("expected Endpoint 'user@example.com', got %q", intent.Endpoint)
+	}
+	if intent.Transactional {
+		t.Errorf("expected Transactional to be false")
+	}
+	if intent.Status != "pending" {
+		t.Errorf("expected Status 'pending', got %q", intent.Status)
+	}
+
+	// 7. Verify journey run was advanced to exit node (n3)
+	fetchedRun, err := store.GetJourneyRunSystem(ctx, p.TenantID, runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fetchedRun.CurrentNodeID != "n3" {
+		t.Errorf("expected run to advance to 'n3', got %q", fetchedRun.CurrentNodeID)
+	}
+
+	// Clean up
+	_, _ = store.pool.Exec(ctx, "DELETE FROM tenants WHERE id=$1", p.TenantID)
+}
+
 func ptrStr(s string) *string {
 	return &s
 }
+

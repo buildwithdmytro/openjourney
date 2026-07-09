@@ -17,6 +17,8 @@ type mockStore struct {
 	steps       map[string]domain.JourneyStep
 	versions    map[string]domain.JourneyVersion
 	transitions []domain.JourneyTransition
+	intents     []domain.JourneyMessageIntent
+	profile     *domain.Profile
 }
 
 func (m *mockStore) IsProfileInSegment(ctx context.Context, p domain.Principal, segmentID string, profileID string) (bool, error) {
@@ -31,6 +33,36 @@ func (m *mockStore) EvaluateAudience(ctx context.Context, p domain.Principal, pr
 	return true, nil
 }
 
+func (m *mockStore) GetProfile(ctx context.Context, p domain.Principal, profileID string) (domain.Profile, []domain.Consent, error) {
+	if m.profile != nil {
+		return *m.profile, nil, nil
+	}
+	return domain.Profile{
+		ID:         profileID,
+		Attributes: json.RawMessage(`{"email":"test@example.com"}`),
+	}, nil, nil
+}
+
+func (m *mockStore) GetProfileByID(ctx context.Context, tenantID, appID, profileID string) (domain.Profile, error) {
+	if m.profile != nil {
+		return *m.profile, nil
+	}
+	return domain.Profile{
+		ID:         profileID,
+		Attributes: json.RawMessage(`{"email":"test@example.com"}`),
+	}, nil
+}
+
+func (m *mockStore) GetProfileByIDSystem(ctx context.Context, tenantID, workspaceID, profileID string) (domain.Profile, error) {
+	if m.profile != nil {
+		return *m.profile, nil
+	}
+	return domain.Profile{
+		ID:         profileID,
+		Attributes: json.RawMessage(`{"email":"test@example.com"}`),
+	}, nil
+}
+
 func (m *mockStore) AcceptEvents(ctx context.Context, p domain.Principal, events []domain.Event) ([]string, error) {
 	return nil, nil
 }
@@ -41,6 +73,7 @@ func newMockStore() *mockStore {
 		steps:       make(map[string]domain.JourneyStep),
 		versions:    make(map[string]domain.JourneyVersion),
 		transitions: make([]domain.JourneyTransition, 0),
+		intents:     make([]domain.JourneyMessageIntent, 0),
 	}
 }
 
@@ -82,7 +115,7 @@ func (m *mockStore) FailJourneyStep(ctx context.Context, stepID string, errMsg s
 	return nil
 }
 
-func (m *mockStore) AdvanceRunTx(ctx context.Context, runID string, run domain.JourneyRun, stepID string, nextStep *domain.JourneyStep, trans domain.JourneyTransition) error {
+func (m *mockStore) AdvanceRunTx(ctx context.Context, runID string, run domain.JourneyRun, stepID string, nextStep *domain.JourneyStep, trans domain.JourneyTransition, messageIntent *domain.JourneyMessageIntent) error {
 	m.runs[runID] = run
 	step := m.steps[stepID]
 	step.Status = "completed"
@@ -93,6 +126,9 @@ func (m *mockStore) AdvanceRunTx(ctx context.Context, runID string, run domain.J
 		m.steps[nextStep.ID] = *nextStep
 	}
 	m.transitions = append(m.transitions, trans)
+	if messageIntent != nil {
+		m.intents = append(m.intents, *messageIntent)
+	}
 	return nil
 }
 

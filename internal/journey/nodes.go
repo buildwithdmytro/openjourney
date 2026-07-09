@@ -146,6 +146,7 @@ type ExecutionResult struct {
 	WaitEventType *string
 	WaitUntil     *time.Time
 	State         json.RawMessage
+	MessageIntent *domain.JourneyMessageIntent
 }
 
 func (n *Node) Execute(ctx context.Context, store ports.Store, run *domain.JourneyRun, graph *Graph, now time.Time, stepKind string) (ExecutionResult, error) {
@@ -158,6 +159,7 @@ func (n *Node) Execute(ctx context.Context, store ports.Store, run *domain.Journ
 	var waitEventType *string
 	var waitUntil *time.Time
 	var nextState = run.State
+	var messageIntent *domain.JourneyMessageIntent
 
 	switch n.Type {
 	case NodeTypeEntry:
@@ -429,6 +431,36 @@ func (n *Node) Execute(ctx context.Context, store ports.Store, run *domain.Journ
 		}
 
 	case NodeTypeMessage:
+		var cfg MessageConfig
+		if err := decodeNodeConfig(*n, &cfg); err != nil {
+			return ExecutionResult{}, err
+		}
+		profile, err := store.GetProfileByIDSystem(ctx, run.TenantID, run.WorkspaceID, run.ProfileID)
+		if err != nil {
+			return ExecutionResult{}, fmt.Errorf("get profile for message node: %w", err)
+		}
+		var attrs map[string]any
+		if len(profile.Attributes) > 0 && string(profile.Attributes) != "null" {
+			if err := json.Unmarshal(profile.Attributes, &attrs); err != nil {
+				return ExecutionResult{}, fmt.Errorf("unmarshal profile attributes: %w", err)
+			}
+		}
+		if attrs == nil {
+			attrs = make(map[string]any)
+		}
+		channel := cfg.Channel
+		if channel == "" {
+			channel = "email"
+		}
+		var endpoint string
+		if channel == "email" {
+			endpoint, _ = attrs["email"].(string)
+		} else if channel == "sms" {
+			endpoint, _ = attrs["phone"].(string)
+		} else {
+			endpoint, _ = attrs[channel].(string)
+		}
+
 		nxt, err := findNextNode(graph, n.ID, "")
 		if err != nil {
 			return ExecutionResult{}, fmt.Errorf("find successor: %w", err)
@@ -448,8 +480,25 @@ func (n *Node) Execute(ctx context.Context, store ports.Store, run *domain.Journ
 			FromNode: &n.ID,
 			ToNode:   &nextNodeID,
 			NodeType: NodeTypeMessage,
-			Outcome:  "stubbed",
+			Outcome:  "intent_created",
 			Detail:   json.RawMessage("{}"),
+		}
+
+		messageIntent = &domain.JourneyMessageIntent{
+			RunID:            run.ID,
+			TenantID:         run.TenantID,
+			WorkspaceID:      run.WorkspaceID,
+			JourneyID:        run.JourneyID,
+			JourneyVersionID: run.JourneyVersionID,
+			NodeID:           n.ID,
+			ProfileID:        run.ProfileID,
+			TemplateID:       cfg.TemplateID,
+			Channel:          channel,
+			Endpoint:         endpoint,
+			Transactional:    cfg.Transactional,
+			Status:           "pending",
+			AvailableAt:      now,
+			PolicySnapshot:   json.RawMessage("{}"),
 		}
 
 	case NodeTypeWaitEvent:
@@ -525,6 +574,7 @@ func (n *Node) Execute(ctx context.Context, store ports.Store, run *domain.Journ
 		WaitEventType: waitEventType,
 		WaitUntil:     waitUntil,
 		State:         nextState,
+		MessageIntent: messageIntent,
 	}, nil
 }
 

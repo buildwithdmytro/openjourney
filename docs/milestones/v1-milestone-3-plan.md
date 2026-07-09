@@ -594,9 +594,9 @@ task ends with a **Done when** check.
 ### Milestone 8.6 — Message delivery, policy, quiet hours & fatigue
 1. [x] **Migration** `017_journey_delivery.sql` per §2.3 (`journey_message_intents` +
    `tenant_quotas` quiet-hours/journey columns). *Done when:* table + columns exist. — done: created migration file `017_journey_delivery.sql` and verified auto-application during integration tests.
-2. **`message` executor** (finalize): `INSERT journey_message_intents ... ON CONFLICT
+2. [x] **`message` executor** (finalize): `INSERT journey_message_intents ... ON CONFLICT
    (run_id,node_id) DO NOTHING` and advance in the same tx. *Done when:* executing a message
-   node produces exactly one intent and advances the run.
+   node produces exactly one intent and advances the run. — done: implemented endpoint resolution using dynamic profile attribute lookup, integrated message intent insert within atomic AdvanceRunTx, and fully verified via unit + Postgres integration tests.
 3. **Delivery loop** `internal/journey/deliver.go` `DeliverNext(ctx, store, workerID, cfg)`
    (copy `internal/campaigns/deliver.go`): claim an intent → `policy.Evaluate` → render
    (`internal/render`) → `adapter.Send` → emit `message.sent` (Recipe 6.9) → write
