@@ -11,10 +11,12 @@ import (
 	"time"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
+	"github.com/buildwithdmytro/openjourney/internal/ports"
 	"github.com/buildwithdmytro/openjourney/internal/postgres"
 )
 
 type fakeStore struct {
+	ports.Store
 	accepted      int
 	scopes        []string
 	oidcPrincipal *domain.Principal

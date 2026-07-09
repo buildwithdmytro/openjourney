@@ -1,0 +1,225 @@
+package postgres
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/buildwithdmytro/openjourney/internal/domain"
+	"github.com/jackc/pgx/v5"
+)
+
+func (s *Store) CreateJourneyRun(ctx context.Context, run domain.JourneyRun) (bool, error) {
+	if run.TenantID == "" {
+		return false, errors.New("tenant_id is required")
+	}
+	if run.Status == "" {
+		run.Status = "active"
+	}
+	if len(run.State) == 0 {
+		run.State = json.RawMessage("{}")
+	}
+	if run.EnteredAt.IsZero() {
+		run.EnteredAt = time.Now()
+	}
+	if run.UpdatedAt.IsZero() {
+		run.UpdatedAt = time.Now()
+	}
+
+	res, err := s.pool.Exec(ctx, `INSERT INTO journey_runs (
+			tenant_id, workspace_id, journey_id, journey_version_id, profile_id,
+			subject_external_id, entry_key, reentry_sequence, status,
+			current_node_id, state, wait_event_type, wait_until, goal_reached,
+			entered_at, updated_at, completed_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+		ON CONFLICT (journey_version_id, profile_id, entry_key, reentry_sequence) DO NOTHING`,
+		run.TenantID, run.WorkspaceID, run.JourneyID, run.JourneyVersionID, run.ProfileID,
+		run.SubjectExternalID, run.EntryKey, run.ReentrySequence, run.Status,
+		run.CurrentNodeID, run.State, run.WaitEventType, run.WaitUntil, run.GoalReached,
+		run.EnteredAt, run.UpdatedAt, run.CompletedAt)
+	if err != nil {
+		return false, err
+	}
+	return res.RowsAffected() > 0, nil
+}
+
+func (s *Store) GetJourneyRun(ctx context.Context, p domain.Principal, runID string) (domain.JourneyRun, error) {
+	var out domain.JourneyRun
+	err := s.pool.QueryRow(ctx, `SELECT id, tenant_id, workspace_id, journey_id, journey_version_id, profile_id,
+			subject_external_id, entry_key, reentry_sequence, status, current_node_id,
+			state, wait_event_type, wait_until, goal_reached, entered_at, updated_at, completed_at
+		FROM journey_runs
+		WHERE tenant_id=$1 AND workspace_id=$2 AND id=$3`,
+		p.TenantID, p.WorkspaceID, runID).
+		Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.JourneyID, &out.JourneyVersionID, &out.ProfileID,
+			&out.SubjectExternalID, &out.EntryKey, &out.ReentrySequence, &out.Status, &out.CurrentNodeID,
+			&out.State, &out.WaitEventType, &out.WaitUntil, &out.GoalReached, &out.EnteredAt, &out.UpdatedAt, &out.CompletedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.JourneyRun{}, ErrNotFound
+	}
+	return out, err
+}
+
+func (s *Store) UpdateJourneyRun(ctx context.Context, p domain.Principal, run domain.JourneyRun) (domain.JourneyRun, error) {
+	var out domain.JourneyRun
+	err := s.pool.QueryRow(ctx, `UPDATE journey_runs SET
+			status=$4,
+			current_node_id=$5,
+			state=$6,
+			wait_event_type=$7,
+			wait_until=$8,
+			goal_reached=$9,
+			updated_at=now(),
+			completed_at=$10
+		WHERE tenant_id=$1 AND workspace_id=$2 AND id=$3
+		RETURNING id, tenant_id, workspace_id, journey_id, journey_version_id, profile_id,
+		          subject_external_id, entry_key, reentry_sequence, status, current_node_id,
+		          state, wait_event_type, wait_until, goal_reached, entered_at, updated_at, completed_at`,
+		p.TenantID, p.WorkspaceID, run.ID, run.Status, run.CurrentNodeID, run.State,
+		run.WaitEventType, run.WaitUntil, run.GoalReached, run.CompletedAt).
+		Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.JourneyID, &out.JourneyVersionID, &out.ProfileID,
+			&out.SubjectExternalID, &out.EntryKey, &out.ReentrySequence, &out.Status, &out.CurrentNodeID,
+			&out.State, &out.WaitEventType, &out.WaitUntil, &out.GoalReached, &out.EnteredAt, &out.UpdatedAt, &out.CompletedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.JourneyRun{}, ErrNotFound
+	}
+	return out, err
+}
+
+func (s *Store) ClaimJourneyStep(ctx context.Context) (domain.JourneyStep, bool, error) {
+	var out domain.JourneyStep
+	err := s.pool.QueryRow(ctx, `UPDATE journey_steps SET
+			status='processing',
+			attempts=attempts+1,
+			locked_until=now() + INTERVAL '5 minutes',
+			updated_at=now()
+		WHERE id = (
+			SELECT id FROM journey_steps
+			WHERE (
+				(status IN ('pending', 'failed') AND attempts < 10 AND available_at <= now())
+				OR (status='processing' AND locked_until <= now())
+			)
+			ORDER BY available_at ASC
+			FOR UPDATE SKIP LOCKED
+			LIMIT 1
+		)
+		RETURNING id, run_id, tenant_id, node_id, kind, status, attempts, available_at, locked_until, error_message, created_at, updated_at`).
+		Scan(&out.ID, &out.RunID, &out.TenantID, &out.NodeID, &out.Kind, &out.Status, &out.Attempts, &out.AvailableAt, &out.LockedUntil, &out.ErrorMessage, &out.CreatedAt, &out.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.JourneyStep{}, false, nil
+	}
+	if err != nil {
+		return domain.JourneyStep{}, false, err
+	}
+	return out, true, nil
+}
+
+func (s *Store) CompleteJourneyStep(ctx context.Context, stepID string) error {
+	_, err := s.pool.Exec(ctx, `UPDATE journey_steps SET status='completed', locked_until=NULL, updated_at=now() WHERE id=$1`, stepID)
+	return err
+}
+
+func (s *Store) FailJourneyStep(ctx context.Context, stepID string, errMsg string) error {
+	_, err := s.pool.Exec(ctx, `UPDATE journey_steps SET
+			status=CASE WHEN attempts >= 10 THEN 'dead'::text ELSE 'failed'::text END,
+			error_message=$2,
+			available_at=now() + INTERVAL '1 minute',
+			locked_until=NULL,
+			updated_at=now()
+		WHERE id=$1`, stepID, errMsg)
+	return err
+}
+
+func (s *Store) InsertJourneyStep(ctx context.Context, step domain.JourneyStep) error {
+	if step.Kind == "" {
+		step.Kind = "advance"
+	}
+	if step.Status == "" {
+		step.Status = "pending"
+	}
+	if step.AvailableAt.IsZero() {
+		step.AvailableAt = time.Now()
+	}
+	_, err := s.pool.Exec(ctx, `INSERT INTO journey_steps (
+			run_id, tenant_id, node_id, kind, status, attempts, available_at, locked_until, error_message
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		step.RunID, step.TenantID, step.NodeID, step.Kind, step.Status, step.Attempts, step.AvailableAt, step.LockedUntil, step.ErrorMessage)
+	return err
+}
+
+func (s *Store) RecordTransition(ctx context.Context, trans domain.JourneyTransition) error {
+	if len(trans.Detail) == 0 {
+		trans.Detail = json.RawMessage("{}")
+	}
+	_, err := s.pool.Exec(ctx, `INSERT INTO journey_transitions (
+			run_id, tenant_id, from_node, to_node, node_type, outcome, detail
+		) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		trans.RunID, trans.TenantID, trans.FromNode, trans.ToNode, trans.NodeType, trans.Outcome, trans.Detail)
+	return err
+}
+
+func (s *Store) AdvanceRunTx(ctx context.Context, runID string, run domain.JourneyRun, stepID string, nextStep *domain.JourneyStep, trans domain.JourneyTransition) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	if len(run.State) == 0 {
+		run.State = json.RawMessage("{}")
+	}
+	_, err = tx.Exec(ctx, `UPDATE journey_runs SET
+			status=$3,
+			current_node_id=$4,
+			state=$5,
+			wait_event_type=$6,
+			wait_until=$7,
+			goal_reached=$8,
+			updated_at=now(),
+			completed_at=$9
+		WHERE id=$1 AND tenant_id=$2`,
+		runID, run.TenantID, run.Status, run.CurrentNodeID, run.State,
+		run.WaitEventType, run.WaitUntil, run.GoalReached, run.CompletedAt)
+	if err != nil {
+		return fmt.Errorf("advance update run: %w", err)
+	}
+
+	_, err = tx.Exec(ctx, `UPDATE journey_steps SET status='completed', locked_until=NULL, updated_at=now() WHERE id=$1`, stepID)
+	if err != nil {
+		return fmt.Errorf("advance complete step: %w", err)
+	}
+
+	if nextStep != nil {
+		if nextStep.Kind == "" {
+			nextStep.Kind = "advance"
+		}
+		if nextStep.Status == "" {
+			nextStep.Status = "pending"
+		}
+		if nextStep.AvailableAt.IsZero() {
+			nextStep.AvailableAt = time.Now()
+		}
+		_, err = tx.Exec(ctx, `INSERT INTO journey_steps (
+				run_id, tenant_id, node_id, kind, status, attempts, available_at, locked_until, error_message
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+			nextStep.RunID, nextStep.TenantID, nextStep.NodeID, nextStep.Kind, nextStep.Status, nextStep.Attempts, nextStep.AvailableAt, nextStep.LockedUntil, nextStep.ErrorMessage)
+		if err != nil {
+			return fmt.Errorf("advance insert step: %w", err)
+		}
+	}
+
+	if len(trans.Detail) == 0 {
+		trans.Detail = json.RawMessage("{}")
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO journey_transitions (
+			run_id, tenant_id, from_node, to_node, node_type, outcome, detail
+		) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		trans.RunID, trans.TenantID, trans.FromNode, trans.ToNode, trans.NodeType, trans.Outcome, trans.Detail)
+	if err != nil {
+		return fmt.Errorf("advance record transition: %w", err)
+	}
+
+	return tx.Commit(ctx)
+}

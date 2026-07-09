@@ -551,13 +551,7 @@ task ends with a **Done when** check.
 ### Milestone 8.3 — Durable runtime core (participant state + timer queue)
 1. [x] **Migration.** `016_journey_runtime.sql` per §2.2 (`journey_runs`, `journey_steps`, `journey_transitions`). *Done when:* tables + indexes exist. — done: `016_journey_runtime.sql` applies; `journey_runs`, `journey_steps`, and `journey_transitions` tables and indexes exist.
 2. [x] **Domain models.** `JourneyRun`, `JourneyStep`, `JourneyTransition` (Recipe 6.2). — done: models added to `internal/domain/domain.go`; `go build ./...` passes.
-3. **Store methods** in new `internal/postgres/journey_runtime.go` (Recipes 6.3, 6.10):
-   `CreateJourneyRun` (`ON CONFLICT (journey_version_id,profile_id,entry_key,reentry_sequence)
-   DO NOTHING` returning `inserted bool`, copying `CreateDeliveryAttempt` `campaigns.go:286`),
-   `GetJourneyRun`, `UpdateJourneyRun`, `ClaimJourneyStep`/`CompleteJourneyStep`/`FailJourneyStep`
-   (copy `ClaimDeliveryJob`/`FailDeliveryJob`), `InsertJourneyStep`, `RecordTransition`,
-   and `AdvanceRunTx(...)` (the atomic transition of Recipe 6.11). Add all to `ports.Store`.
-   *Done when:* `go build ./...` passes.
+3. [x] **Store methods** in new `internal/postgres/journey_runtime.go` (Recipes 6.3, 6.10): `CreateJourneyRun` (`ON CONFLICT (journey_version_id,profile_id,entry_key,reentry_sequence) DO NOTHING` returning `inserted bool`, copying `CreateDeliveryAttempt` `campaigns.go:286`), `GetJourneyRun`, `UpdateJourneyRun`, `ClaimJourneyStep`/`CompleteJourneyStep`/`FailJourneyStep` (copy `ClaimDeliveryJob`/`FailDeliveryJob`), `InsertJourneyStep`, `RecordTransition`, and `AdvanceRunTx(...)` (the atomic transition of Recipe 6.11). Add all to `ports.Store`. — done: methods implemented in `internal/postgres/journey_runtime.go`, added to `ports.Store` interface, and verified by `TestJourneyRuntimeIntegration`.
 4. **Clock seam** `internal/journey/clock.go`: `type Clock interface { Now() time.Time }`,
    a real impl and a `FakeClock` (advanceable). Inject into the runtime so tests control time
    (satisfies "fake-clock simulation"). *Done when:* `go build ./...` passes.

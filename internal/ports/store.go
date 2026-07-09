@@ -88,6 +88,15 @@ type Store interface {
 	UpdateJourney(ctx context.Context, p domain.Principal, j domain.Journey) (domain.Journey, error)
 	ListJourneys(ctx context.Context, p domain.Principal) ([]domain.Journey, error)
 	PublishJourney(ctx context.Context, p domain.Principal, journeyID string, approverUserID string, manifestKey string) (domain.JourneyVersion, error)
+	CreateJourneyRun(ctx context.Context, run domain.JourneyRun) (bool, error)
+	GetJourneyRun(ctx context.Context, p domain.Principal, runID string) (domain.JourneyRun, error)
+	UpdateJourneyRun(ctx context.Context, p domain.Principal, run domain.JourneyRun) (domain.JourneyRun, error)
+	ClaimJourneyStep(ctx context.Context) (domain.JourneyStep, bool, error)
+	CompleteJourneyStep(ctx context.Context, stepID string) error
+	FailJourneyStep(ctx context.Context, stepID string, errMsg string) error
+	InsertJourneyStep(ctx context.Context, step domain.JourneyStep) error
+	RecordTransition(ctx context.Context, trans domain.JourneyTransition) error
+	AdvanceRunTx(ctx context.Context, runID string, run domain.JourneyRun, stepID string, nextStep *domain.JourneyStep, trans domain.JourneyTransition) error
 
 	ClaimScheduledCampaign(ctx context.Context) (domain.Campaign, bool, error)
 	SaveCampaignManifestAndJobs(ctx context.Context, campaignID string, manifestKey string, recipientCount int, segmentVersion int, templateVersion int, jobs []domain.DeliveryJob) error
