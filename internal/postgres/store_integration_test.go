@@ -474,6 +474,42 @@ func assertAuditActor(t *testing.T, events []domain.AuditEvent, action, actorTyp
 	t.Fatalf("missing audit actor %s/%s for action %s in %+v", actorType, actorID, action, events)
 }
 
+func TestJourneyRoleScopesIntegration(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	key := fmt.Sprintf("journey-scope-%d", time.Now().UnixNano())
+	if err := store.EnsureDevelopmentTenant(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	principal, err := store.Authenticate(ctx, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	role, err := store.CreateRole(ctx, principal, "Journey operator", []string{
+		"journeys:read",
+		"journeys:write",
+		"journeys:publish",
+	})
+	if err != nil {
+		t.Fatalf("CreateRole journey scopes: %v", err)
+	}
+	if len(role.Permissions) != 3 {
+		t.Fatalf("journey role permissions=%v", role.Permissions)
+	}
+}
+
 func TestMain(m *testing.M) {
 	if os.Getenv("OPENJOURNEY_TEST_DATABASE_URL") != "" {
 		fmt.Println("running PostgreSQL integration tests")

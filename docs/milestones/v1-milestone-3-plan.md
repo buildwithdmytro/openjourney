@@ -506,9 +506,9 @@ task ends with a **Done when** check.
 2. [x] **Domain models.** Add `Journey`, `JourneyVersion` structs to `internal/domain/domain.go`
    (Recipe 6.2); `Graph json.RawMessage`, nullables as `*T`, snake_case tags. *Done when:*
    `go build ./...` passes. — done: domain structs added with raw graph JSON and nullable pointer fields; `go build ./...` passes.
-3. **Scopes.** Add `journeys:read`/`journeys:write`/`journeys:publish` to `allowedPermissions`
+3. [x] **Scopes.** Add `journeys:read`/`journeys:write`/`journeys:publish` to `allowedPermissions`
    (`internal/postgres/rbac.go:12`) **and** the migration default array (Recipe 6.5).
-   *Done when:* `CreateRole` accepts the new scopes.
+   *Done when:* `CreateRole` accepts the new scopes. — done: `allowedPermissions` and `015_journeys.sql` include journeys scopes; `CreateRole` accepts all three.
 4. **Store methods** in new `internal/postgres/journeys.go` (Recipe 6.3): `CreateJourney`,
    `GetJourney`, `UpdateJourney` (writes the draft `graph`; blocks edits when
    `status='published'` unless reverting to draft), `ListJourneys`. Add to `ports.Store`.
