@@ -202,7 +202,7 @@ func TestExecuteEntry(t *testing.T) {
 	}
 	n := &graph.Nodes[0]
 
-	res, err := n.Execute(context.Background(), store, run, graph, now)
+	res, err := n.Execute(context.Background(), store, run, graph, now, "advance")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -227,7 +227,7 @@ func TestExecuteDelay(t *testing.T) {
 	}
 	n := &graph.Nodes[0]
 
-	res, err := n.Execute(context.Background(), store, run, graph, now)
+	res, err := n.Execute(context.Background(), store, run, graph, now, "advance")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -261,7 +261,7 @@ func TestExecuteCondition(t *testing.T) {
 	}
 
 	// 1. True branch
-	res, err := graph.Nodes[0].Execute(context.Background(), store, run, graph, now)
+	res, err := graph.Nodes[0].Execute(context.Background(), store, run, graph, now, "advance")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -271,7 +271,7 @@ func TestExecuteCondition(t *testing.T) {
 
 	// 2. False branch
 	store.evaluatedAudience[`{"field":"country","operator":"equals","value":"US"}`] = false
-	res, err = graph.Nodes[0].Execute(context.Background(), store, run, graph, now)
+	res, err = graph.Nodes[0].Execute(context.Background(), store, run, graph, now, "advance")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -306,7 +306,7 @@ func TestExecuteSplitRandom(t *testing.T) {
 		},
 	}
 
-	res, err := graph.Nodes[0].Execute(context.Background(), store, run, graph, now)
+	res, err := graph.Nodes[0].Execute(context.Background(), store, run, graph, now, "advance")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -352,7 +352,7 @@ func TestExecuteSplitAudience(t *testing.T) {
 		},
 	}
 
-	res, err := graph.Nodes[0].Execute(context.Background(), store, run, graph, now)
+	res, err := graph.Nodes[0].Execute(context.Background(), store, run, graph, now, "advance")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -380,7 +380,7 @@ func TestExecuteActionProfileUpdate(t *testing.T) {
 		Edges: []Edge{{From: "n1", To: "n2"}},
 	}
 
-	res, err := graph.Nodes[0].Execute(context.Background(), store, run, graph, now)
+	res, err := graph.Nodes[0].Execute(context.Background(), store, run, graph, now, "advance")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -407,7 +407,7 @@ func TestExecuteGoal(t *testing.T) {
 		Edges: []Edge{{From: "n1", To: "n2"}},
 	}
 
-	res, err := graph.Nodes[0].Execute(context.Background(), store, run, graph, now)
+	res, err := graph.Nodes[0].Execute(context.Background(), store, run, graph, now, "advance")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -427,7 +427,7 @@ func TestExecuteExit(t *testing.T) {
 		Nodes: []Node{{ID: "n1", Type: NodeTypeExit}},
 	}
 
-	res, err := graph.Nodes[0].Execute(context.Background(), store, run, graph, now)
+	res, err := graph.Nodes[0].Execute(context.Background(), store, run, graph, now, "advance")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -436,6 +436,62 @@ func TestExecuteExit(t *testing.T) {
 	}
 	if res.CompletedAt == nil || !res.CompletedAt.Equal(now) {
 		t.Errorf("expected CompletedAt to be set to now")
+	}
+}
+
+func TestExecuteWaitEvent(t *testing.T) {
+	store := &executorMockStore{}
+	now := time.Now()
+	run := &domain.JourneyRun{ID: "r1", TenantID: "t1", Status: "active"}
+	graph := &Graph{
+		Nodes: []Node{
+			{
+				ID:   "n1",
+				Type: NodeTypeWaitEvent,
+				Config: json.RawMessage(`{
+					"event_type": "email.opened",
+					"timeout": "48h"
+				}`),
+			},
+			{ID: "n2", Type: NodeTypeExit},
+			{ID: "n3", Type: NodeTypeExit},
+		},
+		Edges: []Edge{
+			{From: "n1", To: "n2", Branch: "success"},
+			{From: "n1", To: "n3", Branch: "timeout"},
+		},
+	}
+
+	res, err := graph.Nodes[0].Execute(context.Background(), store, run, graph, now, "advance")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.NextStatus != "waiting" {
+		t.Errorf("expected NextStatus 'waiting', got %q", res.NextStatus)
+	}
+	if res.WaitEventType == nil || *res.WaitEventType != "email.opened" {
+		t.Errorf("expected WaitEventType 'email.opened', got %v", res.WaitEventType)
+	}
+	expectedTimeout := now.Add(48 * time.Hour)
+	if res.WaitUntil == nil || !res.WaitUntil.Equal(expectedTimeout) {
+		t.Errorf("expected WaitUntil %v, got %v", expectedTimeout, res.WaitUntil)
+	}
+	if res.NextStep == nil || res.NextStep.NodeID != "n1" || res.NextStep.Kind != "timeout" || !res.NextStep.AvailableAt.Equal(expectedTimeout) {
+		t.Errorf("expected next step to be scheduled timeout, got %+v", res.NextStep)
+	}
+
+	res, err = graph.Nodes[0].Execute(context.Background(), store, run, graph, now, "timeout")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.NextStatus != "active" {
+		t.Errorf("expected NextStatus 'active', got %q", res.NextStatus)
+	}
+	if res.NextNodeID != "n3" {
+		t.Errorf("expected NextNodeID 'n3', got %q", res.NextNodeID)
+	}
+	if res.NextStep == nil || res.NextStep.NodeID != "n3" || res.NextStep.Kind != "advance" {
+		t.Errorf("expected next step to advance to n3, got %+v", res.NextStep)
 	}
 }
 

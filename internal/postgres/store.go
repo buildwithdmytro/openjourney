@@ -538,6 +538,16 @@ func (s *Store) ProjectEvent(ctx context.Context, event domain.AcceptedEvent) er
 			}
 		}
 	}
+	if profileID != "" {
+		if err := s.enrollEventTriggered(ctx, tx, event, profileID); err != nil {
+			return fmt.Errorf("enroll event triggered: %w", err)
+		}
+	}
+	if event.ExternalID != "" {
+		if err := s.resolveWaitingRuns(ctx, tx, event); err != nil {
+			return fmt.Errorf("resolve waiting runs: %w", err)
+		}
+	}
 	if _, err := tx.Exec(ctx, `UPDATE projection_jobs SET status='done',locked_until=NULL,
 		completed_at=now(),last_error=NULL WHERE event_id=$1`, event.ID); err != nil {
 		return err

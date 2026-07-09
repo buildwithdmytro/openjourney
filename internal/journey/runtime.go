@@ -60,7 +60,7 @@ func TickNext(ctx context.Context, store ports.Store, deps Deps) (bool, error) {
 
 	now := deps.Clock.Now()
 
-	res, err := node.Execute(ctx, store, &run, graph, now)
+	res, err := node.Execute(ctx, store, &run, graph, now, step.Kind)
 	if err != nil {
 		slog.Error("failed to execute node", "error", err, "node_id", node.ID, "run_id", step.RunID)
 		_ = store.FailJourneyStep(ctx, step.ID, fmt.Sprintf("execute node: %v", err))
@@ -74,12 +74,8 @@ func TickNext(ctx context.Context, store ports.Store, deps Deps) (bool, error) {
 	run.CompletedAt = res.CompletedAt
 	run.GoalReached = res.GoalReached
 	run.State = res.State
-	if res.WaitEventType != nil {
-		run.WaitEventType = res.WaitEventType
-	}
-	if res.WaitUntil != nil {
-		run.WaitUntil = res.WaitUntil
-	}
+	run.WaitEventType = res.WaitEventType
+	run.WaitUntil = res.WaitUntil
 
 	err = store.AdvanceRunTx(ctx, run.ID, run, step.ID, res.NextStep, res.Transition)
 	if err != nil {

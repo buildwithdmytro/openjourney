@@ -148,7 +148,7 @@ type ExecutionResult struct {
 	State         json.RawMessage
 }
 
-func (n *Node) Execute(ctx context.Context, store ports.Store, run *domain.JourneyRun, graph *Graph, now time.Time) (ExecutionResult, error) {
+func (n *Node) Execute(ctx context.Context, store ports.Store, run *domain.JourneyRun, graph *Graph, now time.Time, stepKind string) (ExecutionResult, error) {
 	var nextNodeID string
 	var nextStep *domain.JourneyStep
 	var trans domain.JourneyTransition
@@ -453,27 +453,62 @@ func (n *Node) Execute(ctx context.Context, store ports.Store, run *domain.Journ
 		}
 
 	case NodeTypeWaitEvent:
-		nxt, err := findNextNode(graph, n.ID, "success")
+		var cfg WaitConfig
+		if err := decodeNodeConfig(*n, &cfg); err != nil {
+			return ExecutionResult{}, err
+		}
+		duration, err := time.ParseDuration(cfg.Timeout)
 		if err != nil {
-			return ExecutionResult{}, fmt.Errorf("find successor branch success: %w", err)
+			return ExecutionResult{}, fmt.Errorf("invalid timeout duration %q: %w", cfg.Timeout, err)
 		}
-		nextNodeID = nxt
-		nextStep = &domain.JourneyStep{
-			RunID:       run.ID,
-			TenantID:    run.TenantID,
-			NodeID:      nextNodeID,
-			Kind:        "advance",
-			Status:      "pending",
-			AvailableAt: now,
-		}
-		trans = domain.JourneyTransition{
-			RunID:    run.ID,
-			TenantID: run.TenantID,
-			FromNode: &n.ID,
-			ToNode:   &nextNodeID,
-			NodeType: NodeTypeWaitEvent,
-			Outcome:  "stubbed",
-			Detail:   json.RawMessage("{}"),
+		timeoutAt := now.Add(duration)
+
+		if stepKind == "timeout" {
+			nxt, err := findNextNode(graph, n.ID, "timeout")
+			if err != nil {
+				return ExecutionResult{}, fmt.Errorf("find successor branch timeout: %w", err)
+			}
+			nextNodeID = nxt
+			nextStep = &domain.JourneyStep{
+				RunID:       run.ID,
+				TenantID:    run.TenantID,
+				NodeID:      nextNodeID,
+				Kind:        "advance",
+				Status:      "pending",
+				AvailableAt: now,
+			}
+			trans = domain.JourneyTransition{
+				RunID:    run.ID,
+				TenantID: run.TenantID,
+				FromNode: &n.ID,
+				ToNode:   &nextNodeID,
+				NodeType: NodeTypeWaitEvent,
+				Outcome:  "timeout",
+				Detail:   json.RawMessage("{}"),
+			}
+			nextStatus = "active"
+		} else {
+			nextStatus = "waiting"
+			waitEventType = &cfg.EventType
+			waitUntil = &timeoutAt
+			nextNodeID = n.ID
+			nextStep = &domain.JourneyStep{
+				RunID:       run.ID,
+				TenantID:    run.TenantID,
+				NodeID:      n.ID,
+				Kind:        "timeout",
+				Status:      "pending",
+				AvailableAt: timeoutAt,
+			}
+			trans = domain.JourneyTransition{
+				RunID:    run.ID,
+				TenantID: run.TenantID,
+				FromNode: &n.ID,
+				ToNode:   nil,
+				NodeType: NodeTypeWaitEvent,
+				Outcome:  "waiting",
+				Detail:   json.RawMessage("{}"),
+			}
 		}
 
 	default:

@@ -574,10 +574,10 @@ task ends with a **Done when** check.
    validator), and Save → `updateJourney`. — done: created `web/src/sections/Journeys.tsx` incorporating React Flow, interactive visual node/edge connections, sidebar properties configuration, local graph validation, and publish integrations.
 
 ### Milestone 8.5 — Entry triggers, re-entry & wait-for-event
-1. **Event-triggered enrollment** as a `ProjectEvent` side-effect (Recipe 6.12): match active
+1. [x] **Event-triggered enrollment** as a `ProjectEvent` side-effect (Recipe 6.12): match active
    `entry_kind='event'` versions on `event.Type`, enroll with the execution-identity guard;
    honor `reentry_policy`/`max_reentries`. *Done when:* ingesting the entry event creates one
-   run; a duplicate event creates none; a second distinct event respects the re-entry policy.
+   run; a duplicate event creates none; a second distinct event respects the re-entry policy. — done: active event-entry versions matched on event.Type in ProjectEvent; verified by integration tests.
 2. **Wait-for-event node** (`wait_event` executor): set run `waiting` + `wait_event_type` +
    `wait_until`; insert a `kind='timeout'` step at `wait_until`. *Done when:* a run parks in
    `waiting` with a scheduled timeout step.

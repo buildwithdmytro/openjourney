@@ -257,6 +257,243 @@ func TestJourneyRuntimeIntegration(t *testing.T) {
 	_, _ = store.pool.Exec(ctx, "DELETE FROM tenants WHERE id=$1", p.TenantID)
 }
 
+func TestJourneyEventTriggeredEnrollmentIntegration(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	key := fmt.Sprintf("journey-event-%d", time.Now().UnixNano())
+	if err := store.EnsureDevelopmentTenant(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	p, err := store.Authenticate(ctx, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	appID, err := store.GetFirstAppID(ctx, p.TenantID, p.WorkspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.AppID = appID
+
+	profileExtID := "profile-enroll-test"
+	events := []domain.Event{
+		{
+			Type: "profile.updated", SchemaVersion: 1, ExternalID: profileExtID,
+			IdempotencyKey: "identify-enroll-test", OccurredAt: time.Now().UTC(),
+			Payload: json.RawMessage(`{"attributes":{"country":"US"}}`),
+		},
+	}
+	_, err = store.AcceptEvents(ctx, p, events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, _, _ := store.ClaimProjectionJob(ctx)
+	_ = store.ProjectEvent(ctx, job)
+
+	profile, _, _ := store.GetProfile(ctx, p, profileExtID)
+
+	validGraph := json.RawMessage(`{
+		"entry_node_id":"n1",
+		"nodes":[
+			{"id":"n1","type":"entry","config":{"trigger":"event","event_type":"order.created"}},
+			{"id":"n2","type":"exit","config":{"reason":"completed"}}
+		],
+		"edges":[{"from":"n1","to":"n2"}]
+	}`)
+	created, err := store.CreateJourney(ctx, p, domain.Journey{Name: "Event-Triggered", Graph: validGraph})
+	if err != nil {
+		t.Fatal(err)
+	}
+	blobs := &memoryBlobs{objects: map[string][]byte{}}
+	approverID := "00000000-0000-0000-0000-000000000001"
+	version, err := journeyflow.Publish(ctx, store, blobs, p, created.ID, approverID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	triggerEvent := []domain.Event{
+		{
+			Type: "order.created", SchemaVersion: 1, ExternalID: profileExtID,
+			IdempotencyKey: "order-1", OccurredAt: time.Now().UTC(),
+			Payload: json.RawMessage(`{}`),
+		},
+	}
+	_, err = store.AcceptEvents(ctx, p, triggerEvent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job2, found2, err := store.ClaimProjectionJob(ctx)
+	if err != nil || !found2 {
+		t.Fatalf("ClaimProjectionJob 2: err=%v, found=%v", err, found2)
+	}
+	if err := store.ProjectEvent(ctx, job2); err != nil {
+		t.Fatalf("ProjectEvent: %v", err)
+	}
+
+	runs, err := store.GetJourneyRunsForProfile(ctx, p.TenantID, version.ID, profile.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 1 {
+		t.Fatalf("expected 1 run, got %d", len(runs))
+	}
+	if runs[0].CurrentNodeID != "n1" || runs[0].Status != "active" {
+		t.Errorf("unexpected run state: %+v", runs[0])
+	}
+
+	_, err = store.AcceptEvents(ctx, p, triggerEvent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, found3, err := store.ClaimProjectionJob(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found3 {
+		t.Fatalf("expected duplicate event not to create a new projection job")
+	}
+	runs, _ = store.GetJourneyRunsForProfile(ctx, p.TenantID, version.ID, profile.ID)
+	if len(runs) != 1 {
+		t.Errorf("expected still 1 run on duplicate event, got %d", len(runs))
+	}
+
+	_, _ = store.pool.Exec(ctx, "DELETE FROM tenants WHERE id=$1", p.TenantID)
+}
+
+func TestJourneyWaitEventResolutionIntegration(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	key := fmt.Sprintf("journey-wait-%d", time.Now().UnixNano())
+	if err := store.EnsureDevelopmentTenant(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	p, err := store.Authenticate(ctx, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	appID, err := store.GetFirstAppID(ctx, p.TenantID, p.WorkspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.AppID = appID
+
+	profileExtID := "profile-wait-test"
+	events := []domain.Event{
+		{
+			Type: "profile.updated", SchemaVersion: 1, ExternalID: profileExtID,
+			IdempotencyKey: "identify-wait-test", OccurredAt: time.Now().UTC(),
+			Payload: json.RawMessage(`{"attributes":{"country":"US"}}`),
+		},
+	}
+	_, err = store.AcceptEvents(ctx, p, events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, _, _ := store.ClaimProjectionJob(ctx)
+	_ = store.ProjectEvent(ctx, job)
+
+	profile, _, _ := store.GetProfile(ctx, p, profileExtID)
+
+	validGraph := json.RawMessage(`{
+		"entry_node_id":"n1",
+		"nodes":[
+			{"id":"n1","type":"entry","config":{"trigger":"event","event_type":"signup"}},
+			{"id":"n2","type":"wait_event","config":{"event_type":"email.opened","timeout":"24h"}},
+			{"id":"n3","type":"exit","config":{"reason":"success"}},
+			{"id":"n4","type":"exit","config":{"reason":"timeout"}}
+		],
+		"edges":[
+			{"from":"n1","to":"n2"},
+			{"from":"n2","to":"n3","branch":"success"},
+			{"from":"n2","to":"n4","branch":"timeout"}
+		]
+	}`)
+	created, _ := store.CreateJourney(ctx, p, domain.Journey{Name: "Wait Journey", Graph: validGraph})
+	blobs := &memoryBlobs{objects: map[string][]byte{}}
+	version, _ := journeyflow.Publish(ctx, store, blobs, p, created.ID, "00000000-0000-0000-0000-000000000001")
+
+	run := domain.JourneyRun{
+		TenantID:          p.TenantID,
+		WorkspaceID:       p.WorkspaceID,
+		JourneyID:         created.ID,
+		JourneyVersionID:  version.ID,
+		ProfileID:         profile.ID,
+		SubjectExternalID: &profileExtID,
+		EntryKey:          "manual-entry",
+		Status:            "active",
+		CurrentNodeID:     "n1",
+	}
+	_, _ = store.CreateJourneyRun(ctx, run)
+	var fetchedRun domain.JourneyRun
+	_ = store.pool.QueryRow(ctx, `SELECT id FROM journey_runs WHERE tenant_id=$1 AND profile_id=$2`, p.TenantID, profile.ID).Scan(&fetchedRun.ID)
+	
+	step := domain.JourneyStep{
+		RunID:       fetchedRun.ID,
+		TenantID:    p.TenantID,
+		NodeID:      "n1",
+		Kind:        "advance",
+		Status:      "pending",
+		AvailableAt: time.Now(),
+	}
+	_ = store.InsertJourneyStep(ctx, step)
+
+	deps := journeyflow.Deps{Clock: journeyflow.RealClock{}}
+	processed, err := journeyflow.TickNext(ctx, store, deps)
+	if err != nil || !processed {
+		t.Fatalf("TickNext entry: processed=%v, err=%v", processed, err)
+	}
+
+	processed, err = journeyflow.TickNext(ctx, store, deps)
+	if err != nil || !processed {
+		t.Fatalf("TickNext wait: processed=%v, err=%v", processed, err)
+	}
+
+	fetchedRun, _ = store.GetJourneyRun(ctx, p, fetchedRun.ID)
+	if fetchedRun.Status != "waiting" || fetchedRun.WaitEventType == nil || *fetchedRun.WaitEventType != "email.opened" {
+		t.Errorf("expected waiting at n2, got status=%s event=%v", fetchedRun.Status, fetchedRun.WaitEventType)
+	}
+
+	awaitedEvent := []domain.Event{
+		{
+			Type: "email.opened", SchemaVersion: 1, ExternalID: profileExtID,
+			IdempotencyKey: "open-1", OccurredAt: time.Now().UTC(),
+			Payload: json.RawMessage(`{}`),
+		},
+	}
+	_, err = store.AcceptEvents(ctx, p, awaitedEvent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job2, _, _ := store.ClaimProjectionJob(ctx)
+	if err := store.ProjectEvent(ctx, job2); err != nil {
+		t.Fatalf("ProjectEvent wait resolve: %v", err)
+	}
+
+	fetchedRun, _ = store.GetJourneyRun(ctx, p, fetchedRun.ID)
+	if fetchedRun.Status != "active" || fetchedRun.CurrentNodeID != "n3" || fetchedRun.WaitEventType != nil {
+		t.Errorf("expected run active at n3, got status=%s node=%s", fetchedRun.Status, fetchedRun.CurrentNodeID)
+	}
+
+	_, _ = store.pool.Exec(ctx, "DELETE FROM tenants WHERE id=$1", p.TenantID)
+}
+
 func ptrStr(s string) *string {
 	return &s
 }
