@@ -530,12 +530,12 @@ task ends with a **Done when** check.
    `WaitConfig{EventType,Timeout}`, `ActionConfig{Action,Set}`, `EntryConfig{Trigger,EventType,...}`).
    Reject deferred node types (§ decision 5) with a clear `unsupported node type` error.
    *Done when:* unit tests cover one valid config and an unsupported-type rejection per node. — done: `nodes.go` decodes all core node configs and rejects deferred node types; `internal/journey` unit tests plus `go build ./... && go vet ./... && go test ./...` pass in Go container with `GOFLAGS=-buildvcs=false`.
-3. **Validator** `Validate(*Graph) error`: exactly one `entry` node = `EntryNodeID`; every
+3. [x] **Validator** `Validate(*Graph) error`: exactly one `entry` node = `EntryNodeID`; every
    edge references existing nodes; branch labels match the node type's contract (§3); no
    unreachable nodes (BFS from entry); at least one `exit` reachable; durations parse. **This
    is the crux — treat it like the Phase 2 audience compiler (7.2).** *Done when:* unit tests
    cover a valid graph and ≥5 distinct invalid graphs (missing entry, dangling edge, wrong
-   branch labels, unreachable node, no exit).
+   branch labels, unreachable node, no exit). — done: `Validate` enforces graph topology, branch contracts, reachability, exits, and durations; valid graph plus six invalid graph tests pass with `go build ./... && go vet ./... && go test ./...`.
 4. **Golden test** `internal/journey/testdata/`: freeze the canonical §3 graph's normalized
    form; assert exact serialization. Copy the fail-on-missing pattern from
    `internal/audience/compile_test.go:128` (**must** `t.Fatalf` when the golden file is
