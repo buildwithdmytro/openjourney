@@ -9,11 +9,12 @@ import {
   listSendingIdentities, createSendingIdentity, Template, SendingIdentity, TemplatePreview,
   listSuppressions, createSuppression, deleteSuppression, Suppression,
   listCampaigns, getCampaign, createCampaign, updateCampaign, Campaign,
+  listJourneys, createJourney, Journey,
 } from "./api";
 import { oidcConfigured, restoreOIDCSession, signIn, signOut } from "./auth";
 
 const apiBase = import.meta.env.VITE_API_BASE_URL || "/api";
-type View = "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "templates" | "campaigns" | "suppressions" | "sender-identities";
+type View = "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "templates" | "campaigns" | "journeys" | "suppressions" | "sender-identities";
 type CredentialSource = "manual" | "session" | "oidc";
 
 const viewTitles: Record<View, [string, string]> = {
@@ -27,6 +28,7 @@ const viewTitles: Record<View, [string, string]> = {
   segments: ["Segments", "Manage customer segments and membership rules."],
   templates: ["Templates", "Design email templates with Liquid tags and live preview."],
   campaigns: ["Campaigns", "Schedule and manage sharded marketing campaigns linked to segments and templates."],
+  journeys: ["Journeys", "Create durable journey drafts and inspect saved graph manifests."],
   suppressions: ["Suppressions", "Manage bounces, complaints, and manually suppressed endpoints."],
   "sender-identities": ["Sender Identities", "Manage verified sender emails and webhook channels."],
 };
@@ -95,11 +97,10 @@ export function App() {
       <aside>
         <div className="brand"><span>O</span> OpenJourney</div>
         <nav aria-label="Primary">
-          {(["profiles", "segments", "templates", "campaigns", "suppressions", "sender-identities", "schemas", "api-keys", "privacy", "access", "operations", "audit"] as View[]).map((item) => (
+          {(["profiles", "segments", "templates", "campaigns", "journeys", "suppressions", "sender-identities", "schemas", "api-keys", "privacy", "access", "operations", "audit"] as View[]).map((item) => (
             <button key={item} className={view === item ? "active" : ""}
               onClick={() => setView(item)}>{viewTitles[item][0]}</button>
           ))}
-          <button disabled>Journeys <small>next</small></button>
         </nav>
         <div className={`health ${healthy ? "up" : ""}`}>
           <i /> API {healthy === null ? "checking" : healthy ? "ready" : "unavailable"}
@@ -140,6 +141,7 @@ export function App() {
         {view === "segments" && <Segments apiKey={apiKey} />}
         {view === "templates" && <Templates apiKey={apiKey} />}
         {view === "campaigns" && <Campaigns apiKey={apiKey} />}
+        {view === "journeys" && <Journeys apiKey={apiKey} />}
         {view === "suppressions" && <Suppressions apiKey={apiKey} />}
         {view === "sender-identities" && <SenderIdentities apiKey={apiKey} />}
         {view === "schemas" && <Schemas apiKey={apiKey} />}
@@ -1339,3 +1341,123 @@ export function Campaigns({ apiKey }: { apiKey: string }) {
   );
 }
 
+function Journeys({ apiKey }: { apiKey: string }) {
+  const [journeys, setJourneys] = useState<Journey[]>([]);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [graph, setGraph] = useState("{}");
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function load() {
+    setLoading(true);
+    setError("");
+    try {
+      setJourneys(await listJourneys(apiBase, apiKey));
+    } catch (cause) {
+      setError(message(cause));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (apiKey) void load();
+  }, [apiKey]);
+
+  async function handleCreate(event: FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      let parsedGraph: Record<string, unknown> = {};
+      try {
+        parsedGraph = JSON.parse(graph) as Record<string, unknown>;
+      } catch (cause) {
+        throw new Error("Invalid graph JSON: " + message(cause));
+      }
+      await createJourney(apiBase, apiKey, {
+        name,
+        description: description || undefined,
+        graph: parsedGraph,
+      });
+      setName("");
+      setDescription("");
+      setGraph("{}");
+      await load();
+    } catch (cause) {
+      setError(message(cause));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="stack">
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: "2rem" }}>
+        <article className="card" style={{ height: "fit-content" }}>
+          <h2>Create journey</h2>
+          <form onSubmit={handleCreate} className="schema-form" style={{ gridTemplateColumns: "1fr" }}>
+            <label>Name
+              <input value={name} onChange={event => setName(event.target.value)} required placeholder="Welcome Series" />
+            </label>
+            <label>Description
+              <input value={description} onChange={event => setDescription(event.target.value)} placeholder="Activation flow" />
+            </label>
+            <label>Graph
+              <textarea value={graph} onChange={event => setGraph(event.target.value)} rows={8} />
+            </label>
+            <button type="submit" disabled={saving || !apiKey || !name.trim()}>
+              {saving ? "Saving..." : "Create journey"}
+            </button>
+          </form>
+          <ErrorMessage value={error} />
+        </article>
+
+        <article className="card">
+          <div className="section-title">
+            <div>
+              <div className="eyebrow">Drafts</div>
+              <h2>Journeys ({journeys.length})</h2>
+            </div>
+            <button onClick={() => void load()} disabled={!apiKey || loading}>
+              {loading ? "Loading..." : "Refresh"}
+            </button>
+          </div>
+          {loading && <p>Loading journeys...</p>}
+          {!loading && journeys.length === 0 && <p className="muted">No journeys configured.</p>}
+          {!loading && journeys.length > 0 && (
+            <div style={{ overflowX: "auto" }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Status</th>
+                    <th>Latest version</th>
+                    <th>Updated</th>
+                    <th>Graph</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {journeys.map(journey => (
+                    <tr key={journey.id}>
+                      <td>
+                        <strong>{journey.name}</strong>
+                        {journey.description && <div style={{ fontSize: "11px", color: "var(--muted)" }}>{journey.description}</div>}
+                      </td>
+                      <td><span className={`pill ${journey.status}`}>{journey.status}</span></td>
+                      <td>{journey.latest_version}</td>
+                      <td>{formatDate(journey.updated_at)}</td>
+                      <td><code>{JSON.stringify(journey.graph)}</code></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </article>
+      </div>
+    </section>
+  );
+}

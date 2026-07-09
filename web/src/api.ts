@@ -337,4 +337,32 @@ export async function updateCampaign(baseURL: string, apiKey: string, id: string
   return requestJSON<Campaign>(baseURL, apiKey, `/v1/campaigns/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(input) });
 }
 
+export type Journey = {
+  id: string;
+  tenant_id: string;
+  workspace_id: string;
+  name: string;
+  description?: string;
+  status: "draft" | "published" | "archived";
+  graph: Record<string, unknown>;
+  latest_version: number;
+  current_version_id?: string;
+  created_at: string;
+  updated_at: string;
+};
 
+export async function listJourneys(baseURL: string, apiKey: string): Promise<Journey[]> {
+  return (await requestJSON<{ journeys: Journey[] }>(baseURL, apiKey, "/v1/journeys")).journeys ?? [];
+}
+
+export async function getJourney(baseURL: string, apiKey: string, id: string): Promise<Journey> {
+  return requestJSON<Journey>(baseURL, apiKey, `/v1/journeys/${encodeURIComponent(id)}`);
+}
+
+export async function createJourney(baseURL: string, apiKey: string, input: Partial<Journey>): Promise<Journey> {
+  return requestJSON<Journey>(baseURL, apiKey, "/v1/journeys", { method: "POST", body: JSON.stringify(input) });
+}
+
+export async function updateJourney(baseURL: string, apiKey: string, id: string, input: Partial<Journey>): Promise<Journey> {
+  return requestJSON<Journey>(baseURL, apiKey, `/v1/journeys/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(input) });
+}

@@ -44,6 +44,31 @@ const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
   if (url.includes("/v1/operations/queues")) return jsonResponse({ queues: [{ queue: "projection", pending: 1, processing: 0, dead: 0 }] });
   if (url.includes("/v1/operations/dlq")) return jsonResponse({ dead_letters: [] });
   if (url.includes("/v1/audit")) return jsonResponse({ audit_events: [{ id: "audit-1", actor_type: "api_key", actor_id: "key-1", action: "events.accept", resource_type: "event_batch", metadata: {}, occurred_at: "2026-01-01T00:00:00Z" }] });
+  if (url.includes("/v1/journeys") && init?.method === "POST") {
+    return jsonResponse({
+      id: "journey-2",
+      tenant_id: "tenant",
+      workspace_id: "workspace",
+      name: "Welcome Series",
+      status: "draft",
+      graph: { entry_node_id: "n1" },
+      latest_version: 0,
+      created_at: "2026-01-01T00:00:00Z",
+      updated_at: "2026-01-01T00:00:00Z",
+    }, 201);
+  }
+  if (url.includes("/v1/journeys")) return jsonResponse({ journeys: [{
+    id: "journey-1",
+    tenant_id: "tenant",
+    workspace_id: "workspace",
+    name: "Onboarding",
+    description: "Activation flow",
+    status: "draft",
+    graph: { entry_node_id: "n1" },
+    latest_version: 0,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+  }] });
   return jsonResponse({});
 });
 
@@ -110,6 +135,19 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Audit" }));
     await screen.findByText("events.accept");
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/v1/audit?limit=100"), expect.any(Object)));
+  });
+
+  it("lists and creates journey drafts", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Journeys" }));
+    await screen.findByText("Onboarding");
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Welcome Series" } });
+    fireEvent.change(screen.getByLabelText("Graph"), { target: { value: "{\"entry_node_id\":\"n1\"}" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create journey" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/v1/journeys"), expect.objectContaining({
+      method: "POST",
+      body: expect.stringContaining("\"entry_node_id\":\"n1\""),
+    })));
   });
 
   it("persists manually entered API keys", async () => {

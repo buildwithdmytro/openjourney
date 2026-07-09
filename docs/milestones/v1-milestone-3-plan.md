@@ -516,8 +516,8 @@ task ends with a **Done when** check.
 5. [x] **HTTP endpoints** in new `internal/httpapi/journeys.go` + routes in `server.go`
    `buildMux()` (Recipe 6.4): `POST/GET /v1/journeys`, `GET/PUT /v1/journeys/{id}`.
    *Done when:* each returns expected JSON via curl. — done: journey CRUD routes wired; HTTP tests pass; curl POST/list/get/update returned expected JSON against local API.
-6. **React scaffold** (Recipe 6.16, list + create only for now; builder in 8.4). Add nav
-   entry, delete the disabled placeholder. *Done when:* `npm run build` passes and the list renders.
+6. [x] **React scaffold** (Recipe 6.16, list + create only for now; builder in 8.4). Add nav
+   entry, delete the disabled placeholder. *Done when:* `npm run build` passes and the list renders. — done: Journeys nav/list/create scaffold renders; `npm run typecheck && npm run build && npm test` pass.
 7. **OpenAPI.** Add the new paths to `api/openapi.yaml` (CI `contracts` job runs redocly).
    *Done when:* `npx redocly lint` passes.
 
