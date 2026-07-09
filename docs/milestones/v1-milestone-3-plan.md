@@ -612,10 +612,10 @@ task ends with a **Done when** check.
  5. **Fatigue across channels** (§2.4): extend `SentCountSince` (`internal/postgres/delivery.go`)
     to UNION `delivery_attempts` + `journey_message_intents` sends. *Done when:* a profile at
     its cap from campaign sends is `fatigued` for a journey send too. — done: extended `SentCountSince` with a `UNION ALL` query across campaign `delivery_attempts` and journey `journey_message_intents` and verified via a database integration test.
-6. **Transactional priority + basic fairness**: the intent due-index already orders
+6. [x] **Transactional priority + basic fairness**: the intent due-index already orders
    `transactional DESC`; add a simple per-tenant in-flight cap in the claim so one tenant
    cannot starve others. Full weighted-fair-queue is a §8 hardening item, not a blocker.
-   *Done when:* transactional intents drain ahead of marketing ones.
+   *Done when:* transactional intents drain ahead of marketing ones. — done: implemented a per-tenant in-flight cap of 10 in ClaimJourneyMessageIntent; added integration test asserting priority order and fairness.
 7. **Worker binary** `cmd/journeys-worker/main.go` (Recipe 6.14): loop
    `EnrollScheduledDue → TickNext → DeliverNext`; adapters built once; metrics `:8084`. Wire
    into `Dockerfile`, `compose.yaml`, CI `containers`. *Done when:* `go build ./cmd/journeys-worker`

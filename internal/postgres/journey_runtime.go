@@ -645,11 +645,15 @@ func (s *Store) ClaimJourneyMessageIntent(ctx context.Context, workerID string) 
 			locked_until=now() + INTERVAL '5 minutes',
 			updated_at=now()
 		WHERE id = (
-			SELECT id FROM journey_message_intents
+			SELECT id FROM journey_message_intents jmi
 			WHERE (
 				(status IN ('pending', 'failed') AND attempts < 3 AND available_at <= now())
 				OR (status='processing' AND locked_until <= now())
 			)
+			AND (
+				SELECT COUNT(*) FROM journey_message_intents
+				WHERE tenant_id = jmi.tenant_id AND status = 'processing' AND locked_until > now()
+			) < 10
 			ORDER BY transactional DESC, available_at ASC
 			FOR UPDATE SKIP LOCKED
 			LIMIT 1

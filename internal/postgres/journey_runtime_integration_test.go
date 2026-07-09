@@ -1405,6 +1405,225 @@ func TestSentCountSince_FatigueAcrossChannels(t *testing.T) {
 	_, _ = store.pool.Exec(ctx, "DELETE FROM tenants WHERE id=$1", p.TenantID)
 }
 
+func TestClaimJourneyMessageIntent_PriorityAndFairness(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	// 1. Setup Tenant and Workspace A
+	keyA := fmt.Sprintf("tenant-fairness-a-%d", time.Now().UnixNano())
+	if err := store.EnsureDevelopmentTenant(ctx, keyA); err != nil {
+		t.Fatal(err)
+	}
+	pA, err := store.Authenticate(ctx, keyA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	appIDA, err := store.GetFirstAppID(ctx, pA.TenantID, pA.WorkspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pA.AppID = appIDA
+
+	// Setup Tenant and Workspace B
+	keyB := fmt.Sprintf("tenant-fairness-b-%d", time.Now().UnixNano())
+	if err := store.EnsureDevelopmentTenant(ctx, keyB); err != nil {
+		t.Fatal(err)
+	}
+	pB, err := store.Authenticate(ctx, keyB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	appIDB, err := store.GetFirstAppID(ctx, pB.TenantID, pB.WorkspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pB.AppID = appIDB
+
+	// Cleanup at the end
+	defer func() {
+		_, _ = store.pool.Exec(ctx, "DELETE FROM tenants WHERE id IN ($1, $2)", pA.TenantID, pB.TenantID)
+	}()
+
+	// Create profiles
+	var profileIDA, profileIDB string
+	err = store.pool.QueryRow(ctx, `INSERT INTO profiles (tenant_id, workspace_id, app_id, external_id) VALUES ($1, $2, $3, $4) RETURNING id`,
+		pA.TenantID, pA.WorkspaceID, pA.AppID, "prof-a").Scan(&profileIDA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = store.pool.QueryRow(ctx, `INSERT INTO profiles (tenant_id, workspace_id, app_id, external_id) VALUES ($1, $2, $3, $4) RETURNING id`,
+		pB.TenantID, pB.WorkspaceID, pB.AppID, "prof-b").Scan(&profileIDB)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create templates
+	var templateIDA, templateIDB string
+	err = store.pool.QueryRow(ctx, `INSERT INTO templates (tenant_id, workspace_id, name, channel, html_template) VALUES ($1, $2, 'tA', 'email', 'HTML') RETURNING id`,
+		pA.TenantID, pA.WorkspaceID).Scan(&templateIDA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = store.pool.QueryRow(ctx, `INSERT INTO templates (tenant_id, workspace_id, name, channel, html_template) VALUES ($1, $2, 'tB', 'email', 'HTML') RETURNING id`,
+		pB.TenantID, pB.WorkspaceID).Scan(&templateIDB)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create journeys
+	var journeyIDA, journeyIDB string
+	err = store.pool.QueryRow(ctx, `INSERT INTO journeys (tenant_id, workspace_id, name) VALUES ($1, $2, 'jA') RETURNING id`,
+		pA.TenantID, pA.WorkspaceID).Scan(&journeyIDA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = store.pool.QueryRow(ctx, `INSERT INTO journeys (tenant_id, workspace_id, name) VALUES ($1, $2, 'jB') RETURNING id`,
+		pB.TenantID, pB.WorkspaceID).Scan(&journeyIDB)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create journey versions
+	var verIDA, verIDB string
+	err = store.pool.QueryRow(ctx, `INSERT INTO journey_versions (journey_id, tenant_id, workspace_id, version, graph, entry_kind, reentry_policy) VALUES ($1, $2, $3, 1, '{}'::jsonb, 'event', 'once') RETURNING id`,
+		journeyIDA, pA.TenantID, pA.WorkspaceID).Scan(&verIDA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = store.pool.QueryRow(ctx, `INSERT INTO journey_versions (journey_id, tenant_id, workspace_id, version, graph, entry_kind, reentry_policy) VALUES ($1, $2, $3, 1, '{}'::jsonb, 'event', 'once') RETURNING id`,
+		journeyIDB, pB.TenantID, pB.WorkspaceID).Scan(&verIDB)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create journey runs
+	var runIDA, runIDB string
+	err = store.pool.QueryRow(ctx, `INSERT INTO journey_runs (tenant_id, workspace_id, journey_id, journey_version_id, profile_id, entry_key, current_node_id) VALUES ($1, $2, $3, $4, $5, 'entryA', 'node') RETURNING id`,
+		pA.TenantID, pA.WorkspaceID, journeyIDA, verIDA, profileIDA).Scan(&runIDA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = store.pool.QueryRow(ctx, `INSERT INTO journey_runs (tenant_id, workspace_id, journey_id, journey_version_id, profile_id, entry_key, current_node_id) VALUES ($1, $2, $3, $4, $5, 'entryB', 'node') RETURNING id`,
+		pB.TenantID, pB.WorkspaceID, journeyIDB, verIDB, profileIDB).Scan(&runIDB)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// PART 1: Priority
+	// Insert 1 marketing intent and 1 transactional intent for Tenant B.
+	// Make sure the marketing one is created FIRST (older available_at), but transactional should be claimed first.
+	now := time.Now()
+	var marketingIntentID, transactionalIntentID string
+	err = store.pool.QueryRow(ctx, `INSERT INTO journey_message_intents 
+		(run_id, tenant_id, workspace_id, journey_id, journey_version_id, node_id, profile_id, template_id, channel, endpoint, transactional, status, available_at)
+		VALUES ($1, $2, $3, $4, $5, 'node-m', $6, $7, 'email', 'm@example.com', false, 'pending', $8) RETURNING id`,
+		runIDB, pB.TenantID, pB.WorkspaceID, journeyIDB, verIDB, profileIDB, templateIDB, now.Add(-10*time.Minute)).Scan(&marketingIntentID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = store.pool.QueryRow(ctx, `INSERT INTO journey_message_intents 
+		(run_id, tenant_id, workspace_id, journey_id, journey_version_id, node_id, profile_id, template_id, channel, endpoint, transactional, status, available_at)
+		VALUES ($1, $2, $3, $4, $5, 'node-t', $6, $7, 'email', 't@example.com', true, 'pending', $8) RETURNING id`,
+		runIDB, pB.TenantID, pB.WorkspaceID, journeyIDB, verIDB, profileIDB, templateIDB, now.Add(-5*time.Minute)).Scan(&transactionalIntentID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Claim 1: Should be the transactional one
+	claimed1, found1, err := store.ClaimJourneyMessageIntent(ctx, "worker-fairness")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found1 {
+		t.Fatal("expected to claim a message intent")
+	}
+	if claimed1.ID != transactionalIntentID {
+		t.Errorf("expected to claim transactional intent %s, got %s", transactionalIntentID, claimed1.ID)
+	}
+
+	// Set claimed1 to completed
+	_, err = store.pool.Exec(ctx, `UPDATE journey_message_intents SET status='completed' WHERE id=$1`, claimed1.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Claim 2: Should be the marketing one
+	claimed2, found2, err := store.ClaimJourneyMessageIntent(ctx, "worker-fairness")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found2 {
+		t.Fatal("expected to claim marketing message intent")
+	}
+	if claimed2.ID != marketingIntentID {
+		t.Errorf("expected to claim marketing intent %s, got %s", marketingIntentID, claimed2.ID)
+	}
+
+	// Set claimed2 to completed
+	_, err = store.pool.Exec(ctx, `UPDATE journey_message_intents SET status='completed' WHERE id=$1`, claimed2.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// PART 2: Fairness / In-flight cap
+	// Insert 10 in-flight (processing) intents for Tenant A, and 1 pending intent for Tenant A.
+	// Insert 1 pending intent for Tenant B.
+	// Because Tenant A is at the in-flight cap of 10, the claim should skip Tenant A's pending intent
+	// and claim Tenant B's pending intent instead!
+
+	// 10 in-flight for Tenant A
+	for i := 0; i < 10; i++ {
+		_, err = store.pool.Exec(ctx, `INSERT INTO journey_message_intents 
+			(run_id, tenant_id, workspace_id, journey_id, journey_version_id, node_id, profile_id, template_id, channel, endpoint, transactional, status, locked_until, available_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'email', 'a-processing@example.com', true, 'processing', $9, $10)`,
+			runIDA, pA.TenantID, pA.WorkspaceID, journeyIDA, verIDA, fmt.Sprintf("node-a-inflight-%d", i), profileIDA, templateIDA, now.Add(5*time.Minute), now.Add(-10*time.Minute))
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// 1 pending for Tenant A (created older/first, so normally ordered first)
+	var pendingA string
+	err = store.pool.QueryRow(ctx, `INSERT INTO journey_message_intents 
+		(run_id, tenant_id, workspace_id, journey_id, journey_version_id, node_id, profile_id, template_id, channel, endpoint, transactional, status, available_at)
+		VALUES ($1, $2, $3, $4, $5, 'node-a-pending', $6, $7, 'email', 'a-pending@example.com', true, 'pending', $8) RETURNING id`,
+		runIDA, pA.TenantID, pA.WorkspaceID, journeyIDA, verIDA, profileIDA, templateIDA, now.Add(-20*time.Minute)).Scan(&pendingA)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 1 pending for Tenant B
+	var pendingB string
+	err = store.pool.QueryRow(ctx, `INSERT INTO journey_message_intents 
+		(run_id, tenant_id, workspace_id, journey_id, journey_version_id, node_id, profile_id, template_id, channel, endpoint, transactional, status, available_at)
+		VALUES ($1, $2, $3, $4, $5, 'node-b-pending', $6, $7, 'email', 'b-pending@example.com', true, 'pending', $8) RETURNING id`,
+		runIDB, pB.TenantID, pB.WorkspaceID, journeyIDB, verIDB, profileIDB, templateIDB, now.Add(-5*time.Minute)).Scan(&pendingB)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Claim: Should skip pendingA and return pendingB because Tenant A has 10 in-flight!
+	claimed3, found3, err := store.ClaimJourneyMessageIntent(ctx, "worker-fairness")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found3 {
+		t.Fatal("expected to claim a message intent under fairness check")
+	}
+	if claimed3.ID != pendingB {
+		t.Errorf("fairness check failed: expected to claim pendingB (%s), got %s (pendingA was %s)", pendingB, claimed3.ID, pendingA)
+	}
+}
+
 func ptrStr(s string) *string {
 	return &s
 }
