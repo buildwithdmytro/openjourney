@@ -97,13 +97,16 @@ func (s *Store) ClaimJourneyStep(ctx context.Context) (domain.JourneyStep, bool,
 			locked_until=now() + INTERVAL '5 minutes',
 			updated_at=now()
 		WHERE id = (
-			SELECT id FROM journey_steps
-			WHERE (
-				(status IN ('pending', 'failed') AND attempts < 10 AND available_at <= now())
-				OR (status='processing' AND locked_until <= now())
+			SELECT js.id FROM journey_steps js
+			JOIN journey_runs jr ON jr.id = js.run_id
+			JOIN journey_versions jv ON jv.id = jr.journey_version_id
+			WHERE jv.status = 'active'
+			  AND (
+				(js.status IN ('pending', 'failed') AND js.attempts < 10 AND js.available_at <= now())
+				OR (js.status='processing' AND js.locked_until <= now())
 			)
-			ORDER BY available_at ASC
-			FOR UPDATE SKIP LOCKED
+			ORDER BY js.available_at ASC
+			FOR UPDATE OF js SKIP LOCKED
 			LIMIT 1
 		)
 		RETURNING id, run_id, tenant_id, node_id, kind, status, attempts, available_at, locked_until, error_message, created_at, updated_at`).
@@ -645,17 +648,19 @@ func (s *Store) ClaimJourneyMessageIntent(ctx context.Context, workerID string) 
 			locked_until=now() + INTERVAL '5 minutes',
 			updated_at=now()
 		WHERE id = (
-			SELECT id FROM journey_message_intents jmi
-			WHERE (
-				(status IN ('pending', 'failed') AND attempts < 3 AND available_at <= now())
-				OR (status='processing' AND locked_until <= now())
+			SELECT jmi.id FROM journey_message_intents jmi
+			JOIN journey_versions jv ON jv.id = jmi.journey_version_id
+			WHERE jv.status = 'active'
+			  AND (
+				(jmi.status IN ('pending', 'failed') AND jmi.attempts < 3 AND jmi.available_at <= now())
+				OR (jmi.status='processing' AND jmi.locked_until <= now())
 			)
 			AND (
 				SELECT COUNT(*) FROM journey_message_intents
 				WHERE tenant_id = jmi.tenant_id AND status = 'processing' AND locked_until > now()
 			) < 10
-			ORDER BY transactional DESC, available_at ASC
-			FOR UPDATE SKIP LOCKED
+			ORDER BY jmi.transactional DESC, jmi.available_at ASC
+			FOR UPDATE OF jmi SKIP LOCKED
 			LIMIT 1
 		)
 		RETURNING id, run_id, tenant_id, workspace_id, journey_id, journey_version_id, node_id, profile_id, template_id, channel, endpoint, transactional, status, attempts, available_at, locked_until, decision, reason, provider_message_id, policy_snapshot, error_message, created_at, updated_at`).

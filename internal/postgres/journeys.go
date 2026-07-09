@@ -239,3 +239,16 @@ func (s *Store) GetJourneyVersion(ctx context.Context, tenantID, versionID strin
 	return out, err
 }
 
+func (s *Store) SetJourneyVersionStatus(ctx context.Context, p domain.Principal, journeyID string, version int, status string) error {
+	res, err := s.pool.Exec(ctx, `UPDATE journey_versions SET status = $1, published_at = now()
+		WHERE tenant_id = $2 AND workspace_id = $3 AND journey_id = $4 AND version = $5`,
+		status, p.TenantID, p.WorkspaceID, journeyID, version)
+	if err != nil {
+		return err
+	}
+	if res.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+

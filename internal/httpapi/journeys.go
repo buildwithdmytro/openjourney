@@ -3,6 +3,7 @@ package httpapi
 import (
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 	journeyflow "github.com/buildwithdmytro/openjourney/internal/journey"
@@ -107,4 +108,42 @@ func (s *Server) publishJourney(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, version)
+}
+
+func (s *Server) setJourneyVersionStatus(w http.ResponseWriter, r *http.Request) {
+	principal := principalFrom(r)
+	journeyID := r.PathValue("id")
+	versionStr := r.PathValue("v")
+
+	version, err := strconv.Atoi(versionStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_version", "version must be an integer")
+		return
+	}
+
+	var input struct {
+		Status string `json:"status"`
+	}
+	if err := decodeJSON(w, r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_json", err.Error())
+		return
+	}
+
+	status := input.Status
+	if status != "active" && status != "paused" && status != "archived" {
+		writeError(w, http.StatusBadRequest, "invalid_status", "status must be one of: active, paused, archived")
+		return
+	}
+
+	err = s.store.SetJourneyVersionStatus(r.Context(), principal, journeyID, version, status)
+	if errors.Is(err, postgres.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "journey version not found")
+		return
+	}
+	if err != nil {
+		internalError(w, err, "set journey version status", principal)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"status": status})
 }

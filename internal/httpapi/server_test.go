@@ -283,6 +283,12 @@ func (f *fakeStore) PublishJourney(ctx context.Context, p domain.Principal, jour
 		PublishedAt: time.Now().UTC(),
 	}, nil
 }
+func (f *fakeStore) SetJourneyVersionStatus(ctx context.Context, p domain.Principal, journeyID string, version int, status string) error {
+	if journeyID == "invalid-journey" {
+		return postgres.ErrNotFound
+	}
+	return nil
+}
 func (f *fakeStore) GetCampaignSystem(ctx context.Context, tenantID, id string) (domain.Campaign, error) {
 	return domain.Campaign{ID: id, TenantID: tenantID, WorkspaceID: "workspace", Status: "sending"}, nil
 }
@@ -628,6 +634,40 @@ func TestJourneyEndpoints(t *testing.T) {
 	}
 	if _, ok := blobs.objects[*version.ManifestKey]; !ok {
 		t.Fatalf("manifest was not written to blob store: %+v", blobs.objects)
+	}
+
+	// Set status (pause)
+	pauseReq := httptest.NewRequest(http.MethodPut, "/v1/journeys/journey-1/versions/1", strings.NewReader(`{"status":"paused"}`))
+	pauseReq.Header.Set("Authorization", "Bearer test-key")
+	pauseRes := httptest.NewRecorder()
+	server.ServeHTTP(pauseRes, pauseReq)
+	if pauseRes.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", pauseRes.Code, pauseRes.Body.String())
+	}
+	var pauseBody map[string]string
+	if err := json.Unmarshal(pauseRes.Body.Bytes(), &pauseBody); err != nil {
+		t.Fatalf("decode pause body: %v", err)
+	}
+	if pauseBody["status"] != "paused" {
+		t.Fatalf("unexpected status=%v", pauseBody["status"])
+	}
+
+	// Set status (invalid status)
+	badStatusReq := httptest.NewRequest(http.MethodPut, "/v1/journeys/journey-1/versions/1", strings.NewReader(`{"status":"invalid"}`))
+	badStatusReq.Header.Set("Authorization", "Bearer test-key")
+	badStatusRes := httptest.NewRecorder()
+	server.ServeHTTP(badStatusRes, badStatusReq)
+	if badStatusRes.Code != http.StatusBadRequest {
+		t.Fatalf("expected Bad Request for invalid status, got %d", badStatusRes.Code)
+	}
+
+	// Set status (non-integer version)
+	badVerReq := httptest.NewRequest(http.MethodPut, "/v1/journeys/journey-1/versions/abc", strings.NewReader(`{"status":"paused"}`))
+	badVerReq.Header.Set("Authorization", "Bearer test-key")
+	badVerRes := httptest.NewRecorder()
+	server.ServeHTTP(badVerRes, badVerReq)
+	if badVerRes.Code != http.StatusBadRequest {
+		t.Fatalf("expected Bad Request for non-integer version, got %d", badVerRes.Code)
 	}
 }
 

@@ -622,9 +622,9 @@ task ends with a **Done when** check.
    runs and drains a journey end to end locally. — done: created cmd/journeys-worker/main.go; wired into Dockerfile and compose.yaml; verified go build and test-go pass.
 
 ### Milestone 8.7 — Operator tools: pause/resume/cancel, DLQ, replay, backfill
-1. **Journey pause/resume** `PUT /v1/journeys/{id}/versions/{v}` sets `journey_versions.status
+1. [x] **Journey pause/resume** `PUT /v1/journeys/{id}/versions/{v}` sets `journey_versions.status
    = 'paused'|'active'`; the worker skips steps for paused versions (claim excludes them).
-   *Done when:* pausing halts new step processing; resuming continues in place.
+   *Done when:* pausing halts new step processing; resuming continues in place. — done: implemented PUT /v1/journeys/{id}/versions/{v} endpoint, updated ClaimJourneyStep/ClaimJourneyMessageIntent to skip paused versions, and added integration test confirming claiming stops on pause and resumes on active.
 2. **Participant cancel** `POST /v1/journeys/{id}/runs/{runID}/cancel` sets run
    `status='canceled'` and deletes its live step. *Done when:* a canceled run stops advancing.
 3. **DLQ inspection** `GET /v1/journeys/dlq` lists `journey_steps` and

@@ -106,6 +106,7 @@ func (s *Server) buildMux() http.Handler {
 	mux.Handle("GET /v1/journeys/{id}", s.authenticate("journeys:read", http.HandlerFunc(s.getJourney)))
 	mux.Handle("PUT /v1/journeys/{id}", s.authenticate("journeys:write", http.HandlerFunc(s.updateJourney)))
 	mux.Handle("POST /v1/journeys/{id}/publish", s.authenticate("journeys:publish", http.HandlerFunc(s.publishJourney)))
+	mux.Handle("PUT /v1/journeys/{id}/versions/{v}", s.authenticate("journeys:write", http.HandlerFunc(s.setJourneyVersionStatus)))
 
 	mux.HandleFunc("GET /r/{token}", s.redirectLink)
 	mux.HandleFunc("GET /o/{token}", s.openPixel)

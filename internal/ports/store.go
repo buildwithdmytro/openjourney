@@ -94,6 +94,7 @@ type Store interface {
 	ListJourneys(ctx context.Context, p domain.Principal) ([]domain.Journey, error)
 	PublishJourney(ctx context.Context, p domain.Principal, journeyID string, approverUserID string, manifestKey string) (domain.JourneyVersion, error)
 	GetJourneyVersion(ctx context.Context, tenantID, versionID string) (domain.JourneyVersion, error)
+	SetJourneyVersionStatus(ctx context.Context, p domain.Principal, journeyID string, version int, status string) error
 	ListActiveScheduledJourneyVersions(ctx context.Context) ([]domain.JourneyVersion, error)
 	EvaluateAudience(ctx context.Context, p domain.Principal, profileID string, dsl json.RawMessage) (bool, error)
 	CreateJourneyRun(ctx context.Context, run domain.JourneyRun) (bool, error)
