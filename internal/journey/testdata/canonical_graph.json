@@ -1,0 +1,141 @@
+{
+  "entry_node_id": "n1",
+  "nodes": [
+    {
+      "id": "n1",
+      "type": "entry",
+      "config": {
+        "trigger": "event",
+        "event_type": "signup.completed"
+      }
+    },
+    {
+      "id": "n2",
+      "type": "delay",
+      "config": {
+        "duration": "1h"
+      }
+    },
+    {
+      "id": "n3",
+      "type": "condition",
+      "config": {
+        "dsl": {
+          "type": "profile_attribute",
+          "field": "country",
+          "operator": "equals",
+          "value": "US"
+        }
+      }
+    },
+    {
+      "id": "n4",
+      "type": "split",
+      "config": {
+        "mode": "random",
+        "branches": [
+          {
+            "label": "a",
+            "weight": 50
+          },
+          {
+            "label": "b",
+            "weight": 50
+          }
+        ]
+      }
+    },
+    {
+      "id": "n5",
+      "type": "message",
+      "config": {
+        "template_id": "tmpl-1",
+        "transactional": false
+      }
+    },
+    {
+      "id": "n6",
+      "type": "wait_event",
+      "config": {
+        "event_type": "email.opened",
+        "timeout": "72h"
+      }
+    },
+    {
+      "id": "n7",
+      "type": "action",
+      "config": {
+        "action": "profile_update",
+        "set": {
+          "stage": "engaged"
+        }
+      }
+    },
+    {
+      "id": "n8",
+      "type": "goal",
+      "config": {
+        "name": "activated"
+      }
+    },
+    {
+      "id": "n9",
+      "type": "exit",
+      "config": {
+        "reason": "completed"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "n1",
+      "to": "n2"
+    },
+    {
+      "from": "n2",
+      "to": "n3"
+    },
+    {
+      "from": "n3",
+      "to": "n4",
+      "branch": "true"
+    },
+    {
+      "from": "n3",
+      "to": "n9",
+      "branch": "false"
+    },
+    {
+      "from": "n4",
+      "to": "n5",
+      "branch": "a"
+    },
+    {
+      "from": "n4",
+      "to": "n9",
+      "branch": "b"
+    },
+    {
+      "from": "n5",
+      "to": "n6"
+    },
+    {
+      "from": "n6",
+      "to": "n7",
+      "branch": "success"
+    },
+    {
+      "from": "n6",
+      "to": "n9",
+      "branch": "timeout"
+    },
+    {
+      "from": "n7",
+      "to": "n8"
+    },
+    {
+      "from": "n8",
+      "to": "n9"
+    }
+  ]
+}

@@ -536,10 +536,10 @@ task ends with a **Done when** check.
    is the crux — treat it like the Phase 2 audience compiler (7.2).** *Done when:* unit tests
    cover a valid graph and ≥5 distinct invalid graphs (missing entry, dangling edge, wrong
    branch labels, unreachable node, no exit). — done: `Validate` enforces graph topology, branch contracts, reachability, exits, and durations; valid graph plus six invalid graph tests pass with `go build ./... && go vet ./... && go test ./...`.
-4. **Golden test** `internal/journey/testdata/`: freeze the canonical §3 graph's normalized
+4. [x] **Golden test** `internal/journey/testdata/`: freeze the canonical §3 graph's normalized
    form; assert exact serialization. Copy the fail-on-missing pattern from
    `internal/audience/compile_test.go:128` (**must** `t.Fatalf` when the golden file is
-   absent — do not self-write). *Done when:* `go test ./internal/journey/...` passes.
+   absent — do not self-write). *Done when:* `go test ./internal/journey/...` passes. — done: canonical graph golden fixture added under `internal/journey/testdata`; fail-on-missing golden test passes with `go build ./... && go vet ./... && go test ./...`.
 5. **Publish flow** store method `PublishJourney(ctx, p, journeyID, approverUserID)` +
    `POST /v1/journeys/{id}/publish` (scope `journeys:publish`): validate the draft graph →
    `version = latest_version+1` → insert immutable `journey_versions` row → `BlobStore.Put`
