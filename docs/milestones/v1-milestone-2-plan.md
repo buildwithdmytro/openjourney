@@ -1,7 +1,6 @@
 # Phase 2 Implementation Plan: Audiences and Reliable Email
 
-Status: 7.1–7.6 implemented and audited (2026-07-08); one CRITICAL security fix (§8) plus
-the 7.7 closeout evidence are outstanding before Phase 2 can be called complete.
+Status: COMPLETED (2026-07-09)
 
 This plan details the architecture, schemas, and atomic tasks to deliver Phase 2 of
 OpenJourney: **audiences, templates, and reliable multi-channel delivery**. It is written
@@ -616,7 +615,7 @@ order; each milestone should compile and pass `go build ./... && go vet ./...` b
    Implemented; remaining proof for worker-kill/restart and full fake-adapter journey is
    tracked in 7.7.
 
-### Milestone 7.7 — Integration, load & audit (all OPEN)
+### Milestone 7.7 — Integration, load & audit (COMPLETED)
 1. [x] **True end-to-end integration test.** The current `campaigns_integration_test.go` only
    drives store methods; it never calls the real code paths. Add a test that runs
    `campaigns.DispatchNext` then `campaigns.DeliverNext` with the `FakeAdapter`, over a real
