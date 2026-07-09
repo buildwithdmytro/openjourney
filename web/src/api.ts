@@ -366,3 +366,30 @@ export async function createJourney(baseURL: string, apiKey: string, input: Part
 export async function updateJourney(baseURL: string, apiKey: string, id: string, input: Partial<Journey>): Promise<Journey> {
   return requestJSON<Journey>(baseURL, apiKey, `/v1/journeys/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(input) });
 }
+
+export type JourneyVersion = {
+  id: string;
+  journey_id: string;
+  tenant_id: string;
+  workspace_id: string;
+  version: number;
+  graph: Record<string, unknown>;
+  manifest_key?: string;
+  entry_kind: "event" | "scheduled";
+  entry_event_type?: string;
+  entry_segment_id?: string;
+  entry_schedule?: string;
+  reentry_policy: "once" | "always" | "after_exit";
+  max_reentries: number;
+  late_policy: "run" | "skip" | "reschedule";
+  status: "active" | "paused" | "archived";
+  published_by?: string;
+  published_at: string;
+};
+
+export async function publishJourney(baseURL: string, apiKey: string, id: string, approverUserID: string): Promise<JourneyVersion> {
+  return requestJSON<JourneyVersion>(baseURL, apiKey, `/v1/journeys/${encodeURIComponent(id)}/publish`, {
+    method: "POST",
+    body: JSON.stringify({ approver_user_id: approverUserID }),
+  });
+}

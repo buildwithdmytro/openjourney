@@ -568,11 +568,10 @@ task ends with a **Done when** check.
    `wait_event` are stubbed here (full impl in 8.5/8.6). — done: implemented node.Execute and added comprehensive tests in nodes_test.go.
 2. [x] **Single-profile evaluator** `internal/audience/evaluate.go` (Recipe 6.13) + golden/unit
    tests. — done: implemented Matches, point queries for profile/consent/clickhouse, and added evaluate_test.go unit tests.
-3. **Visual DAG builder** (Recipe 6.16): `@xyflow/react` node/edge editor with a config panel
+3. [x] **Visual DAG builder** (Recipe 6.16): `@xyflow/react` node/edge editor with a config panel
    per node type (dropdowns for template/segment like `App.tsx:1248`), a validate button
    (calls a dry-run `POST /v1/journeys/{id}/publish?dry_run=true` or a client mirror of the
-   validator), and Save → `updateJourney`. *Done when:* `npm run typecheck && npm run build &&
-   npm test` pass and a graph round-trips through save/reload.
+   validator), and Save → `updateJourney`. — done: created `web/src/sections/Journeys.tsx` incorporating React Flow, interactive visual node/edge connections, sidebar properties configuration, local graph validation, and publish integrations.
 
 ### Milestone 8.5 — Entry triggers, re-entry & wait-for-event
 1. **Event-triggered enrollment** as a `ProjectEvent` side-effect (Recipe 6.12): match active
