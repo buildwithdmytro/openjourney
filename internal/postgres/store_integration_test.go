@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
+	journeyflow "github.com/buildwithdmytro/openjourney/internal/journey"
 	"github.com/buildwithdmytro/openjourney/internal/operations"
 	"github.com/buildwithdmytro/openjourney/internal/projector"
 )
@@ -619,6 +620,86 @@ func TestJourneysStoreIntegration(t *testing.T) {
 	}
 	if reverted.Status != "draft" {
 		t.Fatalf("reverted journey status=%s", reverted.Status)
+	}
+}
+
+func TestPublishJourneyIntegration(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	key := fmt.Sprintf("journey-publish-%d", time.Now().UnixNano())
+	if err := store.EnsureDevelopmentTenant(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	principal, err := store.Authenticate(ctx, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	approverID := "00000000-0000-0000-0000-000000000001"
+	blobs := &memoryBlobs{objects: map[string][]byte{}}
+
+	validGraph := json.RawMessage(`{
+		"entry_node_id":"n1",
+		"nodes":[
+			{"id":"n1","type":"entry","config":{"trigger":"event","event_type":"signup.completed"}},
+			{"id":"n2","type":"exit","config":{"reason":"completed"}}
+		],
+		"edges":[{"from":"n1","to":"n2"}]
+	}`)
+	created, err := store.CreateJourney(ctx, principal, domain.Journey{Name: "Publishable", Graph: validGraph})
+	if err != nil {
+		t.Fatalf("CreateJourney: %v", err)
+	}
+	version, err := journeyflow.Publish(ctx, store, blobs, principal, created.ID, approverID)
+	if err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+	if version.Version != 1 || version.ManifestKey == nil || version.EntryKind != "event" || version.EntryEventType == nil || *version.EntryEventType != "signup.completed" {
+		t.Fatalf("unexpected version=%+v", version)
+	}
+	if _, err := blobs.Get(ctx, *version.ManifestKey); err != nil {
+		t.Fatalf("manifest missing from blob store: %v", err)
+	}
+	published, err := store.GetJourney(ctx, principal, created.ID)
+	if err != nil {
+		t.Fatalf("GetJourney: %v", err)
+	}
+	if published.Status != "published" || published.LatestVersion != 1 || published.CurrentVersionID == nil || *published.CurrentVersionID != version.ID {
+		t.Fatalf("unexpected published journey=%+v", published)
+	}
+
+	invalid, err := store.CreateJourney(ctx, principal, domain.Journey{
+		Name:  "Invalid",
+		Graph: json.RawMessage(`{"entry_node_id":"n1","nodes":[],"edges":[]}`),
+	})
+	if err != nil {
+		t.Fatalf("CreateJourney invalid: %v", err)
+	}
+	beforeBlobCount := len(blobs.objects)
+	_, err = journeyflow.Publish(ctx, store, blobs, principal, invalid.ID, approverID)
+	if !errors.Is(err, journeyflow.ErrInvalidGraph) {
+		t.Fatalf("expected invalid graph error, got %v", err)
+	}
+	var versions int
+	if err := store.pool.QueryRow(ctx, `SELECT count(*) FROM journey_versions WHERE journey_id=$1`, invalid.ID).Scan(&versions); err != nil {
+		t.Fatalf("count versions: %v", err)
+	}
+	if versions != 0 {
+		t.Fatalf("invalid publish created %d version rows", versions)
+	}
+	if len(blobs.objects) != beforeBlobCount {
+		t.Fatalf("invalid publish wrote blob objects")
 	}
 }
 

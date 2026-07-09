@@ -540,13 +540,13 @@ task ends with a **Done when** check.
    form; assert exact serialization. Copy the fail-on-missing pattern from
    `internal/audience/compile_test.go:128` (**must** `t.Fatalf` when the golden file is
    absent — do not self-write). *Done when:* `go test ./internal/journey/...` passes. — done: canonical graph golden fixture added under `internal/journey/testdata`; fail-on-missing golden test passes with `go build ./... && go vet ./... && go test ./...`.
-5. **Publish flow** store method `PublishJourney(ctx, p, journeyID, approverUserID)` +
+5. [x] **Publish flow** store method `PublishJourney(ctx, p, journeyID, approverUserID)` +
    `POST /v1/journeys/{id}/publish` (scope `journeys:publish`): validate the draft graph →
    `version = latest_version+1` → insert immutable `journey_versions` row → `BlobStore.Put`
    the graph to `journeys/{tenant}/{journeyID}/v{n}.json` (copy `dispatch.go:151`) → set
    `journeys.status='published'`, `current_version_id`, `latest_version`. Require an approver
    (product-decisions: a human approves publication). *Done when:* publishing a valid journey
-   creates a version row + a blob object; publishing an invalid graph returns 422 and creates nothing.
+   creates a version row + a blob object; publishing an invalid graph returns 422 and creates nothing. — done: publish service, scoped store transaction, HTTP route, blob manifest write, and OpenAPI path added; `go build ./... && go vet ./... && go test ./...`, `TestPublishJourneyIntegration` against PostgreSQL, and Redocly lint pass.
 
 ### Milestone 8.3 — Durable runtime core (participant state + timer queue)
 1. **Migration** `016_journey_runtime.sql` per §2.2 (`journey_runs`, `journey_steps`,

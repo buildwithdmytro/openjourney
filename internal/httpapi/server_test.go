@@ -20,6 +20,39 @@ type fakeStore struct {
 	oidcPrincipal *domain.Principal
 	localSession  domain.AuthSession
 	revokedToken  string
+	published     int
+}
+
+type fakeBlobStore struct {
+	objects map[string][]byte
+}
+
+func (f *fakeBlobStore) Put(_ context.Context, key string, data []byte, _ string) error {
+	if f.objects == nil {
+		f.objects = map[string][]byte{}
+	}
+	f.objects[key] = data
+	return nil
+}
+
+func (f *fakeBlobStore) Get(_ context.Context, key string) ([]byte, error) {
+	if f.objects == nil {
+		return nil, postgres.ErrNotFound
+	}
+	data, ok := f.objects[key]
+	if !ok {
+		return nil, postgres.ErrNotFound
+	}
+	return data, nil
+}
+
+func (f *fakeBlobStore) Delete(_ context.Context, key string) error {
+	delete(f.objects, key)
+	return nil
+}
+
+func stringPtr(value string) *string {
+	return &value
 }
 
 func (f *fakeStore) Ready(context.Context) error { return nil }
@@ -227,13 +260,26 @@ func (f *fakeStore) CreateJourney(ctx context.Context, p domain.Principal, j dom
 	return j, nil
 }
 func (f *fakeStore) GetJourney(ctx context.Context, p domain.Principal, id string) (domain.Journey, error) {
-	return domain.Journey{ID: id, Name: "Test Journey", Status: "draft", Graph: json.RawMessage(`{}`)}, nil
+	if id == "invalid-journey" {
+		return domain.Journey{ID: id, TenantID: p.TenantID, WorkspaceID: p.WorkspaceID, Name: "Invalid Journey", Status: "draft", Graph: json.RawMessage(`{"entry_node_id":"n1","nodes":[],"edges":[]}`)}, nil
+	}
+	return domain.Journey{ID: id, TenantID: p.TenantID, WorkspaceID: p.WorkspaceID, Name: "Test Journey", Status: "draft", Graph: json.RawMessage(`{"entry_node_id":"n1","nodes":[{"id":"n1","type":"entry","config":{"trigger":"event","event_type":"signup.completed"}},{"id":"n2","type":"exit","config":{"reason":"completed"}}],"edges":[{"from":"n1","to":"n2"}]}`)}, nil
 }
 func (f *fakeStore) UpdateJourney(ctx context.Context, p domain.Principal, j domain.Journey) (domain.Journey, error) {
 	return j, nil
 }
 func (f *fakeStore) ListJourneys(ctx context.Context, p domain.Principal) ([]domain.Journey, error) {
 	return []domain.Journey{{ID: "journey-1", Name: "Test Journey", Status: "draft", Graph: json.RawMessage(`{}`)}}, nil
+}
+func (f *fakeStore) PublishJourney(ctx context.Context, p domain.Principal, journeyID string, approverUserID string, manifestKey string) (domain.JourneyVersion, error) {
+	f.published++
+	return domain.JourneyVersion{
+		ID: "version-1", JourneyID: journeyID, TenantID: p.TenantID, WorkspaceID: p.WorkspaceID,
+		Version: 1, Graph: json.RawMessage(`{"entry_node_id":"n1"}`), ManifestKey: &manifestKey,
+		EntryKind: "event", EntryEventType: stringPtr("signup.completed"), ReentryPolicy: "once",
+		MaxReentries: 0, LatePolicy: "run", Status: "active", PublishedBy: &approverUserID,
+		PublishedAt: time.Now().UTC(),
+	}, nil
 }
 func (f *fakeStore) GetCampaignSystem(ctx context.Context, tenantID, id string) (domain.Campaign, error) {
 	return domain.Campaign{ID: id, TenantID: tenantID, WorkspaceID: "workspace", Status: "sending"}, nil
@@ -497,7 +543,11 @@ func TestSegmentsEndpoints(t *testing.T) {
 }
 
 func TestJourneyEndpoints(t *testing.T) {
-	server := New(&fakeStore{scopes: []string{"journeys:read", "journeys:write"}}, 75)
+	store := &fakeStore{scopes: []string{"journeys:read", "journeys:write", "journeys:publish"}}
+	blobs := &fakeBlobStore{}
+	server := NewWithSessionTTL(store, 75, nil, "http://localhost:3000", 12*time.Hour, func(s *Server) {
+		s.SetBlobStore(blobs)
+	})
 
 	createReq := httptest.NewRequest(http.MethodPost, "/v1/journeys", strings.NewReader(`{"name":"Welcome","graph":{"entry_node_id":"n1"}}`))
 	createReq.Header.Set("Authorization", "Bearer test-key")
@@ -556,11 +606,64 @@ func TestJourneyEndpoints(t *testing.T) {
 	if updated.ID != "journey-1" || updated.Name != "Updated Welcome" {
 		t.Fatalf("unexpected update body=%s", updateRes.Body.String())
 	}
+
+	publishReq := httptest.NewRequest(http.MethodPost, "/v1/journeys/journey-1/publish", strings.NewReader(`{"approver_user_id":"00000000-0000-0000-0000-000000000001"}`))
+	publishReq.Header.Set("Authorization", "Bearer test-key")
+	publishRes := httptest.NewRecorder()
+	server.ServeHTTP(publishRes, publishReq)
+	if publishRes.Code != http.StatusCreated {
+		t.Fatalf("status=%d body=%s", publishRes.Code, publishRes.Body.String())
+	}
+	var version domain.JourneyVersion
+	if err := json.Unmarshal(publishRes.Body.Bytes(), &version); err != nil {
+		t.Fatalf("decode publish body: %v", err)
+	}
+	if version.JourneyID != "journey-1" || version.Version != 1 || version.ManifestKey == nil {
+		t.Fatalf("unexpected publish body=%s", publishRes.Body.String())
+	}
+	if store.published != 1 {
+		t.Fatalf("expected one publish call, got %d", store.published)
+	}
+	if _, ok := blobs.objects[*version.ManifestKey]; !ok {
+		t.Fatalf("manifest was not written to blob store: %+v", blobs.objects)
+	}
 }
 
 func TestJourneyEndpointsRequireScopes(t *testing.T) {
 	server := New(&fakeStore{scopes: []string{"journeys:read"}}, 75)
 	request := httptest.NewRequest(http.MethodPost, "/v1/journeys", strings.NewReader(`{"name":"Welcome"}`))
+	request.Header.Set("Authorization", "Bearer test-key")
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestPublishJourneyRejectsInvalidGraph(t *testing.T) {
+	store := &fakeStore{scopes: []string{"journeys:publish"}}
+	blobs := &fakeBlobStore{}
+	server := NewWithSessionTTL(store, 75, nil, "http://localhost:3000", 12*time.Hour, func(s *Server) {
+		s.SetBlobStore(blobs)
+	})
+	request := httptest.NewRequest(http.MethodPost, "/v1/journeys/invalid-journey/publish", strings.NewReader(`{"approver_user_id":"00000000-0000-0000-0000-000000000001"}`))
+	request.Header.Set("Authorization", "Bearer test-key")
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if store.published != 0 {
+		t.Fatalf("invalid graph should not be published")
+	}
+	if len(blobs.objects) != 0 {
+		t.Fatalf("invalid graph should not write blobs: %+v", blobs.objects)
+	}
+}
+
+func TestPublishJourneyRequiresPublishScope(t *testing.T) {
+	server := New(&fakeStore{scopes: []string{"journeys:write"}}, 75)
+	request := httptest.NewRequest(http.MethodPost, "/v1/journeys/journey-1/publish", strings.NewReader(`{"approver_user_id":"00000000-0000-0000-0000-000000000001"}`))
 	request.Header.Set("Authorization", "Bearer test-key")
 	response := httptest.NewRecorder()
 	server.ServeHTTP(response, request)

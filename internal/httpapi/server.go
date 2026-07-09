@@ -24,6 +24,7 @@ type principalKey struct{}
 
 type Server struct {
 	store             ports.Store
+	blobStore         ports.BlobStore
 	maxBatchSize      int
 	tokenVerifier     ports.TokenVerifier
 	corsAllowedOrigin string
@@ -67,6 +68,10 @@ func (s *Server) SetAllowedTopicARNs(arns []string) {
 	s.allowedTopicARNs = arns
 }
 
+func (s *Server) SetBlobStore(blobs ports.BlobStore) {
+	s.blobStore = blobs
+}
+
 func (s *Server) buildMux() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health/live", s.live)
@@ -100,6 +105,7 @@ func (s *Server) buildMux() http.Handler {
 	mux.Handle("GET /v1/journeys", s.authenticate("journeys:read", http.HandlerFunc(s.listJourneys)))
 	mux.Handle("GET /v1/journeys/{id}", s.authenticate("journeys:read", http.HandlerFunc(s.getJourney)))
 	mux.Handle("PUT /v1/journeys/{id}", s.authenticate("journeys:write", http.HandlerFunc(s.updateJourney)))
+	mux.Handle("POST /v1/journeys/{id}/publish", s.authenticate("journeys:publish", http.HandlerFunc(s.publishJourney)))
 
 	mux.HandleFunc("GET /r/{token}", s.redirectLink)
 	mux.HandleFunc("GET /o/{token}", s.openPixel)

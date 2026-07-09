@@ -491,6 +491,33 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         "422": { $ref: "#/components/responses/Error" }
         "500": { $ref: "#/components/responses/Error" }
+  /v1/journeys/{id}/publish:
+    post:
+      operationId: publishJourney
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                approver_user_id: { type: string, format: uuid }
+      responses:
+        "201":
+          description: Journey draft published as an immutable version.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JourneyVersion" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "500": { $ref: "#/components/responses/Error" }
   /v1/audit:
     get:
       operationId: listAuditEvents
@@ -701,3 +728,26 @@ components:
             current_version_id: { type: string, format: uuid }
             created_at: { type: string, format: date-time }
             updated_at: { type: string, format: date-time }
+    JourneyVersion:
+      type: object
+      required: [id, journey_id, tenant_id, workspace_id, version, graph, entry_kind, reentry_policy, max_reentries, late_policy, status, published_at]
+      properties:
+        id: { type: string, format: uuid }
+        journey_id: { type: string, format: uuid }
+        tenant_id: { type: string, format: uuid }
+        workspace_id: { type: string, format: uuid }
+        version: { type: integer, minimum: 1 }
+        graph:
+          type: object
+          additionalProperties: true
+        manifest_key: { type: string }
+        entry_kind: { enum: [event, scheduled] }
+        entry_event_type: { type: string }
+        entry_segment_id: { type: string, format: uuid }
+        entry_schedule: { type: string }
+        reentry_policy: { enum: [once, always, after_exit] }
+        max_reentries: { type: integer, minimum: 0 }
+        late_policy: { enum: [run, skip, reschedule] }
+        status: { enum: [active, paused, archived] }
+        published_by: { type: string, format: uuid }
+        published_at: { type: string, format: date-time }

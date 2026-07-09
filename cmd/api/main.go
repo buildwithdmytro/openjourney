@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/buildwithdmytro/openjourney/internal/auth"
+	"github.com/buildwithdmytro/openjourney/internal/blob"
 	"github.com/buildwithdmytro/openjourney/internal/config"
 	"github.com/buildwithdmytro/openjourney/internal/httpapi"
 	"github.com/buildwithdmytro/openjourney/internal/ports"
@@ -60,6 +61,11 @@ func main() {
 			os.Exit(1)
 		}
 	}
+	blobs, err := blob.NewMinIO(ctx, cfg.S3Endpoint, cfg.S3AccessKey, cfg.S3SecretKey, cfg.S3Bucket, cfg.S3UseTLS)
+	if err != nil {
+		slog.Error("open object store", "error", err)
+		os.Exit(1)
+	}
 
 	var tokenVerifier ports.TokenVerifier
 	if cfg.OIDCIssuer != "" {
@@ -76,18 +82,19 @@ func main() {
 	}
 
 	server := &http.Server{
-		Addr:              cfg.HTTPAddress,
+		Addr: cfg.HTTPAddress,
 		Handler: httpapi.NewWithSessionTTL(store, cfg.MaxBatchSize, tokenVerifier, cfg.CORSAllowedOrigin, sessionTTL,
-				func(s *httpapi.Server) {
-					s.SetTracking([]byte(cfg.TrackingSecretKey), cfg.TrackingBaseURL)
-					if cfg.AllowedTopicARNs != "" {
-						arns := strings.Split(cfg.AllowedTopicARNs, ",")
-						for i := range arns {
-							arns[i] = strings.TrimSpace(arns[i])
-						}
-						s.SetAllowedTopicARNs(arns)
+			func(s *httpapi.Server) {
+				s.SetTracking([]byte(cfg.TrackingSecretKey), cfg.TrackingBaseURL)
+				s.SetBlobStore(blobs)
+				if cfg.AllowedTopicARNs != "" {
+					arns := strings.Split(cfg.AllowedTopicARNs, ",")
+					for i := range arns {
+						arns[i] = strings.TrimSpace(arns[i])
 					}
-				}),
+					s.SetAllowedTopicARNs(arns)
+				}
+			}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      30 * time.Second,

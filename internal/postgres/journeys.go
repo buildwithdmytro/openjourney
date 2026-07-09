@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
+	journeygraph "github.com/buildwithdmytro/openjourney/internal/journey"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -100,4 +101,123 @@ func (s *Store) ListJourneys(ctx context.Context, p domain.Principal) ([]domain.
 		out = append(out, j)
 	}
 	return out, rows.Err()
+}
+
+func (s *Store) PublishJourney(ctx context.Context, p domain.Principal, journeyID string, approverUserID string, manifestKey string) (domain.JourneyVersion, error) {
+	if approverUserID == "" {
+		return domain.JourneyVersion{}, errors.New("approver user id is required")
+	}
+	if manifestKey == "" {
+		return domain.JourneyVersion{}, errors.New("manifest key is required")
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.JourneyVersion{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	var draft domain.Journey
+	err = tx.QueryRow(ctx, `SELECT id, tenant_id, workspace_id, name, description, status, graph, latest_version, current_version_id, created_at, updated_at
+		FROM journeys WHERE tenant_id=$1 AND workspace_id=$2 AND id=$3 FOR UPDATE`,
+		p.TenantID, p.WorkspaceID, journeyID).
+		Scan(&draft.ID, &draft.TenantID, &draft.WorkspaceID, &draft.Name, &draft.Description, &draft.Status, &draft.Graph, &draft.LatestVersion, &draft.CurrentVersionID, &draft.CreatedAt, &draft.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.JourneyVersion{}, ErrNotFound
+	}
+	if err != nil {
+		return domain.JourneyVersion{}, err
+	}
+
+	graph, err := journeygraph.ParseGraph(draft.Graph)
+	if err != nil {
+		return domain.JourneyVersion{}, err
+	}
+	if err := journeygraph.Validate(graph); err != nil {
+		return domain.JourneyVersion{}, err
+	}
+	entry, err := publishEntryConfig(graph)
+	if err != nil {
+		return domain.JourneyVersion{}, err
+	}
+
+	version := draft.LatestVersion + 1
+	var out domain.JourneyVersion
+	err = tx.QueryRow(ctx, `INSERT INTO journey_versions
+		(journey_id, tenant_id, workspace_id, version, graph, manifest_key, entry_kind, entry_event_type, entry_segment_id, entry_schedule, reentry_policy, max_reentries, late_policy, status, published_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, NULLIF($8, ''), NULLIF($9, '')::uuid, NULLIF($10, ''), $11, $12, $13, 'active', NULLIF($14, '')::uuid)
+		RETURNING id, journey_id, tenant_id, workspace_id, version, graph, manifest_key, entry_kind, entry_event_type, entry_segment_id, entry_schedule, reentry_policy, max_reentries, late_policy, status, published_by, published_at`,
+		draft.ID, draft.TenantID, draft.WorkspaceID, version, draft.Graph, manifestKey,
+		entry.EntryKind, entry.EventType, entry.SegmentID, entry.Schedule, entry.ReentryPolicy, entry.MaxReentries, entry.LatePolicy, approverUserID).
+		Scan(&out.ID, &out.JourneyID, &out.TenantID, &out.WorkspaceID, &out.Version, &out.Graph, &out.ManifestKey,
+			&out.EntryKind, &out.EntryEventType, &out.EntrySegmentID, &out.EntrySchedule, &out.ReentryPolicy,
+			&out.MaxReentries, &out.LatePolicy, &out.Status, &out.PublishedBy, &out.PublishedAt)
+	if err != nil {
+		return domain.JourneyVersion{}, err
+	}
+
+	if _, err := tx.Exec(ctx, `UPDATE journeys
+		SET status='published', current_version_id=$1, latest_version=$2, updated_at=now()
+		WHERE tenant_id=$3 AND workspace_id=$4 AND id=$5`,
+		out.ID, out.Version, p.TenantID, p.WorkspaceID, draft.ID); err != nil {
+		return domain.JourneyVersion{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return domain.JourneyVersion{}, err
+	}
+	_ = s.audit(ctx, p, "journey.publish", "journey", draft.ID, map[string]any{"version": out.Version, "manifest_key": manifestKey})
+	return out, nil
+}
+
+type publishEntry struct {
+	EntryKind     string
+	EventType     string
+	SegmentID     string
+	Schedule      string
+	ReentryPolicy string
+	MaxReentries  int
+	LatePolicy    string
+}
+
+func publishEntryConfig(graph *journeygraph.Graph) (publishEntry, error) {
+	for _, node := range graph.Nodes {
+		if node.ID != graph.EntryNodeID || node.Type != journeygraph.NodeTypeEntry {
+			continue
+		}
+		cfgAny, err := journeygraph.DecodeConfig(node)
+		if err != nil {
+			return publishEntry{}, err
+		}
+		cfg := cfgAny.(journeygraph.EntryConfig)
+		entry := publishEntry{
+			EntryKind:     cfg.Trigger,
+			EventType:     cfg.EventType,
+			SegmentID:     cfg.SegmentID,
+			Schedule:      cfg.Schedule,
+			ReentryPolicy: cfg.ReentryPolicy,
+			MaxReentries:  cfg.MaxReentries,
+			LatePolicy:    cfg.LatePolicy,
+		}
+		if entry.ReentryPolicy == "" {
+			entry.ReentryPolicy = "once"
+		}
+		if entry.LatePolicy == "" {
+			entry.LatePolicy = "run"
+		}
+		switch entry.EntryKind {
+		case "event":
+			if entry.EventType == "" {
+				return publishEntry{}, errors.New("event entry requires event_type")
+			}
+		case "scheduled":
+			if entry.SegmentID == "" && entry.Schedule == "" {
+				return publishEntry{}, errors.New("scheduled entry requires segment_id or schedule")
+			}
+		default:
+			return publishEntry{}, errors.New("entry trigger must be event or scheduled")
+		}
+		return entry, nil
+	}
+	return publishEntry{}, errors.New("entry node not found")
 }
