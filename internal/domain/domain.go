@@ -518,3 +518,52 @@ type DeliveryAttempt struct {
 	AttemptedAt       time.Time       `json:"attempted_at"`
 	CreatedAt         time.Time       `json:"created_at"`
 }
+
+type JourneyRun struct {
+	ID                string          `json:"id"`
+	TenantID          string          `json:"tenant_id"`
+	WorkspaceID       string          `json:"workspace_id"`
+	JourneyID         string          `json:"journey_id"`
+	JourneyVersionID  string          `json:"journey_version_id"`
+	ProfileID         string          `json:"profile_id"`
+	SubjectExternalID *string         `json:"subject_external_id,omitempty"`
+	EntryKey          string          `json:"entry_key"`
+	ReentrySequence   int             `json:"reentry_sequence"`
+	Status            string          `json:"status"`
+	CurrentNodeID     string          `json:"current_node_id"`
+	State             json.RawMessage `json:"state"`
+	WaitEventType     *string         `json:"wait_event_type,omitempty"`
+	WaitUntil         *time.Time      `json:"wait_until,omitempty"`
+	GoalReached       bool            `json:"goal_reached"`
+	EnteredAt         time.Time       `json:"entered_at"`
+	UpdatedAt         time.Time       `json:"updated_at"`
+	CompletedAt       *time.Time      `json:"completed_at,omitempty"`
+}
+
+type JourneyStep struct {
+	ID           string     `json:"id"`
+	RunID        string     `json:"run_id"`
+	TenantID     string     `json:"tenant_id"`
+	NodeID       string     `json:"node_id"`
+	Kind         string     `json:"kind"`
+	Status       string     `json:"status"`
+	Attempts     int        `json:"attempts"`
+	AvailableAt  time.Time  `json:"available_at"`
+	LockedUntil  *time.Time `json:"locked_until,omitempty"`
+	ErrorMessage *string    `json:"error_message,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+}
+
+type JourneyTransition struct {
+	ID         string          `json:"id"`
+	RunID      string          `json:"run_id"`
+	TenantID   string          `json:"tenant_id"`
+	FromNode   *string         `json:"from_node,omitempty"`
+	ToNode     *string         `json:"to_node,omitempty"`
+	NodeType   string          `json:"node_type"`
+	Outcome    string          `json:"outcome"`
+	Detail     json.RawMessage `json:"detail"`
+	OccurredAt time.Time       `json:"occurred_at"`
+}
+
