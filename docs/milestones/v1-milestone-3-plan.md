@@ -616,10 +616,10 @@ task ends with a **Done when** check.
    `transactional DESC`; add a simple per-tenant in-flight cap in the claim so one tenant
    cannot starve others. Full weighted-fair-queue is a §8 hardening item, not a blocker.
    *Done when:* transactional intents drain ahead of marketing ones. — done: implemented a per-tenant in-flight cap of 10 in ClaimJourneyMessageIntent; added integration test asserting priority order and fairness.
-7. **Worker binary** `cmd/journeys-worker/main.go` (Recipe 6.14): loop
+7. [x] **Worker binary** `cmd/journeys-worker/main.go` (Recipe 6.14): loop
    `EnrollScheduledDue → TickNext → DeliverNext`; adapters built once; metrics `:8084`. Wire
    into `Dockerfile`, `compose.yaml`, CI `containers`. *Done when:* `go build ./cmd/journeys-worker`
-   runs and drains a journey end to end locally.
+   runs and drains a journey end to end locally. — done: created cmd/journeys-worker/main.go; wired into Dockerfile and compose.yaml; verified go build and test-go pass.
 
 ### Milestone 8.7 — Operator tools: pause/resume/cancel, DLQ, replay, backfill
 1. **Journey pause/resume** `PUT /v1/journeys/{id}/versions/{v}` sets `journey_versions.status

@@ -107,6 +107,18 @@ services:
       api:
         condition: service_started
 
+  journeys-worker:
+    build: .
+    entrypoint: ["/usr/local/bin/openjourney-journeys-worker"]
+    command: ["-watch", "-max-duration=1h"]
+    restart: unless-stopped
+    environment:
+      OPENJOURNEY_DATABASE_URL: postgres://openjourney:openjourney@postgres:5432/openjourney?sslmode=disable
+      OPENJOURNEY_AUTO_MIGRATE: "false"
+    depends_on:
+      api:
+        condition: service_started
+
   web:
     build: ./web
     depends_on:
