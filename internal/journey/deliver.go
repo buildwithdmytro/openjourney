@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"time"
 
 	"github.com/buildwithdmytro/openjourney/internal/channels"
 	"github.com/buildwithdmytro/openjourney/internal/domain"
@@ -25,9 +24,15 @@ type Config struct {
 	SESAdapter        ports.ChannelAdapter
 	WebhookAdapter    ports.ChannelAdapter
 	FakeAdapter       ports.ChannelAdapter
+	Clock             Clock
 }
 
 func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Config) (bool, error) {
+	clk := cfg.Clock
+	if clk == nil {
+		clk = RealClock{}
+	}
+
 	intent, found, err := store.ClaimJourneyMessageIntent(ctx, workerID)
 	if err != nil {
 		return false, fmt.Errorf("claim journey message intent: %w", err)
@@ -159,6 +164,31 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 		intent.Decision = &dec
 		_ = store.UpdateJourneyMessageIntent(ctx, intent)
 		return true, nil
+	}
+
+	// Quiet hours check (marketing/non-transactional messages only)
+	if !intent.Transactional {
+		start, end, tz, err := store.GetTenantQuietHours(ctx, p)
+		if err != nil {
+			slog.Error("failed to get tenant quiet hours", "error", err, "tenant_id", p.TenantID)
+		} else if start != nil && end != nil {
+			inQuiet, nextOpen, err := IsInQuietHours(clk.Now(), prof, start, end, tz)
+			if err != nil {
+				slog.Error("failed to evaluate quiet hours", "error", err)
+			} else if inQuiet {
+				slog.Info("quiet hours active; rescheduling message intent", "intent_id", intent.ID, "next_open", nextOpen)
+				intent.AvailableAt = nextOpen
+				intent.Status = "pending"
+				if intent.Attempts > 0 {
+					intent.Attempts--
+				}
+				err = store.UpdateJourneyMessageIntent(ctx, intent)
+				if err != nil {
+					slog.Error("failed to reschedule intent for quiet hours", "error", err)
+				}
+				return true, nil
+			}
+		}
 	}
 
 	var verdict policy.Verdict
@@ -376,7 +406,7 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 		ExternalID:     prof.ExternalID,
 		AnonymousID:    prof.AnonymousID,
 		IdempotencyKey: fmt.Sprintf("sent-%s-%s", intent.RunID, intent.NodeID),
-		OccurredAt:     time.Now().UTC(),
+		OccurredAt:     clk.Now().UTC(),
 		Payload:        eventPayload,
 	}
 

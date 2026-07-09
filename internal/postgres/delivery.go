@@ -99,3 +99,17 @@ func (s *Store) GetTenantFatigueQuotas(ctx context.Context, p domain.Principal) 
 	return maxSends24h, maxSends7d, nil
 }
 
+func (s *Store) GetTenantQuietHours(ctx context.Context, p domain.Principal) (*int, *int, string, error) {
+	var start, end *int
+	var tz string
+	err := s.pool.QueryRow(ctx, `SELECT quiet_hours_start, quiet_hours_end, default_timezone FROM tenant_quotas WHERE tenant_id=$1`, p.TenantID).Scan(&start, &end, &tz)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil, "UTC", nil
+	}
+	if err != nil {
+		return nil, nil, "UTC", err
+	}
+	return start, end, tz, nil
+}
+
+

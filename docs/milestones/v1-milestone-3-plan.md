@@ -603,12 +603,12 @@ task ends with a **Done when** check.
    `decision`/`reason`/`policy_snapshot`/`provider_message_id` onto the intent. Reuse the
    effectively-once resume-by-decision state machine (`deliver.go:141`). *Done when:* a small
    journey delivers via `channels.NewFakeAdapter()` and every intent has a decision. — done: implemented DeliverNext with resume-by-decision state machine, full rendering, and policy evaluations (with transactional bypass), backed by comprehensive unit tests and pg integration tests.
-4. **Quiet hours + timezone/DST** `internal/journey/quiethours.go`: compute recipient local
+4. [x] **Quiet hours + timezone/DST** `internal/journey/quiethours.go`: compute recipient local
    time from `profiles.attributes.timezone` (fallback `tenant_quotas.default_timezone`) via
    `time.LoadLocation` (handles DST); if now is inside `[quiet_hours_start, quiet_hours_end)`
    and the intent is **not** `transactional`, reschedule `available_at` to the next window
    open. *Done when:* a unit test with a fixed clock defers a marketing send out of quiet
-   hours and lets a transactional one through.
+   hours and lets a transactional one through. — done: implemented quiet hours check in internal/journey/quiethours.go with full support for midnight-wrapping, timezone and DST computations, integrated with DeliverNext, and verified via extensive fixed-clock unit tests.
 5. **Fatigue across channels** (§2.4): extend `SentCountSince` (`internal/postgres/delivery.go`)
    to UNION `delivery_attempts` + `journey_message_intents` sends. *Done when:* a profile at
    its cap from campaign sends is `fatigued` for a journey send too.

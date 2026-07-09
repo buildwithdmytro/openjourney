@@ -13,12 +13,15 @@ import (
 
 type mockStore struct {
 	ports.Store
-	runs        map[string]domain.JourneyRun
-	steps       map[string]domain.JourneyStep
-	versions    map[string]domain.JourneyVersion
-	transitions []domain.JourneyTransition
-	intents     []domain.JourneyMessageIntent
-	profile     *domain.Profile
+	runs            map[string]domain.JourneyRun
+	steps           map[string]domain.JourneyStep
+	versions        map[string]domain.JourneyVersion
+	transitions     []domain.JourneyTransition
+	intents         []domain.JourneyMessageIntent
+	profile         *domain.Profile
+	quietHoursStart *int
+	quietHoursEnd   *int
+	defaultTimezone string
 }
 
 func (m *mockStore) IsProfileInSegment(ctx context.Context, p domain.Principal, segmentID string, profileID string) (bool, error) {
