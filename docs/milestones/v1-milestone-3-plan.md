@@ -518,8 +518,8 @@ task ends with a **Done when** check.
    *Done when:* each returns expected JSON via curl. — done: journey CRUD routes wired; HTTP tests pass; curl POST/list/get/update returned expected JSON against local API.
 6. [x] **React scaffold** (Recipe 6.16, list + create only for now; builder in 8.4). Add nav
    entry, delete the disabled placeholder. *Done when:* `npm run build` passes and the list renders. — done: Journeys nav/list/create scaffold renders; `npm run typecheck && npm run build && npm test` pass.
-7. **OpenAPI.** Add the new paths to `api/openapi.yaml` (CI `contracts` job runs redocly).
-   *Done when:* `npx redocly lint` passes.
+7. [x] **OpenAPI.** Add the new paths to `api/openapi.yaml` (CI `contracts` job runs redocly).
+   *Done when:* `npx redocly lint` passes. — done: Journey CRUD paths and schemas added; `npx --yes @redocly/cli@1.34.3 lint api/openapi.yaml` passes.
 
 ### Milestone 8.2 — Graph model, validation & immutable publish (highest risk — do carefully)
 1. **Graph types** in new `internal/journey/graph.go`: `Graph{EntryNodeID, Nodes, Edges}`,

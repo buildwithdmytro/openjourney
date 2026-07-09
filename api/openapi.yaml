@@ -414,6 +414,83 @@ paths:
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "422": { $ref: "#/components/responses/Error" }
+  /v1/journeys:
+    get:
+      operationId: listJourneys
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Draft and published journeys in the current workspace.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [journeys]
+                additionalProperties: false
+                properties:
+                  journeys:
+                    type: array
+                    items: { $ref: "#/components/schemas/Journey" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "500": { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createJourney
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/JourneyInput" }
+      responses:
+        "201":
+          description: Journey draft created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Journey" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "500": { $ref: "#/components/responses/Error" }
+  /v1/journeys/{id}:
+    get:
+      operationId: getJourney
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Journey draft or published container.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Journey" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "500": { $ref: "#/components/responses/Error" }
+    put:
+      operationId: updateJourney
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/JourneyInput" }
+      responses:
+        "200":
+          description: Journey draft updated.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Journey" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "500": { $ref: "#/components/responses/Error" }
   /v1/audit:
     get:
       operationId: listAuditEvents
@@ -599,3 +676,28 @@ components:
         last_error: { type: string }
         payload: { type: object, additionalProperties: true }
         created_at: { type: string, format: date-time }
+    JourneyInput:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1 }
+        description: { type: string }
+        status: { enum: [draft, published, archived], default: draft }
+        graph:
+          type: object
+          additionalProperties: true
+          default: {}
+    Journey:
+      allOf:
+        - $ref: "#/components/schemas/JourneyInput"
+        - type: object
+          required: [id, tenant_id, workspace_id, status, graph, latest_version, created_at, updated_at]
+          properties:
+            id: { type: string, format: uuid }
+            tenant_id: { type: string, format: uuid }
+            workspace_id: { type: string, format: uuid }
+            latest_version: { type: integer, minimum: 0 }
+            current_version_id: { type: string, format: uuid }
+            created_at: { type: string, format: date-time }
+            updated_at: { type: string, format: date-time }
