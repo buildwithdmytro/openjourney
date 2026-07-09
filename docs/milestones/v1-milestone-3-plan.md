@@ -597,12 +597,12 @@ task ends with a **Done when** check.
 2. [x] **`message` executor** (finalize): `INSERT journey_message_intents ... ON CONFLICT
    (run_id,node_id) DO NOTHING` and advance in the same tx. *Done when:* executing a message
    node produces exactly one intent and advances the run. — done: implemented endpoint resolution using dynamic profile attribute lookup, integrated message intent insert within atomic AdvanceRunTx, and fully verified via unit + Postgres integration tests.
-3. **Delivery loop** `internal/journey/deliver.go` `DeliverNext(ctx, store, workerID, cfg)`
+3. [x] **Delivery loop** `internal/journey/deliver.go` `DeliverNext(ctx, store, workerID, cfg)`
    (copy `internal/campaigns/deliver.go`): claim an intent → `policy.Evaluate` → render
    (`internal/render`) → `adapter.Send` → emit `message.sent` (Recipe 6.9) → write
    `decision`/`reason`/`policy_snapshot`/`provider_message_id` onto the intent. Reuse the
    effectively-once resume-by-decision state machine (`deliver.go:141`). *Done when:* a small
-   journey delivers via `channels.NewFakeAdapter()` and every intent has a decision.
+   journey delivers via `channels.NewFakeAdapter()` and every intent has a decision. — done: implemented DeliverNext with resume-by-decision state machine, full rendering, and policy evaluations (with transactional bypass), backed by comprehensive unit tests and pg integration tests.
 4. **Quiet hours + timezone/DST** `internal/journey/quiethours.go`: compute recipient local
    time from `profiles.attributes.timezone` (fallback `tenant_quotas.default_timezone`) via
    `time.LoadLocation` (handles DST); if now is inside `[quiet_hours_start, quiet_hours_end)`

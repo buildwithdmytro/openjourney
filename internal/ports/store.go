@@ -106,6 +106,8 @@ type Store interface {
 	InsertJourneyStep(ctx context.Context, step domain.JourneyStep) error
 	RecordTransition(ctx context.Context, trans domain.JourneyTransition) error
 	AdvanceRunTx(ctx context.Context, runID string, run domain.JourneyRun, stepID string, nextStep *domain.JourneyStep, trans domain.JourneyTransition, messageIntent *domain.JourneyMessageIntent) error
+	ClaimJourneyMessageIntent(ctx context.Context, workerID string) (domain.JourneyMessageIntent, bool, error)
+	UpdateJourneyMessageIntent(ctx context.Context, intent domain.JourneyMessageIntent) error
 
 	ClaimScheduledCampaign(ctx context.Context) (domain.Campaign, bool, error)
 	SaveCampaignManifestAndJobs(ctx context.Context, campaignID string, manifestKey string, recipientCount int, segmentVersion int, templateVersion int, jobs []domain.DeliveryJob) error

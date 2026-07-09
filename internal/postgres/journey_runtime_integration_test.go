@@ -957,6 +957,227 @@ func TestJourneyMessageNodeExecutorIntegration(t *testing.T) {
 	_, _ = store.pool.Exec(ctx, "DELETE FROM tenants WHERE id=$1", p.TenantID)
 }
 
+func TestJourneyDeliveryIntegration(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("skipping integration test, OPENJOURNEY_TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. Setup Tenant and Workspace
+	key := fmt.Sprintf("journey-delivery-%d", time.Now().UnixNano())
+	if err := store.EnsureDevelopmentTenant(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	p, err := store.Authenticate(ctx, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	appID, err := store.GetFirstAppID(ctx, p.TenantID, p.WorkspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.AppID = appID
+
+	// Clean up existing intents/runs for safety
+	_, _ = store.pool.Exec(ctx, "DELETE FROM journey_message_intents WHERE tenant_id=$1", p.TenantID)
+	_, _ = store.pool.Exec(ctx, "DELETE FROM journey_steps WHERE tenant_id=$1", p.TenantID)
+	_, _ = store.pool.Exec(ctx, "DELETE FROM journey_runs WHERE tenant_id=$1", p.TenantID)
+	_, _ = store.pool.Exec(ctx, "DELETE FROM templates WHERE tenant_id=$1", p.TenantID)
+	_, _ = store.pool.Exec(ctx, "DELETE FROM profiles WHERE tenant_id=$1", p.TenantID)
+
+	// 2. Create Profile and Template
+	events := []domain.Event{
+		{
+			Type: "profile.updated", SchemaVersion: 1, ExternalID: "p-delivery-node",
+			IdempotencyKey: "identify-delivery-node", OccurredAt: time.Now().UTC(),
+			Payload: json.RawMessage(`{"attributes":{"email":"user@example.com"}}`),
+		},
+	}
+	_, err = store.AcceptEvents(ctx, p, events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, _, _ := store.ClaimProjectionJob(ctx)
+	_ = store.ProjectEvent(ctx, job)
+
+	var profileID string
+	err = store.pool.QueryRow(ctx, `SELECT id FROM profiles WHERE tenant_id=$1 AND external_id='p-delivery-node'`, p.TenantID).Scan(&profileID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tmpl := domain.Template{
+		Name:            "delivery-temp",
+		Channel:         "email",
+		SubjectTemplate: ptrStr("Hello"),
+		HTMLTemplate:    ptrStr("Body"),
+	}
+	tmpl, err = store.CreateTemplate(ctx, p, tmpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 3. Create Journey and Published version
+	j, err := store.CreateJourney(ctx, p, domain.Journey{
+		Name: "Delivery Journey Integration",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	graphJSON := []byte(fmt.Sprintf(`{
+		"entry_node_id": "n1",
+		"nodes": [
+			{"id": "n1", "type": "entry", "config": {"trigger": "event", "event_type": "user.signup"}},
+			{"id": "n2", "type": "message", "config": {"template_id": "%s", "channel": "email", "transactional": false}},
+			{"id": "n3", "type": "exit", "config": {}}
+		],
+		"edges": [
+			{"from": "n1", "to": "n2"},
+			{"from": "n2", "to": "n3"}
+		]
+	}`, tmpl.ID))
+
+	_, err = store.pool.Exec(ctx, `UPDATE journeys SET graph=$1, status='published' WHERE id=$2`, graphJSON, j.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	v, err := store.PublishJourney(ctx, p, j.ID, "00000000-0000-0000-0000-000000000001", "manifest-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 4. Create Active Run
+	run := domain.JourneyRun{
+		TenantID:         p.TenantID,
+		WorkspaceID:      p.WorkspaceID,
+		JourneyID:        j.ID,
+		JourneyVersionID: v.ID,
+		ProfileID:        profileID,
+		EntryKey:         "event-delivery-123",
+		ReentrySequence:  0,
+		Status:           "active",
+		CurrentNodeID:    "n2",
+	}
+	_, err = store.CreateJourneyRun(ctx, run)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var runID string
+	err = store.pool.QueryRow(ctx, `SELECT id FROM journey_runs WHERE tenant_id=$1 AND entry_key='event-delivery-123'`, p.TenantID).Scan(&runID)
+	if err != nil {
+		t.Fatalf("failed to fetch run ID: %v", err)
+	}
+	run.ID = runID
+
+	// 5. Insert Message Intent
+	intent := domain.JourneyMessageIntent{
+		RunID:            runID,
+		TenantID:         p.TenantID,
+		WorkspaceID:      p.WorkspaceID,
+		JourneyID:        j.ID,
+		JourneyVersionID: v.ID,
+		NodeID:           "n2",
+		ProfileID:        profileID,
+		TemplateID:       tmpl.ID,
+		Channel:          "email",
+		Endpoint:         "user@example.com",
+		Status:           "pending",
+	}
+
+	step := domain.JourneyStep{
+		RunID:       runID,
+		TenantID:    p.TenantID,
+		NodeID:      "n2",
+		Kind:        "advance",
+		Status:      "processing",
+		AvailableAt: time.Now(),
+	}
+	err = store.InsertJourneyStep(ctx, step)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var stepID string
+	err = store.pool.QueryRow(ctx, `SELECT id FROM journey_steps WHERE run_id=$1 AND node_id='n2'`, runID).Scan(&stepID)
+	if err != nil {
+		t.Fatalf("failed to fetch step ID: %v", err)
+	}
+
+	trans := domain.JourneyTransition{
+		RunID:    runID,
+		TenantID: p.TenantID,
+		FromNode: ptrStr("n1"),
+		ToNode:   ptrStr("n2"),
+		NodeType: "message",
+		Outcome:  "advanced",
+	}
+
+	err = store.AdvanceRunTx(ctx, runID, run, stepID, nil, trans, &intent)
+	if err != nil {
+		t.Fatalf("failed to advance and insert intent: %v", err)
+	}
+
+	// 6. Claim Message Intent
+	claimed, found, err := store.ClaimJourneyMessageIntent(ctx, "worker-1")
+	if err != nil {
+		t.Fatalf("failed to claim journey message intent: %v", err)
+	}
+	if !found {
+		t.Fatal("expected message intent to be found")
+	}
+
+	if claimed.Status != "processing" {
+		t.Errorf("expected claimed status to be 'processing', got %q", claimed.Status)
+	}
+	if claimed.Attempts != 1 {
+		t.Errorf("expected attempts to be 1, got %d", claimed.Attempts)
+	}
+	if claimed.Endpoint != "user@example.com" {
+		t.Errorf("expected endpoint to be 'user@example.com', got %q", claimed.Endpoint)
+	}
+
+	// 7. Update Message Intent
+	dec := "sent"
+	claimed.Decision = &dec
+	claimed.Status = "completed"
+	err = store.UpdateJourneyMessageIntent(ctx, claimed)
+	if err != nil {
+		t.Fatalf("failed to update journey message intent: %v", err)
+	}
+
+	// Verify update in DB
+	var dbStatus, dbDecision string
+	err = store.pool.QueryRow(ctx, "SELECT status, decision FROM journey_message_intents WHERE run_id=$1 AND node_id=$2", runID, "n2").Scan(&dbStatus, &dbDecision)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if dbStatus != "completed" {
+		t.Errorf("expected status 'completed', got %q", dbStatus)
+	}
+	if dbDecision != "sent" {
+		t.Errorf("expected decision 'sent', got %q", dbDecision)
+	}
+
+	// Clean up
+	_, _ = store.pool.Exec(ctx, "DELETE FROM tenants WHERE id=$1", p.TenantID)
+}
+
+
 func ptrStr(s string) *string {
 	return &s
 }

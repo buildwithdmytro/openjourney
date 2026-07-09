@@ -637,6 +637,65 @@ func (s *Store) resolveWaitingRuns(ctx context.Context, tx pgx.Tx, event domain.
 	return nil
 }
 
+func (s *Store) ClaimJourneyMessageIntent(ctx context.Context, workerID string) (domain.JourneyMessageIntent, bool, error) {
+	var out domain.JourneyMessageIntent
+	err := s.pool.QueryRow(ctx, `UPDATE journey_message_intents SET
+			status='processing',
+			attempts=attempts+1,
+			locked_until=now() + INTERVAL '5 minutes',
+			updated_at=now()
+		WHERE id = (
+			SELECT id FROM journey_message_intents
+			WHERE (
+				(status IN ('pending', 'failed') AND attempts < 3 AND available_at <= now())
+				OR (status='processing' AND locked_until <= now())
+			)
+			ORDER BY transactional DESC, available_at ASC
+			FOR UPDATE SKIP LOCKED
+			LIMIT 1
+		)
+		RETURNING id, run_id, tenant_id, workspace_id, journey_id, journey_version_id, node_id, profile_id, template_id, channel, endpoint, transactional, status, attempts, available_at, locked_until, decision, reason, provider_message_id, policy_snapshot, error_message, created_at, updated_at`).
+		Scan(&out.ID, &out.RunID, &out.TenantID, &out.WorkspaceID, &out.JourneyID, &out.JourneyVersionID, &out.NodeID, &out.ProfileID, &out.TemplateID, &out.Channel, &out.Endpoint, &out.Transactional, &out.Status, &out.Attempts, &out.AvailableAt, &out.LockedUntil, &out.Decision, &out.Reason, &out.ProviderMessageID, &out.PolicySnapshot, &out.ErrorMessage, &out.CreatedAt, &out.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.JourneyMessageIntent{}, false, nil
+	}
+	if err != nil {
+		return domain.JourneyMessageIntent{}, false, err
+	}
+	return out, true, nil
+}
+
+func (s *Store) UpdateJourneyMessageIntent(ctx context.Context, intent domain.JourneyMessageIntent) error {
+	if len(intent.PolicySnapshot) == 0 {
+		intent.PolicySnapshot = json.RawMessage("{}")
+	}
+	_, err := s.pool.Exec(ctx, `UPDATE journey_message_intents SET
+		status = $1,
+		attempts = $2,
+		available_at = $3,
+		locked_until = $4,
+		decision = $5,
+		reason = $6,
+		provider_message_id = $7,
+		policy_snapshot = $8,
+		error_message = $9,
+		updated_at = now()
+	WHERE id = $10`,
+		intent.Status,
+		intent.Attempts,
+		intent.AvailableAt,
+		intent.LockedUntil,
+		intent.Decision,
+		intent.Reason,
+		intent.ProviderMessageID,
+		intent.PolicySnapshot,
+		intent.ErrorMessage,
+		intent.ID,
+	)
+	return err
+}
+
+
 
 
 

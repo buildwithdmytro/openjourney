@@ -132,6 +132,30 @@ func (m *mockStore) AdvanceRunTx(ctx context.Context, runID string, run domain.J
 	return nil
 }
 
+func (m *mockStore) ClaimJourneyMessageIntent(ctx context.Context, workerID string) (domain.JourneyMessageIntent, bool, error) {
+	for i, intent := range m.intents {
+		if intent.Status == "pending" {
+			intent.Status = "processing"
+			intent.Attempts++
+			m.intents[i] = intent
+			return intent, true, nil
+		}
+	}
+	return domain.JourneyMessageIntent{}, false, nil
+}
+
+func (m *mockStore) UpdateJourneyMessageIntent(ctx context.Context, intent domain.JourneyMessageIntent) error {
+	for i, existing := range m.intents {
+		if existing.ID == intent.ID {
+			m.intents[i] = intent
+			return nil
+		}
+	}
+	m.intents = append(m.intents, intent)
+	return nil
+}
+
+
 func TestTickNextSkeleton(t *testing.T) {
 	store := newMockStore()
 	clock := NewFakeClock(time.Now())
