@@ -586,10 +586,10 @@ task ends with a **Done when** check.
    status re-check prevents a double advance if the timeout also fires. *Done when:* delivering
    the awaited event advances the run down `success`; letting it lapse advances down `timeout`;
    never both. — done: ProjectEvent inserts success advance step and completes timeout step; timeout step advances down timeout branch; verified by TestJourneyWaitEventResolutionIntegration and TestJourneyWaitEventTimeoutIntegration.
-4. **Scheduled/segment entry** `journey.EnrollScheduledDue(ctx, store, clock)`: for due
+4. [x] **Scheduled/segment entry** `journey.EnrollScheduledDue(ctx, store, clock)`: for due
    `entry_kind='scheduled'` versions, resolve the segment (`ResolveSegment`, `segments.go:383`)
    and enroll each member (`entry_key="sched:<ver>:<runID>"`). *Done when:* scheduling a
-   segment-entry journey enrolls exactly its members, once.
+   segment-entry journey enrolls exactly its members, once. — done: EnrollScheduledDue retrieves active scheduled journey versions, resolves members via ResolveSegment, and enrolls them with effectively-once entry keys; verified by TestEnrollScheduledDue and TestJourneyScheduledEntryIntegration.
 
 ### Milestone 8.6 — Message delivery, policy, quiet hours & fatigue
 1. **Migration** `017_journey_delivery.sql` per §2.3 (`journey_message_intents` +

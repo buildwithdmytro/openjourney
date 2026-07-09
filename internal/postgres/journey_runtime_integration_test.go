@@ -621,6 +621,149 @@ func TestJourneyWaitEventTimeoutIntegration(t *testing.T) {
 	_, _ = store.pool.Exec(ctx, "DELETE FROM tenants WHERE id=$1", p.TenantID)
 }
 
+func TestJourneyScheduledEntryIntegration(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	key := fmt.Sprintf("journey-sched-%d", time.Now().UnixNano())
+	if err := store.EnsureDevelopmentTenant(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	p, err := store.Authenticate(ctx, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	appID, err := store.GetFirstAppID(ctx, p.TenantID, p.WorkspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.AppID = appID
+
+	// 1. Insert two profiles, but only one matches the segment
+	var pS1ID string
+	err = store.pool.QueryRow(ctx, `
+		INSERT INTO profiles(id, tenant_id, workspace_id, app_id, external_id, attributes)
+		VALUES(gen_random_uuid(), $1, $2, $3, 'ext-s1', '{"country":"US","age":25}')
+		RETURNING id
+	`, p.TenantID, p.WorkspaceID, p.AppID).Scan(&pS1ID)
+	if err != nil {
+		t.Fatalf("insert profile p-s1: %v", err)
+	}
+
+	_, err = store.pool.Exec(ctx, `
+		INSERT INTO profiles(id, tenant_id, workspace_id, app_id, external_id, attributes)
+		VALUES(gen_random_uuid(), $1, $2, $3, 'ext-s2', '{"country":"CA","age":30}')
+	`, p.TenantID, p.WorkspaceID, p.AppID)
+	if err != nil {
+		t.Fatalf("insert profile p-s2: %v", err)
+	}
+
+	// 2. Create the segment
+	seg, err := store.CreateSegment(ctx, p, domain.Segment{
+		Name: "US Users",
+		DSL: json.RawMessage(`{
+			"type": "profile_attribute",
+			"field": "country",
+			"operator": "equals",
+			"value": "US"
+		}`),
+	})
+	if err != nil {
+		t.Fatalf("create segment: %v", err)
+	}
+
+	// 3. Create scheduled entry journey
+	validGraph := json.RawMessage(fmt.Sprintf(`{
+		"entry_node_id":"n1",
+		"nodes":[
+			{"id":"n1","type":"entry","config":{"trigger":"scheduled","segment_id":"%s","schedule":"*/5 * * * *"}},
+			{"id":"n2","type":"exit","config":{"reason":"success"}}
+		],
+		"edges":[
+			{"from":"n1","to":"n2"}
+		]
+	}`, seg.ID))
+	created, _ := store.CreateJourney(ctx, p, domain.Journey{Name: "Scheduled Entry Journey", Graph: validGraph})
+	blobs := &memoryBlobs{objects: map[string][]byte{}}
+	version, _ := journeyflow.Publish(ctx, store, blobs, p, created.ID, "00000000-0000-0000-0000-000000000001")
+
+	// Verify that the version's fields were inferred correctly on publish
+	if version.EntryKind != "scheduled" {
+		t.Errorf("expected entry_kind='scheduled', got %s", version.EntryKind)
+	}
+	if version.EntrySegmentID == nil || *version.EntrySegmentID != seg.ID {
+		t.Errorf("expected entry_segment_id=%s, got %v", seg.ID, version.EntrySegmentID)
+	}
+	if version.EntrySchedule == nil || *version.EntrySchedule != "*/5 * * * *" {
+		t.Errorf("expected entry_schedule='*/5 * * * *', got %v", version.EntrySchedule)
+	}
+
+	// 4. Enroll scheduled due
+	// Let's use a clock set to minute 5, which matches "*/5 * * * *"
+	clock := journeyflow.NewFakeClock(time.Date(2026, 1, 1, 12, 5, 0, 0, time.UTC))
+	err = journeyflow.EnrollScheduledDue(ctx, store, clock)
+	if err != nil {
+		t.Fatalf("unexpected EnrollScheduledDue error: %v", err)
+	}
+
+	// 5. Assertions
+	// We expect exactly 1 run for p-s1 ('p-s1' is 'profile-1' segment member, 'p-s2' Canada user is not)
+	var runCount int
+	err = store.pool.QueryRow(ctx, `SELECT count(*) FROM journey_runs WHERE tenant_id=$1 AND journey_id=$2`, p.TenantID, created.ID).Scan(&runCount)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runCount != 1 {
+		t.Errorf("expected exactly 1 journey run, got %d", runCount)
+	}
+
+	var run domain.JourneyRun
+	err = store.pool.QueryRow(ctx, `SELECT id, profile_id, status FROM journey_runs WHERE tenant_id=$1 AND journey_id=$2`, p.TenantID, created.ID).Scan(&run.ID, &run.ProfileID, &run.Status)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.ProfileID != pS1ID {
+		t.Errorf("expected run to be for profile %s, got %s", pS1ID, run.ProfileID)
+	}
+	if run.Status != "active" {
+		t.Errorf("expected run status to be active, got %s", run.Status)
+	}
+
+	// Verify step exists for run
+	var stepCount int
+	err = store.pool.QueryRow(ctx, `SELECT count(*) FROM journey_steps WHERE tenant_id=$1 AND run_id=$2 AND status='pending'`, p.TenantID, run.ID).Scan(&stepCount)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stepCount != 1 {
+		t.Errorf("expected exactly 1 pending step for the run, got %d", stepCount)
+	}
+
+	// 6. Running it again at the same minute should NOT create duplicate runs due to effectively-once entry_key
+	err = journeyflow.EnrollScheduledDue(ctx, store, clock)
+	if err != nil {
+		t.Fatalf("unexpected EnrollScheduledDue error on duplicate: %v", err)
+	}
+	err = store.pool.QueryRow(ctx, `SELECT count(*) FROM journey_runs WHERE tenant_id=$1 AND journey_id=$2`, p.TenantID, created.ID).Scan(&runCount)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runCount != 1 {
+		t.Errorf("expected exactly 1 journey run (no duplicates), got %d", runCount)
+	}
+
+	// Clean up
+	_, _ = store.pool.Exec(ctx, "DELETE FROM tenants WHERE id=$1", p.TenantID)
+}
+
 func ptrStr(s string) *string {
 	return &s
 }
