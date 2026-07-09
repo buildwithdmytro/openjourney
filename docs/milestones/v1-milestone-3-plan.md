@@ -592,8 +592,8 @@ task ends with a **Done when** check.
    segment-entry journey enrolls exactly its members, once. — done: EnrollScheduledDue retrieves active scheduled journey versions, resolves members via ResolveSegment, and enrolls them with effectively-once entry keys; verified by TestEnrollScheduledDue and TestJourneyScheduledEntryIntegration.
 
 ### Milestone 8.6 — Message delivery, policy, quiet hours & fatigue
-1. **Migration** `017_journey_delivery.sql` per §2.3 (`journey_message_intents` +
-   `tenant_quotas` quiet-hours/journey columns). *Done when:* table + columns exist.
+1. [x] **Migration** `017_journey_delivery.sql` per §2.3 (`journey_message_intents` +
+   `tenant_quotas` quiet-hours/journey columns). *Done when:* table + columns exist. — done: created migration file `017_journey_delivery.sql` and verified auto-application during integration tests.
 2. **`message` executor** (finalize): `INSERT journey_message_intents ... ON CONFLICT
    (run_id,node_id) DO NOTHING` and advance in the same tx. *Done when:* executing a message
    node produces exactly one intent and advances the run.
