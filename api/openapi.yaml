@@ -453,6 +453,29 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "422": { $ref: "#/components/responses/Error" }
         "500": { $ref: "#/components/responses/Error" }
+  /v1/journeys/dlq:
+    get:
+      operationId: getJourneyDLQ
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Lists dead steps and message intents in the dead letter queue.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [steps, intents]
+                additionalProperties: false
+                properties:
+                  steps:
+                    type: array
+                    items: { $ref: "#/components/schemas/JourneyStep" }
+                  intents:
+                    type: array
+                    items: { $ref: "#/components/schemas/JourneyMessageIntent" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "500": { $ref: "#/components/responses/Error" }
   /v1/journeys/{id}:
     get:
       operationId: getJourney
@@ -802,3 +825,48 @@ components:
         status: { enum: [active, paused, archived] }
         published_by: { type: string, format: uuid }
         published_at: { type: string, format: date-time }
+    JourneyStep:
+      type: object
+      required: [id, run_id, tenant_id, node_id, kind, status, attempts, available_at, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        run_id: { type: string, format: uuid }
+        tenant_id: { type: string, format: uuid }
+        node_id: { type: string }
+        kind: { enum: [advance, timeout] }
+        status: { enum: [pending, processing, completed, failed, dead] }
+        attempts: { type: integer, minimum: 0 }
+        available_at: { type: string, format: date-time }
+        locked_until: { type: string, format: date-time }
+        error_message: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    JourneyMessageIntent:
+      type: object
+      required: [id, run_id, tenant_id, workspace_id, journey_id, journey_version_id, node_id, profile_id, template_id, channel, endpoint, transactional, status, attempts, available_at, policy_snapshot, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        run_id: { type: string, format: uuid }
+        tenant_id: { type: string, format: uuid }
+        workspace_id: { type: string, format: uuid }
+        journey_id: { type: string, format: uuid }
+        journey_version_id: { type: string, format: uuid }
+        node_id: { type: string }
+        profile_id: { type: string, format: uuid }
+        template_id: { type: string, format: uuid }
+        channel: { type: string }
+        endpoint: { type: string }
+        transactional: { type: boolean }
+        status: { enum: [pending, processing, completed, failed, dead] }
+        attempts: { type: integer, minimum: 0 }
+        available_at: { type: string, format: date-time }
+        locked_until: { type: string, format: date-time }
+        decision: { type: string }
+        reason: { type: string }
+        provider_message_id: { type: string }
+        policy_snapshot:
+          type: object
+          additionalProperties: true
+        error_message: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }

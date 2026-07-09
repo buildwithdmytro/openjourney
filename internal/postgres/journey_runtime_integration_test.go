@@ -1883,6 +1883,132 @@ func TestJourneyParticipantCancel(t *testing.T) {
 	}
 }
 
+func TestJourneyDLQ(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	// 1. Setup Tenant and Workspace
+	key := fmt.Sprintf("tenant-dlq-%d", time.Now().UnixNano())
+	if err := store.EnsureDevelopmentTenant(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	p, err := store.Authenticate(ctx, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	appID, err := store.GetFirstAppID(ctx, p.TenantID, p.WorkspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.AppID = appID
+
+	defer func() {
+		_, _ = store.pool.Exec(ctx, "DELETE FROM tenants WHERE id = $1", p.TenantID)
+	}()
+
+	// Create profile
+	var profileID string
+	err = store.pool.QueryRow(ctx, `INSERT INTO profiles (tenant_id, workspace_id, app_id, external_id) VALUES ($1, $2, $3, 'prof-dlq') RETURNING id`,
+		p.TenantID, p.WorkspaceID, p.AppID).Scan(&profileID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create templates
+	var templateID string
+	err = store.pool.QueryRow(ctx, `INSERT INTO templates (tenant_id, workspace_id, name, channel, html_template) VALUES ($1, $2, 'tDlq', 'email', 'HTML') RETURNING id`,
+		p.TenantID, p.WorkspaceID).Scan(&templateID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create journey
+	var journeyID string
+	err = store.pool.QueryRow(ctx, `INSERT INTO journeys (tenant_id, workspace_id, name) VALUES ($1, $2, 'jDlq') RETURNING id`,
+		p.TenantID, p.WorkspaceID).Scan(&journeyID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create version
+	var verID string
+	err = store.pool.QueryRow(ctx, `INSERT INTO journey_versions (journey_id, tenant_id, workspace_id, version, graph, entry_kind, reentry_policy, status) VALUES ($1, $2, $3, 1, '{}'::jsonb, 'event', 'once', 'active') RETURNING id`,
+		journeyID, p.TenantID, p.WorkspaceID).Scan(&verID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create journey run
+	var runID string
+	err = store.pool.QueryRow(ctx, `INSERT INTO journey_runs (tenant_id, workspace_id, journey_id, journey_version_id, profile_id, entry_key, current_node_id) VALUES ($1, $2, $3, $4, $5, 'entryDlq', 'node') RETURNING id`,
+		p.TenantID, p.WorkspaceID, journeyID, verID, profileID).Scan(&runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Insert step
+	step := domain.JourneyStep{
+		RunID:       runID,
+		TenantID:    p.TenantID,
+		NodeID:      "node-1",
+		Kind:        "advance",
+		Status:      "pending",
+		AvailableAt: time.Now(),
+	}
+	err = store.InsertJourneyStep(ctx, step)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Claim step to get its ID and simulate 10 failures to exhaust attempts
+	claimedStep, found, err := store.ClaimJourneyStep(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("expected step to be claimable")
+	}
+
+	// Set attempts to 10, then fail it so it becomes dead
+	_, err = store.pool.Exec(ctx, `UPDATE journey_steps SET attempts = 10 WHERE id = $1`, claimedStep.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = store.FailJourneyStep(ctx, claimedStep.ID, "simulated error")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a dead message intent as well
+	var intentID string
+	err = store.pool.QueryRow(ctx, `INSERT INTO journey_message_intents (run_id, tenant_id, workspace_id, journey_id, journey_version_id, node_id, profile_id, template_id, channel, endpoint, status, attempts, error_message) VALUES ($1, $2, $3, $4, $5, 'node-2', $6, $7, 'email', 'user@example.com', 'dead', 3, 'simulated send failure') RETURNING id`,
+		runID, p.TenantID, p.WorkspaceID, journeyID, verID, profileID, templateID).Scan(&intentID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Fetch DLQ
+	steps, intents, err := store.GetJourneyDLQ(ctx, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(steps) != 1 || steps[0].ID != claimedStep.ID {
+		t.Errorf("expected 1 dead step in DLQ, got %+v", steps)
+	}
+	if len(intents) != 1 || intents[0].ID != intentID {
+		t.Errorf("expected 1 dead intent in DLQ, got %+v", intents)
+	}
+}
+
 func ptrStr(s string) *string {
 	return &s
 }

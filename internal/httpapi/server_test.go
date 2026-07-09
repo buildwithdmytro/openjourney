@@ -295,6 +295,9 @@ func (f *fakeStore) CancelJourneyRun(ctx context.Context, p domain.Principal, jo
 	}
 	return nil
 }
+func (f *fakeStore) GetJourneyDLQ(ctx context.Context, p domain.Principal) ([]domain.JourneyStep, []domain.JourneyMessageIntent, error) {
+	return []domain.JourneyStep{{ID: "step-1", RunID: "run-1", Status: "dead"}}, []domain.JourneyMessageIntent{{ID: "intent-1", RunID: "run-2", Status: "dead"}}, nil
+}
 func (f *fakeStore) GetCampaignSystem(ctx context.Context, tenantID, id string) (domain.Campaign, error) {
 	return domain.Campaign{ID: id, TenantID: tenantID, WorkspaceID: "workspace", Status: "sending"}, nil
 }
@@ -700,6 +703,28 @@ func TestJourneyEndpoints(t *testing.T) {
 	server.ServeHTTP(badCancelRes, badCancelReq)
 	if badCancelRes.Code != http.StatusNotFound {
 		t.Fatalf("expected Not Found for invalid run, got %d", badCancelRes.Code)
+	}
+
+	// DLQ inspection (success)
+	dlqReq := httptest.NewRequest(http.MethodGet, "/v1/journeys/dlq", nil)
+	dlqReq.Header.Set("Authorization", "Bearer test-key")
+	dlqRes := httptest.NewRecorder()
+	server.ServeHTTP(dlqRes, dlqReq)
+	if dlqRes.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", dlqRes.Code, dlqRes.Body.String())
+	}
+	var dlqBody struct {
+		Steps   []domain.JourneyStep          `json:"steps"`
+		Intents []domain.JourneyMessageIntent `json:"intents"`
+	}
+	if err := json.Unmarshal(dlqRes.Body.Bytes(), &dlqBody); err != nil {
+		t.Fatalf("decode dlq body: %v", err)
+	}
+	if len(dlqBody.Steps) != 1 || dlqBody.Steps[0].ID != "step-1" {
+		t.Fatalf("unexpected steps in dlq: %+v", dlqBody.Steps)
+	}
+	if len(dlqBody.Intents) != 1 || dlqBody.Intents[0].ID != "intent-1" {
+		t.Fatalf("unexpected intents in dlq: %+v", dlqBody.Intents)
 	}
 }
 

@@ -627,9 +627,9 @@ task ends with a **Done when** check.
    *Done when:* pausing halts new step processing; resuming continues in place. — done: implemented PUT /v1/journeys/{id}/versions/{v} endpoint, updated ClaimJourneyStep/ClaimJourneyMessageIntent to skip paused versions, and added integration test confirming claiming stops on pause and resumes on active.
 2. [x] **Participant cancel** `POST /v1/journeys/{id}/runs/{runID}/cancel` sets run
    `status='canceled'` and deletes its live step. *Done when:* a canceled run stops advancing. — done: implemented POST /v1/journeys/{id}/runs/{runID}/cancel endpoint, updated database to set status='canceled' and delete all pending steps, and verified with integration test TestJourneyParticipantCancel.
-3. **DLQ inspection** `GET /v1/journeys/dlq` lists `journey_steps` and
+3. [x] **DLQ inspection** `GET /v1/journeys/dlq` lists `journey_steps` and
    `journey_message_intents` with `status='dead'` (tenant-scoped). *Done when:* a step that
-   exhausts attempts appears in the DLQ.
+   exhausts attempts appears in the DLQ. — done: implemented GET /v1/journeys/dlq endpoint, updated database store to return dead steps/intents, added OpenAPI spec, and verified with integration test TestJourneyDLQ.
 4. **Operator replay** `POST /v1/journeys/dlq/{kind}/{id}/retry`: reset `status='pending'`,
    `attempts=0`, `available_at=now()`, clear `locked_until`. *Done when:* a replayed dead step
    re-drives without duplicating already-committed transitions (guarded by the atomic

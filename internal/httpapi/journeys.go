@@ -165,3 +165,17 @@ func (s *Server) cancelJourneyRun(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, map[string]any{"status": "canceled"})
 }
+
+func (s *Server) getJourneyDLQ(w http.ResponseWriter, r *http.Request) {
+	principal := principalFrom(r)
+	steps, intents, err := s.store.GetJourneyDLQ(r.Context(), principal)
+	if err != nil {
+		internalError(w, err, "get journey dlq", principal)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"steps":   steps,
+		"intents": intents,
+	})
+}

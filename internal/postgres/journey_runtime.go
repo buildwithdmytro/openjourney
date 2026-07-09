@@ -741,6 +741,57 @@ func (s *Store) UpdateJourneyMessageIntent(ctx context.Context, intent domain.Jo
 	return err
 }
 
+func (s *Store) GetJourneyDLQ(ctx context.Context, p domain.Principal) ([]domain.JourneyStep, []domain.JourneyMessageIntent, error) {
+	steps := []domain.JourneyStep{}
+	rowsSteps, err := s.pool.Query(ctx, `SELECT js.id, js.run_id, js.tenant_id, js.node_id, js.kind, js.status,
+			js.attempts, js.available_at, js.locked_until, js.error_message, js.created_at, js.updated_at
+		FROM journey_steps js
+		JOIN journey_runs jr ON jr.id = js.run_id
+		WHERE js.tenant_id = $1 AND jr.workspace_id = $2 AND js.status = 'dead'
+		ORDER BY js.created_at DESC`, p.TenantID, p.WorkspaceID)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rowsSteps.Close()
+
+	for rowsSteps.Next() {
+		var step domain.JourneyStep
+		err := rowsSteps.Scan(&step.ID, &step.RunID, &step.TenantID, &step.NodeID, &step.Kind, &step.Status,
+			&step.Attempts, &step.AvailableAt, &step.LockedUntil, &step.ErrorMessage, &step.CreatedAt, &step.UpdatedAt)
+		if err != nil {
+			return nil, nil, err
+		}
+		steps = append(steps, step)
+	}
+
+	intents := []domain.JourneyMessageIntent{}
+	rowsIntents, err := s.pool.Query(ctx, `SELECT id, run_id, tenant_id, workspace_id, journey_id, journey_version_id,
+			node_id, profile_id, template_id, channel, endpoint, transactional, status, attempts,
+			available_at, locked_until, decision, reason, provider_message_id, policy_snapshot, error_message,
+			created_at, updated_at
+		FROM journey_message_intents
+		WHERE tenant_id = $1 AND workspace_id = $2 AND status = 'dead'
+		ORDER BY created_at DESC`, p.TenantID, p.WorkspaceID)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rowsIntents.Close()
+
+	for rowsIntents.Next() {
+		var intent domain.JourneyMessageIntent
+		err := rowsIntents.Scan(&intent.ID, &intent.RunID, &intent.TenantID, &intent.WorkspaceID, &intent.JourneyID, &intent.JourneyVersionID,
+			&intent.NodeID, &intent.ProfileID, &intent.TemplateID, &intent.Channel, &intent.Endpoint, &intent.Transactional, &intent.Status, &intent.Attempts,
+			&intent.AvailableAt, &intent.LockedUntil, &intent.Decision, &intent.Reason, &intent.ProviderMessageID, &intent.PolicySnapshot, &intent.ErrorMessage,
+			&intent.CreatedAt, &intent.UpdatedAt)
+		if err != nil {
+			return nil, nil, err
+		}
+		intents = append(intents, intent)
+	}
+
+	return steps, intents, nil
+}
+
 
 
 
