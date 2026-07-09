@@ -510,6 +510,118 @@ func TestJourneyRoleScopesIntegration(t *testing.T) {
 	}
 }
 
+func TestJourneysStoreIntegration(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	keyA := fmt.Sprintf("journey-store-a-%d", time.Now().UnixNano())
+	keyB := fmt.Sprintf("journey-store-b-%d", time.Now().UnixNano())
+	if err := store.EnsureDevelopmentTenant(ctx, keyA); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.EnsureDevelopmentTenant(ctx, keyB); err != nil {
+		t.Fatal(err)
+	}
+	tenantA, err := store.Authenticate(ctx, keyA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tenantB, err := store.Authenticate(ctx, keyB)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	description := "welcome journey"
+	created, err := store.CreateJourney(ctx, tenantA, domain.Journey{
+		Name:        "Welcome",
+		Description: &description,
+		Graph:       json.RawMessage(`{"entry_node_id":"n1"}`),
+	})
+	if err != nil {
+		t.Fatalf("CreateJourney: %v", err)
+	}
+	if created.Status != "draft" || created.LatestVersion != 0 {
+		t.Fatalf("created journey=%+v", created)
+	}
+
+	fetched, err := store.GetJourney(ctx, tenantA, created.ID)
+	if err != nil {
+		t.Fatalf("GetJourney: %v", err)
+	}
+	var fetchedGraph map[string]any
+	if err := json.Unmarshal(fetched.Graph, &fetchedGraph); err != nil {
+		t.Fatalf("decode fetched graph: %v", err)
+	}
+	if fetchedGraph["entry_node_id"] != "n1" {
+		t.Fatalf("fetched graph=%s", fetched.Graph)
+	}
+	if _, err := store.GetJourney(ctx, tenantB, created.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("cross-tenant GetJourney err=%v", err)
+	}
+
+	list, err := store.ListJourneys(ctx, tenantA)
+	if err != nil {
+		t.Fatalf("ListJourneys: %v", err)
+	}
+	found := false
+	for _, item := range list {
+		if item.ID == created.ID {
+			found = true
+		}
+		if item.TenantID != tenantA.TenantID || item.WorkspaceID != tenantA.WorkspaceID {
+			t.Fatalf("unscoped list item=%+v", item)
+		}
+	}
+	if !found {
+		t.Fatalf("created journey missing from list=%+v", list)
+	}
+
+	created.Name = "Updated Welcome"
+	created.Graph = json.RawMessage(`{"entry_node_id":"n2"}`)
+	updated, err := store.UpdateJourney(ctx, tenantA, created)
+	if err != nil {
+		t.Fatalf("UpdateJourney: %v", err)
+	}
+	var updatedGraph map[string]any
+	if err := json.Unmarshal(updated.Graph, &updatedGraph); err != nil {
+		t.Fatalf("decode updated graph: %v", err)
+	}
+	if updated.Name != "Updated Welcome" || updatedGraph["entry_node_id"] != "n2" {
+		t.Fatalf("updated journey=%+v", updated)
+	}
+	if _, err := store.UpdateJourney(ctx, tenantB, updated); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("cross-tenant UpdateJourney err=%v", err)
+	}
+
+	if _, err := store.pool.Exec(ctx, `UPDATE journeys SET status='published' WHERE id=$1`, created.ID); err != nil {
+		t.Fatal(err)
+	}
+	updated.Name = "Blocked Edit"
+	updated.Status = "published"
+	if _, err := store.UpdateJourney(ctx, tenantA, updated); err == nil {
+		t.Fatal("published journey edit succeeded")
+	}
+	updated.Status = "draft"
+	reverted, err := store.UpdateJourney(ctx, tenantA, updated)
+	if err != nil {
+		t.Fatalf("revert published journey to draft: %v", err)
+	}
+	if reverted.Status != "draft" {
+		t.Fatalf("reverted journey status=%s", reverted.Status)
+	}
+}
+
 func TestMain(m *testing.M) {
 	if os.Getenv("OPENJOURNEY_TEST_DATABASE_URL") != "" {
 		fmt.Println("running PostgreSQL integration tests")

@@ -83,6 +83,10 @@ type Store interface {
 	GetCampaignSystem(ctx context.Context, tenantID, id string) (domain.Campaign, error)
 	UpdateCampaign(ctx context.Context, p domain.Principal, c domain.Campaign) (domain.Campaign, error)
 	ListCampaigns(ctx context.Context, p domain.Principal) ([]domain.Campaign, error)
+	CreateJourney(ctx context.Context, p domain.Principal, j domain.Journey) (domain.Journey, error)
+	GetJourney(ctx context.Context, p domain.Principal, id string) (domain.Journey, error)
+	UpdateJourney(ctx context.Context, p domain.Principal, j domain.Journey) (domain.Journey, error)
+	ListJourneys(ctx context.Context, p domain.Principal) ([]domain.Journey, error)
 
 	ClaimScheduledCampaign(ctx context.Context) (domain.Campaign, bool, error)
 	SaveCampaignManifestAndJobs(ctx context.Context, campaignID string, manifestKey string, recipientCount int, segmentVersion int, templateVersion int, jobs []domain.DeliveryJob) error

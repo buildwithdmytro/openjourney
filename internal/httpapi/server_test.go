@@ -209,7 +209,6 @@ func (f *fakeStore) GetTenantFatigueQuotas(ctx context.Context, p domain.Princip
 	return 5, 20, nil
 }
 
-
 func (f *fakeStore) CreateCampaign(ctx context.Context, p domain.Principal, c domain.Campaign) (domain.Campaign, error) {
 	c.ID = "campaign-1"
 	return c, nil
@@ -222,6 +221,19 @@ func (f *fakeStore) UpdateCampaign(ctx context.Context, p domain.Principal, c do
 }
 func (f *fakeStore) ListCampaigns(ctx context.Context, p domain.Principal) ([]domain.Campaign, error) {
 	return []domain.Campaign{{ID: "campaign-1", Name: "Test Campaign", Status: "draft"}}, nil
+}
+func (f *fakeStore) CreateJourney(ctx context.Context, p domain.Principal, j domain.Journey) (domain.Journey, error) {
+	j.ID = "journey-1"
+	return j, nil
+}
+func (f *fakeStore) GetJourney(ctx context.Context, p domain.Principal, id string) (domain.Journey, error) {
+	return domain.Journey{ID: id, Name: "Test Journey", Status: "draft", Graph: json.RawMessage(`{}`)}, nil
+}
+func (f *fakeStore) UpdateJourney(ctx context.Context, p domain.Principal, j domain.Journey) (domain.Journey, error) {
+	return j, nil
+}
+func (f *fakeStore) ListJourneys(ctx context.Context, p domain.Principal) ([]domain.Journey, error) {
+	return []domain.Journey{{ID: "journey-1", Name: "Test Journey", Status: "draft", Graph: json.RawMessage(`{}`)}}, nil
 }
 func (f *fakeStore) GetCampaignSystem(ctx context.Context, tenantID, id string) (domain.Campaign, error) {
 	return domain.Campaign{ID: id, TenantID: tenantID, WorkspaceID: "workspace", Status: "sending"}, nil

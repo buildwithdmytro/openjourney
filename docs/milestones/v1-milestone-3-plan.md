@@ -509,10 +509,10 @@ task ends with a **Done when** check.
 3. [x] **Scopes.** Add `journeys:read`/`journeys:write`/`journeys:publish` to `allowedPermissions`
    (`internal/postgres/rbac.go:12`) **and** the migration default array (Recipe 6.5).
    *Done when:* `CreateRole` accepts the new scopes. — done: `allowedPermissions` and `015_journeys.sql` include journeys scopes; `CreateRole` accepts all three.
-4. **Store methods** in new `internal/postgres/journeys.go` (Recipe 6.3): `CreateJourney`,
+4. [x] **Store methods** in new `internal/postgres/journeys.go` (Recipe 6.3): `CreateJourney`,
    `GetJourney`, `UpdateJourney` (writes the draft `graph`; blocks edits when
    `status='published'` unless reverting to draft), `ListJourneys`. Add to `ports.Store`.
-   *Done when:* `go build ./...` passes.
+   *Done when:* `go build ./...` passes. — done: `journeys.go` implements tenant/workspace-scoped CRUD, `ports.Store` includes methods, and `TestJourneysStoreIntegration` passes.
 5. **HTTP endpoints** in new `internal/httpapi/journeys.go` + routes in `server.go`
    `buildMux()` (Recipe 6.4): `POST/GET /v1/journeys`, `GET/PUT /v1/journeys/{id}`.
    *Done when:* each returns expected JSON via curl.
