@@ -549,6 +549,26 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         "500": { $ref: "#/components/responses/Error" }
+  /v1/journeys/{id}/runs/{runID}/cancel:
+    post:
+      operationId: cancelJourneyRun
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: runID, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Run canceled successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "500": { $ref: "#/components/responses/Error" }
   /v1/audit:
     get:
       operationId: listAuditEvents

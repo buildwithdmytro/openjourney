@@ -1755,6 +1755,134 @@ func TestJourneyPauseResume(t *testing.T) {
 	}
 }
 
+func TestJourneyParticipantCancel(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	// 1. Setup Tenant and Workspace
+	key := fmt.Sprintf("tenant-cancel-%d", time.Now().UnixNano())
+	if err := store.EnsureDevelopmentTenant(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	p, err := store.Authenticate(ctx, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	appID, err := store.GetFirstAppID(ctx, p.TenantID, p.WorkspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.AppID = appID
+
+	defer func() {
+		_, _ = store.pool.Exec(ctx, "DELETE FROM tenants WHERE id = $1", p.TenantID)
+	}()
+
+	// Create profile
+	var profileID string
+	err = store.pool.QueryRow(ctx, `INSERT INTO profiles (tenant_id, workspace_id, app_id, external_id) VALUES ($1, $2, $3, 'prof-cancel') RETURNING id`,
+		p.TenantID, p.WorkspaceID, p.AppID).Scan(&profileID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create journey
+	var journeyID string
+	err = store.pool.QueryRow(ctx, `INSERT INTO journeys (tenant_id, workspace_id, name) VALUES ($1, $2, 'jCancel') RETURNING id`,
+		p.TenantID, p.WorkspaceID).Scan(&journeyID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create version
+	var verID string
+	err = store.pool.QueryRow(ctx, `INSERT INTO journey_versions (journey_id, tenant_id, workspace_id, version, graph, entry_kind, reentry_policy, status) VALUES ($1, $2, $3, 1, '{}'::jsonb, 'event', 'once', 'active') RETURNING id`,
+		journeyID, p.TenantID, p.WorkspaceID).Scan(&verID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create journey run
+	var runID string
+	err = store.pool.QueryRow(ctx, `INSERT INTO journey_runs (tenant_id, workspace_id, journey_id, journey_version_id, profile_id, entry_key, current_node_id) VALUES ($1, $2, $3, $4, $5, 'entryCancel', 'node') RETURNING id`,
+		p.TenantID, p.WorkspaceID, journeyID, verID, profileID).Scan(&runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Insert step
+	step := domain.JourneyStep{
+		RunID:       runID,
+		TenantID:    p.TenantID,
+		NodeID:      "node-1",
+		Kind:        "advance",
+		Status:      "pending",
+		AvailableAt: time.Now(),
+	}
+	err = store.InsertJourneyStep(ctx, step)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify step is claimable initially
+	_, found1, err := store.ClaimJourneyStep(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found1 {
+		t.Fatal("expected step to be claimable before cancellation")
+	}
+
+	// Reset step to pending
+	_, err = store.pool.Exec(ctx, `UPDATE journey_steps SET status = 'pending', locked_until = NULL WHERE run_id = $1`, runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Cancel the run
+	err = store.CancelJourneyRun(ctx, p, journeyID, runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify run status in DB is 'canceled'
+	var dbStatus string
+	err = store.pool.QueryRow(ctx, `SELECT status FROM journey_runs WHERE id = $1`, runID).Scan(&dbStatus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dbStatus != "canceled" {
+		t.Errorf("expected run status to be 'canceled', got %q", dbStatus)
+	}
+
+	// Verify the step is deleted
+	var stepCount int
+	err = store.pool.QueryRow(ctx, `SELECT COUNT(*) FROM journey_steps WHERE run_id = $1`, runID).Scan(&stepCount)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stepCount != 0 {
+		t.Errorf("expected 0 steps remaining, got %d", stepCount)
+	}
+
+	// Verify claiming returns nothing (run stopped advancing)
+	_, found2, err := store.ClaimJourneyStep(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found2 {
+		t.Fatal("expected no steps to be claimable after cancellation")
+	}
+}
+
 func ptrStr(s string) *string {
 	return &s
 }

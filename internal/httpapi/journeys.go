@@ -147,3 +147,21 @@ func (s *Server) setJourneyVersionStatus(w http.ResponseWriter, r *http.Request)
 
 	writeJSON(w, http.StatusOK, map[string]any{"status": status})
 }
+
+func (s *Server) cancelJourneyRun(w http.ResponseWriter, r *http.Request) {
+	principal := principalFrom(r)
+	journeyID := r.PathValue("id")
+	runID := r.PathValue("runID")
+
+	err := s.store.CancelJourneyRun(r.Context(), principal, journeyID, runID)
+	if errors.Is(err, postgres.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "journey run not found")
+		return
+	}
+	if err != nil {
+		internalError(w, err, "cancel journey run", principal)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"status": "canceled"})
+}

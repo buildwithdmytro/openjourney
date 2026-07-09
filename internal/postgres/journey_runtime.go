@@ -89,6 +89,43 @@ func (s *Store) UpdateJourneyRun(ctx context.Context, p domain.Principal, run do
 	return out, err
 }
 
+func (s *Store) CancelJourneyRun(ctx context.Context, p domain.Principal, journeyID string, runID string) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	// 1. Update run status to 'canceled'
+	res, err := tx.Exec(ctx, `UPDATE journey_runs SET status = 'canceled', completed_at = now(), updated_at = now()
+		WHERE tenant_id = $1 AND workspace_id = $2 AND journey_id = $3 AND id = $4 AND status NOT IN ('completed', 'canceled')`,
+		p.TenantID, p.WorkspaceID, journeyID, runID)
+	if err != nil {
+		return err
+	}
+	if res.RowsAffected() == 0 {
+		var exists bool
+		err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM journey_runs WHERE tenant_id = $1 AND workspace_id = $2 AND journey_id = $3 AND id = $4)` ,
+			p.TenantID, p.WorkspaceID, journeyID, runID).Scan(&exists)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			return ErrNotFound
+		}
+		return nil
+	}
+
+	// 2. Delete non-completed steps of this run
+	_, err = tx.Exec(ctx, `DELETE FROM journey_steps WHERE tenant_id = $1 AND run_id = $2 AND status != 'completed'`,
+		p.TenantID, runID)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
+
 func (s *Store) ClaimJourneyStep(ctx context.Context) (domain.JourneyStep, bool, error) {
 	var out domain.JourneyStep
 	err := s.pool.QueryRow(ctx, `UPDATE journey_steps SET

@@ -102,6 +102,7 @@ type Store interface {
 	GetJourneyRunSystem(ctx context.Context, tenantID, runID string) (domain.JourneyRun, error)
 	GetJourneyRunsForProfile(ctx context.Context, tenantID, versionID, profileID string) ([]domain.JourneyRun, error)
 	UpdateJourneyRun(ctx context.Context, p domain.Principal, run domain.JourneyRun) (domain.JourneyRun, error)
+	CancelJourneyRun(ctx context.Context, p domain.Principal, journeyID string, runID string) error
 	ClaimJourneyStep(ctx context.Context) (domain.JourneyStep, bool, error)
 	CompleteJourneyStep(ctx context.Context, stepID string) error
 	FailJourneyStep(ctx context.Context, stepID string, errMsg string) error

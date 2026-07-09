@@ -289,6 +289,12 @@ func (f *fakeStore) SetJourneyVersionStatus(ctx context.Context, p domain.Princi
 	}
 	return nil
 }
+func (f *fakeStore) CancelJourneyRun(ctx context.Context, p domain.Principal, journeyID string, runID string) error {
+	if runID == "invalid-run" {
+		return postgres.ErrNotFound
+	}
+	return nil
+}
 func (f *fakeStore) GetCampaignSystem(ctx context.Context, tenantID, id string) (domain.Campaign, error) {
 	return domain.Campaign{ID: id, TenantID: tenantID, WorkspaceID: "workspace", Status: "sending"}, nil
 }
@@ -668,6 +674,32 @@ func TestJourneyEndpoints(t *testing.T) {
 	server.ServeHTTP(badVerRes, badVerReq)
 	if badVerRes.Code != http.StatusBadRequest {
 		t.Fatalf("expected Bad Request for non-integer version, got %d", badVerRes.Code)
+	}
+
+	// Cancel Run (success)
+	cancelReq := httptest.NewRequest(http.MethodPost, "/v1/journeys/journey-1/runs/run-1/cancel", nil)
+	cancelReq.Header.Set("Authorization", "Bearer test-key")
+	cancelRes := httptest.NewRecorder()
+	server.ServeHTTP(cancelRes, cancelReq)
+	if cancelRes.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", cancelRes.Code, cancelRes.Body.String())
+	}
+	var cancelBody map[string]string
+	if err := json.Unmarshal(cancelRes.Body.Bytes(), &cancelBody); err != nil {
+		t.Fatalf("decode cancel body: %v", err)
+	}
+	if cancelBody["status"] != "canceled" {
+		t.Fatalf("unexpected status=%v", cancelBody["status"])
+	}
+
+	// Cancel Run (not found)
+	badCancelReq := httptest.NewRequest(http.MethodPost, "/v1/journeys/journey-1/runs/invalid-run/cancel", nil)
+	badCancelReq.Header.Set("Authorization-key", "Bearer test-key")
+	badCancelReq.Header.Set("Authorization", "Bearer test-key")
+	badCancelRes := httptest.NewRecorder()
+	server.ServeHTTP(badCancelRes, badCancelReq)
+	if badCancelRes.Code != http.StatusNotFound {
+		t.Fatalf("expected Not Found for invalid run, got %d", badCancelRes.Code)
 	}
 }
 
