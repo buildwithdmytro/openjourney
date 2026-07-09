@@ -1177,6 +1177,233 @@ func TestJourneyDeliveryIntegration(t *testing.T) {
 	_, _ = store.pool.Exec(ctx, "DELETE FROM tenants WHERE id=$1", p.TenantID)
 }
 
+func TestSentCountSince_FatigueAcrossChannels(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	key := fmt.Sprintf("journey-fatigue-%d", time.Now().UnixNano())
+	if err := store.EnsureDevelopmentTenant(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	p, err := store.Authenticate(ctx, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	appID, err := store.GetFirstAppID(ctx, p.TenantID, p.WorkspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.AppID = appID
+
+	// Create a profile
+	events := []domain.Event{
+		{
+			Type: "profile.updated", SchemaVersion: 1, ExternalID: "p-fatigue-test",
+			IdempotencyKey: "identify-fatigue-test", OccurredAt: time.Now().UTC(),
+			Payload: json.RawMessage(`{"attributes":{"email":"fatigue@example.com"}}`),
+		},
+	}
+	_, err = store.AcceptEvents(ctx, p, events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, _, _ := store.ClaimProjectionJob(ctx)
+	_ = store.ProjectEvent(ctx, job)
+
+	var profileID string
+	err = store.pool.QueryRow(ctx, `SELECT id FROM profiles WHERE tenant_id=$1 AND external_id='p-fatigue-test'`, p.TenantID).Scan(&profileID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. Initially, sent count is 0
+	count, err := store.SentCountSince(ctx, p, profileID, time.Now().Add(-24*time.Hour))
+	if err != nil {
+		t.Fatalf("SentCountSince: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("expected 0 count initially, got %d", count)
+	}
+
+	// Create a template
+	tmpl := domain.Template{
+		Name:            "fatigue-temp",
+		Channel:         "email",
+		SubjectTemplate: ptrStr("Hello"),
+		HTMLTemplate:    ptrStr("Body"),
+	}
+	tmpl, err = store.CreateTemplate(ctx, p, tmpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a segment
+	seg, err := store.CreateSegment(ctx, p, domain.Segment{
+		Name: "Mock Segment",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 2. Insert into delivery_attempts (representing a campaign send)
+	campaignID := "00000000-0000-0000-0000-000000000002"
+	// Create a mock campaign to satisfy foreign key constraints
+	_, err = store.pool.Exec(ctx, `INSERT INTO campaigns (id, tenant_id, workspace_id, name, segment_id, template_id, status) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		campaignID, p.TenantID, p.WorkspaceID, "Mock Campaign", seg.ID, tmpl.ID, "sending")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = store.pool.Exec(ctx, `INSERT INTO delivery_attempts 
+		(id, tenant_id, campaign_id, profile_id, channel, endpoint, decision, attempted_at)
+		VALUES (gen_random_uuid(), $1, $2, $3, 'email', 'fatigue@example.com', 'sent', now())`,
+		p.TenantID, campaignID, profileID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 3. SentCountSince should now return 1 (campaign send)
+	count, err = store.SentCountSince(ctx, p, profileID, time.Now().Add(-24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Errorf("expected count to be 1 after campaign send, got %d", count)
+	}
+
+	// 4. Create a mock journey, run, and message intent (representing a journey send)
+
+	j, err := store.CreateJourney(ctx, p, domain.Journey{Name: "Fatigue Journey"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	graphJSON := []byte(fmt.Sprintf(`{
+		"entry_node_id": "n1",
+		"nodes": [
+			{"id": "n1", "type": "entry", "config": {"trigger": "event", "event_type": "user.signup"}},
+			{"id": "n2", "type": "message", "config": {"template_id": "%s", "channel": "email", "transactional": false}},
+			{"id": "n3", "type": "exit", "config": {}}
+		],
+		"edges": [
+			{"from": "n1", "to": "n2"},
+			{"from": "n2", "to": "n3"}
+		]
+	}`, tmpl.ID))
+	_, err = store.pool.Exec(ctx, `UPDATE journeys SET graph=$1, status='published' WHERE id=$2`, graphJSON, j.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	v, err := store.PublishJourney(ctx, p, j.ID, "00000000-0000-0000-0000-000000000001", "manifest-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	run := domain.JourneyRun{
+		TenantID:         p.TenantID,
+		WorkspaceID:      p.WorkspaceID,
+		JourneyID:        j.ID,
+		JourneyVersionID: v.ID,
+		ProfileID:        profileID,
+		EntryKey:         "fatigue-entry-123",
+		ReentrySequence:  0,
+		Status:           "active",
+		CurrentNodeID:    "n2",
+	}
+	_, err = store.CreateJourneyRun(ctx, run)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var runID string
+	err = store.pool.QueryRow(ctx, `SELECT id FROM journey_runs WHERE tenant_id=$1 AND entry_key='fatigue-entry-123'`, p.TenantID).Scan(&runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run.ID = runID
+
+	intent := domain.JourneyMessageIntent{
+		RunID:            runID,
+		TenantID:         p.TenantID,
+		WorkspaceID:      p.WorkspaceID,
+		JourneyID:        j.ID,
+		JourneyVersionID: v.ID,
+		NodeID:           "n2",
+		ProfileID:        profileID,
+		TemplateID:       tmpl.ID,
+		Channel:          "email",
+		Endpoint:         "fatigue@example.com",
+		Status:           "pending",
+	}
+
+	step := domain.JourneyStep{
+		RunID:       runID,
+		TenantID:    p.TenantID,
+		NodeID:      "n2",
+		Kind:        "advance",
+		Status:      "processing",
+		AvailableAt: time.Now(),
+	}
+	err = store.InsertJourneyStep(ctx, step)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var stepID string
+	err = store.pool.QueryRow(ctx, `SELECT id FROM journey_steps WHERE run_id=$1 AND node_id='n2'`, runID).Scan(&stepID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	trans := domain.JourneyTransition{
+		RunID:    runID,
+		TenantID: p.TenantID,
+		FromNode: ptrStr("n1"),
+		ToNode:   ptrStr("n2"),
+		NodeType: "message",
+		Outcome:  "advanced",
+	}
+
+	err = store.AdvanceRunTx(ctx, runID, run, stepID, nil, trans, &intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Claim the intent and mark as 'sent'
+	claimed, found, err := store.ClaimJourneyMessageIntent(ctx, "worker-fatigue")
+	if err != nil || !found {
+		t.Fatalf("failed to claim: %v, found: %v", err, found)
+	}
+
+	dec := "sent"
+	claimed.Decision = &dec
+	claimed.Status = "completed"
+	err = store.UpdateJourneyMessageIntent(ctx, claimed)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 5. SentCountSince should now return 2 (1 campaign send + 1 journey send)
+	count, err = store.SentCountSince(ctx, p, profileID, time.Now().Add(-24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Errorf("expected count to be 2 (campaign + journey sends), got %d", count)
+	}
+
+	// Clean up
+	_, _ = store.pool.Exec(ctx, "DELETE FROM tenants WHERE id=$1", p.TenantID)
+}
 
 func ptrStr(s string) *string {
 	return &s

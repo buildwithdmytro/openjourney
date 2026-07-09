@@ -81,8 +81,13 @@ func (s *Store) LatestConsent(ctx context.Context, p domain.Principal, profileID
 
 func (s *Store) SentCountSince(ctx context.Context, p domain.Principal, profileID string, since time.Time) (int, error) {
 	var count int
-	err := s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM delivery_attempts
-		WHERE tenant_id=$1 AND profile_id=$2 AND decision='sent' AND attempted_at>=$3`,
+	err := s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM (
+		SELECT id FROM delivery_attempts
+		WHERE tenant_id=$1 AND profile_id=$2 AND decision='sent' AND attempted_at>=$3
+		UNION ALL
+		SELECT id FROM journey_message_intents
+		WHERE tenant_id=$1 AND profile_id=$2 AND decision='sent' AND updated_at>=$3
+	) AS combined`,
 		p.TenantID, profileID, since).Scan(&count)
 	return count, err
 }

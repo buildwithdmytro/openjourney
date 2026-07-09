@@ -609,9 +609,9 @@ task ends with a **Done when** check.
    and the intent is **not** `transactional`, reschedule `available_at` to the next window
    open. *Done when:* a unit test with a fixed clock defers a marketing send out of quiet
    hours and lets a transactional one through. — done: implemented quiet hours check in internal/journey/quiethours.go with full support for midnight-wrapping, timezone and DST computations, integrated with DeliverNext, and verified via extensive fixed-clock unit tests.
-5. **Fatigue across channels** (§2.4): extend `SentCountSince` (`internal/postgres/delivery.go`)
-   to UNION `delivery_attempts` + `journey_message_intents` sends. *Done when:* a profile at
-   its cap from campaign sends is `fatigued` for a journey send too.
+ 5. **Fatigue across channels** (§2.4): extend `SentCountSince` (`internal/postgres/delivery.go`)
+    to UNION `delivery_attempts` + `journey_message_intents` sends. *Done when:* a profile at
+    its cap from campaign sends is `fatigued` for a journey send too. — done: extended `SentCountSince` with a `UNION ALL` query across campaign `delivery_attempts` and journey `journey_message_intents` and verified via a database integration test.
 6. **Transactional priority + basic fairness**: the intent due-index already orders
    `transactional DESC`; add a simple per-tenant in-flight cap in the claim so one tenant
    cannot starve others. Full weighted-fair-queue is a §8 hardening item, not a blocker.
