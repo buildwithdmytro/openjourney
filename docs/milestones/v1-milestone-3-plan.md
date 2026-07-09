@@ -501,8 +501,8 @@ integration + fake-clock + load + audit pass in 8.8.** Each milestone must pass
 task ends with a **Done when** check.
 
 ### Milestone 8.1 — Journey schema & draft CRUD
-1. **Migration.** Write `015_journeys.sql` per §2.1 (Recipe 6.1). *Done when:* app starts and
-   `journeys` + `journey_versions` exist; a fresh API key carries `journeys:*` scopes.
+1. [x] **Migration.** Write `015_journeys.sql` per §2.1 (Recipe 6.1). *Done when:* app starts and
+   `journeys` + `journey_versions` exist; a fresh API key carries `journeys:*` scopes. — done: `015_journeys.sql` applies; fresh API key default carries `journeys:*` scopes.
 2. **Domain models.** Add `Journey`, `JourneyVersion` structs to `internal/domain/domain.go`
    (Recipe 6.2); `Graph json.RawMessage`, nullables as `*T`, snake_case tags. *Done when:*
    `go build ./...` passes.
