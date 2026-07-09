@@ -455,6 +455,40 @@ type Campaign struct {
 	UpdatedAt       time.Time  `json:"updated_at"`
 }
 
+type Journey struct {
+	ID               string          `json:"id"`
+	TenantID         string          `json:"tenant_id"`
+	WorkspaceID      string          `json:"workspace_id"`
+	Name             string          `json:"name"`
+	Description      *string         `json:"description,omitempty"`
+	Status           string          `json:"status"` // draft, published, archived
+	Graph            json.RawMessage `json:"graph"`
+	LatestVersion    int             `json:"latest_version"`
+	CurrentVersionID *string         `json:"current_version_id,omitempty"`
+	CreatedAt        time.Time       `json:"created_at"`
+	UpdatedAt        time.Time       `json:"updated_at"`
+}
+
+type JourneyVersion struct {
+	ID              string          `json:"id"`
+	JourneyID       string          `json:"journey_id"`
+	TenantID        string          `json:"tenant_id"`
+	WorkspaceID     string          `json:"workspace_id"`
+	Version         int             `json:"version"`
+	Graph           json.RawMessage `json:"graph"`
+	ManifestKey     *string         `json:"manifest_key,omitempty"`
+	EntryKind       string          `json:"entry_kind"` // event, scheduled
+	EntryEventType  *string         `json:"entry_event_type,omitempty"`
+	EntrySegmentID  *string         `json:"entry_segment_id,omitempty"`
+	EntrySchedule   *string         `json:"entry_schedule,omitempty"`
+	ReentryPolicy   string          `json:"reentry_policy"` // once, always, after_exit
+	MaxReentries    int             `json:"max_reentries"`
+	LatePolicy      string          `json:"late_policy"` // run, skip, reschedule
+	Status          string          `json:"status"`      // active, paused, archived
+	PublishedBy     *string         `json:"published_by,omitempty"`
+	PublishedAt     time.Time       `json:"published_at"`
+}
+
 type DeliveryJob struct {
 	ID           string      `json:"id"`
 	CampaignID   string      `json:"campaign_id"`
@@ -484,4 +518,3 @@ type DeliveryAttempt struct {
 	AttemptedAt       time.Time       `json:"attempted_at"`
 	CreatedAt         time.Time       `json:"created_at"`
 }
-

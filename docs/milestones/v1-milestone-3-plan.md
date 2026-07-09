@@ -503,9 +503,9 @@ task ends with a **Done when** check.
 ### Milestone 8.1 — Journey schema & draft CRUD
 1. [x] **Migration.** Write `015_journeys.sql` per §2.1 (Recipe 6.1). *Done when:* app starts and
    `journeys` + `journey_versions` exist; a fresh API key carries `journeys:*` scopes. — done: `015_journeys.sql` applies; fresh API key default carries `journeys:*` scopes.
-2. **Domain models.** Add `Journey`, `JourneyVersion` structs to `internal/domain/domain.go`
+2. [x] **Domain models.** Add `Journey`, `JourneyVersion` structs to `internal/domain/domain.go`
    (Recipe 6.2); `Graph json.RawMessage`, nullables as `*T`, snake_case tags. *Done when:*
-   `go build ./...` passes.
+   `go build ./...` passes. — done: domain structs added with raw graph JSON and nullable pointer fields; `go build ./...` passes.
 3. **Scopes.** Add `journeys:read`/`journeys:write`/`journeys:publish` to `allowedPermissions`
    (`internal/postgres/rbac.go:12`) **and** the migration default array (Recipe 6.5).
    *Done when:* `CreateRole` accepts the new scopes.
