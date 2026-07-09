@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/buildwithdmytro/openjourney/internal/audience"
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 	"github.com/jackc/pgx/v5"
 )
@@ -240,4 +241,105 @@ func (s *Store) GetJourneyRunSystem(ctx context.Context, tenantID, runID string)
 	}
 	return out, err
 }
+
+func (s *Store) EvaluateAudience(ctx context.Context, p domain.Principal, profileID string, dsl json.RawMessage) (bool, error) {
+	if len(dsl) == 0 || string(dsl) == "{}" || string(dsl) == "null" {
+		return true, nil
+	}
+	node, err := audience.Parse(dsl)
+	if err != nil {
+		return false, fmt.Errorf("parse audience dsl: %w", err)
+	}
+	return audience.Matches(ctx, s, p.TenantID, p.WorkspaceID, p.AppID, profileID, node)
+}
+
+func (s *Store) QueryProfileMatches(ctx context.Context, sql string, args []any) (bool, error) {
+	var val int
+	err := s.pool.QueryRow(ctx, sql, args...).Scan(&val)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (s *Store) QueryConsentMatches(ctx context.Context, sql string, args []any) (bool, error) {
+	var val int
+	err := s.pool.QueryRow(ctx, sql, args...).Scan(&val)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (s *Store) QueryClickHouseMatches(ctx context.Context, sql string, args []any) (bool, error) {
+	if s.chConn == nil {
+		return false, errors.New("ClickHouse connection not available")
+	}
+	rows, err := s.chConn.Query(ctx, sql, args...)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	return rows.Next(), rows.Err()
+}
+
+func (s *Store) GetProfileExternalID(ctx context.Context, tenantID, workspaceID, profileID string) (string, error) {
+	var extID string
+	err := s.pool.QueryRow(ctx, `SELECT COALESCE(external_id, '') FROM profiles WHERE tenant_id=$1 AND workspace_id=$2 AND id=$3`, tenantID, workspaceID, profileID).Scan(&extID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return extID, nil
+}
+
+func (s *Store) IsProfileInSegment(ctx context.Context, p domain.Principal, segmentID string, profileID string) (bool, error) {
+	seg, err := s.GetSegment(ctx, p, segmentID)
+	if err != nil {
+		return false, err
+	}
+
+	matched := false
+	if len(seg.DSL) > 0 && string(seg.DSL) != "{}" && string(seg.DSL) != "null" {
+		matched, err = s.EvaluateAudience(ctx, p, profileID, seg.DSL)
+		if err != nil {
+			return false, err
+		}
+	}
+
+	var membership string
+	err = s.pool.QueryRow(ctx, `SELECT membership FROM segment_members WHERE tenant_id=$1 AND segment_id=$2 AND profile_id=$3`, p.TenantID, segmentID, profileID).Scan(&membership)
+	if err == nil {
+		if membership == "include" {
+			matched = true
+		} else if membership == "exclude" {
+			matched = false
+		}
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return false, err
+	}
+
+	return matched, nil
+}
+
+func (s *Store) UpdateProfileAttributes(ctx context.Context, p domain.Principal, profileID string, attrs map[string]any) error {
+	attrsJSON, err := json.Marshal(attrs)
+	if err != nil {
+		return err
+	}
+	_, err = s.pool.Exec(ctx, `UPDATE profiles SET attributes = attributes || $4, updated_at=now(), version=version+1
+		WHERE tenant_id=$1 AND workspace_id=$2 AND id=$3`,
+		p.TenantID, p.WorkspaceID, profileID, attrsJSON)
+	return err
+}
+
+
 

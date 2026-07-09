@@ -561,15 +561,13 @@ task ends with a **Done when** check.
    the node executor (stub: only `entry`/`exit` for now) → `AdvanceRunTx`. — done: `TickNext` skeleton implemented, added `GetJourneyVersion` and `GetJourneyRunSystem` to `ports.Store` + `internal/postgres/`, and verified by `TestTickNextSkeleton` in `runtime_test.go`.
 
 ### Milestone 8.4 — Node executors (core set) + visual builder
-1. **Executors** in `internal/journey/nodes.go` — implement `Execute` per §4 for: `entry`,
+1. [x] **Executors** in `internal/journey/nodes.go` — implement `Execute` per §4 for: `entry`,
    `delay` (Recipe: `InsertJourneyStep` at `clock.Now()+duration`), `condition` (Recipe 6.13),
    `split` (Recipe 6.15 random % + audience-membership via 6.13), `action`/profile_update
    (merge attributes + emit `profile.updated`, Recipe 6.9), `goal`, `exit`. `message` and
-   `wait_event` are stubbed here (full impl in 8.5/8.6). *Done when:* unit tests (mock store,
-   copy `internal/campaigns/deliver_test.go:15` `mockStore`) cover each node's branch selection
-   and next-step scheduling.
-2. **Single-profile evaluator** `internal/audience/evaluate.go` (Recipe 6.13) + golden/unit
-   tests. *Done when:* `go test ./internal/audience/...` passes.
+   `wait_event` are stubbed here (full impl in 8.5/8.6). — done: implemented node.Execute and added comprehensive tests in nodes_test.go.
+2. [x] **Single-profile evaluator** `internal/audience/evaluate.go` (Recipe 6.13) + golden/unit
+   tests. — done: implemented Matches, point queries for profile/consent/clickhouse, and added evaluate_test.go unit tests.
 3. **Visual DAG builder** (Recipe 6.16): `@xyflow/react` node/edge editor with a config panel
    per node type (dropdowns for template/segment like `App.tsx:1248`), a validate button
    (calls a dry-run `POST /v1/journeys/{id}/publish?dry_run=true` or a client mirror of the

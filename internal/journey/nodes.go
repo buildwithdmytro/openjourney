@@ -1,8 +1,15 @@
 package journey
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"time"
+
+	"github.com/buildwithdmytro/openjourney/internal/domain"
+	"github.com/buildwithdmytro/openjourney/internal/ports"
 )
 
 const (
@@ -128,3 +135,370 @@ func decodeNodeConfig(node Node, dest any) error {
 	}
 	return nil
 }
+
+type ExecutionResult struct {
+	NextNodeID    string
+	NextStep      *domain.JourneyStep
+	Transition    domain.JourneyTransition
+	NextStatus    string
+	CompletedAt   *time.Time
+	GoalReached   bool
+	WaitEventType *string
+	WaitUntil     *time.Time
+	State         json.RawMessage
+}
+
+func (n *Node) Execute(ctx context.Context, store ports.Store, run *domain.JourneyRun, graph *Graph, now time.Time) (ExecutionResult, error) {
+	var nextNodeID string
+	var nextStep *domain.JourneyStep
+	var trans domain.JourneyTransition
+	var nextStatus = run.Status
+	var completedAt = run.CompletedAt
+	var goalReached = run.GoalReached
+	var waitEventType *string
+	var waitUntil *time.Time
+	var nextState = run.State
+
+	switch n.Type {
+	case NodeTypeEntry:
+		nxt, err := findNextNode(graph, n.ID, "")
+		if err != nil {
+			return ExecutionResult{}, fmt.Errorf("find successor: %w", err)
+		}
+		nextNodeID = nxt
+		nextStep = &domain.JourneyStep{
+			RunID:       run.ID,
+			TenantID:    run.TenantID,
+			NodeID:      nextNodeID,
+			Kind:        "advance",
+			Status:      "pending",
+			AvailableAt: now,
+		}
+		trans = domain.JourneyTransition{
+			RunID:    run.ID,
+			TenantID: run.TenantID,
+			FromNode: &n.ID,
+			ToNode:   &nextNodeID,
+			NodeType: NodeTypeEntry,
+			Outcome:  "advanced",
+			Detail:   json.RawMessage("{}"),
+		}
+
+	case NodeTypeDelay:
+		var cfg DelayConfig
+		if err := decodeNodeConfig(*n, &cfg); err != nil {
+			return ExecutionResult{}, err
+		}
+		dur, err := time.ParseDuration(cfg.Duration)
+		if err != nil {
+			return ExecutionResult{}, fmt.Errorf("invalid delay duration %q: %w", cfg.Duration, err)
+		}
+		nxt, err := findNextNode(graph, n.ID, "")
+		if err != nil {
+			return ExecutionResult{}, fmt.Errorf("find successor: %w", err)
+		}
+		nextNodeID = nxt
+		nextStep = &domain.JourneyStep{
+			RunID:       run.ID,
+			TenantID:    run.TenantID,
+			NodeID:      nextNodeID,
+			Kind:        "advance",
+			Status:      "pending",
+			AvailableAt: now.Add(dur),
+		}
+		trans = domain.JourneyTransition{
+			RunID:    run.ID,
+			TenantID: run.TenantID,
+			FromNode: &n.ID,
+			ToNode:   &nextNodeID,
+			NodeType: NodeTypeDelay,
+			Outcome:  "waited",
+			Detail:   json.RawMessage("{}"),
+		}
+
+	case NodeTypeCondition:
+		var cfg ConditionConfig
+		if err := decodeNodeConfig(*n, &cfg); err != nil {
+			return ExecutionResult{}, err
+		}
+		p := domain.Principal{TenantID: run.TenantID, WorkspaceID: run.WorkspaceID}
+		matched, err := store.EvaluateAudience(ctx, p, run.ProfileID, cfg.DSL)
+		if err != nil {
+			return ExecutionResult{}, fmt.Errorf("evaluate condition: %w", err)
+		}
+
+		branch := "false"
+		if matched {
+			branch = "true"
+		}
+		nxt, err := findNextNode(graph, n.ID, branch)
+		if err != nil {
+			return ExecutionResult{}, fmt.Errorf("find successor branch %q: %w", branch, err)
+		}
+		nextNodeID = nxt
+		nextStep = &domain.JourneyStep{
+			RunID:       run.ID,
+			TenantID:    run.TenantID,
+			NodeID:      nextNodeID,
+			Kind:        "advance",
+			Status:      "pending",
+			AvailableAt: now,
+		}
+		trans = domain.JourneyTransition{
+			RunID:    run.ID,
+			TenantID: run.TenantID,
+			FromNode: &n.ID,
+			ToNode:   &nextNodeID,
+			NodeType: NodeTypeCondition,
+			Outcome:  "branch:" + branch,
+			Detail:   json.RawMessage("{}"),
+		}
+
+	case NodeTypeSplit:
+		var cfg SplitConfig
+		if err := decodeNodeConfig(*n, &cfg); err != nil {
+			return ExecutionResult{}, err
+		}
+		var branch string
+		if cfg.Mode == "random" {
+			h := sha256.Sum256([]byte(run.ProfileID + ":" + n.ID))
+			bucket := binary.BigEndian.Uint64(h[:8]) % 100
+			var cumulative uint64
+			for _, br := range cfg.Branches {
+				cumulative += uint64(br.Weight)
+				if bucket < cumulative {
+					branch = br.Label
+					break
+				}
+			}
+			if branch == "" && len(cfg.Branches) > 0 {
+				branch = cfg.Branches[len(cfg.Branches)-1].Label
+			}
+		} else if cfg.Mode == "audience" {
+			p := domain.Principal{TenantID: run.TenantID, WorkspaceID: run.WorkspaceID}
+			for _, br := range cfg.Branches {
+				if br.SegmentID == "" {
+					branch = br.Label
+					continue
+				}
+				matched, err := store.IsProfileInSegment(ctx, p, br.SegmentID, run.ProfileID)
+				if err != nil {
+					return ExecutionResult{}, fmt.Errorf("check segment membership: %w", err)
+				}
+				if matched {
+					branch = br.Label
+					break
+				}
+			}
+			if branch == "" && len(cfg.Branches) > 0 {
+				branch = cfg.Branches[len(cfg.Branches)-1].Label
+			}
+		} else {
+			return ExecutionResult{}, fmt.Errorf("unsupported split mode %q", cfg.Mode)
+		}
+
+		nxt, err := findNextNode(graph, n.ID, branch)
+		if err != nil {
+			return ExecutionResult{}, fmt.Errorf("find successor branch %q: %w", branch, err)
+		}
+		nextNodeID = nxt
+		nextStep = &domain.JourneyStep{
+			RunID:       run.ID,
+			TenantID:    run.TenantID,
+			NodeID:      nextNodeID,
+			Kind:        "advance",
+			Status:      "pending",
+			AvailableAt: now,
+		}
+
+		stateMap := make(map[string]any)
+		if len(run.State) > 0 && string(run.State) != "{}" && string(run.State) != "null" {
+			if err := json.Unmarshal(run.State, &stateMap); err != nil {
+				return ExecutionResult{}, fmt.Errorf("unmarshal state: %w", err)
+			}
+		}
+		stateMap[n.ID] = branch
+		stateBytes, err := json.Marshal(stateMap)
+		if err != nil {
+			return ExecutionResult{}, fmt.Errorf("marshal state: %w", err)
+		}
+		nextState = json.RawMessage(stateBytes)
+
+		trans = domain.JourneyTransition{
+			RunID:    run.ID,
+			TenantID: run.TenantID,
+			FromNode: &n.ID,
+			ToNode:   &nextNodeID,
+			NodeType: NodeTypeSplit,
+			Outcome:  "branch:" + branch,
+			Detail:   json.RawMessage("{}"),
+		}
+
+	case NodeTypeAction:
+		var cfg ActionConfig
+		if err := decodeNodeConfig(*n, &cfg); err != nil {
+			return ExecutionResult{}, err
+		}
+		if cfg.Action != "profile_update" {
+			return ExecutionResult{}, fmt.Errorf("unsupported action type: %s", cfg.Action)
+		}
+		p := domain.Principal{TenantID: run.TenantID, WorkspaceID: run.WorkspaceID}
+		err := store.UpdateProfileAttributes(ctx, p, run.ProfileID, cfg.Set)
+		if err != nil {
+			return ExecutionResult{}, fmt.Errorf("update profile attributes: %w", err)
+		}
+
+		payloadBytes, err := json.Marshal(map[string]any{"attributes": cfg.Set})
+		if err != nil {
+			return ExecutionResult{}, fmt.Errorf("marshal event payload: %w", err)
+		}
+		events := []domain.Event{
+			{
+				Type:           "profile.updated",
+				SchemaVersion:  1,
+				ExternalID:     run.ID,
+				IdempotencyKey: fmt.Sprintf("journey-action:%s:%s", run.ID, n.ID),
+				OccurredAt:     now,
+				Payload:        payloadBytes,
+			},
+		}
+		_, err = store.AcceptEvents(ctx, p, events)
+		if err != nil {
+			return ExecutionResult{}, fmt.Errorf("emit profile.updated event: %w", err)
+		}
+
+		nxt, err := findNextNode(graph, n.ID, "")
+		if err != nil {
+			return ExecutionResult{}, fmt.Errorf("find successor: %w", err)
+		}
+		nextNodeID = nxt
+		nextStep = &domain.JourneyStep{
+			RunID:       run.ID,
+			TenantID:    run.TenantID,
+			NodeID:      nextNodeID,
+			Kind:        "advance",
+			Status:      "pending",
+			AvailableAt: now,
+		}
+		trans = domain.JourneyTransition{
+			RunID:    run.ID,
+			TenantID: run.TenantID,
+			FromNode: &n.ID,
+			ToNode:   &nextNodeID,
+			NodeType: NodeTypeAction,
+			Outcome:  "advanced",
+			Detail:   json.RawMessage("{}"),
+		}
+
+	case NodeTypeGoal:
+		goalReached = true
+		nxt, err := findNextNode(graph, n.ID, "")
+		if err != nil {
+			return ExecutionResult{}, fmt.Errorf("find successor: %w", err)
+		}
+		nextNodeID = nxt
+		nextStep = &domain.JourneyStep{
+			RunID:       run.ID,
+			TenantID:    run.TenantID,
+			NodeID:      nextNodeID,
+			Kind:        "advance",
+			Status:      "pending",
+			AvailableAt: now,
+		}
+		trans = domain.JourneyTransition{
+			RunID:    run.ID,
+			TenantID: run.TenantID,
+			FromNode: &n.ID,
+			ToNode:   &nextNodeID,
+			NodeType: NodeTypeGoal,
+			Outcome:  "goal_reached",
+			Detail:   json.RawMessage("{}"),
+		}
+
+	case NodeTypeExit:
+		nextStatus = "completed"
+		completedAt = &now
+		trans = domain.JourneyTransition{
+			RunID:    run.ID,
+			TenantID: run.TenantID,
+			FromNode: &n.ID,
+			ToNode:   nil,
+			NodeType: NodeTypeExit,
+			Outcome:  "exited",
+			Detail:   json.RawMessage("{}"),
+		}
+
+	case NodeTypeMessage:
+		nxt, err := findNextNode(graph, n.ID, "")
+		if err != nil {
+			return ExecutionResult{}, fmt.Errorf("find successor: %w", err)
+		}
+		nextNodeID = nxt
+		nextStep = &domain.JourneyStep{
+			RunID:       run.ID,
+			TenantID:    run.TenantID,
+			NodeID:      nextNodeID,
+			Kind:        "advance",
+			Status:      "pending",
+			AvailableAt: now,
+		}
+		trans = domain.JourneyTransition{
+			RunID:    run.ID,
+			TenantID: run.TenantID,
+			FromNode: &n.ID,
+			ToNode:   &nextNodeID,
+			NodeType: NodeTypeMessage,
+			Outcome:  "stubbed",
+			Detail:   json.RawMessage("{}"),
+		}
+
+	case NodeTypeWaitEvent:
+		nxt, err := findNextNode(graph, n.ID, "success")
+		if err != nil {
+			return ExecutionResult{}, fmt.Errorf("find successor branch success: %w", err)
+		}
+		nextNodeID = nxt
+		nextStep = &domain.JourneyStep{
+			RunID:       run.ID,
+			TenantID:    run.TenantID,
+			NodeID:      nextNodeID,
+			Kind:        "advance",
+			Status:      "pending",
+			AvailableAt: now,
+		}
+		trans = domain.JourneyTransition{
+			RunID:    run.ID,
+			TenantID: run.TenantID,
+			FromNode: &n.ID,
+			ToNode:   &nextNodeID,
+			NodeType: NodeTypeWaitEvent,
+			Outcome:  "stubbed",
+			Detail:   json.RawMessage("{}"),
+		}
+
+	default:
+		return ExecutionResult{}, fmt.Errorf("unsupported node type: %s", n.Type)
+	}
+
+	return ExecutionResult{
+		NextNodeID:    nextNodeID,
+		NextStep:      nextStep,
+		Transition:    trans,
+		NextStatus:    nextStatus,
+		CompletedAt:   completedAt,
+		GoalReached:   goalReached,
+		WaitEventType: waitEventType,
+		WaitUntil:     waitUntil,
+		State:         nextState,
+	}, nil
+}
+
+func findNextNode(graph *Graph, fromID string, branch string) (string, error) {
+	for _, edge := range graph.Edges {
+		if edge.From == fromID && edge.Branch == branch {
+			return edge.To, nil
+		}
+	}
+	return "", fmt.Errorf("no edge from %s with branch %q", fromID, branch)
+}
+

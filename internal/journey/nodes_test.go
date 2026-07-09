@@ -1,8 +1,13 @@
 package journey
 
 import (
+	"context"
+	"encoding/json"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/buildwithdmytro/openjourney/internal/domain"
 )
 
 func TestDecodeConfigSupportedNodes(t *testing.T) {
@@ -158,3 +163,279 @@ func TestParseGraphRejectsUnsupportedNode(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+type executorMockStore struct {
+	mockStore
+	evaluatedAudience map[string]bool
+	profileInSegment  map[string]bool
+	updatedProfileID  string
+	updatedAttrs      map[string]any
+	acceptedEvents    []domain.Event
+}
+
+func (m *executorMockStore) EvaluateAudience(ctx context.Context, p domain.Principal, profileID string, dsl json.RawMessage) (bool, error) {
+	return m.evaluatedAudience[string(dsl)], nil
+}
+
+func (m *executorMockStore) IsProfileInSegment(ctx context.Context, p domain.Principal, segmentID string, profileID string) (bool, error) {
+	return m.profileInSegment[segmentID], nil
+}
+
+func (m *executorMockStore) UpdateProfileAttributes(ctx context.Context, p domain.Principal, profileID string, attrs map[string]any) error {
+	m.updatedProfileID = profileID
+	m.updatedAttrs = attrs
+	return nil
+}
+
+func (m *executorMockStore) AcceptEvents(ctx context.Context, p domain.Principal, events []domain.Event) ([]string, error) {
+	m.acceptedEvents = append(m.acceptedEvents, events...)
+	return nil, nil
+}
+
+func TestExecuteEntry(t *testing.T) {
+	store := &executorMockStore{}
+	now := time.Now()
+	run := &domain.JourneyRun{ID: "r1", TenantID: "t1", Status: "active"}
+	graph := &Graph{
+		Nodes: []Node{{ID: "n1", Type: NodeTypeEntry}, {ID: "n2", Type: NodeTypeExit}},
+		Edges: []Edge{{From: "n1", To: "n2"}},
+	}
+	n := &graph.Nodes[0]
+
+	res, err := n.Execute(context.Background(), store, run, graph, now)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.NextNodeID != "n2" {
+		t.Errorf("expected NextNodeID 'n2', got %q", res.NextNodeID)
+	}
+	if res.NextStep == nil || res.NextStep.NodeID != "n2" || !res.NextStep.AvailableAt.Equal(now) {
+		t.Errorf("unexpected next step: %+v", res.NextStep)
+	}
+}
+
+func TestExecuteDelay(t *testing.T) {
+	store := &executorMockStore{}
+	now := time.Now()
+	run := &domain.JourneyRun{ID: "r1", TenantID: "t1", Status: "active"}
+	graph := &Graph{
+		Nodes: []Node{
+			{ID: "n1", Type: NodeTypeDelay, Config: json.RawMessage(`{"duration": "2h"}`)},
+			{ID: "n2", Type: NodeTypeExit},
+		},
+		Edges: []Edge{{From: "n1", To: "n2"}},
+	}
+	n := &graph.Nodes[0]
+
+	res, err := n.Execute(context.Background(), store, run, graph, now)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.NextNodeID != "n2" {
+		t.Errorf("expected NextNodeID 'n2', got %q", res.NextNodeID)
+	}
+	expectedTime := now.Add(2 * time.Hour)
+	if res.NextStep == nil || res.NextStep.NodeID != "n2" || !res.NextStep.AvailableAt.Equal(expectedTime) {
+		t.Errorf("expected next step in 2 hours, got: %+v", res.NextStep)
+	}
+}
+
+func TestExecuteCondition(t *testing.T) {
+	store := &executorMockStore{
+		evaluatedAudience: map[string]bool{
+			`{"field":"country","operator":"equals","value":"US"}`: true,
+		},
+	}
+	now := time.Now()
+	run := &domain.JourneyRun{ID: "r1", TenantID: "t1", Status: "active"}
+	graph := &Graph{
+		Nodes: []Node{
+			{ID: "n1", Type: NodeTypeCondition, Config: json.RawMessage(`{"dsl": {"field":"country","operator":"equals","value":"US"}}`)},
+			{ID: "n2", Type: NodeTypeExit},
+			{ID: "n3", Type: NodeTypeExit},
+		},
+		Edges: []Edge{
+			{From: "n1", To: "n2", Branch: "true"},
+			{From: "n1", To: "n3", Branch: "false"},
+		},
+	}
+
+	// 1. True branch
+	res, err := graph.Nodes[0].Execute(context.Background(), store, run, graph, now)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.NextNodeID != "n2" {
+		t.Errorf("expected NextNodeID 'n2', got %q", res.NextNodeID)
+	}
+
+	// 2. False branch
+	store.evaluatedAudience[`{"field":"country","operator":"equals","value":"US"}`] = false
+	res, err = graph.Nodes[0].Execute(context.Background(), store, run, graph, now)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.NextNodeID != "n3" {
+		t.Errorf("expected NextNodeID 'n3', got %q", res.NextNodeID)
+	}
+}
+
+func TestExecuteSplitRandom(t *testing.T) {
+	store := &executorMockStore{}
+	now := time.Now()
+	run := &domain.JourneyRun{ID: "r1", TenantID: "t1", ProfileID: "p1", Status: "active"}
+	graph := &Graph{
+		Nodes: []Node{
+			{
+				ID:   "n1",
+				Type: NodeTypeSplit,
+				Config: json.RawMessage(`{
+					"mode": "random",
+					"branches": [
+						{"label": "a", "weight": 50},
+						{"label": "b", "weight": 50}
+					]
+				}`),
+			},
+			{ID: "n2", Type: NodeTypeExit},
+			{ID: "n3", Type: NodeTypeExit},
+		},
+		Edges: []Edge{
+			{From: "n1", To: "n2", Branch: "a"},
+			{From: "n1", To: "n3", Branch: "b"},
+		},
+	}
+
+	res, err := graph.Nodes[0].Execute(context.Background(), store, run, graph, now)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.NextNodeID != "n2" && res.NextNodeID != "n3" {
+		t.Errorf("expected branch choice, got %s", res.NextNodeID)
+	}
+	var stateMap map[string]string
+	if err := json.Unmarshal(res.State, &stateMap); err != nil {
+		t.Fatalf("failed to unmarshal state: %v", err)
+	}
+	if stateMap["n1"] == "" {
+		t.Errorf("expected state to record split choice")
+	}
+}
+
+func TestExecuteSplitAudience(t *testing.T) {
+	store := &executorMockStore{
+		profileInSegment: map[string]bool{
+			"seg-1": true,
+		},
+	}
+	now := time.Now()
+	run := &domain.JourneyRun{ID: "r1", TenantID: "t1", ProfileID: "p1", Status: "active"}
+	graph := &Graph{
+		Nodes: []Node{
+			{
+				ID:   "n1",
+				Type: NodeTypeSplit,
+				Config: json.RawMessage(`{
+					"mode": "audience",
+					"branches": [
+						{"label": "a", "segment_id": "seg-1"},
+						{"label": "b", "segment_id": "seg-2"}
+					]
+				}`),
+			},
+			{ID: "n2", Type: NodeTypeExit},
+			{ID: "n3", Type: NodeTypeExit},
+		},
+		Edges: []Edge{
+			{From: "n1", To: "n2", Branch: "a"},
+			{From: "n1", To: "n3", Branch: "b"},
+		},
+	}
+
+	res, err := graph.Nodes[0].Execute(context.Background(), store, run, graph, now)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.NextNodeID != "n2" {
+		t.Errorf("expected branch 'a' (n2), got %q", res.NextNodeID)
+	}
+}
+
+func TestExecuteActionProfileUpdate(t *testing.T) {
+	store := &executorMockStore{}
+	now := time.Now()
+	run := &domain.JourneyRun{ID: "r1", TenantID: "t1", ProfileID: "p1", Status: "active"}
+	graph := &Graph{
+		Nodes: []Node{
+			{
+				ID:   "n1",
+				Type: NodeTypeAction,
+				Config: json.RawMessage(`{
+					"action": "profile_update",
+					"set": {"loyalty": "gold"}
+				}`),
+			},
+			{ID: "n2", Type: NodeTypeExit},
+		},
+		Edges: []Edge{{From: "n1", To: "n2"}},
+	}
+
+	res, err := graph.Nodes[0].Execute(context.Background(), store, run, graph, now)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if store.updatedProfileID != "p1" || store.updatedAttrs["loyalty"] != "gold" {
+		t.Errorf("expected profile update: %+v", store.updatedAttrs)
+	}
+	if len(store.acceptedEvents) != 1 || store.acceptedEvents[0].Type != "profile.updated" {
+		t.Errorf("expected profile.updated event to be emitted")
+	}
+	if res.NextNodeID != "n2" {
+		t.Errorf("expected NextNodeID 'n2', got %q", res.NextNodeID)
+	}
+}
+
+func TestExecuteGoal(t *testing.T) {
+	store := &executorMockStore{}
+	now := time.Now()
+	run := &domain.JourneyRun{ID: "r1", TenantID: "t1", Status: "active"}
+	graph := &Graph{
+		Nodes: []Node{
+			{ID: "n1", Type: NodeTypeGoal, Config: json.RawMessage(`{"name": "signup"}`)},
+			{ID: "n2", Type: NodeTypeExit},
+		},
+		Edges: []Edge{{From: "n1", To: "n2"}},
+	}
+
+	res, err := graph.Nodes[0].Execute(context.Background(), store, run, graph, now)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !res.GoalReached {
+		t.Errorf("expected GoalReached to be true")
+	}
+	if res.NextNodeID != "n2" {
+		t.Errorf("expected NextNodeID 'n2', got %q", res.NextNodeID)
+	}
+}
+
+func TestExecuteExit(t *testing.T) {
+	store := &executorMockStore{}
+	now := time.Now()
+	run := &domain.JourneyRun{ID: "r1", TenantID: "t1", Status: "active"}
+	graph := &Graph{
+		Nodes: []Node{{ID: "n1", Type: NodeTypeExit}},
+	}
+
+	res, err := graph.Nodes[0].Execute(context.Background(), store, run, graph, now)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.NextStatus != "completed" {
+		t.Errorf("expected NextStatus 'completed', got %q", res.NextStatus)
+	}
+	if res.CompletedAt == nil || !res.CompletedAt.Equal(now) {
+		t.Errorf("expected CompletedAt to be set to now")
+	}
+}
+

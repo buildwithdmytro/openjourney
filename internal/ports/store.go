@@ -2,6 +2,7 @@ package ports
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -55,6 +56,8 @@ type Store interface {
 	UpdateSegment(context.Context, domain.Principal, domain.Segment) (domain.Segment, error)
 	ListSegments(context.Context, domain.Principal) ([]domain.Segment, error)
 	SetSegmentMembers(context.Context, domain.Principal, string, []domain.SegmentMember) error
+	IsProfileInSegment(ctx context.Context, p domain.Principal, segmentID string, profileID string) (bool, error)
+	UpdateProfileAttributes(ctx context.Context, p domain.Principal, profileID string, attrs map[string]any) error
 	PreviewSegment(context.Context, domain.Principal, string) (int, map[string]int, error)
 	ResolveSegment(context.Context, domain.Principal, string) ([]string, error)
 
@@ -89,6 +92,7 @@ type Store interface {
 	ListJourneys(ctx context.Context, p domain.Principal) ([]domain.Journey, error)
 	PublishJourney(ctx context.Context, p domain.Principal, journeyID string, approverUserID string, manifestKey string) (domain.JourneyVersion, error)
 	GetJourneyVersion(ctx context.Context, tenantID, versionID string) (domain.JourneyVersion, error)
+	EvaluateAudience(ctx context.Context, p domain.Principal, profileID string, dsl json.RawMessage) (bool, error)
 	CreateJourneyRun(ctx context.Context, run domain.JourneyRun) (bool, error)
 	GetJourneyRun(ctx context.Context, p domain.Principal, runID string) (domain.JourneyRun, error)
 	GetJourneyRunSystem(ctx context.Context, tenantID, runID string) (domain.JourneyRun, error)

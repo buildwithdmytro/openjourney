@@ -2,6 +2,7 @@ package journey
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -16,6 +17,22 @@ type mockStore struct {
 	steps       map[string]domain.JourneyStep
 	versions    map[string]domain.JourneyVersion
 	transitions []domain.JourneyTransition
+}
+
+func (m *mockStore) IsProfileInSegment(ctx context.Context, p domain.Principal, segmentID string, profileID string) (bool, error) {
+	return true, nil
+}
+
+func (m *mockStore) UpdateProfileAttributes(ctx context.Context, p domain.Principal, profileID string, attrs map[string]any) error {
+	return nil
+}
+
+func (m *mockStore) EvaluateAudience(ctx context.Context, p domain.Principal, profileID string, dsl json.RawMessage) (bool, error) {
+	return true, nil
+}
+
+func (m *mockStore) AcceptEvents(ctx context.Context, p domain.Principal, events []domain.Event) ([]string, error) {
+	return nil, nil
 }
 
 func newMockStore() *mockStore {
