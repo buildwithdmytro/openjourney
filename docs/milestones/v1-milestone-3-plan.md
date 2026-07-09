@@ -524,12 +524,12 @@ task ends with a **Done when** check.
 ### Milestone 8.2 — Graph model, validation & immutable publish (highest risk — do carefully)
 1. [x] **Graph types** in new `internal/journey/graph.go`: `Graph{EntryNodeID, Nodes, Edges}`,
    `Node{ID, Type, Config json.RawMessage}`, `Edge{From, To, Branch}`. *Done when:* `go build ./...` passes. — done: graph structs added in `internal/journey/graph.go`; `go build ./... && go vet ./... && go test ./...` pass in Go container with `GOFLAGS=-buildvcs=false`.
-2. **Parser + per-type config structs** `internal/journey/nodes.go`: decode each node's
+2. [x] **Parser + per-type config structs** `internal/journey/nodes.go`: decode each node's
    `Config` into a typed struct (`DelayConfig{Duration}`, `ConditionConfig{DSL}`,
    `SplitConfig{Mode,Branches}`, `MessageConfig{TemplateID,Transactional}`,
    `WaitConfig{EventType,Timeout}`, `ActionConfig{Action,Set}`, `EntryConfig{Trigger,EventType,...}`).
    Reject deferred node types (§ decision 5) with a clear `unsupported node type` error.
-   *Done when:* unit tests cover one valid config and an unsupported-type rejection per node.
+   *Done when:* unit tests cover one valid config and an unsupported-type rejection per node. — done: `nodes.go` decodes all core node configs and rejects deferred node types; `internal/journey` unit tests plus `go build ./... && go vet ./... && go test ./...` pass in Go container with `GOFLAGS=-buildvcs=false`.
 3. **Validator** `Validate(*Graph) error`: exactly one `entry` node = `EntryNodeID`; every
    edge references existing nodes; branch labels match the node type's contract (§3); no
    unreachable nodes (BFS from entry); at least one `exit` reachable; durations parse. **This
