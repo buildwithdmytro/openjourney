@@ -581,11 +581,11 @@ task ends with a **Done when** check.
 2. [x] **Wait-for-event node** (`wait_event` executor): set run `waiting` + `wait_event_type` +
    `wait_until`; insert a `kind='timeout'` step at `wait_until`. *Done when:* a run parks in
    `waiting` with a scheduled timeout step. — done: wait_event executor schedules timeout step and parks run in waiting; verified by TestExecuteWaitEvent and integration tests.
-3. **Wait resolution** as a `ProjectEvent` side-effect (Recipe 6.12): a matching event inserts
+3. [x] **Wait resolution** as a `ProjectEvent` side-effect (Recipe 6.12): a matching event inserts
    an `advance` step on the `success` branch; the `journey_steps_one_live_per_run` index +
    status re-check prevents a double advance if the timeout also fires. *Done when:* delivering
    the awaited event advances the run down `success`; letting it lapse advances down `timeout`;
-   never both.
+   never both. — done: ProjectEvent inserts success advance step and completes timeout step; timeout step advances down timeout branch; verified by TestJourneyWaitEventResolutionIntegration and TestJourneyWaitEventTimeoutIntegration.
 4. **Scheduled/segment entry** `journey.EnrollScheduledDue(ctx, store, clock)`: for due
    `entry_kind='scheduled'` versions, resolve the segment (`ResolveSegment`, `segments.go:383`)
    and enroll each member (`entry_key="sched:<ver>:<runID>"`). *Done when:* scheduling a
