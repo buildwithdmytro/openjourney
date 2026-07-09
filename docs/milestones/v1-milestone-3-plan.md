@@ -522,8 +522,8 @@ task ends with a **Done when** check.
    *Done when:* `npx redocly lint` passes. — done: Journey CRUD paths and schemas added; `npx --yes @redocly/cli@1.34.3 lint api/openapi.yaml` passes.
 
 ### Milestone 8.2 — Graph model, validation & immutable publish (highest risk — do carefully)
-1. **Graph types** in new `internal/journey/graph.go`: `Graph{EntryNodeID, Nodes, Edges}`,
-   `Node{ID, Type, Config json.RawMessage}`, `Edge{From, To, Branch}`. *Done when:* `go build ./...` passes.
+1. [x] **Graph types** in new `internal/journey/graph.go`: `Graph{EntryNodeID, Nodes, Edges}`,
+   `Node{ID, Type, Config json.RawMessage}`, `Edge{From, To, Branch}`. *Done when:* `go build ./...` passes. — done: graph structs added in `internal/journey/graph.go`; `go build ./... && go vet ./... && go test ./...` pass in Go container with `GOFLAGS=-buildvcs=false`.
 2. **Parser + per-type config structs** `internal/journey/nodes.go`: decode each node's
    `Config` into a typed struct (`DelayConfig{Duration}`, `ConditionConfig{DSL}`,
    `SplitConfig{Mode,Branches}`, `MessageConfig{TemplateID,Transactional}`,
