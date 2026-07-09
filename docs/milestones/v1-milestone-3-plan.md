@@ -578,9 +578,9 @@ task ends with a **Done when** check.
    `entry_kind='event'` versions on `event.Type`, enroll with the execution-identity guard;
    honor `reentry_policy`/`max_reentries`. *Done when:* ingesting the entry event creates one
    run; a duplicate event creates none; a second distinct event respects the re-entry policy. — done: active event-entry versions matched on event.Type in ProjectEvent; verified by integration tests.
-2. **Wait-for-event node** (`wait_event` executor): set run `waiting` + `wait_event_type` +
+2. [x] **Wait-for-event node** (`wait_event` executor): set run `waiting` + `wait_event_type` +
    `wait_until`; insert a `kind='timeout'` step at `wait_until`. *Done when:* a run parks in
-   `waiting` with a scheduled timeout step.
+   `waiting` with a scheduled timeout step. — done: wait_event executor schedules timeout step and parks run in waiting; verified by TestExecuteWaitEvent and integration tests.
 3. **Wait resolution** as a `ProjectEvent` side-effect (Recipe 6.12): a matching event inserts
    an `advance` step on the `success` branch; the `journey_steps_one_live_per_run` index +
    status re-check prevents a double advance if the timeout also fires. *Done when:* delivering

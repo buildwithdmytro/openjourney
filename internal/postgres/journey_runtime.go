@@ -516,7 +516,7 @@ func (s *Store) resolveWaitingRuns(ctx context.Context, tx pgx.Tx, event domain.
 	}
 
 	rows, err := tx.Query(ctx, `
-		SELECT r.id, r.current_node_id, r.journey_version_id, v.graph
+		SELECT r.id, r.current_node_id, v.graph
 		FROM journey_runs r
 		JOIN journey_versions v ON r.journey_version_id = v.id
 		WHERE r.tenant_id = $1 AND r.status = 'waiting' AND r.wait_event_type = $2 AND r.subject_external_id = $3
