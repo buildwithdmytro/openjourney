@@ -23,6 +23,7 @@ type fakeStore struct {
 	localSession  domain.AuthSession
 	revokedToken  string
 	published     int
+	runs          []domain.JourneyRun
 }
 
 type fakeBlobStore struct {
@@ -262,16 +263,43 @@ func (f *fakeStore) CreateJourney(ctx context.Context, p domain.Principal, j dom
 	return j, nil
 }
 func (f *fakeStore) GetJourney(ctx context.Context, p domain.Principal, id string) (domain.Journey, error) {
+	if id == "not-found-journey" {
+		return domain.Journey{}, postgres.ErrNotFound
+	}
 	if id == "invalid-journey" {
 		return domain.Journey{ID: id, TenantID: p.TenantID, WorkspaceID: p.WorkspaceID, Name: "Invalid Journey", Status: "draft", Graph: json.RawMessage(`{"entry_node_id":"n1","nodes":[],"edges":[]}`)}, nil
 	}
-	return domain.Journey{ID: id, TenantID: p.TenantID, WorkspaceID: p.WorkspaceID, Name: "Test Journey", Status: "draft", Graph: json.RawMessage(`{"entry_node_id":"n1","nodes":[{"id":"n1","type":"entry","config":{"trigger":"event","event_type":"signup.completed"}},{"id":"n2","type":"exit","config":{"reason":"completed"}}],"edges":[{"from":"n1","to":"n2"}]}`)}, nil
+	versionID := "version-1"
+	return domain.Journey{ID: id, TenantID: p.TenantID, WorkspaceID: p.WorkspaceID, Name: "Test Journey", Status: "draft", CurrentVersionID: &versionID, Graph: json.RawMessage(`{"entry_node_id":"n1","nodes":[{"id":"n1","type":"entry","config":{"trigger":"event","event_type":"signup.completed"}},{"id":"n2","type":"exit","config":{"reason":"completed"}}],"edges":[{"from":"n1","to":"n2"}]}`)}, nil
+}
+func (f *fakeStore) GetJourneyVersion(ctx context.Context, tenantID, versionID string) (domain.JourneyVersion, error) {
+	return domain.JourneyVersion{
+		ID: versionID, TenantID: tenantID, Version: 1,
+		Graph: json.RawMessage(`{"entry_node_id":"n1","nodes":[{"id":"n1","type":"entry","config":{"trigger":"event","event_type":"signup.completed"}}],"edges":[]}`),
+	}, nil
+}
+func (f *fakeStore) GetJourneyRunsForProfile(ctx context.Context, tenantID, versionID, profileID string) ([]domain.JourneyRun, error) {
+	var out []domain.JourneyRun
+	for _, r := range f.runs {
+		if r.TenantID == tenantID && r.JourneyVersionID == versionID && r.ProfileID == profileID {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+func (f *fakeStore) CreateJourneyRun(ctx context.Context, run domain.JourneyRun) (bool, error) {
+	run.ID = "run-" + run.ProfileID
+	f.runs = append(f.runs, run)
+	return true, nil
+}
+func (f *fakeStore) InsertJourneyStep(ctx context.Context, step domain.JourneyStep) error {
+	return nil
 }
 func (f *fakeStore) UpdateJourney(ctx context.Context, p domain.Principal, j domain.Journey) (domain.Journey, error) {
 	return j, nil
 }
 func (f *fakeStore) ListJourneys(ctx context.Context, p domain.Principal) ([]domain.Journey, error) {
-	return []domain.Journey{{ID: "journey-1", Name: "Test Journey", Status: "draft", Graph: json.RawMessage(`{}`)}}, nil
+	return []domain.Journey{{ID: "journey-1", Name: "Test Journey", Status: "draft", CurrentVersionID: ptrString("version-1"), Graph: json.RawMessage(`{}`)}}, nil
 }
 func (f *fakeStore) PublishJourney(ctx context.Context, p domain.Principal, journeyID string, approverUserID string, manifestKey string) (domain.JourneyVersion, error) {
 	f.published++
@@ -781,6 +809,49 @@ func TestJourneyEndpoints(t *testing.T) {
 	if badKindRes.Code != http.StatusBadRequest {
 		t.Fatalf("expected Bad Request for invalid kind, got %d", badKindRes.Code)
 	}
+
+	// Backfill (success)
+	backfillReq := httptest.NewRequest(http.MethodPost, "/v1/journeys/journey-1/backfill", strings.NewReader(`{"segment_id":"segment-1","approver_user_id":"00000000-0000-0000-0000-000000000001"}`))
+	backfillReq.Header.Set("Authorization", "Bearer test-key")
+	backfillRes := httptest.NewRecorder()
+	server.ServeHTTP(backfillRes, backfillReq)
+	if backfillRes.Code != http.StatusOK {
+		t.Fatalf("expected 200 for backfill success, got %d body=%s", backfillRes.Code, backfillRes.Body.String())
+	}
+	var backfillBody map[string]int
+	if err := json.Unmarshal(backfillRes.Body.Bytes(), &backfillBody); err != nil {
+		t.Fatalf("decode backfill body: %v", err)
+	}
+	if backfillBody["enrolled_count"] != 2 {
+		t.Fatalf("expected enrolled_count=2, got %d", backfillBody["enrolled_count"])
+	}
+
+	// Backfill (missing segment_id)
+	badBackfillReq1 := httptest.NewRequest(http.MethodPost, "/v1/journeys/journey-1/backfill", strings.NewReader(`{"approver_user_id":"00000000-0000-0000-0000-000000000001"}`))
+	badBackfillReq1.Header.Set("Authorization", "Bearer test-key")
+	badBackfillRes1 := httptest.NewRecorder()
+	server.ServeHTTP(badBackfillRes1, badBackfillReq1)
+	if badBackfillRes1.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for missing segment_id, got %d", badBackfillRes1.Code)
+	}
+
+	// Backfill (missing approver_user_id)
+	badBackfillReq2 := httptest.NewRequest(http.MethodPost, "/v1/journeys/journey-1/backfill", strings.NewReader(`{"segment_id":"segment-1"}`))
+	badBackfillReq2.Header.Set("Authorization", "Bearer test-key")
+	badBackfillRes2 := httptest.NewRecorder()
+	server.ServeHTTP(badBackfillRes2, badBackfillReq2)
+	if badBackfillRes2.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422 for missing approver_user_id, got %d", badBackfillRes2.Code)
+	}
+
+	// Backfill (not found)
+	badBackfillReq3 := httptest.NewRequest(http.MethodPost, "/v1/journeys/not-found-journey/backfill", strings.NewReader(`{"segment_id":"segment-1","approver_user_id":"00000000-0000-0000-0000-000000000001"}`))
+	badBackfillReq3.Header.Set("Authorization", "Bearer test-key")
+	badBackfillRes3 := httptest.NewRecorder()
+	server.ServeHTTP(badBackfillRes3, badBackfillReq3)
+	if badBackfillRes3.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for not found journey, got %d", badBackfillRes3.Code)
+	}
 }
 
 func TestJourneyEndpointsRequireScopes(t *testing.T) {
@@ -862,4 +933,8 @@ func TestTemplateListEndpointsUseResponseEnvelopes(t *testing.T) {
 	if len(identitiesBody.Identities) != 1 || identitiesBody.Identities[0].ID != "iden-1" {
 		t.Fatalf("unexpected identities body=%s", identitiesRes.Body.String())
 	}
+}
+
+func ptrString(s string) *string {
+	return &s
 }

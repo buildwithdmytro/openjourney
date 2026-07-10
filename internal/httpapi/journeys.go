@@ -207,3 +207,39 @@ func (s *Server) retryJourneyDLQ(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, map[string]any{"status": "pending"})
 }
+
+func (s *Server) backfillJourney(w http.ResponseWriter, r *http.Request) {
+	principal := principalFrom(r)
+	id := r.PathValue("id")
+	var input struct {
+		SegmentID      string `json:"segment_id"`
+		ApproverUserID string `json:"approver_user_id"`
+	}
+	if err := decodeJSON(w, r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_json", err.Error())
+		return
+	}
+
+	if input.SegmentID == "" {
+		writeError(w, http.StatusBadRequest, "invalid_input", "segment_id is required")
+		return
+	}
+	if input.ApproverUserID == "" {
+		writeError(w, http.StatusUnprocessableEntity, "approver_required", "backfill requires an approver_user_id")
+		return
+	}
+
+	count, err := journeyflow.Backfill(r.Context(), s.store, principal, id, input.SegmentID, input.ApproverUserID)
+	if errors.Is(err, postgres.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "journey not found")
+		return
+	}
+	if err != nil {
+		internalError(w, err, "backfill journey", principal)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"enrolled_count": count,
+	})
+}

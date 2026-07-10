@@ -561,6 +561,39 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         "422": { $ref: "#/components/responses/Error" }
         "500": { $ref: "#/components/responses/Error" }
+  /v1/journeys/{id}/backfill:
+    post:
+      operationId: backfillJourney
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [segment_id, approver_user_id]
+              additionalProperties: false
+              properties:
+                segment_id: { type: string, format: uuid }
+                approver_user_id: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Members of the segment successfully enrolled into the journey's current published version.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [enrolled_count]
+                properties:
+                  enrolled_count: { type: integer, example: 5 }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "500": { $ref: "#/components/responses/Error" }
   /v1/journeys/{id}/versions/{v}:
     put:
       operationId: setJourneyVersionStatus

@@ -2125,3 +2125,126 @@ func TestJourneyDLQ(t *testing.T) {
 func ptrStr(s string) *string {
 	return &s
 }
+
+func TestJourneyBackfill(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	key := fmt.Sprintf("tenant-backfill-%d", time.Now().UnixNano())
+	if err := store.EnsureDevelopmentTenant(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	p, err := store.Authenticate(ctx, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	appID, err := store.GetFirstAppID(ctx, p.TenantID, p.WorkspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.AppID = appID
+
+	defer func() {
+		_, _ = store.pool.Exec(ctx, "DELETE FROM tenants WHERE id = $1", p.TenantID)
+	}()
+
+	// 1. Create a profile matching the segment
+	var profileID string
+	err = store.pool.QueryRow(ctx, `INSERT INTO profiles (tenant_id, workspace_id, app_id, external_id, attributes)
+		VALUES ($1, $2, $3, 'prof-backfill', '{"country":"US"}') RETURNING id`,
+		p.TenantID, p.WorkspaceID, p.AppID).Scan(&profileID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 2. Create the segment
+	seg, err := store.CreateSegment(ctx, p, domain.Segment{
+		Name: "US Users",
+		DSL: json.RawMessage(`{
+			"type": "profile_attribute",
+			"field": "country",
+			"operator": "equals",
+			"value": "US"
+		}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 3. Create a journey
+	validGraph := json.RawMessage(`{
+		"entry_node_id":"n1",
+		"nodes":[
+			{"id":"n1","type":"entry","config":{"trigger":"event","event_type":"order.created"}},
+			{"id":"n2","type":"exit","config":{"reason":"completed"}}
+		],
+		"edges":[{"from":"n1","to":"n2"}]
+	}`)
+	journey, err := store.CreateJourney(ctx, p, domain.Journey{Name: "Backfill-Test", Graph: validGraph})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 4. Publish the journey to get an active published version
+	blobs := &memoryBlobs{objects: map[string][]byte{}}
+	approverID := "00000000-0000-0000-0000-000000000001"
+	version, err := journeyflow.Publish(ctx, store, blobs, p, journey.ID, approverID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 5. Run the Backfill function
+	count, err := journeyflow.Backfill(ctx, store, p, journey.ID, seg.ID, approverID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("expected 1 profile backfilled, got %d", count)
+	}
+
+	// 6. Verify run has been created in DB
+	var runsCount int
+	err = store.pool.QueryRow(ctx, `SELECT COUNT(*) FROM journey_runs WHERE journey_version_id = $1 AND profile_id = $2`, version.ID, profileID).Scan(&runsCount)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runsCount != 1 {
+		t.Fatalf("expected 1 run in DB, got %d", runsCount)
+	}
+
+	// 7. Verify step has been created in DB
+	var stepsCount int
+	err = store.pool.QueryRow(ctx, `SELECT COUNT(*) FROM journey_steps js JOIN journey_runs jr ON jr.id = js.run_id WHERE jr.journey_version_id = $1 AND jr.profile_id = $2`, version.ID, profileID).Scan(&stepsCount)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stepsCount != 1 {
+		t.Fatalf("expected 1 step in DB, got %d", stepsCount)
+	}
+
+	// 8. Run Backfill again and verify no duplicate run is created due to reentry policy (default is once)
+	count2, err := journeyflow.Backfill(ctx, store, p, journey.ID, seg.ID, approverID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count2 != 0 {
+		t.Fatalf("expected 0 profiles backfilled on second run due to policy, got %d", count2)
+	}
+
+	var runsCount2 int
+	err = store.pool.QueryRow(ctx, `SELECT COUNT(*) FROM journey_runs WHERE journey_version_id = $1 AND profile_id = $2`, version.ID, profileID).Scan(&runsCount2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runsCount2 != 1 {
+		t.Fatalf("expected still exactly 1 run in DB, got %d", runsCount2)
+	}
+}
