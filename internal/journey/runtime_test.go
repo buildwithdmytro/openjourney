@@ -118,6 +118,18 @@ func (m *mockStore) FailJourneyStep(ctx context.Context, stepID string, errMsg s
 	return nil
 }
 
+func (m *mockStore) RescheduleJourneyStep(ctx context.Context, stepID string, availableAt time.Time) error {
+	step, ok := m.steps[stepID]
+	if !ok {
+		return errors.New("not found")
+	}
+	step.Status = "pending"
+	step.Attempts = 0
+	step.AvailableAt = availableAt
+	m.steps[stepID] = step
+	return nil
+}
+
 func (m *mockStore) AdvanceRunTx(ctx context.Context, runID string, run domain.JourneyRun, stepID string, nextStep *domain.JourneyStep, trans domain.JourneyTransition, messageIntent *domain.JourneyMessageIntent) error {
 	m.runs[runID] = run
 	step := m.steps[stepID]
@@ -256,4 +268,216 @@ func TestTickNextSkeleton(t *testing.T) {
 	if store.steps["step-2"].Status != "completed" {
 		t.Errorf("expected step-2 to be completed")
 	}
+}
+
+func TestTickNextLatePolicy(t *testing.T) {
+	// Setup clock and late threshold
+	now := time.Now().UTC()
+	clock := NewFakeClock(now)
+	deps := Deps{
+		Clock:         clock,
+		LateThreshold: 1 * time.Hour,
+	}
+
+	// 1. Test "skip" policy
+	t.Run("skip", func(t *testing.T) {
+		store := &mockStore{
+			runs:     map[string]domain.JourneyRun{},
+			steps:    map[string]domain.JourneyStep{},
+			versions: map[string]domain.JourneyVersion{},
+		}
+
+		versionID := "version-1"
+		store.versions[versionID] = domain.JourneyVersion{
+			ID:         versionID,
+			LatePolicy: "skip",
+			Graph: json.RawMessage(`{
+				"entry_node_id":"n1",
+				"nodes":[
+					{"id":"n1","type":"entry","config":{"trigger":"event","event_type":"signup.completed"}},
+					{"id":"n2","type":"exit","config":{"reason":"completed"}}
+				],
+				"edges":[{"from":"n1","to":"n2"}]
+			}`),
+		}
+
+		runID := "run-1"
+		store.runs[runID] = domain.JourneyRun{
+			ID:               runID,
+			TenantID:         "tenant-1",
+			WorkspaceID:      "workspace-1",
+			JourneyID:        "journey-1",
+			JourneyVersionID: versionID,
+			ProfileID:        "profile-1",
+			Status:           "active",
+			CurrentNodeID:    "n1",
+		}
+
+		stepID := "step-1"
+		store.steps[stepID] = domain.JourneyStep{
+			ID:          stepID,
+			RunID:       runID,
+			TenantID:    "tenant-1",
+			NodeID:      "n1",
+			Kind:        "advance",
+			Status:      "pending",
+			AvailableAt: now.Add(-2 * time.Hour), // stale step (older than 1h threshold)
+		}
+
+		processed, err := TickNext(context.Background(), store, deps)
+		if err != nil {
+			t.Fatalf("TickNext failed: %v", err)
+		}
+		if !processed {
+			t.Fatalf("expected step to be processed")
+		}
+
+		// Verify run advanced to exit node n2, bypassing entry execution
+		run := store.runs[runID]
+		if run.CurrentNodeID != "n2" {
+			t.Errorf("expected current node to be n2, got %s", run.CurrentNodeID)
+		}
+		if run.Status != "active" {
+			t.Errorf("expected status to be active, got %s", run.Status)
+		}
+
+		// Verify step-2 is scheduled for n2
+		step2, ok := store.steps["step-2"]
+		if !ok {
+			t.Fatalf("expected next step step-2 to be inserted")
+		}
+		if step2.NodeID != "n2" || step2.Status != "pending" {
+			t.Errorf("unexpected next step state: %+v", step2)
+		}
+	})
+
+	// 2. Test "reschedule" policy
+	t.Run("reschedule", func(t *testing.T) {
+		store := &mockStore{
+			runs:     map[string]domain.JourneyRun{},
+			steps:    map[string]domain.JourneyStep{},
+			versions: map[string]domain.JourneyVersion{},
+		}
+
+		versionID := "version-1"
+		store.versions[versionID] = domain.JourneyVersion{
+			ID:         versionID,
+			LatePolicy: "reschedule",
+			Graph: json.RawMessage(`{
+				"entry_node_id":"n1",
+				"nodes":[
+					{"id":"n1","type":"entry","config":{"trigger":"event","event_type":"signup.completed"}},
+					{"id":"n2","type":"exit","config":{"reason":"completed"}}
+				],
+				"edges":[{"from":"n1","to":"n2"}]
+			}`),
+		}
+
+		runID := "run-1"
+		store.runs[runID] = domain.JourneyRun{
+			ID:               runID,
+			TenantID:         "tenant-1",
+			WorkspaceID:      "workspace-1",
+			JourneyID:        "journey-1",
+			JourneyVersionID: versionID,
+			ProfileID:        "profile-1",
+			Status:           "active",
+			CurrentNodeID:    "n1",
+		}
+
+		stepID := "step-1"
+		store.steps[stepID] = domain.JourneyStep{
+			ID:          stepID,
+			RunID:       runID,
+			TenantID:    "tenant-1",
+			NodeID:      "n1",
+			Kind:        "advance",
+			Status:      "pending",
+			AvailableAt: now.Add(-2 * time.Hour), // stale step
+		}
+
+		processed, err := TickNext(context.Background(), store, deps)
+		if err != nil {
+			t.Fatalf("TickNext failed: %v", err)
+		}
+		if !processed {
+			t.Fatalf("expected step to be processed")
+		}
+
+		// Verify run did NOT advance (still at n1)
+		run := store.runs[runID]
+		if run.CurrentNodeID != "n1" {
+			t.Errorf("expected current node to remain n1, got %s", run.CurrentNodeID)
+		}
+
+		// Verify step-1 has been rescheduled to now + lateThreshold (1h)
+		step1 := store.steps[stepID]
+		if step1.Status != "pending" {
+			t.Errorf("expected status to be reset to pending, got %s", step1.Status)
+		}
+		expectedTime := now.Add(1 * time.Hour)
+		if !step1.AvailableAt.Equal(expectedTime) {
+			t.Errorf("expected available_at to be rescheduled to %v, got %v", expectedTime, step1.AvailableAt)
+		}
+	})
+
+	// 3. Test "run" policy (default)
+	t.Run("run", func(t *testing.T) {
+		store := &mockStore{
+			runs:     map[string]domain.JourneyRun{},
+			steps:    map[string]domain.JourneyStep{},
+			versions: map[string]domain.JourneyVersion{},
+		}
+
+		versionID := "version-1"
+		store.versions[versionID] = domain.JourneyVersion{
+			ID:         versionID,
+			LatePolicy: "run",
+			Graph: json.RawMessage(`{
+				"entry_node_id":"n1",
+				"nodes":[
+					{"id":"n1","type":"entry","config":{"trigger":"event","event_type":"signup.completed"}},
+					{"id":"n2","type":"exit","config":{"reason":"completed"}}
+				],
+				"edges":[{"from":"n1","to":"n2"}]
+			}`),
+		}
+
+		runID := "run-1"
+		store.runs[runID] = domain.JourneyRun{
+			ID:               runID,
+			TenantID:         "tenant-1",
+			WorkspaceID:      "workspace-1",
+			JourneyID:        "journey-1",
+			JourneyVersionID: versionID,
+			ProfileID:        "profile-1",
+			Status:           "active",
+			CurrentNodeID:    "n1",
+		}
+
+		stepID := "step-1"
+		store.steps[stepID] = domain.JourneyStep{
+			ID:          stepID,
+			RunID:       runID,
+			TenantID:    "tenant-1",
+			NodeID:      "n1",
+			Kind:        "advance",
+			Status:      "pending",
+			AvailableAt: now.Add(-2 * time.Hour), // stale step
+		}
+
+		processed, err := TickNext(context.Background(), store, deps)
+		if err != nil {
+			t.Fatalf("TickNext failed: %v", err)
+		}
+		if !processed {
+			t.Fatalf("expected step to be processed")
+		}
+
+		// Verify run advanced normally to n2
+		run := store.runs[runID]
+		if run.CurrentNodeID != "n2" {
+			t.Errorf("expected current node to advance to n2, got %s", run.CurrentNodeID)
+		}
+	})
 }

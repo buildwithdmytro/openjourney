@@ -109,6 +109,7 @@ type Store interface {
 	ClaimJourneyStep(ctx context.Context) (domain.JourneyStep, bool, error)
 	CompleteJourneyStep(ctx context.Context, stepID string) error
 	FailJourneyStep(ctx context.Context, stepID string, errMsg string) error
+	RescheduleJourneyStep(ctx context.Context, stepID string, availableAt time.Time) error
 	InsertJourneyStep(ctx context.Context, step domain.JourneyStep) error
 	RecordTransition(ctx context.Context, trans domain.JourneyTransition) error
 	AdvanceRunTx(ctx context.Context, runID string, run domain.JourneyRun, stepID string, nextStep *domain.JourneyStep, trans domain.JourneyTransition, messageIntent *domain.JourneyMessageIntent) error

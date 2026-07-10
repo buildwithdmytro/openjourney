@@ -637,9 +637,9 @@ task ends with a **Done when** check.
 5. [x] **Backfill** `POST /v1/journeys/{id}/backfill` (scope `journeys:publish`, requires
    approver — product-decisions: humans approve bulk sends): enroll a segment into the current
    published version on demand. *Done when:* backfilling a segment enrolls its members once. — done: implemented POST /v1/journeys/{id}/backfill, added Backfill function resolving the segment and enrolling members with once policy, and added integration + unit tests.
-6. **Late-event / downtime catch-up**: in `TickNext`, if a claimed step's `available_at` is
+6. [x] **Late-event / downtime catch-up**: in `TickNext`, if a claimed step's `available_at` is
    older than a threshold, apply the version's `late_policy` (`run`/`skip`/`reschedule`).
-   *Done when:* a unit test with a stale step honors each policy.
+   *Done when:* a unit test with a stale step honors each policy. — done: implemented late-event catch-up checking stale steps in TickNext, added RescheduleJourneyStep method to the store and mock interfaces, and verified skip, reschedule, and run behaviors with unit tests.
 7. **React operator views**: pause/resume toggle, a run inspector (status + transition
    timeline from `journey_transitions`), a DLQ table with a retry button. *Done when:*
    `npm run build` passes and the views render against seeded data.

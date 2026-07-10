@@ -295,6 +295,9 @@ func (f *fakeStore) CreateJourneyRun(ctx context.Context, run domain.JourneyRun)
 func (f *fakeStore) InsertJourneyStep(ctx context.Context, step domain.JourneyStep) error {
 	return nil
 }
+func (f *fakeStore) RescheduleJourneyStep(ctx context.Context, stepID string, availableAt time.Time) error {
+	return nil
+}
 func (f *fakeStore) UpdateJourney(ctx context.Context, p domain.Principal, j domain.Journey) (domain.Journey, error) {
 	return j, nil
 }

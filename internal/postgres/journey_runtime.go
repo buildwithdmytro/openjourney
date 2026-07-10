@@ -179,6 +179,17 @@ func (s *Store) FailJourneyStep(ctx context.Context, stepID string, errMsg strin
 	return err
 }
 
+func (s *Store) RescheduleJourneyStep(ctx context.Context, stepID string, availableAt time.Time) error {
+	_, err := s.pool.Exec(ctx, `UPDATE journey_steps SET
+			status='pending',
+			attempts=0,
+			locked_until=NULL,
+			available_at=$2,
+			updated_at=now()
+		WHERE id=$1`, stepID, availableAt)
+	return err
+}
+
 func (s *Store) InsertJourneyStep(ctx context.Context, step domain.JourneyStep) error {
 	if step.Kind == "" {
 		step.Kind = "advance"
