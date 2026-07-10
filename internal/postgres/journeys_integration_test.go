@@ -758,3 +758,352 @@ func TestJourneysReplayCompatibility(t *testing.T) {
 	}
 }
 
+func TestJourneysDeterminism(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer store.Close()
+
+	key := fmt.Sprintf("journey-det-%d", time.Now().UnixNano())
+	if err := store.EnsureDevelopmentTenant(ctx, key); err != nil {
+		t.Fatalf("EnsureDevelopmentTenant: %v", err)
+	}
+	p, err := store.Authenticate(ctx, key)
+	if err != nil {
+		t.Fatalf("Authenticate: %v", err)
+	}
+	appID, err := store.GetFirstAppID(ctx, p.TenantID, p.WorkspaceID)
+	if err != nil {
+		t.Fatalf("GetFirstAppID: %v", err)
+	}
+	p.AppID = appID
+
+	// Create profile
+	profileExtID := "profile-det-test"
+	events := []domain.Event{
+		{
+			Type: "profile.updated", SchemaVersion: 1, ExternalID: profileExtID,
+			IdempotencyKey: "identify-det-test", OccurredAt: time.Now().UTC(),
+			Payload: json.RawMessage(`{"attributes":{"country":"US"}}`),
+		},
+	}
+	_, err = store.AcceptEvents(ctx, p, events)
+	if err != nil {
+		t.Fatalf("accept profile: %v", err)
+	}
+	_, err = projector.Drain(ctx, store, 1, false)
+	if err != nil {
+		t.Fatalf("projector drain: %v", err)
+	}
+
+	profile, _, err := store.GetProfile(ctx, p, profileExtID)
+	if err != nil {
+		t.Fatalf("get profile: %v", err)
+	}
+
+	// Setup a wait_event journey: entry -> wait_event -> completed / timeout
+	graphJSON := `{
+		"entry_node_id": "n1",
+		"nodes": [
+			{ "id": "n1", "type": "entry", "config": { "trigger": "event", "event_type": "user.signup" } },
+			{ "id": "n2", "type": "wait_event", "config": { "event_type": "email.opened", "timeout": "1h" } },
+			{ "id": "n3", "type": "exit", "config": { "reason": "completed" } },
+			{ "id": "n4", "type": "exit", "config": { "reason": "timed_out" } }
+		],
+		"edges": [
+			{ "from": "n1", "to": "n2" },
+			{ "from": "n2", "to": "n3", "branch": "success" },
+			{ "from": "n2", "to": "n4", "branch": "timeout" }
+		]
+	}`
+
+	journey, err := store.CreateJourney(ctx, p, domain.Journey{
+		Name:  "Determinism Journey",
+		Graph: json.RawMessage(graphJSON),
+	})
+	if err != nil {
+		t.Fatalf("create journey: %v", err)
+	}
+
+	blobs := &memoryBlobs{objects: map[string][]byte{}}
+	approverID := "00000000-0000-0000-0000-000000000001"
+	version, err := journeyflow.Publish(ctx, store, blobs, p, journey.ID, approverID)
+	if err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+
+	clk := journeyflow.NewFakeClock(time.Now().UTC())
+	deps := journeyflow.Deps{Clock: clk}
+
+	// ==========================================
+	// CASE 1: Duplicate entry event
+	// ==========================================
+	triggerEvent := []domain.Event{
+		{
+			Type: "user.signup", SchemaVersion: 1, ExternalID: profileExtID,
+			IdempotencyKey: "signup-1", OccurredAt: time.Now().UTC(),
+			Payload: json.RawMessage(`{}`),
+		},
+	}
+	_, err = store.AcceptEvents(ctx, p, triggerEvent)
+	if err != nil {
+		t.Fatalf("accept signup: %v", err)
+	}
+	_, err = projector.Drain(ctx, store, 1, false)
+	if err != nil {
+		t.Fatalf("projector drain signup: %v", err)
+	}
+
+	runs, err := store.GetJourneyRunsForProfile(ctx, p.TenantID, version.ID, profile.ID)
+	if err != nil {
+		t.Fatalf("get runs: %v", err)
+	}
+	if len(runs) != 1 {
+		t.Fatalf("expected exactly 1 run after first signup event, got %d", len(runs))
+	}
+	runID := runs[0].ID
+
+	// Ingest exact duplicate signup event
+	_, err = store.AcceptEvents(ctx, p, triggerEvent)
+	if err != nil {
+		t.Fatalf("accept duplicate signup: %v", err)
+	}
+	// Run projector and verify no duplicate run was created
+	_, err = projector.Drain(ctx, store, 1, false)
+	if err != nil {
+		t.Fatalf("projector drain duplicate signup: %v", err)
+	}
+	runs, _ = store.GetJourneyRunsForProfile(ctx, p.TenantID, version.ID, profile.ID)
+	if len(runs) != 1 {
+		t.Errorf("expected exactly 1 run after duplicate signup event, got %d", len(runs))
+	}
+
+	// ==========================================
+	// CASE 2: Reordered / late event
+	// ==========================================
+	// Prior to run entering the wait_event node (it's currently at n1), we receive and project
+	// the wait_event's trigger event 'email.opened'
+	lateEvent := []domain.Event{
+		{
+			Type: "email.opened", SchemaVersion: 1, ExternalID: profileExtID,
+			IdempotencyKey: "opened-late", OccurredAt: time.Now().UTC(),
+			Payload: json.RawMessage(`{}`),
+		},
+	}
+	_, err = store.AcceptEvents(ctx, p, lateEvent)
+	if err != nil {
+		t.Fatalf("accept late event: %v", err)
+	}
+	_, err = projector.Drain(ctx, store, 1, false)
+	if err != nil {
+		t.Fatalf("projector drain late event: %v", err)
+	}
+
+	// Verify run state: should still be at n1 and not prematurely transitioned
+	run, _ := store.GetJourneyRun(ctx, p, runID)
+	if run.CurrentNodeID != "n1" || run.Status != "active" {
+		t.Errorf("expected run to remain at n1 on late event, but got node=%s, status=%s", run.CurrentNodeID, run.Status)
+	}
+
+	// Now transition run to n2 (wait_event)
+	if err := makePendingStepDue(ctx, store, runID); err != nil {
+		t.Fatalf("makePendingStepDue: %v", err)
+	}
+	processed, err := journeyflow.TickNext(ctx, store, deps)
+	if err != nil || !processed {
+		t.Fatalf("TickNext entry (n1): processed=%v, err=%v", processed, err)
+	}
+
+	// Execute wait_event (n2) advance step to park the run in 'waiting' status
+	if err := makePendingStepDue(ctx, store, runID); err != nil {
+		t.Fatalf("makePendingStepDue: %v", err)
+	}
+	processed, err = journeyflow.TickNext(ctx, store, deps)
+	if err != nil || !processed {
+		t.Fatalf("TickNext wait_event (n2) advance: processed=%v, err=%v", processed, err)
+	}
+
+	// Run should now be waiting at n2
+	run, _ = store.GetJourneyRun(ctx, p, runID)
+	if run.CurrentNodeID != "n2" || run.Status != "waiting" {
+		t.Errorf("expected run to be waiting at n2, got node=%s, status=%s", run.CurrentNodeID, run.Status)
+	}
+
+	// Project another email.opened event (valid event now that we are waiting)
+	validOpenedEvent := []domain.Event{
+		{
+			Type: "email.opened", SchemaVersion: 1, ExternalID: profileExtID,
+			IdempotencyKey: "opened-valid", OccurredAt: time.Now().UTC(),
+			Payload: json.RawMessage(`{}`),
+		},
+	}
+	_, err = store.AcceptEvents(ctx, p, validOpenedEvent)
+	if err != nil {
+		t.Fatalf("accept valid event: %v", err)
+	}
+	_, err = projector.Drain(ctx, store, 1, false)
+	if err != nil {
+		t.Fatalf("projector drain valid event: %v", err)
+	}
+
+	// Run should now be resolved to success branch (n3)
+	run, _ = store.GetJourneyRun(ctx, p, runID)
+	if run.CurrentNodeID != "n3" || run.Status != "active" {
+		t.Errorf("expected run to transition to n3, got node=%s, status=%s", run.CurrentNodeID, run.Status)
+	}
+
+	// Complete the run by transitioning exit node (n3)
+	if err := makePendingStepDue(ctx, store, runID); err != nil {
+		t.Fatalf("makePendingStepDue: %v", err)
+	}
+	processed, err = journeyflow.TickNext(ctx, store, deps)
+	if err != nil || !processed {
+		t.Fatalf("TickNext exit (n3): processed=%v, err=%v", processed, err)
+	}
+	run, _ = store.GetJourneyRun(ctx, p, runID)
+	if run.Status != "completed" {
+		t.Errorf("expected run to be completed, got status=%s", run.Status)
+	}
+
+	// ==========================================
+	// CASE 3: Awaited event + timeout racing
+	// ==========================================
+	// Let's enroll a brand new participant to test the race condition
+	profileExtID2 := "profile-det-test-2"
+	events2 := []domain.Event{
+		{
+			Type: "profile.updated", SchemaVersion: 1, ExternalID: profileExtID2,
+			IdempotencyKey: "identify-det-test-2", OccurredAt: time.Now().UTC(),
+			Payload: json.RawMessage(`{"attributes":{"country":"US"}}`),
+		},
+	}
+	_, err = store.AcceptEvents(ctx, p, events2)
+	if err != nil {
+		t.Fatalf("accept profile 2: %v", err)
+	}
+	_, err = projector.Drain(ctx, store, 1, false)
+	if err != nil {
+		t.Fatalf("projector drain profile 2: %v", err)
+	}
+
+	profile2, _, _ := store.GetProfile(ctx, p, profileExtID2)
+
+	triggerEvent2 := []domain.Event{
+		{
+			Type: "user.signup", SchemaVersion: 1, ExternalID: profileExtID2,
+			IdempotencyKey: "signup-2", OccurredAt: time.Now().UTC(),
+			Payload: json.RawMessage(`{}`),
+		},
+	}
+	_, err = store.AcceptEvents(ctx, p, triggerEvent2)
+	if err != nil {
+		t.Fatalf("accept signup 2: %v", err)
+	}
+	_, err = projector.Drain(ctx, store, 1, false)
+	if err != nil {
+		t.Fatalf("projector drain signup 2: %v", err)
+	}
+
+	runs2, _ := store.GetJourneyRunsForProfile(ctx, p.TenantID, version.ID, profile2.ID)
+	runID2 := runs2[0].ID
+
+	// Advance entry node (n1)
+	if err := makePendingStepDue(ctx, store, runID2); err != nil {
+		t.Fatalf("makePendingStepDue: %v", err)
+	}
+	processed, err = journeyflow.TickNext(ctx, store, deps)
+	if err != nil || !processed {
+		t.Fatalf("TickNext entry (n1): processed=%v, err=%v", processed, err)
+	}
+
+	// Execute wait_event (n2) advance step to park the run in 'waiting' status
+	if err := makePendingStepDue(ctx, store, runID2); err != nil {
+		t.Fatalf("makePendingStepDue: %v", err)
+	}
+	processed, err = journeyflow.TickNext(ctx, store, deps)
+	if err != nil || !processed {
+		t.Fatalf("TickNext wait_event (n2) advance: processed=%v, err=%v", processed, err)
+	}
+
+	// Run 2 is now waiting at n2 (wait_event)
+	run2, _ := store.GetJourneyRun(ctx, p, runID2)
+	if run2.CurrentNodeID != "n2" || run2.Status != "waiting" {
+		t.Fatalf("expected run 2 to be waiting at n2, got node=%s, status=%s", run2.CurrentNodeID, run2.Status)
+	}
+
+	// Simulating Race Case: Event resolves first, then timeout triggers.
+	// 1. We ingest and project 'email.opened' event to resolve the wait_event.
+	openedEvent2 := []domain.Event{
+		{
+			Type: "email.opened", SchemaVersion: 1, ExternalID: profileExtID2,
+			IdempotencyKey: "opened-valid-2", OccurredAt: time.Now().UTC(),
+			Payload: json.RawMessage(`{}`),
+		},
+	}
+	_, err = store.AcceptEvents(ctx, p, openedEvent2)
+	if err != nil {
+		t.Fatalf("accept opened event 2: %v", err)
+	}
+	_, err = projector.Drain(ctx, store, 1, false)
+	if err != nil {
+		t.Fatalf("projector drain opened event 2: %v", err)
+	}
+
+	// Verify run 2 was successfully updated to active success branch (n3)
+	run2, _ = store.GetJourneyRun(ctx, p, runID2)
+	if run2.CurrentNodeID != "n3" || run2.Status != "active" {
+		t.Errorf("expected run 2 to transition to n3 on event, got node=%s, status=%s", run2.CurrentNodeID, run2.Status)
+	}
+
+	// Process the exit node (n3) first so that it is complete and the run becomes "completed"
+	if err := makePendingStepDue(ctx, store, runID2); err != nil {
+		t.Fatalf("makePendingStepDue: %v", err)
+	}
+	processed, err = journeyflow.TickNext(ctx, store, deps)
+	if err != nil || !processed {
+		t.Fatalf("TickNext exit (n3): processed=%v, err=%v", processed, err)
+	}
+
+	// Verify run is completed
+	run2, _ = store.GetJourneyRun(ctx, p, runID2)
+	if run2.Status != "completed" {
+		t.Fatalf("expected run 2 to be completed, got status=%s", run2.Status)
+	}
+
+	// 2. Now simulate the worker trying to execute the stale timeout step (which is scheduled for 1h in the future).
+	// We make it due and advance the clock.
+	clk.Advance(2 * time.Hour)
+	// Query and find any pending steps for runID2 of kind timeout.
+	var timeoutStepID string
+	err = store.pool.QueryRow(ctx, `SELECT id FROM journey_steps WHERE run_id = $1 AND kind = 'timeout'`, runID2).Scan(&timeoutStepID)
+	if err != nil {
+		t.Fatalf("query timeout step: %v", err)
+	}
+
+	// Mark the timeout step as due directly
+	_, err = store.pool.Exec(ctx, `UPDATE journey_steps SET available_at = now() - interval '5 seconds' WHERE id = $1`, timeoutStepID)
+	if err != nil {
+		t.Fatalf("make timeout step due: %v", err)
+	}
+
+	// Call TickNext to let the runtime handle the timeout step
+	processed, err = journeyflow.TickNext(ctx, store, deps)
+	if err != nil {
+		t.Fatalf("TickNext timeout: %v", err)
+	}
+
+	// Verify run state did NOT change and is still completed/n3
+	run2, _ = store.GetJourneyRun(ctx, p, runID2)
+	if run2.CurrentNodeID != "n3" || run2.Status != "completed" {
+		t.Errorf("RACE FAILED: timeout execution modified completed run state, got node=%s, status=%s", run2.CurrentNodeID, run2.Status)
+	}
+	t.Log("SUCCESS: Timeout racing on already resolved wait_event node was safely and deterministically ignored.")
+}
+
+

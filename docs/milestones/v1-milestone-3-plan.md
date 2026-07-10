@@ -655,9 +655,9 @@ task ends with a **Done when** check.
    immutable `journey_versions` graph → identical `journey_transitions` checksum (the journey
    analog of `TestCampaignsReproducibility`, `campaigns_integration_test.go:464`). *Done when:*
    two replays of the same version + inputs produce byte-identical transition sequences.)
-3. **Duplicate/reordered/late-event determinism tests** (exit criterion 3): duplicate entry
+3. **Duplicate/reordered/late-event determinism tests** — done: TestJourneysDeterminism added and passes; verified (1) duplicate entry events are idempotent, (2) late/reordered wait_event trigger events do not cause premature transitions, and (3) wait_event trigger vs. timeout races resolve deterministically to exactly one branch. (duplicate entry
    event → one run; the awaited event + its timeout racing → exactly one branch taken. *Done when:*
-   all three cases assert single, deterministic outcomes.
+   all three cases assert single, deterministic outcomes.)
 4. **Worker-kill load smoke** `scripts/smoke-journeys.sh` (copy
    `scripts/smoke-campaign-delivery.sh`): enroll N participants (event + time driven), kill
    `journeys-worker` mid-flight (`docker kill`), reset `locked_until`, restart, assert no
