@@ -43,6 +43,7 @@ export function App() {
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [loginError, setLoginError] = useState("");
+  const [manualKey, setManualKey] = useState("");
 
   useEffect(() => {
     checkHealth(apiBase).then(setHealthy).catch(() => setHealthy(false));
@@ -75,6 +76,7 @@ export function App() {
     }
     setCredentialSource("manual");
     setAPIKey("");
+    setManualKey("");
     sessionStorage.removeItem("oj_session_token");
     localStorage.removeItem("oj_api_key");
     await signOut();
@@ -93,6 +95,66 @@ export function App() {
     }
   }
 
+  if (!apiKey) {
+    return (
+      <div className="login-container">
+        <div className="login-card">
+          <div className="brand" style={{ display: "flex", justifyContent: "center", paddingBottom: "24px", margin: 0 }}>
+            <span>O</span> OpenJourney
+          </div>
+          <h2>Welcome Back</h2>
+          <p>Please log in using your credentials or provide a configured API Key to manage customer journeys.</p>
+          
+          <form onSubmit={handleLocalLogin} style={{ display: "flex", flexDirection: "column", gap: "16px", alignItems: "stretch" }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              Email
+              <input type="email" value={loginEmail} onChange={(event) => setLoginEmail(event.target.value)}
+                placeholder="admin@example.test" required style={{ width: "100%" }} />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              Password
+              <input type="password" value={loginPassword} onChange={(event) => setLoginPassword(event.target.value)}
+                placeholder="Self-hosted operator password" required style={{ width: "100%" }} />
+            </label>
+            <button type="submit" disabled={!loginEmail || !loginPassword} style={{ width: "100%", marginTop: "8px" }}>
+              Log in with credentials
+            </button>
+          </form>
+          
+          <ErrorMessage value={loginError} />
+          
+          <div style={{ margin: "24px 0", display: "flex", alignItems: "center", gap: "10px" }}>
+            <div style={{ flex: 1, height: "1px", background: "#e8ebef" }} />
+            <span style={{ fontSize: "11px", color: "#6c7787", fontWeight: "bold" }}>OR USE API KEY</span>
+            <div style={{ flex: 1, height: "1px", background: "#e8ebef" }} />
+          </div>
+          
+          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              Provide API Key / Token
+              <input type="password" value={manualKey} onChange={(event) => setManualKey(event.target.value)}
+                placeholder="Scoped API, local session, or OIDC token" style={{ width: "100%" }} />
+            </label>
+            <button onClick={() => {
+              if (manualKey.trim()) {
+                setCredentialSource("manual");
+                setAPIKey(manualKey.trim());
+              }
+            }} disabled={!manualKey.trim()} style={{ width: "100%", background: "#101b2b" }}>
+              Use API Key
+            </button>
+            
+            {oidcConfigured && (
+              <button onClick={() => void signIn()} style={{ width: "100%", background: "#e9edf2", color: "#344156" }}>
+                Sign in with OIDC
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="shell">
       <aside>
@@ -103,7 +165,12 @@ export function App() {
               onClick={() => setView(item)}>{viewTitles[item][0]}</button>
           ))}
         </nav>
-        <div className={`health ${healthy ? "up" : ""}`}>
+        <div style={{ marginTop: "auto", padding: "16px 0 0 0", borderTop: "1px solid rgba(255,255,255,0.1)", display: "flex", flexDirection: "column" }}>
+          <button className="secondary small" onClick={() => void handleSignOut()} style={{ width: "100%", background: "transparent", border: "1px solid rgba(255,255,255,0.2)", color: "#dfe7f0", padding: "8px", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: "bold" }}>
+            Sign out
+          </button>
+        </div>
+        <div className={`health ${healthy ? "up" : ""}`} style={{ marginTop: "16px" }}>
           <i /> API {healthy === null ? "checking" : healthy ? "ready" : "unavailable"}
         </div>
       </aside>
@@ -113,31 +180,6 @@ export function App() {
           <h1>{viewTitles[view][0]}</h1>
           <span>{viewTitles[view][1]}</span>
         </header>
-        <section className="card credential">
-          <form onSubmit={handleLocalLogin} className="single-action">
-            <label>Email
-              <input type="email" value={loginEmail} onChange={(event) => setLoginEmail(event.target.value)}
-                placeholder="admin@example.com" />
-            </label>
-            <label>Password
-              <input type="password" value={loginPassword} onChange={(event) => setLoginPassword(event.target.value)}
-                placeholder="Self-hosted operator password" />
-            </label>
-            <button disabled={!loginEmail || !loginPassword}>Log in</button>
-          </form>
-          <ErrorMessage value={loginError} />
-          <label>API key
-            <input type="password" value={apiKey} onChange={(event) => {
-              setCredentialSource("manual");
-              setAPIKey(event.target.value);
-            }}
-              placeholder="Scoped API, local session, or OIDC token" />
-          </label>
-          {(oidcConfigured || apiKey) && <div className="auth-actions">
-            {oidcConfigured && <button onClick={() => void signIn()}>Sign in with OIDC</button>}
-            {apiKey && <button className="secondary" onClick={() => void handleSignOut()}>Sign out</button>}
-          </div>}
-        </section>
         {view === "profiles" && <Profiles apiKey={apiKey} />}
         {view === "segments" && <Segments apiKey={apiKey} />}
         {view === "templates" && <Templates apiKey={apiKey} />}

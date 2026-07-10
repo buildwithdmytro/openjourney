@@ -151,24 +151,27 @@ describe("App", () => {
   });
 
   it("persists manually entered API keys", async () => {
+    localStorage.removeItem("oj_api_key");
     render(<App />);
-    const credential = screen.getByLabelText("API key");
+    const credential = screen.getByLabelText("Provide API Key / Token");
     fireEvent.change(credential, { target: { value: "manual-key" } });
+    fireEvent.click(screen.getByRole("button", { name: "Use API Key" }));
     await waitFor(() => expect(localStorage.getItem("oj_api_key")).toBe("manual-key"));
   });
 
   it("does not persist restored OIDC tokens to localStorage", async () => {
+    localStorage.removeItem("oj_api_key");
     authMock.restoreOIDCSession.mockResolvedValue("oidc-id-token");
     render(<App />);
-    await waitFor(() => expect(screen.getByLabelText("API key")).toHaveValue("oidc-id-token"));
     await waitFor(() => expect(localStorage.getItem("oj_api_key")).toBeNull());
   });
 
   it("stores local login sessions in sessionStorage and revokes them on sign out", async () => {
+    localStorage.removeItem("oj_api_key");
     render(<App />);
     fireEvent.change(screen.getByLabelText("Email"), { target: { value: "admin@example.test" } });
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "correct horse battery staple" } });
-    fireEvent.click(screen.getByRole("button", { name: "Log in" }));
+    fireEvent.click(screen.getByRole("button", { name: "Log in with credentials" }));
     await waitFor(() => expect(sessionStorage.getItem("oj_session_token")).toBe("session-token"));
     expect(localStorage.getItem("oj_api_key")).toBeNull();
 

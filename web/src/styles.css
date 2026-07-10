@@ -74,3 +74,34 @@ button.danger { color: #a93838; background: #fff0f0; }
   form, .profile-grid { grid-template-columns: 1fr; }
   .wide { grid-column: auto; }
 }
+
+.login-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #101b2b 0%, #1c2a3e 100%);
+  padding: 24px;
+}
+.login-card {
+  background: white;
+  border-radius: 16px;
+  padding: 40px;
+  width: 100%;
+  max-width: 460px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+}
+.login-card h2 {
+  margin: 0 0 8px 0;
+  font-size: 24px;
+  letter-spacing: -.03em;
+  text-align: center;
+}
+.login-card p {
+  margin: 0 0 28px 0;
+  color: #6c7787;
+  font-size: 13px;
+  text-align: center;
+  line-height: 1.5;
+}
+
