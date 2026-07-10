@@ -393,3 +393,112 @@ export async function publishJourney(baseURL: string, apiKey: string, id: string
     body: JSON.stringify({ approver_user_id: approverUserID }),
   });
 }
+
+export type JourneyRun = {
+  id: string;
+  tenant_id: string;
+  workspace_id: string;
+  journey_id: string;
+  journey_version_id: string;
+  profile_id: string;
+  subject_external_id: string;
+  entry_key: string;
+  reentry_sequence: number;
+  status: "active" | "completed" | "canceled";
+  current_node_id: string;
+  state: Record<string, unknown>;
+  wait_event_type?: string;
+  wait_until?: string;
+  goal_reached?: boolean;
+  entered_at: string;
+  updated_at: string;
+  completed_at?: string;
+};
+
+export type JourneyTransition = {
+  id: string;
+  run_id: string;
+  tenant_id: string;
+  from_node?: string;
+  to_node?: string;
+  node_type: string;
+  outcome: string;
+  detail: Record<string, unknown>;
+  occurred_at: string;
+};
+
+export type JourneyStep = {
+  id: string;
+  run_id: string;
+  tenant_id: string;
+  node_id: string;
+  kind: "advance" | "timeout";
+  status: "pending" | "processing" | "completed" | "failed" | "dead";
+  attempts: number;
+  available_at: string;
+  locked_until?: string;
+  error_message?: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type JourneyMessageIntent = {
+  id: string;
+  run_id: string;
+  tenant_id: string;
+  workspace_id: string;
+  journey_id: string;
+  journey_version_id: string;
+  node_id: string;
+  profile_id: string;
+  template_id: string;
+  channel: string;
+  endpoint: string;
+  transactional: boolean;
+  status: "pending" | "processing" | "completed" | "failed" | "dead";
+  attempts: number;
+  available_at: string;
+  locked_until?: string;
+  decision?: string;
+  reason?: string;
+  provider_message_id?: string;
+  error_message?: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export async function updateJourneyVersionStatus(baseURL: string, apiKey: string, id: string, version: number, status: string): Promise<{ status: string }> {
+  return requestJSON<{ status: string }>(baseURL, apiKey, `/v1/journeys/${encodeURIComponent(id)}/versions/${version}`, {
+    method: "PUT",
+    body: JSON.stringify({ status }),
+  });
+}
+
+export async function getJourneyVersion(baseURL: string, apiKey: string, id: string, versionID: string): Promise<JourneyVersion> {
+  return requestJSON<JourneyVersion>(baseURL, apiKey, `/v1/journeys/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionID)}`);
+}
+
+export async function cancelJourneyRun(baseURL: string, apiKey: string, id: string, runID: string): Promise<{ status: string }> {
+  return requestJSON<{ status: string }>(baseURL, apiKey, `/v1/journeys/${encodeURIComponent(id)}/runs/${encodeURIComponent(runID)}/cancel`, {
+    method: "POST",
+  });
+}
+
+export async function listJourneyRuns(baseURL: string, apiKey: string, id: string): Promise<JourneyRun[]> {
+  return (await requestJSON<{ runs: JourneyRun[] }>(baseURL, apiKey, `/v1/journeys/${encodeURIComponent(id)}/runs`)).runs ?? [];
+}
+
+export async function listJourneyRunTransitions(baseURL: string, apiKey: string, id: string, runID: string): Promise<JourneyTransition[]> {
+  return (await requestJSON<{ transitions: JourneyTransition[] }>(baseURL, apiKey, `/v1/journeys/${encodeURIComponent(id)}/runs/${encodeURIComponent(runID)}/transitions`)).transitions ?? [];
+}
+
+export async function listJourneyDLQ(baseURL: string, apiKey: string): Promise<{ steps: JourneyStep[]; intents: JourneyMessageIntent[] }> {
+  return requestJSON<{ steps: JourneyStep[]; intents: JourneyMessageIntent[] }>(baseURL, apiKey, "/v1/journeys/dlq");
+}
+
+export async function retryJourneyDLQ(baseURL: string, apiKey: string, kind: string, id: string): Promise<{ status: string }> {
+  return requestJSON<{ status: string }>(baseURL, apiKey, `/v1/journeys/dlq/${encodeURIComponent(kind)}/${encodeURIComponent(id)}/retry`, {
+    method: "POST",
+  });
+}
+

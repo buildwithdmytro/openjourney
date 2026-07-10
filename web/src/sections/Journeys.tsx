@@ -21,11 +21,22 @@ import {
   listSegments,
   listTemplates,
   listUsers,
+  getJourneyVersion,
+  updateJourneyVersionStatus,
+  cancelJourneyRun,
+  listJourneyRuns,
+  listJourneyRunTransitions,
+  listJourneyDLQ,
+  retryJourneyDLQ,
   Journey,
   Segment,
   Template,
   User,
   JourneyVersion,
+  JourneyRun,
+  JourneyTransition,
+  JourneyStep,
+  JourneyMessageIntent,
 } from "../api";
 
 const apiBase = import.meta.env.VITE_API_BASE_URL || "/api";
@@ -84,13 +95,22 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
 
   // Editor state
   const [editingJourney, setEditingJourney] = useState<Journey | null>(null);
-  const [editorMode, setEditorMode] = useState<"visual" | "json">("visual");
+  const [editorMode, setEditorMode] = useState<"visual" | "json" | "operator">("visual");
   const [rawJSON, setRawJSON] = useState("");
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<FlowEdge>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [approverId, setApproverId] = useState("");
+
+  // Operator states
+  const [runs, setRuns] = useState<JourneyRun[]>([]);
+  const [selectedRun, setSelectedRun] = useState<JourneyRun | null>(null);
+  const [transitions, setTransitions] = useState<JourneyTransition[]>([]);
+  const [dlqSteps, setDlqSteps] = useState<JourneyStep[]>([]);
+  const [dlqIntents, setDlqIntents] = useState<JourneyMessageIntent[]>([]);
+  const [loadingOps, setLoadingOps] = useState(false);
+  const [activeVersion, setActiveVersion] = useState<JourneyVersion | null>(null);
 
   async function load() {
     setLoading(true);
@@ -119,6 +139,99 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
   useEffect(() => {
     if (apiKey) void load();
   }, [apiKey]);
+
+  const loadOperations = useCallback(async (journeyId: string, latestVersion: number) => {
+    setLoadingOps(true);
+    setError("");
+    try {
+      const [runsList, dlqData] = await Promise.all([
+        listJourneyRuns(apiBase, apiKey, journeyId),
+        listJourneyDLQ(apiBase, apiKey)
+      ]);
+      setRuns(runsList);
+      
+      // Filter DLQ steps and intents for this journey
+      const journeySteps = dlqData.steps.filter(s => runsList.some(r => r.id === s.run_id));
+      const journeyIntents = dlqData.intents.filter(i => i.journey_id === journeyId);
+      setDlqSteps(journeySteps);
+      setDlqIntents(journeyIntents);
+
+      if (editingJourney?.current_version_id) {
+        try {
+          const ver = await getJourneyVersion(apiBase, apiKey, journeyId, editingJourney.current_version_id);
+          setActiveVersion(ver);
+        } catch {
+          setActiveVersion(null);
+        }
+      } else {
+        setActiveVersion(null);
+      }
+    } catch (cause) {
+      setError(message(cause));
+    } finally {
+      setLoadingOps(false);
+    }
+  }, [apiKey, editingJourney]);
+
+  useEffect(() => {
+    if (editingJourney && editorMode === "operator") {
+      void loadOperations(editingJourney.id, editingJourney.latest_version);
+    }
+  }, [editingJourney, editorMode, loadOperations]);
+
+  const handlePauseToggle = async () => {
+    if (!editingJourney || !activeVersion) return;
+    setSaving(true);
+    setError("");
+    try {
+      const nextStatus = activeVersion.status === "paused" ? "active" : "paused";
+      await updateJourneyVersionStatus(apiBase, apiKey, editingJourney.id, activeVersion.version, nextStatus);
+      setSuccessMsg(`Journey version ${activeVersion.version} status updated to ${nextStatus}`);
+      await loadOperations(editingJourney.id, editingJourney.latest_version);
+    } catch (cause) {
+      setError(message(cause));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCancelRun = async (runID: string) => {
+    if (!editingJourney) return;
+    setError("");
+    try {
+      await cancelJourneyRun(apiBase, apiKey, editingJourney.id, runID);
+      setSuccessMsg("Run cancelled successfully");
+      await loadOperations(editingJourney.id, editingJourney.latest_version);
+      if (selectedRun?.id === runID) {
+        setSelectedRun(null);
+      }
+    } catch (cause) {
+      setError(message(cause));
+    }
+  };
+
+  const handleRetryDLQ = async (kind: string, id: string) => {
+    if (!editingJourney) return;
+    setError("");
+    try {
+      await retryJourneyDLQ(apiBase, apiKey, kind, id);
+      setSuccessMsg("Replay request accepted; item status set to pending");
+      await loadOperations(editingJourney.id, editingJourney.latest_version);
+    } catch (cause) {
+      setError(message(cause));
+    }
+  };
+
+  const selectRun = async (run: JourneyRun) => {
+    setSelectedRun(run);
+    setError("");
+    try {
+      const transList = await listJourneyRunTransitions(apiBase, apiKey, editingJourney!.id, run.id);
+      setTransitions(transList);
+    } catch (cause) {
+      setError(message(cause));
+    }
+  };
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
@@ -685,6 +798,7 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
             <select value={editorMode} onChange={(e) => setEditorMode(e.target.value as any)}>
               <option value="visual">Visual Builder</option>
               <option value="json">Raw JSON Fallback</option>
+              <option value="operator">Operator Panel</option>
             </select>
             <button onClick={validateGraph} disabled={editorMode === "json"}>Validate</button>
             <button onClick={handleSave} disabled={saving} className="primary">
@@ -720,8 +834,8 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
           </div>
         )}
 
-        <div style={{ display: "grid", gridTemplateColumns: editorMode === "visual" ? "3fr 1fr" : "1fr", gap: "1.5rem", height: "600px" }}>
-          {editorMode === "visual" ? (
+        <div style={{ display: "grid", gridTemplateColumns: (editorMode === "visual" || editorMode === "operator") ? "3fr 1fr" : "1fr", gap: "1.5rem", minHeight: "600px" }}>
+          {editorMode === "visual" && (
             <>
               <div style={{ border: "1px solid #dadce0", borderRadius: "8px", position: "relative", height: "100%", background: "#f8f9fa" }}>
                 <ReactFlow
@@ -776,12 +890,190 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
                 )}
               </article>
             </>
-          ) : (
+          )}
+
+          {editorMode === "json" && (
             <textarea
               value={rawJSON}
               onChange={(e) => setRawJSON(e.target.value)}
               style={{ width: "100%", height: "100%", fontFamily: "monospace", fontSize: "12px", border: "1px solid #ccc", padding: "10px", borderRadius: "5px" }}
             />
+          )}
+
+          {editorMode === "operator" && (
+            <>
+              <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem", height: "100%", overflowY: "auto" }}>
+                {/* 1. Version Controls */}
+                <article className="card">
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div>
+                      <h3>Active Version Control</h3>
+                      {activeVersion ? (
+                        <p className="muted" style={{ fontSize: "12px", margin: "5px 0 0" }}>
+                          Version {activeVersion.version} · Published {new Date(activeVersion.published_at).toLocaleString()}
+                        </p>
+                      ) : (
+                        <p className="muted" style={{ fontSize: "12px", margin: "5px 0 0" }}>No published versions yet.</p>
+                      )}
+                    </div>
+                    {activeVersion && (
+                      <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+                        <span className={`pill ${activeVersion.status}`}>{activeVersion.status}</span>
+                        <button
+                          onClick={handlePauseToggle}
+                          disabled={saving}
+                          style={{
+                            background: activeVersion.status === "paused" ? "#187d56" : "#e27220",
+                            color: "#fff",
+                            border: "none",
+                            padding: "8px 16px",
+                            borderRadius: "5px",
+                            fontWeight: "bold",
+                            cursor: "pointer"
+                          }}
+                        >
+                          {saving ? "Updating..." : activeVersion.status === "paused" ? "Resume version" : "Pause version"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </article>
+
+                {/* 2. DLQ Section */}
+                <article className="card">
+                  <h3>Dead Letter Queue (DLQ)</h3>
+                  {loadingOps ? (
+                    <p>Loading DLQ...</p>
+                  ) : dlqSteps.length === 0 && dlqIntents.length === 0 ? (
+                    <p className="muted" style={{ fontSize: "12px" }}>No dead-letter items for this journey.</p>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                      {dlqSteps.map((s) => (
+                        <div key={s.id} className="key-row" style={{ padding: "10px", background: "#fdf6f6", border: "1px solid #f5c6cb", borderRadius: "5px" }}>
+                          <div>
+                            <strong>Step DLQ · Node: {s.node_id} ({s.kind})</strong>
+                            <div style={{ fontSize: "11px", color: "#721c24", marginTop: "4px" }}>
+                              Run: {s.run_id} · Attempts: {s.attempts} · Error: {s.error_message || "no error info"}
+                            </div>
+                          </div>
+                          <button className="small primary" onClick={() => handleRetryDLQ("step", s.id)}>Retry</button>
+                        </div>
+                      ))}
+                      {dlqIntents.map((i) => (
+                        <div key={i.id} className="key-row" style={{ padding: "10px", background: "#fdf6f6", border: "1px solid #f5c6cb", borderRadius: "5px" }}>
+                          <div>
+                            <strong>Intent DLQ · Node: {i.node_id} (Message: {i.channel})</strong>
+                            <div style={{ fontSize: "11px", color: "#721c24", marginTop: "4px" }}>
+                              Run: {i.run_id} · Attempts: {i.attempts} · Endpoint: {i.endpoint} · Error: {i.error_message || "no error info"}
+                            </div>
+                          </div>
+                          <button className="small primary" onClick={() => handleRetryDLQ("intent", i.id)}>Retry</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </article>
+
+                {/* 3. Runs list */}
+                <article className="card" style={{ flexGrow: 1 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+                    <h3>Journey Runs ({runs.length})</h3>
+                    <button className="small secondary" onClick={() => loadOperations(editingJourney.id, editingJourney.latest_version)} disabled={loadingOps}>
+                      Refresh
+                    </button>
+                  </div>
+                  {loadingOps ? (
+                    <p>Loading runs...</p>
+                  ) : runs.length === 0 ? (
+                    <p className="muted" style={{ fontSize: "12px" }}>No runs started for this journey.</p>
+                  ) : (
+                    <div style={{ overflowX: "auto" }}>
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Run ID / Profile</th>
+                            <th>Status</th>
+                            <th>Current Node</th>
+                            <th>Entered At</th>
+                            <th>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {runs.map((r) => (
+                            <tr key={r.id} style={{ background: selectedRun?.id === r.id ? "#f1f3f4" : "transparent" }}>
+                              <td>
+                                <div style={{ fontWeight: "bold", fontSize: "12px" }}>{r.id.slice(0, 8)}...</div>
+                                <div style={{ fontSize: "10px", color: "var(--muted)" }}>Ext: {r.subject_external_id}</div>
+                              </td>
+                              <td><span className={`pill ${r.status}`}>{r.status}</span></td>
+                              <td><code>{r.current_node_id || "-"}</code></td>
+                              <td style={{ fontSize: "11px" }}>{new Date(r.entered_at).toLocaleString()}</td>
+                              <td>
+                                <div style={{ display: "flex", gap: "0.5rem" }}>
+                                  <button className="small secondary" onClick={() => selectRun(r)}>Inspect</button>
+                                  {r.status === "active" && (
+                                    <button className="small danger" onClick={() => handleCancelRun(r.id)}>Cancel</button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </article>
+              </div>
+
+              {/* Inspector panel */}
+              <article className="card" style={{ height: "100%", overflowY: "auto" }}>
+                {selectedRun ? (
+                  <div>
+                    <h3>Run Inspector</h3>
+                    <div style={{ fontSize: "12px", borderBottom: "1px solid #eee", paddingBottom: "1rem", marginBottom: "1rem" }}>
+                      <div><strong>Run ID:</strong> {selectedRun.id}</div>
+                      <div><strong>External Subject:</strong> {selectedRun.subject_external_id}</div>
+                      <div><strong>Status:</strong> <span className={`pill ${selectedRun.status}`}>{selectedRun.status}</span></div>
+                      <div><strong>Entered:</strong> {new Date(selectedRun.entered_at).toLocaleString()}</div>
+                      {selectedRun.completed_at && (
+                        <div><strong>Completed:</strong> {new Date(selectedRun.completed_at).toLocaleString()}</div>
+                      )}
+                    </div>
+
+                    <h4>Transitions Timeline</h4>
+                    {transitions.length === 0 ? (
+                      <p className="muted" style={{ fontSize: "11px" }}>No transitions recorded yet.</p>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "1rem", position: "relative", paddingLeft: "10px", borderLeft: "2px solid #e8eaed" }}>
+                        {transitions.map((t, idx) => (
+                          <div key={t.id || idx} style={{ position: "relative", fontSize: "12px" }}>
+                            <div style={{ position: "absolute", left: "-15px", top: "4px", width: "8px", height: "8px", borderRadius: "50%", background: "#1a73e8" }} />
+                            <div style={{ fontWeight: "bold" }}>
+                              {t.from_node ? `Node ${t.from_node}` : "Start"} &rarr; {t.to_node ? `Node ${t.to_node}` : "End"}
+                            </div>
+                            <div style={{ fontSize: "10px", color: "var(--muted)" }}>
+                              {t.node_type} · Outcome: <strong>{t.outcome}</strong>
+                            </div>
+                            {t.detail && Object.keys(t.detail).length > 0 && (
+                              <pre style={{ fontSize: "9px", margin: "4px 0 0", padding: "4px", background: "#f8f9fa", borderRadius: "3px", overflowX: "auto" }}>
+                                {JSON.stringify(t.detail, null, 2)}
+                              </pre>
+                            )}
+                            <div style={{ fontSize: "9px", color: "var(--muted)", marginTop: "2px" }}>
+                              {new Date(t.occurred_at).toLocaleString()}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", height: "100%", alignItems: "center", justifyContent: "center", color: "var(--muted)", fontSize: "12px", textAlign: "center" }}>
+                    Select a run to inspect its transition timeline.
+                  </div>
+                )}
+              </article>
+            </>
           )}
         </div>
       </section>

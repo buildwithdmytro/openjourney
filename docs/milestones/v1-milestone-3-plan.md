@@ -640,9 +640,9 @@ task ends with a **Done when** check.
 6. [x] **Late-event / downtime catch-up**: in `TickNext`, if a claimed step's `available_at` is
    older than a threshold, apply the version's `late_policy` (`run`/`skip`/`reschedule`).
    *Done when:* a unit test with a stale step honors each policy. — done: implemented late-event catch-up checking stale steps in TickNext, added RescheduleJourneyStep method to the store and mock interfaces, and verified skip, reschedule, and run behaviors with unit tests.
-7. **React operator views**: pause/resume toggle, a run inspector (status + transition
+7. [x] **React operator views**: pause/resume toggle, a run inspector (status + transition
    timeline from `journey_transitions`), a DLQ table with a retry button. *Done when:*
-   `npm run build` passes and the views render against seeded data.
+   `npm run build` passes and the views render against seeded data. — done: pause/resume toggle, run inspector (status + transition timeline), and DLQ table with retry button implemented in web/src/sections/Journeys.tsx, verified with tsc typecheck and vite production build.
 
 ### Milestone 8.8 — Fake-clock, replay/determinism, integration, load & audit (closeout)
 1. **Fake-clock end-to-end test** in `internal/postgres/journeys_integration_test.go` (copy

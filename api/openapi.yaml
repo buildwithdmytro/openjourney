@@ -595,12 +595,28 @@ paths:
         "422": { $ref: "#/components/responses/Error" }
         "500": { $ref: "#/components/responses/Error" }
   /v1/journeys/{id}/versions/{v}:
+    get:
+      operationId: getJourneyVersion
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: v, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Journey version details.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JourneyVersion" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "500": { $ref: "#/components/responses/Error" }
     put:
       operationId: setJourneyVersionStatus
       security: [{ bearerAuth: [] }]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
-        - { name: v, in: path, required: true, schema: { type: integer } }
+        - { name: v, in: path, required: true, schema: { type: string } }
       requestBody:
         required: true
         content:
@@ -641,6 +657,53 @@ paths:
                 type: object
                 properties:
                   status: { type: string }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "500": { $ref: "#/components/responses/Error" }
+  /v1/journeys/{id}/runs:
+    get:
+      operationId: listJourneyRuns
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: List of runs for the journey.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [runs]
+                properties:
+                  runs:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/JourneyRun"
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "500": { $ref: "#/components/responses/Error" }
+  /v1/journeys/{id}/runs/{runID}/transitions:
+    get:
+      operationId: listJourneyRunTransitions
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: runID, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: List of transitions for the journey run.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [transitions]
+                properties:
+                  transitions:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/JourneyTransition"
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
@@ -923,3 +986,43 @@ components:
         error_message: { type: string }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+    JourneyRun:
+      type: object
+      required: [id, tenant_id, workspace_id, journey_id, journey_version_id, profile_id, subject_external_id, entry_key, reentry_sequence, status, current_node_id, entered_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        tenant_id: { type: string, format: uuid }
+        workspace_id: { type: string, format: uuid }
+        journey_id: { type: string, format: uuid }
+        journey_version_id: { type: string, format: uuid }
+        profile_id: { type: string, format: uuid }
+        subject_external_id: { type: string }
+        entry_key: { type: string }
+        reentry_sequence: { type: integer }
+        status: { enum: [active, completed, canceled] }
+        current_node_id: { type: string }
+        state:
+          type: object
+          additionalProperties: true
+        wait_event_type: { type: string }
+        wait_until: { type: string, format: date-time }
+        goal_reached: { type: boolean }
+        entered_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        completed_at: { type: string, format: date-time }
+    JourneyTransition:
+      type: object
+      required: [id, run_id, tenant_id, node_type, outcome, occurred_at]
+      properties:
+        id: { type: string, format: uuid }
+        run_id: { type: string, format: uuid }
+        tenant_id: { type: string, format: uuid }
+        from_node: { type: string }
+        to_node: { type: string }
+        node_type: { type: string }
+        outcome: { type: string }
+        detail:
+          type: object
+          additionalProperties: true
+        occurred_at: { type: string, format: date-time }
+

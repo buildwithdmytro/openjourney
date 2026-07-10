@@ -287,6 +287,18 @@ func (f *fakeStore) GetJourneyRunsForProfile(ctx context.Context, tenantID, vers
 	}
 	return out, nil
 }
+func (f *fakeStore) GetJourneyRuns(ctx context.Context, p domain.Principal, journeyID string) ([]domain.JourneyRun, error) {
+	var out []domain.JourneyRun
+	for _, r := range f.runs {
+		if r.JourneyID == journeyID && r.TenantID == p.TenantID {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+func (f *fakeStore) GetJourneyTransitions(ctx context.Context, p domain.Principal, runID string) ([]domain.JourneyTransition, error) {
+	return []domain.JourneyTransition{}, nil
+}
 func (f *fakeStore) CreateJourneyRun(ctx context.Context, run domain.JourneyRun) (bool, error) {
 	run.ID = "run-" + run.ProfileID
 	f.runs = append(f.runs, run)
@@ -854,6 +866,33 @@ func TestJourneyEndpoints(t *testing.T) {
 	server.ServeHTTP(badBackfillRes3, badBackfillReq3)
 	if badBackfillRes3.Code != http.StatusNotFound {
 		t.Fatalf("expected 404 for not found journey, got %d", badBackfillRes3.Code)
+	}
+
+	// List Runs (success)
+	runsReq := httptest.NewRequest(http.MethodGet, "/v1/journeys/journey-1/runs", nil)
+	runsReq.Header.Set("Authorization", "Bearer test-key")
+	runsRes := httptest.NewRecorder()
+	server.ServeHTTP(runsRes, runsReq)
+	if runsRes.Code != http.StatusOK {
+		t.Fatalf("expected 200 for runs list, got %d body=%s", runsRes.Code, runsRes.Body.String())
+	}
+
+	// List Transitions (success)
+	transReq := httptest.NewRequest(http.MethodGet, "/v1/journeys/journey-1/runs/run-1/transitions", nil)
+	transReq.Header.Set("Authorization", "Bearer test-key")
+	transRes := httptest.NewRecorder()
+	server.ServeHTTP(transRes, transReq)
+	if transRes.Code != http.StatusOK {
+		t.Fatalf("expected 200 for transitions list, got %d body=%s", transRes.Code, transRes.Body.String())
+	}
+
+	// Get Journey Version (success)
+	verReq := httptest.NewRequest(http.MethodGet, "/v1/journeys/journey-1/versions/version-1", nil)
+	verReq.Header.Set("Authorization", "Bearer test-key")
+	verRes := httptest.NewRecorder()
+	server.ServeHTTP(verRes, verReq)
+	if verRes.Code != http.StatusOK {
+		t.Fatalf("expected 200 for version get, got %d body=%s", verRes.Code, verRes.Body.String())
 	}
 }
 

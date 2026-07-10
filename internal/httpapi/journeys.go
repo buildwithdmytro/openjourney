@@ -148,6 +148,21 @@ func (s *Server) setJourneyVersionStatus(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, map[string]any{"status": status})
 }
 
+func (s *Server) getJourneyVersion(w http.ResponseWriter, r *http.Request) {
+	principal := principalFrom(r)
+	versionID := r.PathValue("v")
+	res, err := s.store.GetJourneyVersion(r.Context(), principal.TenantID, versionID)
+	if errors.Is(err, postgres.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "journey version not found")
+		return
+	}
+	if err != nil {
+		internalError(w, err, "get journey version", principal)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
 func (s *Server) cancelJourneyRun(w http.ResponseWriter, r *http.Request) {
 	principal := principalFrom(r)
 	journeyID := r.PathValue("id")
@@ -242,4 +257,40 @@ func (s *Server) backfillJourney(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"enrolled_count": count,
 	})
+}
+
+func (s *Server) listJourneyRuns(w http.ResponseWriter, r *http.Request) {
+	principal := principalFrom(r)
+	id := r.PathValue("id")
+	res, err := s.store.GetJourneyRuns(r.Context(), principal, id)
+	if errors.Is(err, postgres.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "journey not found")
+		return
+	}
+	if err != nil {
+		internalError(w, err, "list journey runs", principal)
+		return
+	}
+	if res == nil {
+		res = []domain.JourneyRun{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"runs": res})
+}
+
+func (s *Server) listJourneyRunTransitions(w http.ResponseWriter, r *http.Request) {
+	principal := principalFrom(r)
+	runID := r.PathValue("runID")
+	res, err := s.store.GetJourneyTransitions(r.Context(), principal, runID)
+	if errors.Is(err, postgres.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "run transitions not found")
+		return
+	}
+	if err != nil {
+		internalError(w, err, "list journey run transitions", principal)
+		return
+	}
+	if res == nil {
+		res = []domain.JourneyTransition{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"transitions": res})
 }

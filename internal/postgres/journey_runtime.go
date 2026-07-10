@@ -398,6 +398,56 @@ func (s *Store) GetJourneyRunsForProfile(ctx context.Context, tenantID, versionI
 	return out, nil
 }
 
+func (s *Store) GetJourneyRuns(ctx context.Context, p domain.Principal, journeyID string) ([]domain.JourneyRun, error) {
+	rows, err := s.pool.Query(ctx, `SELECT id, tenant_id, workspace_id, journey_id, journey_version_id, profile_id,
+			subject_external_id, entry_key, reentry_sequence, status, current_node_id,
+			state, wait_event_type, wait_until, goal_reached, entered_at, updated_at, completed_at
+		FROM journey_runs
+		WHERE tenant_id=$1 AND workspace_id=$2 AND journey_id=$3
+		ORDER BY entered_at DESC`,
+		p.TenantID, p.WorkspaceID, journeyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []domain.JourneyRun
+	for rows.Next() {
+		var r domain.JourneyRun
+		err := rows.Scan(&r.ID, &r.TenantID, &r.WorkspaceID, &r.JourneyID, &r.JourneyVersionID, &r.ProfileID,
+			&r.SubjectExternalID, &r.EntryKey, &r.ReentrySequence, &r.Status, &r.CurrentNodeID,
+			&r.State, &r.WaitEventType, &r.WaitUntil, &r.GoalReached, &r.EnteredAt, &r.UpdatedAt, &r.CompletedAt)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+func (s *Store) GetJourneyTransitions(ctx context.Context, p domain.Principal, runID string) ([]domain.JourneyTransition, error) {
+	rows, err := s.pool.Query(ctx, `SELECT id, run_id, tenant_id, from_node, to_node, node_type, outcome, detail, occurred_at
+		FROM journey_transitions
+		WHERE tenant_id=$1 AND run_id=$2
+		ORDER BY occurred_at ASC`,
+		p.TenantID, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []domain.JourneyTransition
+	for rows.Next() {
+		var t domain.JourneyTransition
+		err := rows.Scan(&t.ID, &t.RunID, &t.TenantID, &t.FromNode, &t.ToNode, &t.NodeType, &t.Outcome, &t.Detail, &t.OccurredAt)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, nil
+}
+
 func (s *Store) EvaluateAudience(ctx context.Context, p domain.Principal, profileID string, dsl json.RawMessage) (bool, error) {
 	if len(dsl) == 0 || string(dsl) == "{}" || string(dsl) == "null" {
 		return true, nil

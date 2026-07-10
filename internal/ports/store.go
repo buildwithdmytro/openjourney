@@ -101,6 +101,8 @@ type Store interface {
 	GetJourneyRun(ctx context.Context, p domain.Principal, runID string) (domain.JourneyRun, error)
 	GetJourneyRunSystem(ctx context.Context, tenantID, runID string) (domain.JourneyRun, error)
 	GetJourneyRunsForProfile(ctx context.Context, tenantID, versionID, profileID string) ([]domain.JourneyRun, error)
+	GetJourneyRuns(ctx context.Context, p domain.Principal, journeyID string) ([]domain.JourneyRun, error)
+	GetJourneyTransitions(ctx context.Context, p domain.Principal, runID string) ([]domain.JourneyTransition, error)
 	UpdateJourneyRun(ctx context.Context, p domain.Principal, run domain.JourneyRun) (domain.JourneyRun, error)
 	CancelJourneyRun(ctx context.Context, p domain.Principal, journeyID string, runID string) error
 	GetJourneyDLQ(ctx context.Context, p domain.Principal) ([]domain.JourneyStep, []domain.JourneyMessageIntent, error)
