@@ -88,16 +88,16 @@ func TestJourneyRuntimeIntegration(t *testing.T) {
 
 	// 3. Test CreateJourneyRun
 	run := domain.JourneyRun{
-		TenantID:          p.TenantID,
-		WorkspaceID:       p.WorkspaceID,
-		JourneyID:         created.ID,
-		JourneyVersionID:  version.ID,
-		ProfileID:         profile.ID,
-		EntryKey:          "event-triggered-key",
-		ReentrySequence:   0,
-		Status:            "active",
-		CurrentNodeID:     "n1",
-		State:             json.RawMessage("{}"),
+		TenantID:         p.TenantID,
+		WorkspaceID:      p.WorkspaceID,
+		JourneyID:        created.ID,
+		JourneyVersionID: version.ID,
+		ProfileID:        profile.ID,
+		EntryKey:         "event-triggered-key",
+		ReentrySequence:  0,
+		Status:           "active",
+		CurrentNodeID:    "n1",
+		State:            json.RawMessage("{}"),
 	}
 	inserted, err := store.CreateJourneyRun(ctx, run)
 	if err != nil {
@@ -146,6 +146,12 @@ func TestJourneyRuntimeIntegration(t *testing.T) {
 	}
 
 	// 5. Test Journey Steps (durable queue)
+	fetchedRun.Status = "active"
+	fetchedRun.CurrentNodeID = "n1"
+	fetchedRun.CompletedAt = nil
+	if _, err := store.UpdateJourneyRun(ctx, p, fetchedRun); err != nil {
+		t.Fatalf("reset run for step claim: %v", err)
+	}
 	step := domain.JourneyStep{
 		RunID:       run.ID,
 		TenantID:    p.TenantID,
@@ -177,6 +183,11 @@ func TestJourneyRuntimeIntegration(t *testing.T) {
 	}
 
 	// Fail step
+	fetchedRun.Status = "active"
+	fetchedRun.CurrentNodeID = "n2"
+	if _, err := store.UpdateJourneyRun(ctx, p, fetchedRun); err != nil {
+		t.Fatalf("move run for failed step claim: %v", err)
+	}
 	step2 := domain.JourneyStep{
 		RunID:       run.ID,
 		TenantID:    p.TenantID,
@@ -200,11 +211,11 @@ func TestJourneyRuntimeIntegration(t *testing.T) {
 
 	// 6. Test RecordTransition
 	trans := domain.JourneyTransition{
-		RunID:      run.ID,
-		TenantID:   p.TenantID,
-		NodeType:   "entry",
-		Outcome:    "advanced",
-		Detail:     json.RawMessage(`{"from":"n1","to":"n2"}`),
+		RunID:    run.ID,
+		TenantID: p.TenantID,
+		NodeType: "entry",
+		Outcome:  "advanced",
+		Detail:   json.RawMessage(`{"from":"n1","to":"n2"}`),
 	}
 	err = store.RecordTransition(ctx, trans)
 	if err != nil {
@@ -223,6 +234,11 @@ func TestJourneyRuntimeIntegration(t *testing.T) {
 	err = store.InsertJourneyStep(ctx, step3)
 	if err != nil {
 		t.Fatalf("InsertJourneyStep 3: %v", err)
+	}
+	fetchedRun.Status = "active"
+	fetchedRun.CurrentNodeID = "n3"
+	if _, err := store.UpdateJourneyRun(ctx, p, fetchedRun); err != nil {
+		t.Fatalf("move run for advance tx claim: %v", err)
 	}
 	claimedStep3, claimed3, err := store.ClaimJourneyStep(ctx)
 	if err != nil || !claimed3 {
@@ -443,7 +459,7 @@ func TestJourneyWaitEventResolutionIntegration(t *testing.T) {
 	_, _ = store.CreateJourneyRun(ctx, run)
 	var fetchedRun domain.JourneyRun
 	_ = store.pool.QueryRow(ctx, `SELECT id FROM journey_runs WHERE tenant_id=$1 AND profile_id=$2`, p.TenantID, profile.ID).Scan(&fetchedRun.ID)
-	
+
 	step := domain.JourneyStep{
 		RunID:       fetchedRun.ID,
 		TenantID:    p.TenantID,
@@ -470,6 +486,20 @@ func TestJourneyWaitEventResolutionIntegration(t *testing.T) {
 		t.Errorf("expected waiting at n2, got status=%s event=%v", fetchedRun.Status, fetchedRun.WaitEventType)
 	}
 
+	_, err = store.pool.Exec(ctx, `
+		UPDATE journey_steps
+		SET available_at = now() - interval '1 hour'
+		WHERE run_id = $1 AND kind = 'timeout' AND status = 'pending'
+	`, fetchedRun.ID)
+	if err != nil {
+		t.Fatalf("failed to make timeout step due: %v", err)
+	}
+	claimedTimeout, claimed, err := store.ClaimJourneyStep(ctx)
+	if err != nil || !claimed {
+		t.Fatalf("ClaimJourneyStep timeout: err=%v claimed=%v", err, claimed)
+	}
+	staleTimeoutRun := fetchedRun
+
 	awaitedEvent := []domain.Event{
 		{
 			Type: "email.opened", SchemaVersion: 1, ExternalID: profileExtID,
@@ -489,6 +519,46 @@ func TestJourneyWaitEventResolutionIntegration(t *testing.T) {
 	fetchedRun, _ = store.GetJourneyRun(ctx, p, fetchedRun.ID)
 	if fetchedRun.Status != "active" || fetchedRun.CurrentNodeID != "n3" || fetchedRun.WaitEventType != nil {
 		t.Errorf("expected run active at n3, got status=%s node=%s", fetchedRun.Status, fetchedRun.CurrentNodeID)
+	}
+
+	staleTimeoutRun.Status = "active"
+	staleTimeoutRun.CurrentNodeID = "n4"
+	staleTimeoutRun.WaitEventType = nil
+	staleTimeoutRun.WaitUntil = nil
+	nextTimeoutStep := &domain.JourneyStep{
+		RunID:       fetchedRun.ID,
+		TenantID:    p.TenantID,
+		NodeID:      "n4",
+		Kind:        "advance",
+		Status:      "pending",
+		AvailableAt: time.Now(),
+	}
+	timeoutTransition := domain.JourneyTransition{
+		RunID:    fetchedRun.ID,
+		TenantID: p.TenantID,
+		FromNode: ptrStr("n2"),
+		ToNode:   ptrStr("n4"),
+		NodeType: "wait_event",
+		Outcome:  "timeout",
+	}
+	if err := store.AdvanceRunTx(ctx, fetchedRun.ID, staleTimeoutRun, claimedTimeout.ID, nextTimeoutStep, timeoutTransition, nil); err != nil {
+		t.Fatalf("stale timeout AdvanceRunTx should no-op: %v", err)
+	}
+
+	fetchedRun, _ = store.GetJourneyRun(ctx, p, fetchedRun.ID)
+	if fetchedRun.Status != "active" || fetchedRun.CurrentNodeID != "n3" {
+		t.Errorf("stale timeout overwrote success branch: status=%s node=%s", fetchedRun.Status, fetchedRun.CurrentNodeID)
+	}
+	var timeoutTransitions int
+	err = store.pool.QueryRow(ctx, `
+		SELECT count(*) FROM journey_transitions
+		WHERE run_id=$1 AND node_type='wait_event' AND outcome='timeout'
+	`, fetchedRun.ID).Scan(&timeoutTransitions)
+	if err != nil {
+		t.Fatalf("count timeout transitions: %v", err)
+	}
+	if timeoutTransitions != 0 {
+		t.Errorf("expected no timeout transition after event success, got %d", timeoutTransitions)
 	}
 
 	_, _ = store.pool.Exec(ctx, "DELETE FROM tenants WHERE id=$1", p.TenantID)
@@ -569,7 +639,7 @@ func TestJourneyWaitEventTimeoutIntegration(t *testing.T) {
 	_, _ = store.CreateJourneyRun(ctx, run)
 	var fetchedRun domain.JourneyRun
 	_ = store.pool.QueryRow(ctx, `SELECT id FROM journey_runs WHERE tenant_id=$1 AND profile_id=$2`, p.TenantID, profile.ID).Scan(&fetchedRun.ID)
-	
+
 	step := domain.JourneyStep{
 		RunID:       fetchedRun.ID,
 		TenantID:    p.TenantID,
@@ -1689,7 +1759,7 @@ func TestJourneyPauseResume(t *testing.T) {
 
 	// Create journey run
 	var runID string
-	err = store.pool.QueryRow(ctx, `INSERT INTO journey_runs (tenant_id, workspace_id, journey_id, journey_version_id, profile_id, entry_key, current_node_id) VALUES ($1, $2, $3, $4, $5, 'entryPause', 'node') RETURNING id`,
+	err = store.pool.QueryRow(ctx, `INSERT INTO journey_runs (tenant_id, workspace_id, journey_id, journey_version_id, profile_id, entry_key, current_node_id) VALUES ($1, $2, $3, $4, $5, 'entryPause', 'node-1') RETURNING id`,
 		p.TenantID, p.WorkspaceID, journeyID, verID, profileID).Scan(&runID)
 	if err != nil {
 		t.Fatal(err)
@@ -1731,12 +1801,12 @@ func TestJourneyPauseResume(t *testing.T) {
 	}
 
 	// Step should NOT be claimable now
-	_, found2, err := store.ClaimJourneyStep(ctx)
+	step2, found2, err := store.ClaimJourneyStep(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if found2 {
-		t.Fatal("expected step to NOT be claimable while version is paused")
+		t.Fatalf("expected step to NOT be claimable while version is paused, but got step: %+v", step2)
 	}
 
 	// Resume the journey version
@@ -1812,7 +1882,7 @@ func TestJourneyParticipantCancel(t *testing.T) {
 
 	// Create journey run
 	var runID string
-	err = store.pool.QueryRow(ctx, `INSERT INTO journey_runs (tenant_id, workspace_id, journey_id, journey_version_id, profile_id, entry_key, current_node_id) VALUES ($1, $2, $3, $4, $5, 'entryCancel', 'node') RETURNING id`,
+	err = store.pool.QueryRow(ctx, `INSERT INTO journey_runs (tenant_id, workspace_id, journey_id, journey_version_id, profile_id, entry_key, current_node_id) VALUES ($1, $2, $3, $4, $5, 'entryCancel', 'node-1') RETURNING id`,
 		p.TenantID, p.WorkspaceID, journeyID, verID, profileID).Scan(&runID)
 	if err != nil {
 		t.Fatal(err)
@@ -1948,7 +2018,7 @@ func TestJourneyDLQ(t *testing.T) {
 
 	// Create journey run
 	var runID string
-	err = store.pool.QueryRow(ctx, `INSERT INTO journey_runs (tenant_id, workspace_id, journey_id, journey_version_id, profile_id, entry_key, current_node_id) VALUES ($1, $2, $3, $4, $5, 'entryDlq', 'node') RETURNING id`,
+	err = store.pool.QueryRow(ctx, `INSERT INTO journey_runs (tenant_id, workspace_id, journey_id, journey_version_id, profile_id, entry_key, current_node_id) VALUES ($1, $2, $3, $4, $5, 'entryDlq', 'node-1') RETURNING id`,
 		p.TenantID, p.WorkspaceID, journeyID, verID, profileID).Scan(&runID)
 	if err != nil {
 		t.Fatal(err)
@@ -2007,9 +2077,51 @@ func TestJourneyDLQ(t *testing.T) {
 	if len(intents) != 1 || intents[0].ID != intentID {
 		t.Errorf("expected 1 dead intent in DLQ, got %+v", intents)
 	}
+
+	// Retry step
+	err = store.RetryJourneyStep(ctx, p, claimedStep.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify step has been reset
+	var retriedStep domain.JourneyStep
+	err = store.pool.QueryRow(ctx, `SELECT id, status, attempts, error_message, locked_until FROM journey_steps WHERE id = $1`, claimedStep.ID).
+		Scan(&retriedStep.ID, &retriedStep.Status, &retriedStep.Attempts, &retriedStep.ErrorMessage, &retriedStep.LockedUntil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retriedStep.Status != "pending" || retriedStep.Attempts != 0 || retriedStep.ErrorMessage != nil || retriedStep.LockedUntil != nil {
+		t.Errorf("step retry did not reset properly: %+v", retriedStep)
+	}
+
+	// Retry intent
+	err = store.RetryJourneyMessageIntent(ctx, p, intentID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify intent has been reset
+	var retriedIntent domain.JourneyMessageIntent
+	err = store.pool.QueryRow(ctx, `SELECT id, status, attempts, error_message, locked_until FROM journey_message_intents WHERE id = $1`, intentID).
+		Scan(&retriedIntent.ID, &retriedIntent.Status, &retriedIntent.Attempts, &retriedIntent.ErrorMessage, &retriedIntent.LockedUntil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retriedIntent.Status != "pending" || retriedIntent.Attempts != 0 || retriedIntent.ErrorMessage != nil || retriedIntent.LockedUntil != nil {
+		t.Errorf("intent retry did not reset properly: %+v", retriedIntent)
+	}
+
+	// Verify DLQ is now empty
+	steps2, intents2, err := store.GetJourneyDLQ(ctx, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(steps2) != 0 || len(intents2) != 0 {
+		t.Errorf("expected empty DLQ after retries, got steps=%d, intents=%d", len(steps2), len(intents2))
+	}
 }
 
 func ptrStr(s string) *string {
 	return &s
 }
-

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/buildwithdmytro/openjourney/internal/audience"
@@ -105,7 +106,7 @@ func (s *Store) CancelJourneyRun(ctx context.Context, p domain.Principal, journe
 	}
 	if res.RowsAffected() == 0 {
 		var exists bool
-		err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM journey_runs WHERE tenant_id = $1 AND workspace_id = $2 AND journey_id = $3 AND id = $4)` ,
+		err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM journey_runs WHERE tenant_id = $1 AND workspace_id = $2 AND journey_id = $3 AND id = $4)`,
 			p.TenantID, p.WorkspaceID, journeyID, runID).Scan(&exists)
 		if err != nil {
 			return err
@@ -138,6 +139,12 @@ func (s *Store) ClaimJourneyStep(ctx context.Context) (domain.JourneyStep, bool,
 			JOIN journey_runs jr ON jr.id = js.run_id
 			JOIN journey_versions jv ON jv.id = jr.journey_version_id
 			WHERE jv.status = 'active'
+			  AND js.tenant_id = jr.tenant_id
+			  AND js.node_id = jr.current_node_id
+			  AND (
+				(js.kind = 'advance' AND jr.status = 'active')
+				OR (js.kind = 'timeout' AND jr.status = 'waiting')
+			  )
 			  AND (
 				(js.status IN ('pending', 'failed') AND js.attempts < 10 AND js.available_at <= now())
 				OR (js.status='processing' AND js.locked_until <= now())
@@ -208,10 +215,61 @@ func (s *Store) AdvanceRunTx(ctx context.Context, runID string, run domain.Journ
 	}
 	defer tx.Rollback(ctx)
 
+	var claimedStep domain.JourneyStep
+	err = tx.QueryRow(ctx, `SELECT id, run_id, tenant_id, node_id, kind, status
+		FROM journey_steps
+		WHERE id=$1
+		FOR UPDATE`,
+		stepID).
+		Scan(&claimedStep.ID, &claimedStep.RunID, &claimedStep.TenantID, &claimedStep.NodeID, &claimedStep.Kind, &claimedStep.Status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("advance lock step: %w", err)
+	}
+	if claimedStep.RunID != runID || claimedStep.RunID != run.ID || claimedStep.TenantID != run.TenantID {
+		return errors.New("advance step does not match run")
+	}
+	if claimedStep.Status == "completed" {
+		return tx.Commit(ctx)
+	}
+	if claimedStep.Status != "processing" {
+		return fmt.Errorf("advance step %s is %s, expected processing", stepID, claimedStep.Status)
+	}
+
+	var dbRunStatus, dbCurrentNodeID string
+	err = tx.QueryRow(ctx, `SELECT status, current_node_id
+		FROM journey_runs
+		WHERE id=$1 AND tenant_id=$2
+		FOR UPDATE`,
+		runID, run.TenantID).Scan(&dbRunStatus, &dbCurrentNodeID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("advance lock run: %w", err)
+	}
+
+	expectedStatus := "active"
+	if claimedStep.Kind == "timeout" {
+		expectedStatus = "waiting"
+	}
+	if dbRunStatus != expectedStatus || dbCurrentNodeID != claimedStep.NodeID {
+		_, err = tx.Exec(ctx, `UPDATE journey_steps
+			SET status='completed', locked_until=NULL, updated_at=now()
+			WHERE id=$1 AND run_id=$2 AND tenant_id=$3`,
+			stepID, runID, run.TenantID)
+		if err != nil {
+			return fmt.Errorf("advance complete stale step: %w", err)
+		}
+		return tx.Commit(ctx)
+	}
+
 	if len(run.State) == 0 {
 		run.State = json.RawMessage("{}")
 	}
-	_, err = tx.Exec(ctx, `UPDATE journey_runs SET
+	res, err := tx.Exec(ctx, `UPDATE journey_runs SET
 			status=$3,
 			current_node_id=$4,
 			state=$5,
@@ -220,11 +278,14 @@ func (s *Store) AdvanceRunTx(ctx context.Context, runID string, run domain.Journ
 			goal_reached=$8,
 			updated_at=now(),
 			completed_at=$9
-		WHERE id=$1 AND tenant_id=$2`,
+		WHERE id=$1 AND tenant_id=$2 AND status=$10 AND current_node_id=$11`,
 		runID, run.TenantID, run.Status, run.CurrentNodeID, run.State,
-		run.WaitEventType, run.WaitUntil, run.GoalReached, run.CompletedAt)
+		run.WaitEventType, run.WaitUntil, run.GoalReached, run.CompletedAt, dbRunStatus, dbCurrentNodeID)
 	if err != nil {
 		return fmt.Errorf("advance update run: %w", err)
+	}
+	if res.RowsAffected() == 0 {
+		return errors.New("advance run state changed concurrently")
 	}
 
 	_, err = tx.Exec(ctx, `UPDATE journey_steps SET status='completed', locked_until=NULL, updated_at=now() WHERE id=$1`, stepID)
@@ -649,7 +710,7 @@ func (s *Store) resolveWaitingRuns(ctx context.Context, tx pgx.Tx, event domain.
 		_, err = tx.Exec(ctx, `
 			UPDATE journey_steps
 			SET status = 'completed', updated_at = now()
-			WHERE run_id = $1 AND status = 'pending' AND kind = 'timeout'
+			WHERE run_id = $1 AND status IN ('pending', 'processing', 'failed') AND kind = 'timeout'
 		`, it.id)
 		if err != nil {
 			return err
@@ -792,7 +853,40 @@ func (s *Store) GetJourneyDLQ(ctx context.Context, p domain.Principal) ([]domain
 	return steps, intents, nil
 }
 
+func (s *Store) RetryJourneyStep(ctx context.Context, p domain.Principal, stepID string) error {
+	res, err := s.pool.Exec(ctx, `UPDATE journey_steps SET
+			status = 'pending',
+			attempts = 0,
+			available_at = now(),
+			locked_until = NULL,
+			error_message = NULL,
+			updated_at = now()
+		WHERE id = $3 AND tenant_id = $1 AND EXISTS (
+			SELECT 1 FROM journey_runs WHERE id = run_id AND workspace_id = $2
+		)`, p.TenantID, p.WorkspaceID, stepID)
+	if err != nil {
+		return err
+	}
+	if res.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
 
-
-
-
+func (s *Store) RetryJourneyMessageIntent(ctx context.Context, p domain.Principal, intentID string) error {
+	res, err := s.pool.Exec(ctx, `UPDATE journey_message_intents SET
+			status = 'pending',
+			attempts = 0,
+			available_at = now(),
+			locked_until = NULL,
+			error_message = NULL,
+			updated_at = now()
+		WHERE id = $3 AND tenant_id = $1 AND workspace_id = $2`, p.TenantID, p.WorkspaceID, intentID)
+	if err != nil {
+		return err
+	}
+	if res.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}

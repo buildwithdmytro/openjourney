@@ -104,6 +104,8 @@ type Store interface {
 	UpdateJourneyRun(ctx context.Context, p domain.Principal, run domain.JourneyRun) (domain.JourneyRun, error)
 	CancelJourneyRun(ctx context.Context, p domain.Principal, journeyID string, runID string) error
 	GetJourneyDLQ(ctx context.Context, p domain.Principal) ([]domain.JourneyStep, []domain.JourneyMessageIntent, error)
+	RetryJourneyStep(ctx context.Context, p domain.Principal, stepID string) error
+	RetryJourneyMessageIntent(ctx context.Context, p domain.Principal, intentID string) error
 	ClaimJourneyStep(ctx context.Context) (domain.JourneyStep, bool, error)
 	CompleteJourneyStep(ctx context.Context, stepID string) error
 	FailJourneyStep(ctx context.Context, stepID string, errMsg string) error

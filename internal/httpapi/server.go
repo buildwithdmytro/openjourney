@@ -104,6 +104,7 @@ func (s *Server) buildMux() http.Handler {
 	mux.Handle("POST /v1/journeys", s.authenticate("journeys:write", http.HandlerFunc(s.createJourney)))
 	mux.Handle("GET /v1/journeys", s.authenticate("journeys:read", http.HandlerFunc(s.listJourneys)))
 	mux.Handle("GET /v1/journeys/dlq", s.authenticate("journeys:read", http.HandlerFunc(s.getJourneyDLQ)))
+	mux.Handle("POST /v1/journeys/dlq/{kind}/{id}/retry", s.authenticate("journeys:write", http.HandlerFunc(s.retryJourneyDLQ)))
 	mux.Handle("GET /v1/journeys/{id}", s.authenticate("journeys:read", http.HandlerFunc(s.getJourney)))
 	mux.Handle("PUT /v1/journeys/{id}", s.authenticate("journeys:write", http.HandlerFunc(s.updateJourney)))
 	mux.Handle("POST /v1/journeys/{id}/publish", s.authenticate("journeys:publish", http.HandlerFunc(s.publishJourney)))

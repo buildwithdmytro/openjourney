@@ -298,6 +298,18 @@ func (f *fakeStore) CancelJourneyRun(ctx context.Context, p domain.Principal, jo
 func (f *fakeStore) GetJourneyDLQ(ctx context.Context, p domain.Principal) ([]domain.JourneyStep, []domain.JourneyMessageIntent, error) {
 	return []domain.JourneyStep{{ID: "step-1", RunID: "run-1", Status: "dead"}}, []domain.JourneyMessageIntent{{ID: "intent-1", RunID: "run-2", Status: "dead"}}, nil
 }
+func (f *fakeStore) RetryJourneyStep(ctx context.Context, p domain.Principal, stepID string) error {
+	if stepID == "invalid-step" {
+		return postgres.ErrNotFound
+	}
+	return nil
+}
+func (f *fakeStore) RetryJourneyMessageIntent(ctx context.Context, p domain.Principal, intentID string) error {
+	if intentID == "invalid-intent" {
+		return postgres.ErrNotFound
+	}
+	return nil
+}
 func (f *fakeStore) GetCampaignSystem(ctx context.Context, tenantID, id string) (domain.Campaign, error) {
 	return domain.Campaign{ID: id, TenantID: tenantID, WorkspaceID: "workspace", Status: "sending"}, nil
 }
@@ -725,6 +737,49 @@ func TestJourneyEndpoints(t *testing.T) {
 	}
 	if len(dlqBody.Intents) != 1 || dlqBody.Intents[0].ID != "intent-1" {
 		t.Fatalf("unexpected intents in dlq: %+v", dlqBody.Intents)
+	}
+
+	// DLQ retry step (success)
+	retryStepReq := httptest.NewRequest(http.MethodPost, "/v1/journeys/dlq/step/step-1/retry", nil)
+	retryStepReq.Header.Set("Authorization", "Bearer test-key")
+	retryStepRes := httptest.NewRecorder()
+	server.ServeHTTP(retryStepRes, retryStepReq)
+	if retryStepRes.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", retryStepRes.Code, retryStepRes.Body.String())
+	}
+	var retryStepBody map[string]string
+	if err := json.Unmarshal(retryStepRes.Body.Bytes(), &retryStepBody); err != nil {
+		t.Fatalf("decode retry body: %v", err)
+	}
+	if retryStepBody["status"] != "pending" {
+		t.Fatalf("unexpected status=%v", retryStepBody["status"])
+	}
+
+	// DLQ retry step (not found)
+	badRetryStepReq := httptest.NewRequest(http.MethodPost, "/v1/journeys/dlq/step/invalid-step/retry", nil)
+	badRetryStepReq.Header.Set("Authorization", "Bearer test-key")
+	badRetryStepRes := httptest.NewRecorder()
+	server.ServeHTTP(badRetryStepRes, badRetryStepReq)
+	if badRetryStepRes.Code != http.StatusNotFound {
+		t.Fatalf("expected Not Found for invalid step retry, got %d", badRetryStepRes.Code)
+	}
+
+	// DLQ retry intent (success)
+	retryIntentReq := httptest.NewRequest(http.MethodPost, "/v1/journeys/dlq/intent/intent-1/retry", nil)
+	retryIntentReq.Header.Set("Authorization", "Bearer test-key")
+	retryIntentRes := httptest.NewRecorder()
+	server.ServeHTTP(retryIntentRes, retryIntentReq)
+	if retryIntentRes.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", retryIntentRes.Code, retryIntentRes.Body.String())
+	}
+
+	// DLQ retry (invalid kind)
+	badKindReq := httptest.NewRequest(http.MethodPost, "/v1/journeys/dlq/invalid-kind/intent-1/retry", nil)
+	badKindReq.Header.Set("Authorization", "Bearer test-key")
+	badKindRes := httptest.NewRecorder()
+	server.ServeHTTP(badKindRes, badKindReq)
+	if badKindRes.Code != http.StatusBadRequest {
+		t.Fatalf("expected Bad Request for invalid kind, got %d", badKindRes.Code)
 	}
 }
 

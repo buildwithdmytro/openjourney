@@ -473,8 +473,28 @@ paths:
                   intents:
                     type: array
                     items: { $ref: "#/components/schemas/JourneyMessageIntent" }
+        "403": { $ref: "#/components/responses/Error" }
+        "500": { $ref: "#/components/responses/Error" }
+  /v1/journeys/dlq/{kind}/{id}/retry:
+    post:
+      operationId: retryJourneyDLQ
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: kind, in: path, required: true, schema: { type: string, enum: [step, steps, intent, intents] } }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Replay request accepted; item status set to pending.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+        "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
         "500": { $ref: "#/components/responses/Error" }
   /v1/journeys/{id}:
     get:

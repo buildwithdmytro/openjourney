@@ -630,10 +630,10 @@ task ends with a **Done when** check.
 3. [x] **DLQ inspection** `GET /v1/journeys/dlq` lists `journey_steps` and
    `journey_message_intents` with `status='dead'` (tenant-scoped). *Done when:* a step that
    exhausts attempts appears in the DLQ. — done: implemented GET /v1/journeys/dlq endpoint, updated database store to return dead steps/intents, added OpenAPI spec, and verified with integration test TestJourneyDLQ.
-4. **Operator replay** `POST /v1/journeys/dlq/{kind}/{id}/retry`: reset `status='pending'`,
+4. [x] **Operator replay** `POST /v1/journeys/dlq/{kind}/{id}/retry`: reset `status='pending'`,
    `attempts=0`, `available_at=now()`, clear `locked_until`. *Done when:* a replayed dead step
    re-drives without duplicating already-committed transitions (guarded by the atomic
-   transition + execution identity).
+   transition + execution identity). — done: implemented POST /v1/journeys/dlq/{kind}/{id}/retry endpoint, added store methods to reset step/intent state, added OpenAPI spec, and verified with integration test TestJourneyDLQ.
 5. **Backfill** `POST /v1/journeys/{id}/backfill` (scope `journeys:publish`, requires
    approver — product-decisions: humans approve bulk sends): enroll a segment into the current
    published version on demand. *Done when:* backfilling a segment enrolls its members once.

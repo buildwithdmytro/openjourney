@@ -179,3 +179,31 @@ func (s *Server) getJourneyDLQ(w http.ResponseWriter, r *http.Request) {
 		"intents": intents,
 	})
 }
+
+func (s *Server) retryJourneyDLQ(w http.ResponseWriter, r *http.Request) {
+	principal := principalFrom(r)
+	kind := r.PathValue("kind")
+	id := r.PathValue("id")
+
+	var err error
+	switch kind {
+	case "step", "steps":
+		err = s.store.RetryJourneyStep(r.Context(), principal, id)
+	case "intent", "intents":
+		err = s.store.RetryJourneyMessageIntent(r.Context(), principal, id)
+	default:
+		writeError(w, http.StatusBadRequest, "invalid_kind", "kind must be step or intent")
+		return
+	}
+
+	if errors.Is(err, postgres.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "DLQ item not found")
+		return
+	}
+	if err != nil {
+		internalError(w, err, "retry DLQ item", principal)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"status": "pending"})
+}
