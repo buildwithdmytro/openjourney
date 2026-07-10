@@ -2,6 +2,8 @@ package postgres
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -464,3 +466,295 @@ func TestJourneysFakeClockEndToEnd(t *testing.T) {
 		t.Errorf("expected exactly 1 message.sent event, got %d", eventCount)
 	}
 }
+
+type transitionIdentity struct {
+	FromNode string `json:"from_node"`
+	ToNode   string `json:"to_node"`
+	NodeType string `json:"node_type"`
+	Outcome  string `json:"outcome"`
+}
+
+func getRunTransitions(ctx context.Context, store *Store, runID string) ([]transitionIdentity, error) {
+	rows, err := store.pool.Query(ctx, `
+		SELECT COALESCE(from_node, ''), COALESCE(to_node, ''), node_type, outcome
+		FROM journey_transitions
+		WHERE run_id = $1
+		ORDER BY occurred_at ASC, id ASC
+	`, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var res []transitionIdentity
+	for rows.Next() {
+		var t transitionIdentity
+		if err := rows.Scan(&t.FromNode, &t.ToNode, &t.NodeType, &t.Outcome); err != nil {
+			return nil, err
+		}
+		res = append(res, t)
+	}
+	return res, nil
+}
+
+func computeTransitionsHash(transitions []transitionIdentity) (string, error) {
+	data, err := json.Marshal(transitions)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+func runReplay(ctx context.Context, store *Store, versionID string, p domain.Principal, extID string) (string, error) {
+	// Create profile
+	events := []domain.Event{
+		{
+			Type: "profile.updated", SchemaVersion: 1, ExternalID: extID,
+			IdempotencyKey: "rep-id-" + extID, OccurredAt: time.Now().UTC(),
+			Payload: json.RawMessage(`{"attributes":{"country":"CA", "email":"` + extID + `@example.com"}}`),
+		},
+		{
+			Type: "consent.changed", SchemaVersion: 1, ExternalID: extID,
+			IdempotencyKey: "rep-consent-" + extID, OccurredAt: time.Now().UTC(),
+			Payload: json.RawMessage(`{"channel":"email","topic":"marketing","state":"subscribed"}`),
+		},
+	}
+	_, err := store.AcceptEvents(ctx, p, events)
+	if err != nil {
+		return "", fmt.Errorf("accept events: %w", err)
+	}
+	_, err = projector.Drain(ctx, store, 2, false)
+	if err != nil {
+		return "", fmt.Errorf("projector drain: %w", err)
+	}
+
+	prof, _, err := store.GetProfile(ctx, p, extID)
+	if err != nil {
+		return "", fmt.Errorf("get profile: %w", err)
+	}
+
+	// Enroll participant
+	enrollEvents := []domain.Event{
+		{
+			Type: "user.signup", SchemaVersion: 1, ExternalID: extID,
+			IdempotencyKey: "rep-enroll-" + extID, OccurredAt: time.Now().UTC(),
+			Payload: json.RawMessage(`{}`),
+		},
+	}
+	_, err = store.AcceptEvents(ctx, p, enrollEvents)
+	if err != nil {
+		return "", fmt.Errorf("accept enroll: %w", err)
+	}
+	_, err = projector.Drain(ctx, store, 1, false)
+	if err != nil {
+		return "", fmt.Errorf("projector drain enroll: %w", err)
+	}
+
+	runs, err := store.GetJourneyRunsForProfile(ctx, p.TenantID, versionID, prof.ID)
+	if err != nil {
+		return "", fmt.Errorf("get runs: %w", err)
+	}
+	if len(runs) != 1 {
+		return "", fmt.Errorf("expected 1 run, got %d", len(runs))
+	}
+	run := runs[0]
+
+	clk := journeyflow.NewFakeClock(time.Now().UTC())
+	deps := journeyflow.Deps{Clock: clk}
+
+	// Step 1: entry (n1)
+	if err := makePendingStepDue(ctx, store, run.ID); err != nil {
+		return "", err
+	}
+	processed, err := journeyflow.TickNext(ctx, store, deps)
+	if err != nil {
+		return "", fmt.Errorf("TickNext entry (n1): %w", err)
+	}
+	if !processed {
+		return "", fmt.Errorf("expected n1 to be processed")
+	}
+
+	// Step 2: delay (n2)
+	if err := makePendingStepDue(ctx, store, run.ID); err != nil {
+		return "", err
+	}
+	processed, err = journeyflow.TickNext(ctx, store, deps)
+	if err != nil {
+		return "", fmt.Errorf("TickNext delay (n2): %w", err)
+	}
+	if !processed {
+		return "", fmt.Errorf("expected n2 to be processed")
+	}
+
+	// Step 3: condition (n3) (advance clock by 1h)
+	clk.Advance(1 * time.Hour)
+	if err := makePendingStepDue(ctx, store, run.ID); err != nil {
+		return "", err
+	}
+	processed, err = journeyflow.TickNext(ctx, store, deps)
+	if err != nil {
+		return "", fmt.Errorf("TickNext condition (n3): %w", err)
+	}
+	if !processed {
+		return "", fmt.Errorf("expected n3 to be processed")
+	}
+
+	// Step 4: message (n4)
+	if err := makePendingStepDue(ctx, store, run.ID); err != nil {
+		return "", err
+	}
+	processed, err = journeyflow.TickNext(ctx, store, deps)
+	if err != nil {
+		return "", fmt.Errorf("TickNext message (n4): %w", err)
+	}
+	if !processed {
+		return "", fmt.Errorf("expected n4 to be processed")
+	}
+
+	// Step 5: exit (n5)
+	if err := makePendingStepDue(ctx, store, run.ID); err != nil {
+		return "", err
+	}
+	processed, err = journeyflow.TickNext(ctx, store, deps)
+	if err != nil {
+		return "", fmt.Errorf("TickNext exit (n5): %w", err)
+	}
+	if !processed {
+		return "", fmt.Errorf("expected n5 to be processed")
+	}
+
+	return run.ID, nil
+}
+
+func TestJourneysReplayCompatibility(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer store.Close()
+
+	key := fmt.Sprintf("journey-rep-%d", time.Now().UnixNano())
+	if err := store.EnsureDevelopmentTenant(ctx, key); err != nil {
+		t.Fatalf("EnsureDevelopmentTenant: %v", err)
+	}
+	p, err := store.Authenticate(ctx, key)
+	if err != nil {
+		t.Fatalf("Authenticate: %v", err)
+	}
+	appID, err := store.GetFirstAppID(ctx, p.TenantID, p.WorkspaceID)
+	if err != nil {
+		t.Fatalf("GetFirstAppID: %v", err)
+	}
+	p.AppID = appID
+
+	// Create sending identity and template
+	iden, err := store.CreateSendingIdentity(ctx, p, domain.SendingIdentity{
+		Channel:     "email",
+		FromName:    ptr("Sender"),
+		FromAddress: ptr("sender@example.com"),
+		Provider:    "ses",
+		MaxSendRate: 10,
+	})
+	if err != nil {
+		t.Fatalf("create identity: %v", err)
+	}
+
+	htmlTmpl := "Hello {{ email }}!"
+	tmpl, err := store.CreateTemplate(ctx, p, domain.Template{
+		Name:              "Rep Journey Template",
+		Channel:           "email",
+		HTMLTemplate:      &htmlTmpl,
+		SendingIdentityID: &iden.ID,
+	})
+	if err != nil {
+		t.Fatalf("create template: %v", err)
+	}
+
+	// Setup a simple condition -> message graph
+	graphJSON := fmt.Sprintf(`{
+		"entry_node_id": "n1",
+		"nodes": [
+			{ "id": "n1", "type": "entry", "config": { "trigger": "event", "event_type": "user.signup" } },
+			{ "id": "n2", "type": "delay", "config": { "duration": "1h" } },
+			{ "id": "n3", "type": "condition", "config": { "dsl": { "type": "profile_attribute", "field": "country", "operator": "equals", "value": "CA" } } },
+			{ "id": "n4", "type": "message", "config": { "template_id": "%s", "transactional": true } },
+			{ "id": "n5", "type": "exit", "config": { "reason": "completed" } }
+		],
+		"edges": [
+			{ "from": "n1", "to": "n2" },
+			{ "from": "n2", "to": "n3" },
+			{ "from": "n3", "to": "n4", "branch": "true" },
+			{ "from": "n3", "to": "n5", "branch": "false" },
+			{ "from": "n4", "to": "n5" }
+		]
+	}`, tmpl.ID)
+
+	// Create journey and publish it
+	journey, err := store.CreateJourney(ctx, p, domain.Journey{
+		Name:  "Replay Compatibility Journey",
+		Graph: json.RawMessage(graphJSON),
+	})
+	if err != nil {
+		t.Fatalf("create journey: %v", err)
+	}
+
+	blobs := &memoryBlobs{objects: map[string][]byte{}}
+	approverID := "00000000-0000-0000-0000-000000000001"
+	version, err := journeyflow.Publish(ctx, store, blobs, p, journey.ID, approverID)
+	if err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+
+	// Replay 1
+	runID1, err := runReplay(ctx, store, version.ID, p, "cust-rep-1")
+	if err != nil {
+		t.Fatalf("replay 1 failed: %v", err)
+	}
+
+	// Replay 2 (with identical inputs / setup)
+	runID2, err := runReplay(ctx, store, version.ID, p, "cust-rep-2")
+	if err != nil {
+		t.Fatalf("replay 2 failed: %v", err)
+	}
+
+	// Retrieve transitions
+	transitions1, err := getRunTransitions(ctx, store, runID1)
+	if err != nil {
+		t.Fatalf("get transitions 1: %v", err)
+	}
+	transitions2, err := getRunTransitions(ctx, store, runID2)
+	if err != nil {
+		t.Fatalf("get transitions 2: %v", err)
+	}
+
+	// Ensure we have the correct number of transitions
+	if len(transitions1) < 5 {
+		t.Errorf("expected at least 5 transitions in replay, got %d", len(transitions1))
+	}
+
+	// Compute hashes
+	hash1, err := computeTransitionsHash(transitions1)
+	if err != nil {
+		t.Fatalf("hash 1: %v", err)
+	}
+	hash2, err := computeTransitionsHash(transitions2)
+	if err != nil {
+		t.Fatalf("hash 2: %v", err)
+	}
+
+	t.Logf("Replay 1 Transitions Hash: %s", hash1)
+	t.Logf("Replay 2 Transitions Hash: %s", hash2)
+
+	if hash1 != hash2 {
+		t.Errorf("expected transition hashes to be identical, got run1=%s and run2=%s", hash1, hash2)
+	} else {
+		t.Log("SUCCESS: Two replays of the same version + identical inputs produced byte-identical transition sequences.")
+	}
+}
+

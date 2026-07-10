@@ -651,10 +651,10 @@ task ends with a **Done when** check.
    goal→exit` journey driven by advancing the `FakeClock`; assert transitions, one intent per
    message node, `message.sent` emitted, run `completed`. *Done when:* the fake-clock journey
    passes without real waiting.
-2. **Replay compatibility test**: re-run a recorded step/event sequence against the pinned
+2. **Replay compatibility test** — done: TestJourneysReplayCompatibility added and passes; verified executing two sequential replays of identical inputs/setup against same published journey version resulting in byte-identical SHA256 hashes of transition causal history. (re-run a recorded step/event sequence against the pinned
    immutable `journey_versions` graph → identical `journey_transitions` checksum (the journey
    analog of `TestCampaignsReproducibility`, `campaigns_integration_test.go:464`). *Done when:*
-   two replays of the same version + inputs produce byte-identical transition sequences.
+   two replays of the same version + inputs produce byte-identical transition sequences.)
 3. **Duplicate/reordered/late-event determinism tests** (exit criterion 3): duplicate entry
    event → one run; the awaited event + its timeout racing → exactly one branch taken. *Done when:*
    all three cases assert single, deterministic outcomes.
