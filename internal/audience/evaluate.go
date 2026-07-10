@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"regexp"
 )
 
 type EvaluatorStore interface {
@@ -12,6 +13,7 @@ type EvaluatorStore interface {
 	QueryClickHouseMatches(ctx context.Context, sql string, args []any) (bool, error)
 	GetProfileExternalID(ctx context.Context, tenantID, workspaceID, profileID string) (string, error)
 }
+
 
 func Matches(ctx context.Context, store EvaluatorStore, tenantID, workspaceID, appID, profileID string, node Node) (bool, error) {
 	switch n := node.(type) {
@@ -94,6 +96,16 @@ func CompileProfileSingle(node Node) (string, []any, error) {
 	if expr == "" {
 		expr = "TRUE"
 	}
+	// Shift any placeholder > 2 by 1 to make room for $3 (profileID)
+	re := regexp.MustCompile(`\$([0-9]+)`)
+	expr = re.ReplaceAllStringFunc(expr, func(m string) string {
+		var n int
+		fmt.Sscanf(m, "$%d", &n)
+		if n > 2 {
+			return fmt.Sprintf("$%d", n+1)
+		}
+		return m
+	})
 	sql := fmt.Sprintf("SELECT 1 FROM profiles WHERE tenant_id=$1 AND workspace_id=$2 AND id=$3 AND (%s)", expr)
 	return sql, args, nil
 }

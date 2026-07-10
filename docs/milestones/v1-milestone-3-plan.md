@@ -645,7 +645,7 @@ task ends with a **Done when** check.
    `npm run build` passes and the views render against seeded data. — done: pause/resume toggle, run inspector (status + transition timeline), and DLQ table with retry button implemented in web/src/sections/Journeys.tsx, verified with tsc typecheck and vite production build.
 
 ### Milestone 8.8 — Fake-clock, replay/determinism, integration, load & audit (closeout)
-1. **Fake-clock end-to-end test** in `internal/postgres/journeys_integration_test.go` (copy
+1. **Fake-clock end-to-end test** in `internal/postgres/journeys_integration_test.go` — done: TestJourneysFakeClockEndToEnd added and passes; verified correctly shifting database available_at and FakeClock time; bug fixed in CompileProfileSingle. (copy
    the `TestCampaignsEndToEnd` build, `campaigns_integration_test.go:267`, DB-gated skip on
    `OPENJOURNEY_TEST_DATABASE_URL`): a full `entry→delay→condition→split→message→wait(timeout)→
    goal→exit` journey driven by advancing the `FakeClock`; assert transitions, one intent per
