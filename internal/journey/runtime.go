@@ -9,6 +9,9 @@ import (
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 	"github.com/buildwithdmytro/openjourney/internal/ports"
+	"github.com/buildwithdmytro/openjourney/internal/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	otelmetric "go.opentelemetry.io/otel/metric"
 )
 
 type Deps struct {
@@ -30,21 +33,21 @@ func TickNext(ctx context.Context, store ports.Store, deps Deps) (bool, error) {
 	run, err := store.GetJourneyRunSystem(ctx, step.TenantID, step.RunID)
 	if err != nil {
 		slog.Error("failed to get journey run for step", "error", err, "run_id", step.RunID)
-		_ = store.FailJourneyStep(ctx, step.ID, fmt.Sprintf("failed to get run: %v", err))
+		failStep(ctx, store, step, fmt.Sprintf("failed to get run: %v", err))
 		return true, nil
 	}
 
 	version, err := store.GetJourneyVersion(ctx, run.TenantID, run.JourneyVersionID)
 	if err != nil {
 		slog.Error("failed to get journey version", "error", err, "version_id", run.JourneyVersionID)
-		_ = store.FailJourneyStep(ctx, step.ID, fmt.Sprintf("failed to get version: %v", err))
+		failStep(ctx, store, step, fmt.Sprintf("failed to get version: %v", err))
 		return true, nil
 	}
 
 	graph, err := ParseGraph(version.Graph)
 	if err != nil {
 		slog.Error("failed to parse journey graph", "error", err, "run_id", step.RunID)
-		_ = store.FailJourneyStep(ctx, step.ID, fmt.Sprintf("failed to parse graph: %v", err))
+		failStep(ctx, store, step, fmt.Sprintf("failed to parse graph: %v", err))
 		return true, nil
 	}
 
@@ -58,7 +61,7 @@ func TickNext(ctx context.Context, store ports.Store, deps Deps) (bool, error) {
 	}
 	if node == nil {
 		slog.Error("node not found in graph", "node_id", step.NodeID, "run_id", step.RunID)
-		_ = store.FailJourneyStep(ctx, step.ID, fmt.Sprintf("node %s not found in graph", step.NodeID))
+		failStep(ctx, store, step, fmt.Sprintf("node %s not found in graph", step.NodeID))
 		return true, nil
 	}
 
@@ -108,7 +111,19 @@ func TickNext(ctx context.Context, store ports.Store, deps Deps) (bool, error) {
 			err = store.AdvanceRunTx(ctx, run.ID, run, step.ID, nextStep, trans, nil)
 			if err != nil {
 				slog.Error("failed to skip and advance run", "error", err, "run_id", run.ID)
-				_ = store.FailJourneyStep(ctx, step.ID, fmt.Sprintf("skip advance run tx: %v", err))
+				failStep(ctx, store, step, fmt.Sprintf("skip advance run tx: %v", err))
+			} else {
+				telemetry.JourneyStepsExecuted.Add(ctx, 1, otelmetric.WithAttributes(
+					attribute.String("tenant_id", run.TenantID),
+					attribute.String("journey_id", run.JourneyID),
+					attribute.String("node_type", node.Type),
+				))
+				if run.Status == "completed" || run.Status == "exited" {
+					telemetry.JourneyExits.Add(ctx, 1, otelmetric.WithAttributes(
+						attribute.String("tenant_id", run.TenantID),
+						attribute.String("journey_id", run.JourneyID),
+					))
+				}
 			}
 			return true, nil
 
@@ -129,7 +144,7 @@ func TickNext(ctx context.Context, store ports.Store, deps Deps) (bool, error) {
 			err = store.RescheduleJourneyStep(ctx, step.ID, rescheduleTime)
 			if err != nil {
 				slog.Error("failed to reschedule journey step", "error", err, "step_id", step.ID)
-				_ = store.FailJourneyStep(ctx, step.ID, fmt.Sprintf("reschedule: %v", err))
+				failStep(ctx, store, step, fmt.Sprintf("reschedule: %v", err))
 			}
 			return true, nil
 
@@ -143,7 +158,7 @@ func TickNext(ctx context.Context, store ports.Store, deps Deps) (bool, error) {
 	res, err := node.Execute(ctx, store, &run, graph, now, step.Kind)
 	if err != nil {
 		slog.Error("failed to execute node", "error", err, "node_id", node.ID, "run_id", step.RunID)
-		_ = store.FailJourneyStep(ctx, step.ID, fmt.Sprintf("execute node: %v", err))
+		failStep(ctx, store, step, fmt.Sprintf("execute node: %v", err))
 		return true, nil
 	}
 
@@ -160,9 +175,32 @@ func TickNext(ctx context.Context, store ports.Store, deps Deps) (bool, error) {
 	err = store.AdvanceRunTx(ctx, run.ID, run, step.ID, res.NextStep, res.Transition, res.MessageIntent)
 	if err != nil {
 		slog.Error("failed to advance run transaction", "error", err, "run_id", run.ID)
-		_ = store.FailJourneyStep(ctx, step.ID, fmt.Sprintf("advance run tx: %v", err))
+		failStep(ctx, store, step, fmt.Sprintf("advance run tx: %v", err))
 		return true, nil
 	}
 
+	telemetry.JourneyStepsExecuted.Add(ctx, 1, otelmetric.WithAttributes(
+		attribute.String("tenant_id", run.TenantID),
+		attribute.String("journey_id", run.JourneyID),
+		attribute.String("node_type", node.Type),
+	))
+
+	if run.Status == "completed" || run.Status == "exited" {
+		telemetry.JourneyExits.Add(ctx, 1, otelmetric.WithAttributes(
+			attribute.String("tenant_id", run.TenantID),
+			attribute.String("journey_id", run.JourneyID),
+		))
+	}
+
 	return true, nil
+}
+
+func failStep(ctx context.Context, store ports.Store, step domain.JourneyStep, msg string) {
+	if step.Attempts >= 10 {
+		telemetry.JourneyDeadLettered.Add(ctx, 1, otelmetric.WithAttributes(
+			attribute.String("tenant_id", step.TenantID),
+			attribute.String("type", "step"),
+		))
+	}
+	_ = store.FailJourneyStep(ctx, step.ID, msg)
 }

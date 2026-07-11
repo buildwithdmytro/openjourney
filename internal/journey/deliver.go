@@ -230,6 +230,12 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 			attribute.String("decision", verdict.Decision),
 			attribute.String("channel", template.Channel),
 		))
+		telemetry.JourneyPolicyRejections.Add(ctx, 1, otelmetric.WithAttributes(
+			attribute.String("tenant_id", intent.TenantID),
+			attribute.String("journey_id", intent.JourneyID),
+			attribute.String("decision", verdict.Decision),
+			attribute.String("channel", template.Channel),
+		))
 		intent.Status = "completed"
 		intent.Decision = &verdict.Decision
 		intent.Reason = &verdict.Reason
@@ -354,6 +360,10 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 			if channels.IsRetryableError(err) {
 				intent.Status = "failed"
 				dec := "retryable_failed"
+				if intent.Attempts >= 3 {
+					intent.Status = "dead"
+					dec = "send_failed"
+				}
 				intent.Decision = &dec
 				reason := fmt.Sprintf("transient send error: %v", err)
 				intent.Reason = &reason
@@ -361,6 +371,12 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 				updateErr := store.UpdateJourneyMessageIntent(ctx, intent)
 				if updateErr != nil {
 					slog.Error("failed to update journey message intent on transient error", "error", updateErr)
+				}
+				if intent.Status == "dead" {
+					telemetry.JourneyDeadLettered.Add(ctx, 1, otelmetric.WithAttributes(
+						attribute.String("tenant_id", intent.TenantID),
+						attribute.String("type", "intent"),
+					))
 				}
 				hasRetryableError = true
 				retryableErrMsg = err.Error()
@@ -428,6 +444,11 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 	telemetry.MessagesSent.Add(ctx, 1, otelmetric.WithAttributes(
 		attribute.String("channel", template.Channel),
 		attribute.String("journey_id", intent.JourneyID),
+	))
+	telemetry.JourneyMessagesSent.Add(ctx, 1, otelmetric.WithAttributes(
+		attribute.String("tenant_id", intent.TenantID),
+		attribute.String("journey_id", intent.JourneyID),
+		attribute.String("channel", template.Channel),
 	))
 
 	slog.Info("journey message intent completed successfully", "intent_id", intent.ID)

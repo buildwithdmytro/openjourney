@@ -9,7 +9,10 @@ import (
 
 	"github.com/buildwithdmytro/openjourney/internal/audience"
 	"github.com/buildwithdmytro/openjourney/internal/domain"
+	"github.com/buildwithdmytro/openjourney/internal/telemetry"
 	"github.com/jackc/pgx/v5"
+	"go.opentelemetry.io/otel/attribute"
+	otelmetric "go.opentelemetry.io/otel/metric"
 )
 
 func (s *Store) CreateJourneyRun(ctx context.Context, run domain.JourneyRun) (bool, error) {
@@ -43,7 +46,14 @@ func (s *Store) CreateJourneyRun(ctx context.Context, run domain.JourneyRun) (bo
 	if err != nil {
 		return false, err
 	}
-	return res.RowsAffected() > 0, nil
+	inserted := res.RowsAffected() > 0
+	if inserted {
+		telemetry.JourneyEnrollments.Add(ctx, 1, otelmetric.WithAttributes(
+			attribute.String("tenant_id", run.TenantID),
+			attribute.String("journey_id", run.JourneyID),
+		))
+	}
+	return inserted, nil
 }
 
 func (s *Store) GetJourneyRun(ctx context.Context, p domain.Principal, runID string) (domain.JourneyRun, error) {
@@ -689,6 +699,11 @@ func (s *Store) enrollEventTriggered(ctx context.Context, tx pgx.Tx, event domai
 		if err != nil {
 			return err
 		}
+
+		telemetry.JourneyEnrollments.Add(ctx, 1, otelmetric.WithAttributes(
+			attribute.String("tenant_id", event.Principal.TenantID),
+			attribute.String("journey_id", it.journeyID),
+		))
 
 		_, err = tx.Exec(ctx, `
 			INSERT INTO journey_steps (run_id, tenant_id, node_id, kind, status, available_at)

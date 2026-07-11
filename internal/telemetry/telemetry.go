@@ -29,6 +29,24 @@ var (
 
 	PolicyRejections = mustCounter(Meter.Int64Counter("openjourney_delivery_policy_rejections_total",
 		otelmetric.WithDescription("Total number of policy rejections by decision")))
+
+	JourneyEnrollments = mustCounter(Meter.Int64Counter("openjourney_journey_enrollments_total",
+		otelmetric.WithDescription("Total number of journey enrollments")))
+
+	JourneyStepsExecuted = mustCounter(Meter.Int64Counter("openjourney_journey_steps_executed_total",
+		otelmetric.WithDescription("Total number of journey steps executed")))
+
+	JourneyMessagesSent = mustCounter(Meter.Int64Counter("openjourney_journey_messages_sent_total",
+		otelmetric.WithDescription("Total number of journey messages successfully sent")))
+
+	JourneyPolicyRejections = mustCounter(Meter.Int64Counter("openjourney_journey_policy_rejections_total",
+		otelmetric.WithDescription("Total number of journey policy rejections")))
+
+	JourneyExits = mustCounter(Meter.Int64Counter("openjourney_journey_exits_total",
+		otelmetric.WithDescription("Total number of journey exits")))
+
+	JourneyDeadLettered = mustCounter(Meter.Int64Counter("openjourney_journey_dead_lettered_total",
+		otelmetric.WithDescription("Total number of journey dead-lettered steps or intents")))
 )
 
 func mustCounter(c otelmetric.Int64Counter, err error) otelmetric.Int64Counter {

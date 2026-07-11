@@ -664,10 +664,10 @@ task ends with a **Done when** check.
    duplicate `message.sent`, all runs terminal, deterministic branch counts. `chmod +x`; add
    to the CI `smoke` job (`.github/workflows/ci.yml`) and confirm `sh -n` passes. — done: `scripts/smoke-journeys.sh` implemented and verified scaling up and processing 500 participants under mid-flight worker-kill with zero duplicates, all runs terminal, and deterministic branching; registered under CI `smoke` job and verified `sh -n` passes. *Done when:*
    the smoke script passes cleanly in CI.
-5. **Telemetry** (Recipe from `telemetry.go:18`): add counters
+5. [x] **Telemetry** (Recipe from `telemetry.go:18`): add counters
    `openjourney_journey_enrollments_total`, `_steps_executed_total`, `_messages_sent_total`,
    `_policy_rejections_total`, `_exits_total`, `_dead_lettered_total`; record at the runtime
-   and delivery sites; expose on the worker `/metrics`. *Done when:* the counters appear on `:8084/metrics`.
+   and delivery sites; expose on the worker `/metrics`. *Done when:* the counters appear on `:8084/metrics`. — done: six counters registered and verified via unit tests and worker metrics scrape on port 8084.
 6. **Run the full suite.** `go build ./... && go vet ./... && go test ./...`, `go mod tidy`,
    and `npm run build && npm audit --audit-level=high` (for `@xyflow/react`). Record results.
    *Done when:* all pass.
