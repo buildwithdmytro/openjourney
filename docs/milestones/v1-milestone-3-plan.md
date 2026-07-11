@@ -671,10 +671,10 @@ task ends with a **Done when** check.
 6. [x] **Run the full suite.** `go build ./... && go vet ./... && go test ./...`, `go mod tidy`,
    and `npm run build && npm audit --audit-level=high` (for `@xyflow/react`). Record results.
    *Done when:* all pass. — done: full Go test suite passed in Docker container; web build, test, and audit --audit-level=high passed with zero vulnerabilities.
-7. **Audit doc** `docs/milestones/v1-milestone-3-audit.md` mirroring the Milestone-2 audit
+7. [x] **Audit doc** `docs/milestones/v1-milestone-3-audit.md` mirroring the Milestone-2 audit
    table format (`v1-milestone-2-audit.md`): one row per requirement with direct current-state
    evidence, including exit-criteria coverage and the §8 carry-over items. *Done when:* every
-   row is backed by named files/tests.
+   row is backed by named files/tests. — done: created v1-milestone-3-audit.md summarizing Phase 3 completions, exit-criteria mapping, and carry-over defects.
 
 ---
 
