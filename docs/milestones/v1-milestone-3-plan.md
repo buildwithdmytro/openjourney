@@ -668,9 +668,9 @@ task ends with a **Done when** check.
    `openjourney_journey_enrollments_total`, `_steps_executed_total`, `_messages_sent_total`,
    `_policy_rejections_total`, `_exits_total`, `_dead_lettered_total`; record at the runtime
    and delivery sites; expose on the worker `/metrics`. *Done when:* the counters appear on `:8084/metrics`. — done: six counters registered and verified via unit tests and worker metrics scrape on port 8084.
-6. **Run the full suite.** `go build ./... && go vet ./... && go test ./...`, `go mod tidy`,
+6. [x] **Run the full suite.** `go build ./... && go vet ./... && go test ./...`, `go mod tidy`,
    and `npm run build && npm audit --audit-level=high` (for `@xyflow/react`). Record results.
-   *Done when:* all pass.
+   *Done when:* all pass. — done: full Go test suite passed in Docker container; web build, test, and audit --audit-level=high passed with zero vulnerabilities.
 7. **Audit doc** `docs/milestones/v1-milestone-3-audit.md` mirroring the Milestone-2 audit
    table format (`v1-milestone-2-audit.md`): one row per requirement with direct current-state
    evidence, including exit-criteria coverage and the §8 carry-over items. *Done when:* every
