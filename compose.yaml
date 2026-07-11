@@ -39,9 +39,16 @@ services:
       OPENJOURNEY_SESSION_TTL: ${OPENJOURNEY_SESSION_TTL:-12h}
       OPENJOURNEY_OTLP_ENDPOINT: ${OPENJOURNEY_OTLP_ENDPOINT:-}
       OPENJOURNEY_SERVICE_VERSION: ${OPENJOURNEY_SERVICE_VERSION:-dev}
+      OPENJOURNEY_S3_ENDPOINT: object-store:9000
+      OPENJOURNEY_S3_ACCESS_KEY: openjourney
+      OPENJOURNEY_S3_SECRET_KEY: openjourney-secret
+      OPENJOURNEY_S3_BUCKET: openjourney
+      OPENJOURNEY_S3_USE_TLS: "false"
     depends_on:
       postgres:
         condition: service_healthy
+      object-store:
+        condition: service_started
     ports:
       - "8080:8080"
 
