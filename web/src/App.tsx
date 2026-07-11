@@ -36,7 +36,10 @@ const viewTitles: Record<View, [string, string]> = {
 
 export function App() {
   const [healthy, setHealthy] = useState<boolean | null>(null);
-  const [view, setView] = useState<View>("profiles");
+  const [view, setView] = useState<View>(() => {
+    const hash = window.location.hash.slice(1) as View;
+    return (hash in viewTitles) ? hash : "profiles";
+  });
   const [apiKey, setAPIKey] = useState(() => sessionStorage.getItem("oj_session_token") || localStorage.getItem("oj_api_key") || "");
   const [credentialSource, setCredentialSource] = useState<CredentialSource>(() =>
     sessionStorage.getItem("oj_session_token") ? "session" : "manual");
@@ -69,6 +72,23 @@ export function App() {
     }
     localStorage.setItem("oj_api_key", apiKey);
   }, [apiKey, credentialSource]);
+
+  useEffect(() => {
+    if (apiKey) {
+      window.location.hash = view;
+    }
+  }, [view, apiKey]);
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.slice(1) as View;
+      if (hash in viewTitles) {
+        setView(hash);
+      }
+    };
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, []);
 
   async function handleSignOut() {
     if (credentialSource === "session" && apiKey) {
