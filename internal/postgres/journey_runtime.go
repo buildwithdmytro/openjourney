@@ -210,8 +210,18 @@ func (s *Store) CancelJourneyRun(ctx context.Context, p domain.Principal, journe
 }
 
 func (s *Store) ClaimJourneyStep(ctx context.Context) (domain.JourneyStep, bool, error) {
+	// 1. Mark timed-out processing steps that exceeded max attempts as dead
+	_, err := s.pool.Exec(ctx, `
+		UPDATE journey_steps
+		SET status = 'dead', locked_until = NULL, error_message = 'poison pill: max processing attempts exceeded', updated_at = now()
+		WHERE status = 'processing' AND locked_until <= now() AND attempts >= 10
+	`)
+	if err != nil {
+		return domain.JourneyStep{}, false, err
+	}
+
 	var out domain.JourneyStep
-	err := s.pool.QueryRow(ctx, `UPDATE journey_steps SET
+	err = s.pool.QueryRow(ctx, `UPDATE journey_steps SET
 			status='processing',
 			attempts=attempts+1,
 			locked_until=now() + INTERVAL '5 minutes',
@@ -229,7 +239,7 @@ func (s *Store) ClaimJourneyStep(ctx context.Context) (domain.JourneyStep, bool,
 			  )
 			  AND (
 				(js.status IN ('pending', 'failed') AND js.attempts < 10 AND js.available_at <= now())
-				OR (js.status='processing' AND js.locked_until <= now())
+				OR (js.status='processing' AND js.locked_until <= now() AND js.attempts < 10)
 			)
 			ORDER BY js.available_at ASC
 			FOR UPDATE OF js SKIP LOCKED

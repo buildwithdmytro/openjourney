@@ -339,10 +339,10 @@ Testing bar: unit + golden per milestone; one consolidated integration/determini
    `workspace_id`); and `CompileClickHouseSingle`/`QueryClickHouseMatches`
    (`evaluate.go:123`, add workspace/app). *Done when:* a cross-workspace event no longer
    enrolls/resolves/reads another workspace's runs (add an integration test with two workspaces). — done: TestJourneyWorkspaceIsolation proves correct isolation scoping for event triggers, wait events, and transitions.
-2. **Poison-pill DLQ.** In `ClaimJourneyStep` (`journey_runtime.go:230`) add an attempts cap to
+2. [x] **Poison-pill DLQ.** In `ClaimJourneyStep` (`journey_runtime.go:212`) add an attempts cap to
    the lease-reclaim branch (or dead-letter on reclaim past the threshold) so a panicking node
    eventually reaches the DLQ instead of looping forever. *Done when:* a step that crashes the
-   worker N times is marked `dead` and surfaces in `/v1/journeys/dlq`.
+   worker N times is marked `dead` and surfaces in `/v1/journeys/dlq`. — done: ClaimJourneyStep transitions timed-out poison pills to dead and TestJourneyDLQPoisonPill verifies it surfaces in the DLQ.
 3. **`provider_sent` reconcile.** In `deliver.go:143`, the `provider_sent` reconcile branch must
    jump straight to `message.sent` emission — skip the quiet-hours + `policy.Evaluate`
    re-decision so an already-delivered message can't be flipped to `suppressed`/`fatigued` with

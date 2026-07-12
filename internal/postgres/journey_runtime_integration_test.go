@@ -2503,3 +2503,128 @@ func TestJourneyWorkspaceIsolation(t *testing.T) {
 	_, _ = store.pool.Exec(ctx, "DELETE FROM tenants WHERE id=$1", p1.TenantID)
 }
 
+func TestJourneyDLQPoisonPill(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	key := fmt.Sprintf("tenant-poison-%d", time.Now().UnixNano())
+	if err := store.EnsureDevelopmentTenant(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	p, err := store.Authenticate(ctx, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	appID, err := store.GetFirstAppID(ctx, p.TenantID, p.WorkspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.AppID = appID
+
+	defer func() {
+		_, _ = store.pool.Exec(ctx, "DELETE FROM tenants WHERE id = $1", p.TenantID)
+	}()
+
+	var profileID string
+	err = store.pool.QueryRow(ctx, `INSERT INTO profiles (tenant_id, workspace_id, app_id, external_id) VALUES ($1, $2, $3, 'prof-poison') RETURNING id`,
+		p.TenantID, p.WorkspaceID, p.AppID).Scan(&profileID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var journeyID string
+	err = store.pool.QueryRow(ctx, `INSERT INTO journeys (tenant_id, workspace_id, name) VALUES ($1, $2, 'jPoison') RETURNING id`,
+		p.TenantID, p.WorkspaceID).Scan(&journeyID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var verID string
+	err = store.pool.QueryRow(ctx, `INSERT INTO journey_versions (journey_id, tenant_id, workspace_id, version, graph, entry_kind, reentry_policy, status) VALUES ($1, $2, $3, 1, '{}'::jsonb, 'event', 'once', 'active') RETURNING id`,
+		journeyID, p.TenantID, p.WorkspaceID).Scan(&verID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var runID string
+	err = store.pool.QueryRow(ctx, `INSERT INTO journey_runs (tenant_id, workspace_id, journey_id, journey_version_id, profile_id, entry_key, current_node_id) VALUES ($1, $2, $3, $4, $5, 'entryPoison', 'node-1') RETURNING id`,
+		p.TenantID, p.WorkspaceID, journeyID, verID, profileID).Scan(&runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Insert a step
+	step := domain.JourneyStep{
+		RunID:       runID,
+		TenantID:    p.TenantID,
+		NodeID:      "node-1",
+		Kind:        "advance",
+		Status:      "pending",
+		AvailableAt: time.Now(),
+	}
+	err = store.InsertJourneyStep(ctx, step)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// We simulate claiming and worker crashing 10 times.
+	// In each iteration, we claim the step (setting status='processing'), then simulate a timeout (updating locked_until to past).
+	var stepID string
+	for i := 0; i < 10; i++ {
+		claimedStep, claimed, err := store.ClaimJourneyStep(ctx)
+		if err != nil {
+			t.Fatalf("ClaimJourneyStep on iteration %d: %v", i+1, err)
+		}
+		if !claimed {
+			t.Fatalf("expected step to be claimed on iteration %d", i+1)
+		}
+		stepID = claimedStep.ID
+
+		// Simulate crash by expiring the lease lock
+		_, err = store.pool.Exec(ctx, `UPDATE journey_steps SET locked_until = now() - INTERVAL '1 second' WHERE id = $1`, stepID)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Now we call ClaimJourneyStep again. It should NOT return a claimed step (since attempts = 10, it's marked dead).
+	_, claimed, err := store.ClaimJourneyStep(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claimed {
+		t.Fatal("expected step not to be claimable after 10 crashed attempts")
+	}
+
+	// Check if it's dead in the DB
+	var status string
+	var errMsg *string
+	err = store.pool.QueryRow(ctx, `SELECT status, error_message FROM journey_steps WHERE id = $1`, stepID).Scan(&status, &errMsg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status != "dead" {
+		t.Errorf("expected status to be 'dead', got %s", status)
+	}
+	if errMsg == nil || *errMsg != "poison pill: max processing attempts exceeded" {
+		t.Errorf("unexpected error message: %v", errMsg)
+	}
+
+	// It should surface in GetJourneyDLQ
+	steps, _, err := store.GetJourneyDLQ(ctx, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(steps) != 1 || steps[0].ID != stepID {
+		t.Errorf("expected 1 dead step in DLQ, got %+v", steps)
+	}
+}
+
