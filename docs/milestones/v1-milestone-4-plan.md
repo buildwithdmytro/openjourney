@@ -373,10 +373,10 @@ Testing bar: unit + golden per milestone; one consolidated integration/determini
    `experiments:read/write`, `reports:read` in `rbac.go` allowlist and the default array
    (Recipe 6.5). *Done when:* tables exist; a fresh key carries the scopes. — done: `018_experiments.sql` applies with all three experiment tables, and TestExperimentMigrationAndDefaultScopesIntegration proves a fresh API key carries the experiment/report scopes.
 2. [x] **Domain models** `Experiment`, `ExperimentVariant`, `ExperimentAssignment` (Recipe 6.2). — done: snake_case JSON domain structs mirror the experiment, variant, and assignment schema; full build/vet and scoped domain tests pass.
-3. **Store CRUD** `internal/postgres/experiments.go` + `ports.Store` (Recipe 6.3): create/get/
+3. [x] **Store CRUD** `internal/postgres/experiments.go` + `ports.Store` (Recipe 6.3): create/get/
    list/update experiment (+ variants); `AssignExperiment(ctx, expID, profileID)` writing
    `experiment_assignments` `ON CONFLICT DO NOTHING`. Guard: the `seed` is immutable once
-   `status='running'`. *Done when:* `go build ./...` passes.
+   `status='running'`. *Done when:* `go build ./...` passes. — done: transactional tenant/workspace-scoped CRUD and stable conflict-safe assignment are implemented; a live-Postgres integration test proves two-workspace isolation, assignment stability, and running-seed immutability, with full build/vet passing.
 4. **Assignment lib** `internal/experiment/assign.go` (Recipe 6.19) + the shared `bucketOf`
    helper (refactor `nodes.go` to use it). *Done when:* stability + distribution unit tests pass.
 5. **HTTP + React scaffold** (Recipes 6.4, 6.8): experiments CRUD; a new `Experiments` section
