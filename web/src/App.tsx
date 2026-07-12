@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
   checkHealth, Consent, createAPIKey, createPrivacyRequest, createRole, createSchema, createUser,
   discardDeadLetter, getPrivacyRequest, getProfile, getQueueStatus, listAPIKeys, listAuditEvents,
@@ -12,7 +12,8 @@ import {
   listJourneys, createJourney, Journey,
 } from "./api";
 import { oidcConfigured, restoreOIDCSession, signIn, signOut } from "./auth";
-import Journeys from "./sections/Journeys";
+
+const Journeys = lazy(() => import("./sections/Journeys"));
 
 const apiBase = import.meta.env.VITE_API_BASE_URL || "/api";
 type View = "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "templates" | "campaigns" | "journeys" | "suppressions" | "sender-identities";
@@ -29,10 +30,38 @@ const viewTitles: Record<View, [string, string]> = {
   segments: ["Segments", "Manage customer segments and membership rules."],
   templates: ["Templates", "Design email templates with Liquid tags and live preview."],
   campaigns: ["Campaigns", "Schedule and manage sharded marketing campaigns linked to segments and templates."],
-  journeys: ["Journeys", "Create durable journey drafts and inspect saved graph manifests."],
+  journeys: ["Journeys", "Design, publish, and monitor automated customer experiences."],
   suppressions: ["Suppressions", "Manage bounces, complaints, and manually suppressed endpoints."],
   "sender-identities": ["Sender Identities", "Manage verified sender emails and webhook channels."],
 };
+
+const AVAILABLE_SCOPES = [
+  "*",
+  "events:write",
+  "profiles:read",
+  "schemas:read",
+  "schemas:write",
+  "api_keys:read",
+  "api_keys:write",
+  "privacy:write",
+  "operations:read",
+  "operations:write",
+  "users:read",
+  "users:write",
+  "roles:read",
+  "roles:write",
+  "segments:read",
+  "segments:write",
+  "templates:read",
+  "templates:write",
+  "campaigns:read",
+  "campaigns:write",
+  "suppressions:read",
+  "suppressions:write",
+  "journeys:read",
+  "journeys:write",
+  "journeys:publish",
+];
 
 export function App() {
   const [healthy, setHealthy] = useState<boolean | null>(null);
@@ -204,7 +233,11 @@ export function App() {
         {view === "segments" && <Segments apiKey={apiKey} />}
         {view === "templates" && <Templates apiKey={apiKey} />}
         {view === "campaigns" && <Campaigns apiKey={apiKey} />}
-        {view === "journeys" && <Journeys apiKey={apiKey} />}
+        {view === "journeys" && (
+          <Suspense fallback={<p role="status">Loading journey builder…</p>}>
+            <Journeys apiKey={apiKey} />
+          </Suspense>
+        )}
         {view === "suppressions" && <Suppressions apiKey={apiKey} />}
         {view === "sender-identities" && <SenderIdentities apiKey={apiKey} />}
         {view === "schemas" && <Schemas apiKey={apiKey} />}
@@ -306,7 +339,7 @@ function Schemas({ apiKey }: { apiKey: string }) {
 function APIKeys({ apiKey }: { apiKey: string }) {
   const [items, setItems] = useState<APIKey[]>([]);
   const [name, setName] = useState("");
-  const [scopes, setScopes] = useState("events:write,profiles:read");
+  const [scopes, setScopes] = useState<string[]>(["events:write", "profiles:read"]);
   const [expiresAt, setExpiresAt] = useState("");
   const [secret, setSecret] = useState("");
   const [error, setError] = useState("");
@@ -319,7 +352,7 @@ function APIKeys({ apiKey }: { apiKey: string }) {
     event.preventDefault();
     try {
       const expiration = expiresAt ? new Date(expiresAt).toISOString() : undefined;
-      const result = await createAPIKey(apiBase, apiKey, name, scopes.split(",").map((scope) => scope.trim()).filter(Boolean), expiration);
+      const result = await createAPIKey(apiBase, apiKey, name, scopes, expiration);
       setSecret(result.secret); setName(""); setExpiresAt(""); await refresh();
     } catch (cause) { setError(message(cause)); }
   }
@@ -331,8 +364,7 @@ function APIKeys({ apiKey }: { apiKey: string }) {
     <article className="card"><form onSubmit={submit} className="single-action">
       <label>Name<input value={name} onChange={(e) => setName(e.target.value)}
         placeholder="Website ingestion" required /></label>
-      <label>Scopes<input value={scopes} onChange={(e) => setScopes(e.target.value)}
-        placeholder="events:write,profiles:read" required /></label>
+      <label>Scopes<ScopeSelector selected={scopes} onChange={setScopes} /></label>
       <label>Expires at<input type="datetime-local" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} /></label>
       <button disabled={!apiKey}>Create scoped key</button>
     </form>
@@ -388,7 +420,7 @@ function Access({ apiKey }: { apiKey: string }) {
   const [roles, setRoles] = useState<Role[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [roleName, setRoleName] = useState("");
-  const [permissions, setPermissions] = useState("profiles:read");
+  const [permissions, setPermissions] = useState<string[]>(["profiles:read"]);
   const [issuer, setIssuer] = useState("https://identity.example.test");
   const [subject, setSubject] = useState("");
   const [email, setEmail] = useState("");
@@ -405,7 +437,7 @@ function Access({ apiKey }: { apiKey: string }) {
   async function addRole(event: FormEvent) {
     event.preventDefault();
     try {
-      await createRole(apiBase, apiKey, roleName, permissions.split(",").map((value) => value.trim()).filter(Boolean));
+      await createRole(apiBase, apiKey, roleName, permissions);
       setRoleName(""); await refresh();
     } catch (cause) { setError(message(cause)); }
   }
@@ -423,7 +455,7 @@ function Access({ apiKey }: { apiKey: string }) {
   return <section className="stack">
     <article className="card"><form onSubmit={addRole} className="schema-form">
       <label>Role name<input value={roleName} onChange={(e) => setRoleName(e.target.value)} required /></label>
-      <label>Permissions<input value={permissions} onChange={(e) => setPermissions(e.target.value)} required /></label>
+      <label>Permissions<ScopeSelector selected={permissions} onChange={setPermissions} /></label>
       <button disabled={!apiKey}>Create role</button>
     </form></article>
     <article className="card"><form onSubmit={addUser} className="schema-form">
@@ -968,7 +1000,7 @@ function Suppressions({ apiKey }: { apiKey: string }) {
   async function load() {
     setLoading(true); setError("");
     try {
-      setItems(await listSuppressions(apiBase, apiKey));
+      setItems((await listSuppressions(apiBase, apiKey)) ?? []);
     } catch (cause) {
       setError(message(cause));
     } finally {
@@ -1405,3 +1437,53 @@ export function Campaigns({ apiKey }: { apiKey: string }) {
 }
 
 // Journeys component imported from sections/Journeys
+
+function ScopeSelector({ selected, onChange }: { selected: string[]; onChange: (scopes: string[]) => void }) {
+  const [open, setOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const toggleScope = (scope: string) => {
+    if (selected.includes(scope)) {
+      onChange(selected.filter((s) => s !== scope));
+    } else {
+      onChange([...selected, scope]);
+    }
+  };
+
+  return (
+    <div className="scope-selector" ref={dropdownRef}>
+      <button
+        type="button"
+        className="scope-selector-btn"
+        onClick={() => setOpen(!open)}
+      >
+        {selected.length === 0 ? "Select scopes..." : selected.join(", ")}
+      </button>
+      {open && (
+        <div className="scope-selector-dropdown">
+          {AVAILABLE_SCOPES.map((scope) => (
+            <label key={scope} htmlFor={`scope-${scope}`} className="scope-option">
+              <input
+                id={`scope-${scope}`}
+                type="checkbox"
+                checked={selected.includes(scope)}
+                onChange={() => toggleScope(scope)}
+              />
+              <code>{scope}</code>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

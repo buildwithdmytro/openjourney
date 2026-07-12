@@ -28,7 +28,10 @@ const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     expires_at: "2026-07-07T13:00:00Z",
   });
   if (url.includes("/v1/auth/logout")) return Promise.resolve({ ok: true, status: 204, json: () => Promise.resolve({}) });
-  if (url.includes("/v1/schemas")) return jsonResponse({ schemas: [] });
+  if (url.includes("/v1/schemas")) return jsonResponse({ schemas: [{
+    id: "schema-1", event_type: "checkout.completed", version: 1, status: "active", compatibility: "backward", created_at: "2026-01-01T00:00:00Z",
+    schema: { type: "object", properties: { payload: { type: "object", properties: { plan_name: { type: "string" } } } } },
+  }] });
   if (url.includes("/v1/api-keys") && init?.method === "POST") {
     return jsonResponse({
       api_key: { id: "key-2", name: "Website", scopes: ["events:write"], expires_at: "2026-07-08T12:00:00Z", created_at: "2026-07-07T12:00:00Z" },
@@ -44,6 +47,7 @@ const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
   if (url.includes("/v1/operations/queues")) return jsonResponse({ queues: [{ queue: "projection", pending: 1, processing: 0, dead: 0 }] });
   if (url.includes("/v1/operations/dlq")) return jsonResponse({ dead_letters: [] });
   if (url.includes("/v1/audit")) return jsonResponse({ audit_events: [{ id: "audit-1", actor_type: "api_key", actor_id: "key-1", action: "events.accept", resource_type: "event_batch", metadata: {}, occurred_at: "2026-01-01T00:00:00Z" }] });
+  if (url.includes("/v1/suppressions")) return jsonResponse(null);
   if (url.includes("/v1/journeys") && init?.method === "POST") {
     return jsonResponse({
       id: "journey-2",
@@ -64,7 +68,14 @@ const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     name: "Onboarding",
     description: "Activation flow",
     status: "draft",
-    graph: { entry_node_id: "n1" },
+    graph: {
+      entry_node_id: "n1",
+      nodes: [
+        { id: "n1", type: "entry", config: { trigger: "event", event_type: "signup" }, position: { x: 100, y: 100 } },
+        { id: "n2", type: "exit", config: { reason: "completed" }, position: { x: 100, y: 300 } },
+      ],
+      edges: [{ from: "n1", to: "n2", branch: "" }],
+    },
     latest_version: 0,
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
@@ -116,7 +127,8 @@ describe("App", () => {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "API keys" }));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Website" } });
-    fireEvent.change(screen.getByLabelText("Scopes"), { target: { value: "events:write" } });
+    fireEvent.click(screen.getByRole("button", { name: "Scopes" }));
+    fireEvent.click(screen.getByLabelText("profiles:read"));
     fireEvent.change(screen.getByLabelText("Expires at"), { target: { value: "2026-07-08T12:00" } });
     fireEvent.click(screen.getByRole("button", { name: "Create scoped key" }));
     await screen.findByText("Copy this secret now.");
@@ -141,13 +153,53 @@ describe("App", () => {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "Journeys" }));
     await screen.findByText("Onboarding");
-    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Welcome Series" } });
-    fireEvent.change(screen.getByLabelText("Graph"), { target: { value: "{\"entry_node_id\":\"n1\"}" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create journey" }));
+    fireEvent.click(screen.getByText("+ Create journey"));
+    fireEvent.change(screen.getByLabelText("Journey name"), { target: { value: "Welcome Series" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create and design" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/v1/journeys"), expect.objectContaining({
       method: "POST",
-      body: expect.stringContaining("\"entry_node_id\":\"n1\""),
+      body: expect.stringContaining("\"type\":\"entry\""),
     })));
+  });
+
+  it("offers plain-language journey design steps", async () => {
+    window.location.hash = "journeys";
+    render(<App />);
+    await screen.findByText("Onboarding");
+    fireEvent.click(screen.getByRole("button", { name: /Onboarding/ }));
+    expect(await screen.findByText("What happens next?")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Send a message/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Wait for an event/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Decision/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Publish journey" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /plan_name/ })).toBeInTheDocument();
+  });
+
+  it("deletes and restores journey steps with keyboard shortcuts", async () => {
+    window.location.hash = "journeys";
+    render(<App />);
+    await screen.findByText("Onboarding");
+    fireEvent.click(screen.getByRole("button", { name: /Onboarding/ }));
+    const entry = await screen.findByText("Journey entry");
+    fireEvent.click(entry);
+    fireEvent.click(screen.getByRole("button", { name: /Send a message/ }));
+    expect(screen.getByText("Choose a message template")).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "Delete" });
+    expect(screen.queryByText("Choose a message template")).not.toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "z", ctrlKey: true });
+    expect(screen.getByText("Choose a message template")).toBeInTheDocument();
+  });
+
+  it("switches journey entry to scheduled when segment lists are empty", async () => {
+    window.location.hash = "journeys";
+    render(<App />);
+    await screen.findByText("Onboarding");
+    fireEvent.click(screen.getByRole("button", { name: /Onboarding/ }));
+    fireEvent.click(await screen.findByText("Journey entry"));
+    fireEvent.change(screen.getByLabelText("How should customers enter?"), { target: { value: "scheduled" } });
+    expect(screen.getByLabelText("Segment")).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Schedule/)).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "-- Select Segment --" })).toBeInTheDocument();
   });
 
   it("persists manually entered API keys", async () => {
@@ -181,5 +233,12 @@ describe("App", () => {
       method: "POST",
       headers: expect.objectContaining({ Authorization: "Bearer session-token" }),
     }));
+  });
+
+  it("renders an empty suppressions response without crashing", async () => {
+    window.location.hash = "suppressions";
+    render(<App />);
+    expect(await screen.findByText("No suppressed endpoints found.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Suppress endpoint" })).toBeInTheDocument();
   });
 });
