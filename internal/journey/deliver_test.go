@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,6 +14,24 @@ import (
 
 func (m *mockStore) GetFirstAppID(ctx context.Context, tenantID, workspaceID string) (string, error) {
 	return "app-1", nil
+}
+
+type appLookupErrorStore struct{ *mockStore }
+
+func (s *appLookupErrorStore) GetFirstAppID(context.Context, string, string) (string, error) {
+	return "", errors.New("no application")
+}
+
+func TestDeliverNextDoesNotFallbackToSyntheticApp(t *testing.T) {
+	base := newMockStore()
+	base.intents = append(base.intents, testPendingIntent())
+	processed, err := DeliverNext(context.Background(), &appLookupErrorStore{base}, "worker-1", Config{})
+	if !processed || err != nil {
+		t.Fatalf("processed=%v err=%v", processed, err)
+	}
+	if got := base.intents[0]; got.Status != "failed" || got.ErrorMessage == nil || !strings.Contains(*got.ErrorMessage, "resolve app") {
+		t.Fatalf("expected deterministic app lookup failure, got %+v", got)
+	}
 }
 
 func TestDeliverNext_AcceptEventsFailureRetriesWithoutDuplicateSend(t *testing.T) {

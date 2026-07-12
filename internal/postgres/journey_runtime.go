@@ -318,12 +318,22 @@ func (s *Store) AdvanceRunTx(ctx context.Context, runID string, run domain.Journ
 	}
 	defer tx.Rollback(ctx)
 
+	// All transition paths lock run before step. resolveWaitingRuns uses the same
+	// order, preventing a run<->step deadlock with event-driven wait resolution.
+	var dbRunStatus, dbCurrentNodeID string
+	err = tx.QueryRow(ctx, `SELECT status, current_node_id
+		FROM journey_runs WHERE id=$1 AND tenant_id=$2 FOR UPDATE`, runID, run.TenantID).
+		Scan(&dbRunStatus, &dbCurrentNodeID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("advance lock run: %w", err)
+	}
+
 	var claimedStep domain.JourneyStep
 	err = tx.QueryRow(ctx, `SELECT id, run_id, tenant_id, node_id, kind, status
-		FROM journey_steps
-		WHERE id=$1
-		FOR UPDATE`,
-		stepID).
+		FROM journey_steps WHERE id=$1 FOR UPDATE`, stepID).
 		Scan(&claimedStep.ID, &claimedStep.RunID, &claimedStep.TenantID, &claimedStep.NodeID, &claimedStep.Kind, &claimedStep.Status)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrNotFound
@@ -339,19 +349,6 @@ func (s *Store) AdvanceRunTx(ctx context.Context, runID string, run domain.Journ
 	}
 	if claimedStep.Status != "processing" {
 		return fmt.Errorf("advance step %s is %s, expected processing", stepID, claimedStep.Status)
-	}
-
-	var dbRunStatus, dbCurrentNodeID string
-	err = tx.QueryRow(ctx, `SELECT status, current_node_id
-		FROM journey_runs
-		WHERE id=$1 AND tenant_id=$2
-		FOR UPDATE`,
-		runID, run.TenantID).Scan(&dbRunStatus, &dbCurrentNodeID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return ErrNotFound
-	}
-	if err != nil {
-		return fmt.Errorf("advance lock run: %w", err)
 	}
 
 	expectedStatus := "active"

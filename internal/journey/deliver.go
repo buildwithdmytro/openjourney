@@ -52,7 +52,14 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 
 	appID, err := store.GetFirstAppID(ctx, intent.TenantID, intent.WorkspaceID)
 	if err != nil {
-		appID = "app-1"
+		slog.Error("failed to resolve deterministic app for journey event", "error", err, "intent_id", intent.ID)
+		intent.Status = "failed"
+		errMsg := fmt.Sprintf("failed to resolve app: %v", err)
+		intent.ErrorMessage = &errMsg
+		dec := "failed"
+		intent.Decision = &dec
+		_ = store.UpdateJourneyMessageIntent(ctx, intent)
+		return true, nil
 	}
 	p.AppID = appID
 

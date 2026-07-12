@@ -2,6 +2,7 @@ package journey
 
 import (
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
@@ -16,6 +17,9 @@ func IsInQuietHours(now time.Time, profile domain.Profile, quietHoursStart, quie
 
 	start := *quietHoursStart
 	end := *quietHoursEnd
+	if start == end {
+		return false, now, errors.New("quiet hours start and end must differ")
+	}
 
 	// Resolve timezone from profile or tenant fallback
 	tz := defaultTimezone

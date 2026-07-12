@@ -54,6 +54,10 @@ func EnrollScheduledDue(ctx context.Context, store ports.Store, clock Clock) err
 		}
 
 		for _, profileID := range profileIDs {
+			profile, err := store.GetProfileByIDSystem(ctx, v.TenantID, v.WorkspaceID, profileID)
+			if err != nil {
+				return fmt.Errorf("get scheduled profile: %w", err)
+			}
 			runs, err := store.GetJourneyRunsForProfile(ctx, v.TenantID, v.ID, profileID)
 			if err != nil {
 				return fmt.Errorf("get journey runs: %w", err)
@@ -92,17 +96,19 @@ func EnrollScheduledDue(ctx context.Context, store ports.Store, clock Clock) err
 				}
 			}
 
+			externalID := profile.ExternalID
 			run := domain.JourneyRun{
-				TenantID:         v.TenantID,
-				WorkspaceID:      v.WorkspaceID,
-				JourneyID:        v.JourneyID,
-				JourneyVersionID: v.ID,
-				ProfileID:        profileID,
-				EntryKey:         entryKey,
-				ReentrySequence:  reentrySeq,
-				Status:           "active",
-				CurrentNodeID:    entryNodeID,
-				State:            json.RawMessage("{}"),
+				TenantID:          v.TenantID,
+				WorkspaceID:       v.WorkspaceID,
+				JourneyID:         v.JourneyID,
+				JourneyVersionID:  v.ID,
+				ProfileID:         profileID,
+				SubjectExternalID: &externalID,
+				EntryKey:          entryKey,
+				ReentrySequence:   reentrySeq,
+				Status:            "active",
+				CurrentNodeID:     entryNodeID,
+				State:             json.RawMessage("{}"),
 			}
 
 			inserted, err := store.CreateJourneyRun(ctx, run)
@@ -198,6 +204,10 @@ func Backfill(ctx context.Context, store ports.Store, p domain.Principal, journe
 	enrolledCount := 0
 
 	for _, profileID := range profileIDs {
+		profile, err := store.GetProfileByIDSystem(ctx, v.TenantID, v.WorkspaceID, profileID)
+		if err != nil {
+			return 0, fmt.Errorf("get backfill profile: %w", err)
+		}
 		runs, err := store.GetJourneyRunsForProfile(ctx, v.TenantID, v.ID, profileID)
 		if err != nil {
 			return 0, fmt.Errorf("get journey runs: %w", err)
@@ -230,17 +240,19 @@ func Backfill(ctx context.Context, store ports.Store, p domain.Principal, journe
 
 		entryKey := fmt.Sprintf("backfill:%s:%d", segmentID, now.UnixNano())
 
+		externalID := profile.ExternalID
 		run := domain.JourneyRun{
-			TenantID:         v.TenantID,
-			WorkspaceID:      v.WorkspaceID,
-			JourneyID:        v.JourneyID,
-			JourneyVersionID: v.ID,
-			ProfileID:        profileID,
-			EntryKey:         entryKey,
-			ReentrySequence:  reentrySeq,
-			Status:           "active",
-			CurrentNodeID:    entryNodeID,
-			State:            json.RawMessage("{}"),
+			TenantID:          v.TenantID,
+			WorkspaceID:       v.WorkspaceID,
+			JourneyID:         v.JourneyID,
+			JourneyVersionID:  v.ID,
+			ProfileID:         profileID,
+			SubjectExternalID: &externalID,
+			EntryKey:          entryKey,
+			ReentrySequence:   reentrySeq,
+			Status:            "active",
+			CurrentNodeID:     entryNodeID,
+			State:             json.RawMessage("{}"),
 		}
 
 		inserted, err := store.CreateJourneyRun(ctx, run)

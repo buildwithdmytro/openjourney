@@ -14,6 +14,15 @@ type enrollMockStore struct {
 	mockStore
 	resolvedSegment   []string
 	scheduledVersions []domain.JourneyVersion
+	journey           domain.Journey
+	version           domain.JourneyVersion
+}
+
+func (e *enrollMockStore) GetJourney(context.Context, domain.Principal, string) (domain.Journey, error) {
+	return e.journey, nil
+}
+func (e *enrollMockStore) GetJourneyVersion(context.Context, string, string) (domain.JourneyVersion, error) {
+	return e.version, nil
 }
 
 func (e *enrollMockStore) ListActiveScheduledJourneyVersions(ctx context.Context) ([]domain.JourneyVersion, error) {
@@ -52,6 +61,24 @@ func (e *enrollMockStore) CreateJourneyRun(ctx context.Context, run domain.Journ
 	return true, nil
 }
 
+func (e *enrollMockStore) EnrollJourneyRun(ctx context.Context, run domain.JourneyRun, step domain.JourneyStep) (string, bool, error) {
+	inserted, err := e.CreateJourneyRun(ctx, run)
+	if err != nil || !inserted {
+		return "", inserted, err
+	}
+	for id, stored := range e.runs {
+		if stored.JourneyVersionID == run.JourneyVersionID && stored.ProfileID == run.ProfileID && stored.EntryKey == run.EntryKey {
+			step.RunID = id
+			if err := e.InsertJourneyStep(ctx, step); err != nil {
+				delete(e.runs, id)
+				return "", false, err
+			}
+			return id, true, nil
+		}
+	}
+	return "", false, fmt.Errorf("inserted run not found")
+}
+
 func (e *enrollMockStore) InsertJourneyStep(ctx context.Context, step domain.JourneyStep) error {
 	step.ID = fmt.Sprintf("step-%d", len(e.steps)+1)
 	e.steps[step.ID] = step
@@ -70,6 +97,9 @@ func TestIsScheduledDue(t *testing.T) {
 		{"*/5 * * * *", time.Date(2026, 1, 1, 12, 7, 0, 0, time.UTC), false},
 		{"0 * * * *", time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC), true},
 		{"0 * * * *", time.Date(2026, 1, 1, 12, 5, 0, 0, time.UTC), false},
+		{"invalid schedule", time.Date(2026, 1, 1, 12, 5, 0, 0, time.UTC), false},
+		{"5 12 * * *", time.Date(2026, 1, 1, 12, 5, 0, 0, time.UTC), false},
+		{"*/0 * * * *", time.Date(2026, 1, 1, 12, 5, 0, 0, time.UTC), false},
 	}
 
 	for _, tc := range tests {
@@ -84,7 +114,7 @@ func TestEnrollScheduledDue(t *testing.T) {
 	clock := NewFakeClock(time.Date(2026, 1, 1, 12, 5, 0, 0, time.UTC))
 	segmentID := "seg-1"
 	store := &enrollMockStore{
-		mockStore: *newMockStore(),
+		mockStore:       *newMockStore(),
 		resolvedSegment: []string{"profile-1", "profile-2"},
 		scheduledVersions: []domain.JourneyVersion{
 			{
@@ -101,6 +131,7 @@ func TestEnrollScheduledDue(t *testing.T) {
 			},
 		},
 	}
+	store.profile = &domain.Profile{ID: "profile", ExternalID: "customer-scheduled"}
 
 	err := EnrollScheduledDue(context.Background(), store, clock)
 	if err != nil {
@@ -112,6 +143,11 @@ func TestEnrollScheduledDue(t *testing.T) {
 	}
 	if len(store.steps) != 2 {
 		t.Errorf("expected 2 steps, got %d", len(store.steps))
+	}
+	for _, run := range store.runs {
+		if run.SubjectExternalID == nil || *run.SubjectExternalID != "customer-scheduled" {
+			t.Fatalf("scheduled run missing subject external id: %+v", run.SubjectExternalID)
+		}
 	}
 
 	err = EnrollScheduledDue(context.Background(), store, clock)
@@ -129,6 +165,25 @@ func TestEnrollScheduledDue(t *testing.T) {
 	}
 	if len(store.runs) != 2 {
 		t.Errorf("expected still 2 runs (reentry policy once), got %d", len(store.runs))
+	}
+}
+
+func TestBackfillSetsSubjectExternalID(t *testing.T) {
+	versionID := "ver-backfill"
+	store := &enrollMockStore{
+		mockStore: *newMockStore(), resolvedSegment: []string{"profile-1"},
+		journey: domain.Journey{ID: "j-1", CurrentVersionID: &versionID},
+		version: domain.JourneyVersion{ID: versionID, TenantID: "tenant-1", WorkspaceID: "ws-1", JourneyID: "j-1", ReentryPolicy: "once", Graph: json.RawMessage(`{"entry_node_id":"n1","nodes":[],"edges":[]}`)},
+	}
+	store.profile = &domain.Profile{ID: "profile-1", ExternalID: "customer-backfill"}
+	count, err := Backfill(context.Background(), store, domain.Principal{TenantID: "tenant-1", WorkspaceID: "ws-1"}, "j-1", "seg-1", "user-1")
+	if err != nil || count != 1 {
+		t.Fatalf("count=%d err=%v", count, err)
+	}
+	for _, run := range store.runs {
+		if run.SubjectExternalID == nil || *run.SubjectExternalID != "customer-backfill" {
+			t.Fatalf("missing backfill external id: %+v", run)
+		}
 	}
 }
 

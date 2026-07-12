@@ -390,6 +390,13 @@ func TestExecuteActionProfileUpdate(t *testing.T) {
 	if len(store.acceptedEvents) != 1 || store.acceptedEvents[0].Type != "profile.updated" {
 		t.Errorf("expected profile.updated event to be emitted")
 	}
+	firstKey := store.acceptedEvents[0].IdempotencyKey
+	if _, err := graph.Nodes[0].Execute(context.Background(), store, run, graph, now, "advance"); err != nil {
+		t.Fatalf("replay action: %v", err)
+	}
+	if len(store.acceptedEvents) != 2 || store.acceptedEvents[1].IdempotencyKey != firstKey {
+		t.Fatalf("action replay must use deterministic event key %q: %+v", firstKey, store.acceptedEvents)
+	}
 	if res.NextNodeID != "n2" {
 		t.Errorf("expected NextNodeID 'n2', got %q", res.NextNodeID)
 	}
@@ -549,5 +556,3 @@ func TestExecuteMessage(t *testing.T) {
 		t.Errorf("expected Transactional to be false")
 	}
 }
-
-

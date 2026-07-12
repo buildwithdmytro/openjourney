@@ -111,6 +111,11 @@ func DecodeConfig(node Node) (any, error) {
 		var cfg WaitConfig
 		return cfg, decodeNodeConfig(node, &cfg)
 	case NodeTypeAction:
+		// Action side effects are deliberately idempotent-at-least-once: the profile
+		// merge is idempotent for the same `set` map and AcceptEvents deduplicates the
+		// deterministic run+node key. A worker crash before AdvanceRunTx may replay
+		// both operations, but cannot create a second accepted event or a different
+		// profile result.
 		var cfg ActionConfig
 		return cfg, decodeNodeConfig(node, &cfg)
 	case NodeTypeGoal:
@@ -586,4 +591,3 @@ func findNextNode(graph *Graph, fromID string, branch string) (string, error) {
 	}
 	return "", fmt.Errorf("no edge from %s with branch %q", fromID, branch)
 }
-

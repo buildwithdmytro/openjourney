@@ -346,11 +346,9 @@ func (s *Store) GetProfileEmails(ctx context.Context, tenantID string, profileID
 
 func (s *Store) GetFirstAppID(ctx context.Context, tenantID, workspaceID string) (string, error) {
 	var appID string
-	err := s.pool.QueryRow(ctx, `SELECT id FROM applications WHERE tenant_id = $1 AND workspace_id = $2 LIMIT 1`, tenantID, workspaceID).Scan(&appID)
+	err := s.pool.QueryRow(ctx, `SELECT id FROM applications WHERE tenant_id = $1 AND workspace_id = $2 ORDER BY id LIMIT 1`, tenantID, workspaceID).Scan(&appID)
 	if err != nil {
 		return "", err
 	}
 	return appID, nil
 }
-
-

@@ -25,107 +25,107 @@ func TestIsInQuietHours(t *testing.T) {
 	}
 
 	tests := []struct {
-		name            string
-		now             time.Time
-		profile         domain.Profile
-		start           *int
-		end             *int
-		defaultTz       string
-		expectInQuiet   bool
-		expectNextOpen  time.Time
+		name           string
+		now            time.Time
+		profile        domain.Profile
+		start          *int
+		end            *int
+		defaultTz      string
+		expectInQuiet  bool
+		expectNextOpen time.Time
 	}{
 		{
-			name:            "No quiet hours configured",
-			now:             time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC),
-			profile:         profileUTC,
-			start:           nil,
-			end:             nil,
-			defaultTz:       "UTC",
-			expectInQuiet:   false,
-			expectNextOpen:  time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC),
+			name:           "No quiet hours configured",
+			now:            time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC),
+			profile:        profileUTC,
+			start:          nil,
+			end:            nil,
+			defaultTz:      "UTC",
+			expectInQuiet:  false,
+			expectNextOpen: time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC),
 		},
 		{
-			name:            "Same day quiet hours - outside hours",
-			now:             time.Date(2026, 7, 9, 11, 0, 0, 0, time.UTC),
-			profile:         profileUTC,
-			start:           ptrInt(13),
-			end:             ptrInt(15),
-			defaultTz:       "UTC",
-			expectInQuiet:   false,
-			expectNextOpen:  time.Date(2026, 7, 9, 11, 0, 0, 0, time.UTC),
+			name:           "Same day quiet hours - outside hours",
+			now:            time.Date(2026, 7, 9, 11, 0, 0, 0, time.UTC),
+			profile:        profileUTC,
+			start:          ptrInt(13),
+			end:            ptrInt(15),
+			defaultTz:      "UTC",
+			expectInQuiet:  false,
+			expectNextOpen: time.Date(2026, 7, 9, 11, 0, 0, 0, time.UTC),
 		},
 		{
-			name:            "Same day quiet hours - inside hours",
-			now:             time.Date(2026, 7, 9, 14, 30, 0, 0, time.UTC),
-			profile:         profileUTC,
-			start:           ptrInt(13),
-			end:             ptrInt(15),
-			defaultTz:       "UTC",
-			expectInQuiet:   true,
-			expectNextOpen:  time.Date(2026, 7, 9, 15, 0, 0, 0, time.UTC),
+			name:           "Same day quiet hours - inside hours",
+			now:            time.Date(2026, 7, 9, 14, 30, 0, 0, time.UTC),
+			profile:        profileUTC,
+			start:          ptrInt(13),
+			end:            ptrInt(15),
+			defaultTz:      "UTC",
+			expectInQuiet:  true,
+			expectNextOpen: time.Date(2026, 7, 9, 15, 0, 0, 0, time.UTC),
 		},
 		{
-			name:            "Wrap around midnight - outside hours",
-			now:             time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC),
-			profile:         profileUTC,
-			start:           ptrInt(22),
-			end:             ptrInt(8),
-			defaultTz:       "UTC",
-			expectInQuiet:   false,
-			expectNextOpen:  time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC),
+			name:           "Wrap around midnight - outside hours",
+			now:            time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC),
+			profile:        profileUTC,
+			start:          ptrInt(22),
+			end:            ptrInt(8),
+			defaultTz:      "UTC",
+			expectInQuiet:  false,
+			expectNextOpen: time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC),
 		},
 		{
-			name:            "Wrap around midnight - inside hours (evening)",
-			now:             time.Date(2026, 7, 9, 23, 15, 0, 0, time.UTC),
-			profile:         profileUTC,
-			start:           ptrInt(22),
-			end:             ptrInt(8),
-			defaultTz:       "UTC",
-			expectInQuiet:   true,
-			expectNextOpen:  time.Date(2026, 7, 10, 8, 0, 0, 0, time.UTC),
+			name:           "Wrap around midnight - inside hours (evening)",
+			now:            time.Date(2026, 7, 9, 23, 15, 0, 0, time.UTC),
+			profile:        profileUTC,
+			start:          ptrInt(22),
+			end:            ptrInt(8),
+			defaultTz:      "UTC",
+			expectInQuiet:  true,
+			expectNextOpen: time.Date(2026, 7, 10, 8, 0, 0, 0, time.UTC),
 		},
 		{
-			name:            "Wrap around midnight - inside hours (morning)",
-			now:             time.Date(2026, 7, 9, 5, 45, 0, 0, time.UTC),
-			profile:         profileUTC,
-			start:           ptrInt(22),
-			end:             ptrInt(8),
-			defaultTz:       "UTC",
-			expectInQuiet:   true,
-			expectNextOpen:  time.Date(2026, 7, 9, 8, 0, 0, 0, time.UTC),
+			name:           "Wrap around midnight - inside hours (morning)",
+			now:            time.Date(2026, 7, 9, 5, 45, 0, 0, time.UTC),
+			profile:        profileUTC,
+			start:          ptrInt(22),
+			end:            ptrInt(8),
+			defaultTz:      "UTC",
+			expectInQuiet:  true,
+			expectNextOpen: time.Date(2026, 7, 9, 8, 0, 0, 0, time.UTC),
 		},
 		{
-			name:            "Profile timezone overrides default timezone - NY morning",
+			name: "Profile timezone overrides default timezone - NY morning",
 			// 10:00 UTC is 06:00 AM NY (Eastern Time)
-			now:             time.Date(2026, 7, 9, 10, 0, 0, 0, time.UTC),
-			profile:         profileNY,
-			start:           ptrInt(22),
-			end:             ptrInt(8),
-			defaultTz:       "UTC",
-			expectInQuiet:   true,
+			now:           time.Date(2026, 7, 9, 10, 0, 0, 0, time.UTC),
+			profile:       profileNY,
+			start:         ptrInt(22),
+			end:           ptrInt(8),
+			defaultTz:     "UTC",
+			expectInQuiet: true,
 			// Ends at 08:00 AM NY (12:00 UTC)
-			expectNextOpen:  time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC),
+			expectNextOpen: time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC),
 		},
 		{
-			name:            "Default timezone fallback used",
+			name: "Default timezone fallback used",
 			// 10:00 UTC is 06:00 AM NY (Eastern Time)
-			now:             time.Date(2026, 7, 9, 10, 0, 0, 0, time.UTC),
-			profile:         profileNoTz,
-			start:           ptrInt(22),
-			end:             ptrInt(8),
-			defaultTz:       "America/New_York",
-			expectInQuiet:   true,
-			expectNextOpen:  time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC),
+			now:            time.Date(2026, 7, 9, 10, 0, 0, 0, time.UTC),
+			profile:        profileNoTz,
+			start:          ptrInt(22),
+			end:            ptrInt(8),
+			defaultTz:      "America/New_York",
+			expectInQuiet:  true,
+			expectNextOpen: time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC),
 		},
 		{
-			name:            "Invalid profile timezone falls back to UTC",
-			now:             time.Date(2026, 7, 9, 5, 0, 0, 0, time.UTC),
-			profile:         domain.Profile{Attributes: json.RawMessage(`{"timezone":"Invalid/Zone"}`)},
-			start:           ptrInt(22),
-			end:             ptrInt(8),
-			defaultTz:       "UTC",
-			expectInQuiet:   true,
-			expectNextOpen:  time.Date(2026, 7, 9, 8, 0, 0, 0, time.UTC),
+			name:           "Invalid profile timezone falls back to UTC",
+			now:            time.Date(2026, 7, 9, 5, 0, 0, 0, time.UTC),
+			profile:        domain.Profile{Attributes: json.RawMessage(`{"timezone":"Invalid/Zone"}`)},
+			start:          ptrInt(22),
+			end:            ptrInt(8),
+			defaultTz:      "UTC",
+			expectInQuiet:  true,
+			expectNextOpen: time.Date(2026, 7, 9, 8, 0, 0, 0, time.UTC),
 		},
 	}
 
@@ -144,5 +144,13 @@ func TestIsInQuietHours(t *testing.T) {
 				t.Errorf("expected nextOpen to be %v, got %v", tc.expectNextOpen, nextOpen)
 			}
 		})
+	}
+}
+
+func TestIsInQuietHoursRejectsEqualBounds(t *testing.T) {
+	now := time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC)
+	_, _, err := IsInQuietHours(now, domain.Profile{}, ptrInt(8), ptrInt(8), "UTC")
+	if err == nil {
+		t.Fatal("expected equal quiet-hours bounds to be rejected")
 	}
 }

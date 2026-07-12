@@ -353,13 +353,13 @@ Testing bar: unit + golden per milestone; one consolidated integration/determini
    the `entry_key`/time-slot, not the live run count) so a repeat with the same `entry_key`
    conflicts on the unique index. *Done when:* a scheduled `always` journey enrolls a profile
    exactly once per firing (test the busy-loop case). — done: scheduled `always` re-entry derives its sequence from the minute firing slot, and TestEnrollScheduledAlwaysOncePerFiring proves busy-loop retries enroll once while the next firing enrolls again.
-5. **Cheap correctness P2s (batch):** deterministic `app_id` in the journey `message.sent` key
+5. [x] **Cheap correctness P2s (batch):** deterministic `app_id` in the journey `message.sent` key
    (`deliver.go:53` — `GetFirstAppID` needs an `ORDER BY`, no `"app-1"` fallback that changes
    the key); set `subject_external_id` on scheduled/backfill runs (`enroll.go:89,232`) so their
    `wait_event` nodes can resolve; validate `quiet_hours_start != quiet_hours_end`
    (`quiethours.go:53`); make the `action` node's profile mutation + `profile.updated` emit part
    of the transition tx (or document idempotent-at-least-once); fix the `AdvanceRunTx` ↔
-   `resolveWaitingRuns` lock order to run→step both sides. *Done when:* each has a unit test.
+   `resolveWaitingRuns` lock order to run→step both sides. *Done when:* each has a unit test. — done: ordered app lookup rejects synthetic fallback, scheduled/backfill runs retain external subjects, equal quiet-hour bounds are rejected, action replay uses a deterministic event key, and transitions lock run before step.
 6. **Journey `message.sent` contract.** Either add `campaign_id` (empty is invalid) — recommend
    relaxing `Event.Validate` `message.sent` to accept a journey send keyed by `journey_id` when
    `campaign_id` is absent (`domain.go:151`) — so journey sends are replayable and analyzable.
