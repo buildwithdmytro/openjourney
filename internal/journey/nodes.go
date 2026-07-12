@@ -2,13 +2,12 @@ package journey
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
+	"github.com/buildwithdmytro/openjourney/internal/experiment"
 	"github.com/buildwithdmytro/openjourney/internal/ports"
 )
 
@@ -268,8 +267,7 @@ func (n *Node) Execute(ctx context.Context, store ports.Store, run *domain.Journ
 		}
 		var branch string
 		if cfg.Mode == "random" {
-			h := sha256.Sum256([]byte(run.ProfileID + ":" + n.ID))
-			bucket := binary.BigEndian.Uint64(h[:8]) % 100
+			bucket := experiment.BucketOf(run.ProfileID+":"+n.ID, 100)
 			var cumulative uint64
 			for _, br := range cfg.Branches {
 				cumulative += uint64(br.Weight)
