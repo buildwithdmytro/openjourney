@@ -364,9 +364,9 @@ Testing bar: unit + golden per milestone; one consolidated integration/determini
    relaxing `Event.Validate` `message.sent` to accept a journey send keyed by `journey_id` when
    `campaign_id` is absent (`domain.go:151`) — so journey sends are replayable and analyzable.
    *Done when:* a journey `message.sent` passes `Validate`. — done: Event validation accepts a journey_id in place of campaign_id, with positive journey-send and negative missing-source contract tests.
-7. **Add the missing negative test** for the publish/backfill human-actor gate
+7. [x] **Add the missing negative test** for the publish/backfill human-actor gate
    (`server_test.go`): authenticate as `ActorType:"api_key"`, assert 403. Correct the two audit
-   overstatements in `v1-milestone-3-audit.md`. *Done when:* the test fails if the gate is removed.
+   overstatements in `v1-milestone-3-audit.md`. *Done when:* the test fails if the gate is removed. — done: TestJourneyPublishAndBackfillRequireHumanActor proves API-key actors receive 403 without publishing or enrolling, and the audit now accurately describes transactional scope and one-step-at-a-time workers.
 
 ### Milestone 9.1 — Experiment definitions & deterministic assignment
 1. **Migration** `018_experiments.sql` per §2.1 (Recipe 6.1) + scopes

@@ -77,6 +77,10 @@ func (s *Server) listJourneys(w http.ResponseWriter, r *http.Request) {
 func (s *Server) publishJourney(w http.ResponseWriter, r *http.Request) {
 	principal := principalFrom(r)
 	id := r.PathValue("id")
+	if principal.ActorType != "user" || principal.UserID == "" {
+		writeError(w, http.StatusForbidden, "human_approval_required", "publishing requires an authenticated user")
+		return
+	}
 	var input struct {
 		ApproverUserID string `json:"approver_user_id"`
 	}
@@ -86,11 +90,8 @@ func (s *Server) publishJourney(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	approverUserID := input.ApproverUserID
-	if approverUserID == "" {
-		approverUserID = principal.UserID
-	}
-	version, err := journeyflow.Publish(r.Context(), s.store, s.blobStore, principal, id, approverUserID)
+	_ = input.ApproverUserID // accepted for backwards compatibility; never trusted
+	version, err := journeyflow.Publish(r.Context(), s.store, s.blobStore, principal, id, principal.UserID)
 	if errors.Is(err, postgres.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "not_found", "journey not found")
 		return
@@ -100,7 +101,7 @@ func (s *Server) publishJourney(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if errors.Is(err, journeyflow.ErrApproverRequired) {
-		writeError(w, http.StatusUnprocessableEntity, "approver_required", "publishing requires an approver_user_id")
+		writeError(w, http.StatusForbidden, "human_approval_required", "publishing requires an authenticated user")
 		return
 	}
 	if err != nil {
@@ -239,12 +240,12 @@ func (s *Server) backfillJourney(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_input", "segment_id is required")
 		return
 	}
-	if input.ApproverUserID == "" {
-		writeError(w, http.StatusUnprocessableEntity, "approver_required", "backfill requires an approver_user_id")
+	if principal.ActorType != "user" || principal.UserID == "" {
+		writeError(w, http.StatusForbidden, "human_approval_required", "backfill requires an authenticated user")
 		return
 	}
-
-	count, err := journeyflow.Backfill(r.Context(), s.store, principal, id, input.SegmentID, input.ApproverUserID)
+	_ = input.ApproverUserID // accepted for backwards compatibility; never trusted
+	count, err := journeyflow.Backfill(r.Context(), s.store, principal, id, input.SegmentID, principal.UserID)
 	if errors.Is(err, postgres.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "not_found", "journey not found")
 		return

@@ -60,17 +60,22 @@ func stringPtr(value string) *string {
 
 func (f *fakeStore) Ready(context.Context) error { return nil }
 func (f *fakeStore) Authenticate(_ context.Context, key string) (domain.Principal, error) {
-	if key != "test-key" {
+	if key != "test-key" && key != "api-key-actor" {
 		return domain.Principal{}, errors.New("unauthorized")
 	}
 	scopes := f.scopes
 	if scopes == nil {
 		scopes = []string{"events:write", "profiles:read"}
 	}
-	return domain.Principal{
+	principal := domain.Principal{
 		TenantID: "tenant", WorkspaceID: "workspace", AppID: "app",
-		Scopes: scopes,
-	}, nil
+		UserID: "00000000-0000-0000-0000-000000000001", ActorType: "user", Scopes: scopes,
+	}
+	if key == "api-key-actor" {
+		principal.UserID = ""
+		principal.ActorType = "api_key"
+	}
+	return principal, nil
 }
 func (f *fakeStore) AuthenticateOIDC(context.Context, domain.OIDCClaims) (domain.Principal, error) {
 	if f.oidcPrincipal != nil {
@@ -936,6 +941,42 @@ func TestPublishJourneyRequiresPublishScope(t *testing.T) {
 	server.ServeHTTP(response, request)
 	if response.Code != http.StatusForbidden {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestJourneyPublishAndBackfillRequireHumanActor(t *testing.T) {
+	store := &fakeStore{scopes: []string{"journeys:write", "journeys:publish"}}
+	server := NewWithSessionTTL(store, 75, nil, "http://localhost:3000", 12*time.Hour)
+
+	for _, tc := range []struct {
+		name string
+		path string
+		body string
+	}{
+		{name: "publish", path: "/v1/journeys/journey-1/publish", body: `{}`},
+		{name: "backfill", path: "/v1/journeys/journey-1/backfill", body: `{"segment_id":"segment-1"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body))
+			request.Header.Set("Authorization", "Bearer api-key-actor")
+			response := httptest.NewRecorder()
+
+			server.ServeHTTP(response, request)
+
+			if response.Code != http.StatusForbidden {
+				t.Fatalf("expected non-human actor to be rejected with 403, got %d body=%s", response.Code, response.Body.String())
+			}
+			if !strings.Contains(response.Body.String(), `"code":"human_approval_required"`) {
+				t.Fatalf("expected human approval error, body=%s", response.Body.String())
+			}
+		})
+	}
+
+	if store.published != 0 {
+		t.Fatalf("API-key actor bypassed publish gate: published=%d", store.published)
+	}
+	if len(store.runs) != 0 {
+		t.Fatalf("API-key actor bypassed backfill gate: runs=%d", len(store.runs))
 	}
 }
 
