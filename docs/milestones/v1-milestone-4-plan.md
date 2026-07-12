@@ -382,7 +382,7 @@ Testing bar: unit + golden per milestone; one consolidated integration/determini
 5. [x] **HTTP + React scaffold** (Recipes 6.4, 6.8): experiments CRUD; a new `Experiments` section
    (add to `View` union, `viewTitles`, nav array, hash routing — App.tsx pattern). *Done when:*
    `npm run build` passes; create/list works. — done: scoped CRUD routes and an Experiments hash/nav view create and list experiments; focused handler/UI tests plus full build, vet, typecheck, frontend build, and frontend suite pass.
-6. **OpenAPI** entries for the new routes. *Done when:* redocly lints clean.
+6. [x] **OpenAPI** entries for the new routes. *Done when:* redocly lints clean. — done: all four experiment CRUD routes and their experiment/variant schemas are documented; Redocly lint and the focused experiment endpoint test pass.
 
 ### Milestone 9.2 — Wire variants into campaigns & journeys
 1. **Migration** `019_experiment_bindings.sql` per §2.2 (`campaigns.experiment_id`;

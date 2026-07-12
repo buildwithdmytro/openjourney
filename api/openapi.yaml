@@ -414,6 +414,76 @@ paths:
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "422": { $ref: "#/components/responses/Error" }
+  /v1/experiments:
+    get:
+      operationId: listExperiments
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Experiments in the authenticated tenant and workspace.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Experiment" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "500": { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createExperiment
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ExperimentInput" }
+      responses:
+        "201":
+          description: Experiment created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Experiment" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "500": { $ref: "#/components/responses/Error" }
+  /v1/experiments/{id}:
+    get:
+      operationId: getExperiment
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Experiment details and variants.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Experiment" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "500": { $ref: "#/components/responses/Error" }
+    put:
+      operationId: updateExperiment
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ExperimentInput" }
+      responses:
+        "200":
+          description: Experiment updated; a running experiment's seed remains immutable.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Experiment" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "500": { $ref: "#/components/responses/Error" }
   /v1/journeys:
     get:
       operationId: listJourneys
@@ -893,6 +963,64 @@ components:
         last_error: { type: string }
         payload: { type: object, additionalProperties: true }
         created_at: { type: string, format: date-time }
+    ExperimentVariantInput:
+      type: object
+      required: [label, weight]
+      additionalProperties: false
+      properties:
+        label: { type: string, minLength: 1 }
+        weight: { type: integer, minimum: 0 }
+        is_control: { type: boolean, default: false }
+        template_id: { type: string, format: uuid }
+    ExperimentVariant:
+      allOf:
+        - $ref: "#/components/schemas/ExperimentVariantInput"
+        - type: object
+          required: [id, experiment_id, tenant_id, is_control, created_at]
+          properties:
+            id: { type: string, format: uuid }
+            experiment_id: { type: string, format: uuid }
+            tenant_id: { type: string, format: uuid }
+            created_at: { type: string, format: date-time }
+    ExperimentInput:
+      type: object
+      required: [name, subject_type, seed]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1 }
+        description: { type: string }
+        subject_type: { enum: [campaign, journey] }
+        status: { enum: [draft, running, completed, archived], default: draft }
+        method: { const: frequentist, default: frequentist }
+        seed: { type: string, minLength: 1 }
+        holdout_pct: { type: integer, minimum: 0, maximum: 100, default: 0 }
+        primary_goal:
+          type: object
+          additionalProperties: true
+        guardrail_goals:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+          default: []
+        winner_variant: { type: string }
+        variants:
+          type: array
+          items: { $ref: "#/components/schemas/ExperimentVariantInput" }
+    Experiment:
+      allOf:
+        - $ref: "#/components/schemas/ExperimentInput"
+        - type: object
+          required: [id, tenant_id, workspace_id, status, method, holdout_pct, guardrail_goals, created_at, updated_at]
+          properties:
+            id: { type: string, format: uuid }
+            tenant_id: { type: string, format: uuid }
+            workspace_id: { type: string, format: uuid }
+            variants:
+              type: array
+              items: { $ref: "#/components/schemas/ExperimentVariant" }
+            created_at: { type: string, format: date-time }
+            updated_at: { type: string, format: date-time }
     JourneyInput:
       type: object
       required: [name]
