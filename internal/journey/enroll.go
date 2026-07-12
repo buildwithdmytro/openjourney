@@ -60,7 +60,15 @@ func EnrollScheduledDue(ctx context.Context, store ports.Store, clock Clock) err
 			}
 
 			var reentrySeq int
-			if len(runs) == 0 {
+			if v.ReentryPolicy == "always" {
+				// The schedule slot is the firing identity. Deriving the sequence from it
+				// makes retries of the same firing hit the enrollment unique key instead
+				// of observing the just-created run and choosing a new sequence.
+				reentrySeq = int(slotTime.Unix() / 60)
+				if len(runs) > v.MaxReentries {
+					continue
+				}
+			} else if len(runs) == 0 {
 				reentrySeq = 0
 			} else {
 				if v.ReentryPolicy == "once" {

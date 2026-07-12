@@ -132,6 +132,45 @@ func TestEnrollScheduledDue(t *testing.T) {
 	}
 }
 
+func TestEnrollScheduledAlwaysOncePerFiring(t *testing.T) {
+	clock := NewFakeClock(time.Date(2026, 1, 1, 12, 5, 0, 0, time.UTC))
+	segmentID := "seg-1"
+	store := &enrollMockStore{
+		mockStore:       *newMockStore(),
+		resolvedSegment: []string{"profile-1"},
+		scheduledVersions: []domain.JourneyVersion{{
+			ID:             "ver-always",
+			JourneyID:      "j-always",
+			TenantID:       "tenant-1",
+			WorkspaceID:    "ws-1",
+			EntryKind:      "scheduled",
+			EntrySegmentID: &segmentID,
+			EntrySchedule:  stringPtr("*/5 * * * *"),
+			ReentryPolicy:  "always",
+			MaxReentries:   10,
+			Status:         "active",
+			Graph:          json.RawMessage(`{"entry_node_id":"n1","nodes":[],"edges":[]}`),
+		}},
+	}
+
+	for range 20 { // Simulate the worker's busy-loop retries within one due minute.
+		if err := EnrollScheduledDue(context.Background(), store, clock); err != nil {
+			t.Fatalf("enroll scheduled firing: %v", err)
+		}
+	}
+	if len(store.runs) != 1 {
+		t.Fatalf("same firing enrolled %d runs, want 1", len(store.runs))
+	}
+
+	clock.Advance(5 * time.Minute)
+	if err := EnrollScheduledDue(context.Background(), store, clock); err != nil {
+		t.Fatalf("enroll next scheduled firing: %v", err)
+	}
+	if len(store.runs) != 2 {
+		t.Fatalf("two distinct firings enrolled %d runs, want 2", len(store.runs))
+	}
+}
+
 func stringPtr(s string) *string {
 	return &s
 }

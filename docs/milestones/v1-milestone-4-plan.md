@@ -349,10 +349,10 @@ Testing bar: unit + golden per milestone; one consolidated integration/determini
    its event dropped. Also ensure a repeatedly-failing emit dead-letters instead of sticking at
    `attempts>=3` forever. *Done when:* unit test — send succeeds, first emit fails, second pass
    emits `message.sent` even with a suppression added in between. — done: provider_sent reconciliation bypasses policy re-evaluation, and unit tests prove suppression cannot drop the event and repeated emission failure reaches dead-letter status.
-4. **`always` re-entry dedup.** Make `reentry_sequence` deterministic per firing (derive from
+4. [x] **`always` re-entry dedup.** Make `reentry_sequence` deterministic per firing (derive from
    the `entry_key`/time-slot, not the live run count) so a repeat with the same `entry_key`
    conflicts on the unique index. *Done when:* a scheduled `always` journey enrolls a profile
-   exactly once per firing (test the busy-loop case).
+   exactly once per firing (test the busy-loop case). — done: scheduled `always` re-entry derives its sequence from the minute firing slot, and TestEnrollScheduledAlwaysOncePerFiring proves busy-loop retries enroll once while the next firing enrolls again.
 5. **Cheap correctness P2s (batch):** deterministic `app_id` in the journey `message.sent` key
    (`deliver.go:53` — `GetFirstAppID` needs an `ORDER BY`, no `"app-1"` fallback that changes
    the key); set `subject_external_id` on scheduled/backfill runs (`enroll.go:89,232`) so their
