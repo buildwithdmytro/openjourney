@@ -339,6 +339,38 @@ export async function updateCampaign(baseURL: string, apiKey: string, id: string
   return requestJSON<Campaign>(baseURL, apiKey, `/v1/campaigns/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(input) });
 }
 
+export type ExperimentVariant = {
+  id?: string;
+  experiment_id?: string;
+  label: string;
+  weight: number;
+  is_control: boolean;
+  template_id?: string;
+};
+
+export type Experiment = {
+  id: string;
+  name: string;
+  description?: string;
+  subject_type: "campaign" | "journey";
+  status: "draft" | "running" | "completed" | "archived";
+  method: "frequentist";
+  seed: string;
+  holdout_pct: number;
+  variants?: ExperimentVariant[];
+  created_at?: string;
+  updated_at?: string;
+};
+
+export async function listExperiments(baseURL: string, apiKey: string): Promise<Experiment[]> {
+  const result = await requestJSON<Experiment[] | null>(baseURL, apiKey, "/v1/experiments");
+  return Array.isArray(result) ? result : [];
+}
+
+export async function createExperiment(baseURL: string, apiKey: string, input: Partial<Experiment>): Promise<Experiment> {
+  return requestJSON<Experiment>(baseURL, apiKey, "/v1/experiments", { method: "POST", body: JSON.stringify(input) });
+}
+
 export type Journey = {
   id: string;
   tenant_id: string;

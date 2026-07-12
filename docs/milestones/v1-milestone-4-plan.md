@@ -379,9 +379,9 @@ Testing bar: unit + golden per milestone; one consolidated integration/determini
    `status='running'`. *Done when:* `go build ./...` passes. — done: transactional tenant/workspace-scoped CRUD and stable conflict-safe assignment are implemented; a live-Postgres integration test proves two-workspace isolation, assignment stability, and running-seed immutability, with full build/vet passing.
 4. [x] **Assignment lib** `internal/experiment/assign.go` (Recipe 6.19) + the shared `bucketOf`
    helper (refactor `nodes.go` to use it). *Done when:* stability + distribution unit tests pass. — done: SHA-256 assignment is stable across 10k calls and restart-equivalent inputs; a 100k-subject test proves holdout and weighted distribution tolerance, and journey splits use the shared bucket helper unchanged.
-5. **HTTP + React scaffold** (Recipes 6.4, 6.8): experiments CRUD; a new `Experiments` section
+5. [x] **HTTP + React scaffold** (Recipes 6.4, 6.8): experiments CRUD; a new `Experiments` section
    (add to `View` union, `viewTitles`, nav array, hash routing — App.tsx pattern). *Done when:*
-   `npm run build` passes; create/list works.
+   `npm run build` passes; create/list works. — done: scoped CRUD routes and an Experiments hash/nav view create and list experiments; focused handler/UI tests plus full build, vet, typecheck, frontend build, and frontend suite pass.
 6. **OpenAPI** entries for the new routes. *Done when:* redocly lints clean.
 
 ### Milestone 9.2 — Wire variants into campaigns & journeys

@@ -14,9 +14,11 @@ import {
 import { oidcConfigured, restoreOIDCSession, signIn, signOut } from "./auth";
 
 const Journeys = lazy(() => import("./sections/Journeys"));
+const Experiments = lazy(() => import("./sections/Experiments"));
 
 const apiBase = import.meta.env.VITE_API_BASE_URL || "/api";
-type View = "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "templates" | "campaigns" | "journeys" | "suppressions" | "sender-identities";
+
+type View = "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "templates" | "campaigns" | "journeys" | "experiments" | "suppressions" | "sender-identities";
 type CredentialSource = "manual" | "session" | "oidc";
 
 const viewTitles: Record<View, [string, string]> = {
@@ -31,6 +33,7 @@ const viewTitles: Record<View, [string, string]> = {
   templates: ["Templates", "Design email templates with Liquid tags and live preview."],
   campaigns: ["Campaigns", "Schedule and manage sharded marketing campaigns linked to segments and templates."],
   journeys: ["Journeys", "Design, publish, and monitor automated customer experiences."],
+  experiments: ["Experiments", "Create controlled tests with stable audience assignment."],
   suppressions: ["Suppressions", "Manage bounces, complaints, and manually suppressed endpoints."],
   "sender-identities": ["Sender Identities", "Manage verified sender emails and webhook channels."],
 };
@@ -61,6 +64,9 @@ const AVAILABLE_SCOPES = [
   "journeys:read",
   "journeys:write",
   "journeys:publish",
+  "experiments:read",
+  "experiments:write",
+  "reports:read",
 ];
 
 export function App() {
@@ -209,7 +215,7 @@ export function App() {
       <aside>
         <div className="brand"><span>O</span> OpenJourney</div>
         <nav aria-label="Primary">
-          {(["profiles", "segments", "templates", "campaigns", "journeys", "suppressions", "sender-identities", "schemas", "api-keys", "privacy", "access", "operations", "audit"] as View[]).map((item) => (
+          {(["profiles", "segments", "templates", "campaigns", "journeys", "experiments", "suppressions", "sender-identities", "schemas", "api-keys", "privacy", "access", "operations", "audit"] as View[]).map((item) => (
             <button key={item} className={view === item ? "active" : ""}
               onClick={() => setView(item)}>{viewTitles[item][0]}</button>
           ))}
@@ -238,6 +244,7 @@ export function App() {
             <Journeys apiKey={apiKey} />
           </Suspense>
         )}
+        {view === "experiments" && <Suspense fallback={<p role="status">Loading experiments…</p>}><Experiments apiKey={apiKey} baseURL={apiBase} /></Suspense>}
         {view === "suppressions" && <Suppressions apiKey={apiKey} />}
         {view === "sender-identities" && <SenderIdentities apiKey={apiKey} />}
         {view === "schemas" && <Schemas apiKey={apiKey} />}
