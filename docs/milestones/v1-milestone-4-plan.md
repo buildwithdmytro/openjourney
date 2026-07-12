@@ -343,12 +343,12 @@ Testing bar: unit + golden per milestone; one consolidated integration/determini
    the lease-reclaim branch (or dead-letter on reclaim past the threshold) so a panicking node
    eventually reaches the DLQ instead of looping forever. *Done when:* a step that crashes the
    worker N times is marked `dead` and surfaces in `/v1/journeys/dlq`. — done: ClaimJourneyStep transitions timed-out poison pills to dead and TestJourneyDLQPoisonPill verifies it surfaces in the DLQ.
-3. **`provider_sent` reconcile.** In `deliver.go:143`, the `provider_sent` reconcile branch must
+3. [x] **`provider_sent` reconcile.** In `deliver.go:143`, the `provider_sent` reconcile branch must
    jump straight to `message.sent` emission — skip the quiet-hours + `policy.Evaluate`
    re-decision so an already-delivered message can't be flipped to `suppressed`/`fatigued` with
    its event dropped. Also ensure a repeatedly-failing emit dead-letters instead of sticking at
    `attempts>=3` forever. *Done when:* unit test — send succeeds, first emit fails, second pass
-   emits `message.sent` even with a suppression added in between.
+   emits `message.sent` even with a suppression added in between. — done: provider_sent reconciliation bypasses policy re-evaluation, and unit tests prove suppression cannot drop the event and repeated emission failure reaches dead-letter status.
 4. **`always` re-entry dedup.** Make `reentry_sequence` deterministic per firing (derive from
    the `entry_key`/time-slot, not the live run count) so a repeat with the same `entry_key`
    conflicts on the unique index. *Done when:* a scheduled `always` journey enrolls a profile

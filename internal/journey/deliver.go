@@ -165,249 +165,257 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 		_ = store.UpdateJourneyMessageIntent(ctx, intent)
 		return true, nil
 	}
-
-	// Quiet hours check (marketing/non-transactional messages only)
-	if !intent.Transactional {
-		start, end, tz, err := store.GetTenantQuietHours(ctx, p)
-		if err != nil {
-			slog.Error("failed to get tenant quiet hours", "error", err, "tenant_id", p.TenantID)
-		} else if start != nil && end != nil {
-			inQuiet, nextOpen, err := IsInQuietHours(clk.Now(), prof, start, end, tz)
-			if err != nil {
-				slog.Error("failed to evaluate quiet hours", "error", err)
-			} else if inQuiet {
-				slog.Info("quiet hours active; rescheduling message intent", "intent_id", intent.ID, "next_open", nextOpen)
-				intent.AvailableAt = nextOpen
-				intent.Status = "pending"
-				if intent.Attempts > 0 {
-					intent.Attempts--
-				}
-				err = store.UpdateJourneyMessageIntent(ctx, intent)
-				if err != nil {
-					slog.Error("failed to reschedule intent for quiet hours", "error", err)
-				}
-				return true, nil
-			}
-		}
+	if intent.Decision != nil && *intent.Decision == "provider_sent" {
+		goto emitSentEvent
 	}
 
-	var verdict policy.Verdict
-	if intent.Transactional {
-		suppressed, err := store.IsSuppressed(ctx, p, template.Channel, intent.Endpoint)
-		if err != nil {
-			verdict = policy.Verdict{
-				Decision: "send_failed",
-				Reason:   fmt.Sprintf("failed to check suppression: %v", err),
+	{
+
+		// Quiet hours check (marketing/non-transactional messages only)
+		if !intent.Transactional {
+			start, end, tz, err := store.GetTenantQuietHours(ctx, p)
+			if err != nil {
+				slog.Error("failed to get tenant quiet hours", "error", err, "tenant_id", p.TenantID)
+			} else if start != nil && end != nil {
+				inQuiet, nextOpen, err := IsInQuietHours(clk.Now(), prof, start, end, tz)
+				if err != nil {
+					slog.Error("failed to evaluate quiet hours", "error", err)
+				} else if inQuiet {
+					slog.Info("quiet hours active; rescheduling message intent", "intent_id", intent.ID, "next_open", nextOpen)
+					intent.AvailableAt = nextOpen
+					intent.Status = "pending"
+					if intent.Attempts > 0 {
+						intent.Attempts--
+					}
+					err = store.UpdateJourneyMessageIntent(ctx, intent)
+					if err != nil {
+						slog.Error("failed to reschedule intent for quiet hours", "error", err)
+					}
+					return true, nil
+				}
 			}
-		} else if suppressed {
-			verdict = policy.Verdict{
-				Decision: "suppressed",
-				Reason:   "endpoint is suppressed",
+		}
+
+		var verdict policy.Verdict
+		if intent.Transactional {
+			suppressed, err := store.IsSuppressed(ctx, p, template.Channel, intent.Endpoint)
+			if err != nil {
+				verdict = policy.Verdict{
+					Decision: "send_failed",
+					Reason:   fmt.Sprintf("failed to check suppression: %v", err),
+				}
+			} else if suppressed {
+				verdict = policy.Verdict{
+					Decision: "suppressed",
+					Reason:   "endpoint is suppressed",
+				}
+			} else {
+				verdict = policy.Verdict{
+					Decision: "sent",
+					Reason:   "eligible",
+				}
 			}
 		} else {
-			verdict = policy.Verdict{
-				Decision: "sent",
-				Reason:   "eligible",
+			policyRec := policy.Recipient{
+				ProfileID:  intent.ProfileID,
+				ExternalID: prof.ExternalID,
+				Endpoint:   intent.Endpoint,
 			}
-		}
-	} else {
-		policyRec := policy.Recipient{
-			ProfileID:  intent.ProfileID,
-			ExternalID: prof.ExternalID,
-			Endpoint:   intent.Endpoint,
-		}
-		verdict = policy.Evaluate(ctx, store, p, policyRec, caps)
-	}
-
-	var snapshotBytes []byte
-	if len(verdict.Snapshot) > 0 {
-		snapshotBytes, _ = json.Marshal(verdict.Snapshot)
-		intent.PolicySnapshot = snapshotBytes
-	}
-
-	if verdict.Decision != "sent" {
-		telemetry.PolicyRejections.Add(ctx, 1, otelmetric.WithAttributes(
-			attribute.String("decision", verdict.Decision),
-			attribute.String("channel", template.Channel),
-		))
-		telemetry.JourneyPolicyRejections.Add(ctx, 1, otelmetric.WithAttributes(
-			attribute.String("tenant_id", intent.TenantID),
-			attribute.String("journey_id", intent.JourneyID),
-			attribute.String("decision", verdict.Decision),
-			attribute.String("channel", template.Channel),
-		))
-		intent.Status = "completed"
-		intent.Decision = &verdict.Decision
-		intent.Reason = &verdict.Reason
-		err = store.UpdateJourneyMessageIntent(ctx, intent)
-		if err != nil {
-			slog.Error("failed to update journey message intent with policy rejection", "error", err)
-		}
-		return true, nil
-	}
-
-	// Check if we need to render & send (if not already "provider_sent")
-	var providerMsgID string
-	var hasRetryableError bool
-	var retryableErrMsg string
-
-	if intent.Decision != nil && *intent.Decision == "provider_sent" {
-		if intent.ProviderMessageID != nil {
-			providerMsgID = *intent.ProviderMessageID
-		}
-	} else {
-		var vars map[string]any
-		if len(prof.Attributes) > 0 {
-			_ = json.Unmarshal(prof.Attributes, &vars)
+			verdict = policy.Evaluate(ctx, store, p, policyRec, caps)
 		}
 
-		subject := "Journey Message"
-		if template.SubjectTemplate != nil && *template.SubjectTemplate != "" {
-			subject, err = render.Render(*template.SubjectTemplate, vars)
+		var snapshotBytes []byte
+		if len(verdict.Snapshot) > 0 {
+			snapshotBytes, _ = json.Marshal(verdict.Snapshot)
+			intent.PolicySnapshot = snapshotBytes
+		}
+
+		if verdict.Decision != "sent" {
+			telemetry.PolicyRejections.Add(ctx, 1, otelmetric.WithAttributes(
+				attribute.String("decision", verdict.Decision),
+				attribute.String("channel", template.Channel),
+			))
+			telemetry.JourneyPolicyRejections.Add(ctx, 1, otelmetric.WithAttributes(
+				attribute.String("tenant_id", intent.TenantID),
+				attribute.String("journey_id", intent.JourneyID),
+				attribute.String("decision", verdict.Decision),
+				attribute.String("channel", template.Channel),
+			))
+			intent.Status = "completed"
+			intent.Decision = &verdict.Decision
+			intent.Reason = &verdict.Reason
+			err = store.UpdateJourneyMessageIntent(ctx, intent)
 			if err != nil {
-				slog.Error("failed to render subject template", "error", err)
-				intent.Status = "completed"
-				dec := "render_failed"
-				intent.Decision = &dec
-				reason := fmt.Sprintf("subject render error: %v", err)
-				intent.Reason = &reason
-				_ = store.UpdateJourneyMessageIntent(ctx, intent)
-				return true, nil
-			}
-		}
-
-		var htmlBody string
-		if template.HTMLTemplate != nil && *template.HTMLTemplate != "" {
-			htmlBody, err = render.Render(*template.HTMLTemplate, vars)
-			if err != nil {
-				slog.Error("failed to render HTML template", "error", err)
-				intent.Status = "completed"
-				dec := "render_failed"
-				intent.Decision = &dec
-				reason := fmt.Sprintf("html render error: %v", err)
-				intent.Reason = &reason
-				_ = store.UpdateJourneyMessageIntent(ctx, intent)
-				return true, nil
-			}
-		}
-
-		var textBody string
-		if template.TextTemplate != nil && *template.TextTemplate != "" {
-			textBody, err = render.Render(*template.TextTemplate, vars)
-			if err != nil {
-				slog.Error("failed to render text template", "error", err)
-				intent.Status = "completed"
-				dec := "render_failed"
-				intent.Decision = &dec
-				reason := fmt.Sprintf("text render error: %v", err)
-				intent.Reason = &reason
-				_ = store.UpdateJourneyMessageIntent(ctx, intent)
-				return true, nil
-			}
-		}
-
-		var bodyPayload string
-		if template.BodyTemplate != nil && *template.BodyTemplate != "" {
-			bodyPayload, err = render.Render(*template.BodyTemplate, vars)
-			if err != nil {
-				slog.Error("failed to render body template", "error", err)
-				intent.Status = "completed"
-				dec := "render_failed"
-				intent.Decision = &dec
-				reason := fmt.Sprintf("body render error: %v", err)
-				intent.Reason = &reason
-				_ = store.UpdateJourneyMessageIntent(ctx, intent)
-				return true, nil
-			}
-		}
-
-		if htmlBody != "" && len(cfg.TrackingSecretKey) > 0 {
-			upsertLink := func(originalURL string) (string, error) {
-				return store.UpsertTrackedLink(ctx, intent.TenantID, template.ID, originalURL)
-			}
-			rewritten, err := render.RewriteLinks(htmlBody, intent.TenantID, p.AppID, intent.JourneyID, intent.ProfileID, template.ID, intent.ID, upsertLink, cfg.TrackingSecretKey, cfg.TrackingBaseURL)
-			if err != nil {
-				slog.Error("failed to rewrite links in HTML body", "error", err)
-			} else {
-				htmlBody = rewritten
-			}
-
-			openToken, err := render.SignOpenToken(intent.TenantID, p.AppID, intent.JourneyID, intent.ProfileID, template.ID, intent.ID, cfg.TrackingSecretKey)
-			if err == nil {
-				trackingImg := fmt.Sprintf(`<img src="%s/o/%s" width="1" height="1" alt="" />`, strings.TrimSuffix(cfg.TrackingBaseURL, "/"), openToken)
-				if strings.Contains(htmlBody, "</body>") {
-					htmlBody = strings.Replace(htmlBody, "</body>", trackingImg+"</body>", 1)
-				} else {
-					htmlBody = htmlBody + trackingImg
-				}
-			}
-		}
-
-		msg := ports.RenderedMessage{
-			Channel:        template.Channel,
-			Endpoint:       intent.Endpoint,
-			Subject:        subject,
-			HTML:           htmlBody,
-			Text:           textBody,
-			Body:           bodyPayload,
-			Identity:       identity,
-			IdempotencyKey: fmt.Sprintf("sent-%s-%s", intent.RunID, intent.NodeID),
-		}
-
-		providerMsgID, err = adapter.Send(ctx, msg)
-		if err != nil {
-			slog.Error("failed to send journey message via adapter", "error", err, "profile_id", intent.ProfileID)
-			if channels.IsRetryableError(err) {
-				intent.Status = "failed"
-				dec := "retryable_failed"
-				if intent.Attempts >= 3 {
-					intent.Status = "dead"
-					dec = "send_failed"
-				}
-				intent.Decision = &dec
-				reason := fmt.Sprintf("transient send error: %v", err)
-				intent.Reason = &reason
-				intent.ErrorMessage = &reason
-				updateErr := store.UpdateJourneyMessageIntent(ctx, intent)
-				if updateErr != nil {
-					slog.Error("failed to update journey message intent on transient error", "error", updateErr)
-				}
-				if intent.Status == "dead" {
-					telemetry.JourneyDeadLettered.Add(ctx, 1, otelmetric.WithAttributes(
-						attribute.String("tenant_id", intent.TenantID),
-						attribute.String("type", "intent"),
-					))
-				}
-				hasRetryableError = true
-				retryableErrMsg = err.Error()
-			} else {
-				intent.Status = "completed"
-				dec := "send_failed"
-				intent.Decision = &dec
-				reason := fmt.Sprintf("adapter send error: %v", err)
-				intent.Reason = &reason
-				intent.ErrorMessage = &reason
-				_ = store.UpdateJourneyMessageIntent(ctx, intent)
-			}
-			if hasRetryableError {
-				return true, fmt.Errorf("transient delivery failure: %s", retryableErrMsg)
+				slog.Error("failed to update journey message intent with policy rejection", "error", err)
 			}
 			return true, nil
 		}
 
-		// Update decision to provider_sent in database before emitting event
-		intent.ProviderMessageID = &providerMsgID
-		dec := "provider_sent"
-		intent.Decision = &dec
-		reason := "eligible"
-		intent.Reason = &reason
-		err = store.UpdateJourneyMessageIntent(ctx, intent)
-		if err != nil {
-			slog.Error("failed to update journey message intent to provider_sent", "error", err)
+		// Check if we need to render & send (if not already "provider_sent")
+		var providerMsgID string
+		var hasRetryableError bool
+		var retryableErrMsg string
+
+		if intent.Decision != nil && *intent.Decision == "provider_sent" {
+			if intent.ProviderMessageID != nil {
+				providerMsgID = *intent.ProviderMessageID
+			}
+		} else {
+			var vars map[string]any
+			if len(prof.Attributes) > 0 {
+				_ = json.Unmarshal(prof.Attributes, &vars)
+			}
+
+			subject := "Journey Message"
+			if template.SubjectTemplate != nil && *template.SubjectTemplate != "" {
+				subject, err = render.Render(*template.SubjectTemplate, vars)
+				if err != nil {
+					slog.Error("failed to render subject template", "error", err)
+					intent.Status = "completed"
+					dec := "render_failed"
+					intent.Decision = &dec
+					reason := fmt.Sprintf("subject render error: %v", err)
+					intent.Reason = &reason
+					_ = store.UpdateJourneyMessageIntent(ctx, intent)
+					return true, nil
+				}
+			}
+
+			var htmlBody string
+			if template.HTMLTemplate != nil && *template.HTMLTemplate != "" {
+				htmlBody, err = render.Render(*template.HTMLTemplate, vars)
+				if err != nil {
+					slog.Error("failed to render HTML template", "error", err)
+					intent.Status = "completed"
+					dec := "render_failed"
+					intent.Decision = &dec
+					reason := fmt.Sprintf("html render error: %v", err)
+					intent.Reason = &reason
+					_ = store.UpdateJourneyMessageIntent(ctx, intent)
+					return true, nil
+				}
+			}
+
+			var textBody string
+			if template.TextTemplate != nil && *template.TextTemplate != "" {
+				textBody, err = render.Render(*template.TextTemplate, vars)
+				if err != nil {
+					slog.Error("failed to render text template", "error", err)
+					intent.Status = "completed"
+					dec := "render_failed"
+					intent.Decision = &dec
+					reason := fmt.Sprintf("text render error: %v", err)
+					intent.Reason = &reason
+					_ = store.UpdateJourneyMessageIntent(ctx, intent)
+					return true, nil
+				}
+			}
+
+			var bodyPayload string
+			if template.BodyTemplate != nil && *template.BodyTemplate != "" {
+				bodyPayload, err = render.Render(*template.BodyTemplate, vars)
+				if err != nil {
+					slog.Error("failed to render body template", "error", err)
+					intent.Status = "completed"
+					dec := "render_failed"
+					intent.Decision = &dec
+					reason := fmt.Sprintf("body render error: %v", err)
+					intent.Reason = &reason
+					_ = store.UpdateJourneyMessageIntent(ctx, intent)
+					return true, nil
+				}
+			}
+
+			if htmlBody != "" && len(cfg.TrackingSecretKey) > 0 {
+				upsertLink := func(originalURL string) (string, error) {
+					return store.UpsertTrackedLink(ctx, intent.TenantID, template.ID, originalURL)
+				}
+				rewritten, err := render.RewriteLinks(htmlBody, intent.TenantID, p.AppID, intent.JourneyID, intent.ProfileID, template.ID, intent.ID, upsertLink, cfg.TrackingSecretKey, cfg.TrackingBaseURL)
+				if err != nil {
+					slog.Error("failed to rewrite links in HTML body", "error", err)
+				} else {
+					htmlBody = rewritten
+				}
+
+				openToken, err := render.SignOpenToken(intent.TenantID, p.AppID, intent.JourneyID, intent.ProfileID, template.ID, intent.ID, cfg.TrackingSecretKey)
+				if err == nil {
+					trackingImg := fmt.Sprintf(`<img src="%s/o/%s" width="1" height="1" alt="" />`, strings.TrimSuffix(cfg.TrackingBaseURL, "/"), openToken)
+					if strings.Contains(htmlBody, "</body>") {
+						htmlBody = strings.Replace(htmlBody, "</body>", trackingImg+"</body>", 1)
+					} else {
+						htmlBody = htmlBody + trackingImg
+					}
+				}
+			}
+
+			msg := ports.RenderedMessage{
+				Channel:        template.Channel,
+				Endpoint:       intent.Endpoint,
+				Subject:        subject,
+				HTML:           htmlBody,
+				Text:           textBody,
+				Body:           bodyPayload,
+				Identity:       identity,
+				IdempotencyKey: fmt.Sprintf("sent-%s-%s", intent.RunID, intent.NodeID),
+			}
+
+			providerMsgID, err = adapter.Send(ctx, msg)
+			if err != nil {
+				slog.Error("failed to send journey message via adapter", "error", err, "profile_id", intent.ProfileID)
+				if channels.IsRetryableError(err) {
+					intent.Status = "failed"
+					dec := "retryable_failed"
+					if intent.Attempts >= 3 {
+						intent.Status = "dead"
+						dec = "send_failed"
+					}
+					intent.Decision = &dec
+					reason := fmt.Sprintf("transient send error: %v", err)
+					intent.Reason = &reason
+					intent.ErrorMessage = &reason
+					updateErr := store.UpdateJourneyMessageIntent(ctx, intent)
+					if updateErr != nil {
+						slog.Error("failed to update journey message intent on transient error", "error", updateErr)
+					}
+					if intent.Status == "dead" {
+						telemetry.JourneyDeadLettered.Add(ctx, 1, otelmetric.WithAttributes(
+							attribute.String("tenant_id", intent.TenantID),
+							attribute.String("type", "intent"),
+						))
+					}
+					hasRetryableError = true
+					retryableErrMsg = err.Error()
+				} else {
+					intent.Status = "completed"
+					dec := "send_failed"
+					intent.Decision = &dec
+					reason := fmt.Sprintf("adapter send error: %v", err)
+					intent.Reason = &reason
+					intent.ErrorMessage = &reason
+					_ = store.UpdateJourneyMessageIntent(ctx, intent)
+				}
+				if hasRetryableError {
+					return true, fmt.Errorf("transient delivery failure: %s", retryableErrMsg)
+				}
+				return true, nil
+			}
+
+			// Update decision to provider_sent in database before emitting event
+			intent.ProviderMessageID = &providerMsgID
+			dec := "provider_sent"
+			intent.Decision = &dec
+			reason := "eligible"
+			intent.Reason = &reason
+			err = store.UpdateJourneyMessageIntent(ctx, intent)
+			if err != nil {
+				slog.Error("failed to update journey message intent to provider_sent", "error", err)
+				return true, fmt.Errorf("persist provider_sent decision: %w", err)
+			}
 		}
 	}
 
 	// 2. Emit message.sent event
+emitSentEvent:
 	eventPayload, _ := json.Marshal(map[string]any{
 		"journey_id":         intent.JourneyID,
 		"journey_version_id": intent.JourneyVersionID,
@@ -429,6 +437,24 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 	_, err = store.AcceptEvents(ctx, p, []domain.Event{emittedEvent})
 	if err != nil {
 		slog.Error("failed to emit message.sent event", "error", err, "profile_id", intent.ProfileID)
+		// The provider has already accepted the message. Keep that fact durable and
+		// make the intent claimable again so reconciliation retries only publication.
+		intent.Status = "pending"
+		if intent.Attempts >= 3 {
+			intent.Status = "dead"
+			errMsg := fmt.Sprintf("message.sent emission failed after %d attempts: %v", intent.Attempts, err)
+			intent.ErrorMessage = &errMsg
+			telemetry.JourneyDeadLettered.Add(ctx, 1, otelmetric.WithAttributes(
+				attribute.String("tenant_id", intent.TenantID),
+				attribute.String("type", "intent"),
+			))
+		}
+		dec := "provider_sent"
+		intent.Decision = &dec
+		if updateErr := store.UpdateJourneyMessageIntent(ctx, intent); updateErr != nil {
+			return true, fmt.Errorf("emit message.sent event: %v; requeue provider_sent intent: %w", err, updateErr)
+		}
+		return true, fmt.Errorf("emit message.sent event: %w", err)
 	}
 
 	// 3. Mark intent completed & sent

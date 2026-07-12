@@ -3,6 +3,7 @@ package journey
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -12,6 +13,102 @@ import (
 
 func (m *mockStore) GetFirstAppID(ctx context.Context, tenantID, workspaceID string) (string, error) {
 	return "app-1", nil
+}
+
+func TestDeliverNext_AcceptEventsFailureRetriesWithoutDuplicateSend(t *testing.T) {
+	store := newMockStore()
+	adapter := channels.NewFakeAdapter()
+	store.intents = append(store.intents, testPendingIntent())
+	store.profile = testDeliveryProfile()
+	store.acceptEventsErr = errors.New("event store unavailable")
+
+	processed, err := DeliverNext(context.Background(), store, "worker-1", Config{FakeAdapter: adapter})
+	if !processed || err == nil {
+		t.Fatalf("expected processed event publication error, got processed=%v err=%v", processed, err)
+	}
+	got := store.intents[0]
+	if got.Status != "pending" || got.Decision == nil || *got.Decision != "provider_sent" {
+		t.Fatalf("expected pending/provider_sent intent, got status=%q decision=%v", got.Status, got.Decision)
+	}
+	if len(adapter.GetSends()) != 1 {
+		t.Fatalf("expected one provider send, got %d", len(adapter.GetSends()))
+	}
+
+	store.acceptEventsErr = nil
+	store.suppressed = true
+	processed, err = DeliverNext(context.Background(), store, "worker-1", Config{FakeAdapter: adapter})
+	if !processed || err != nil {
+		t.Fatalf("expected successful reconciliation, got processed=%v err=%v", processed, err)
+	}
+	if len(adapter.GetSends()) != 1 {
+		t.Fatalf("reconciliation duplicated provider send; got %d sends", len(adapter.GetSends()))
+	}
+	got = store.intents[0]
+	if got.Status != "completed" || got.Decision == nil || *got.Decision != "sent" {
+		t.Fatalf("expected completed/sent intent, got status=%q decision=%v", got.Status, got.Decision)
+	}
+	if store.acceptEventsCalls != 2 {
+		t.Fatalf("expected two event publication attempts, got %d", store.acceptEventsCalls)
+	}
+}
+
+func TestDeliverNext_ProviderSentEmissionFailureDeadLetters(t *testing.T) {
+	store := newMockStore()
+	adapter := channels.NewFakeAdapter()
+	store.intents = append(store.intents, testPendingIntent())
+	store.profile = testDeliveryProfile()
+	store.acceptEventsErr = errors.New("event store unavailable")
+
+	for attempt := 1; attempt <= 3; attempt++ {
+		processed, err := DeliverNext(context.Background(), store, "worker-1", Config{FakeAdapter: adapter})
+		if !processed || err == nil {
+			t.Fatalf("attempt %d: expected publication error, got processed=%v err=%v", attempt, processed, err)
+		}
+	}
+	got := store.intents[0]
+	if got.Status != "dead" || got.Decision == nil || *got.Decision != "provider_sent" {
+		t.Fatalf("expected dead/provider_sent intent, got status=%q decision=%v", got.Status, got.Decision)
+	}
+	if len(adapter.GetSends()) != 1 {
+		t.Fatalf("reconciliation duplicated provider send; got %d sends", len(adapter.GetSends()))
+	}
+}
+
+func TestDeliverNext_ProviderSentPersistenceFailureStopsBeforeEvent(t *testing.T) {
+	store := newMockStore()
+	adapter := channels.NewFakeAdapter()
+	store.intents = append(store.intents, testPendingIntent())
+	store.profile = testDeliveryProfile()
+	store.updateIntentHook = func(intent domain.JourneyMessageIntent) error {
+		if intent.Decision != nil && *intent.Decision == "provider_sent" {
+			return errors.New("database unavailable")
+		}
+		return nil
+	}
+
+	processed, err := DeliverNext(context.Background(), store, "worker-1", Config{FakeAdapter: adapter})
+	if !processed || err == nil {
+		t.Fatalf("expected provider_sent persistence error, got processed=%v err=%v", processed, err)
+	}
+	if len(adapter.GetSends()) != 1 {
+		t.Fatalf("expected provider to be called once, got %d", len(adapter.GetSends()))
+	}
+	if store.acceptEventsCalls != 0 {
+		t.Fatalf("event must not be published before provider_sent is durable; got %d calls", store.acceptEventsCalls)
+	}
+}
+
+func testPendingIntent() domain.JourneyMessageIntent {
+	return domain.JourneyMessageIntent{
+		ID: "intent-durable", RunID: "run-1", TenantID: "tenant-1", WorkspaceID: "workspace-1",
+		JourneyID: "journey-1", JourneyVersionID: "version-1", NodeID: "node-2",
+		ProfileID: "profile-1", TemplateID: "template-1", Channel: "email",
+		Endpoint: "test@example.com", Status: "pending",
+	}
+}
+
+func testDeliveryProfile() *domain.Profile {
+	return &domain.Profile{ID: "profile-1", ExternalID: "ext-1", Attributes: json.RawMessage(`{"name":"World"}`)}
 }
 
 func (m *mockStore) GetTemplate(ctx context.Context, p domain.Principal, id string) (domain.Template, error) {
@@ -30,7 +127,7 @@ func (m *mockStore) GetTenantFatigueQuotas(ctx context.Context, p domain.Princip
 }
 
 func (m *mockStore) IsSuppressed(ctx context.Context, p domain.Principal, channel, endpoint string) (bool, error) {
-	return false, nil
+	return m.suppressed, nil
 }
 
 func (m *mockStore) LatestConsent(ctx context.Context, p domain.Principal, profileID, channel, topic string) (domain.Consent, error) {
@@ -293,4 +390,3 @@ func TestDeliverNext_QuietHours(t *testing.T) {
 		}
 	}
 }
-

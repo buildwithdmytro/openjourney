@@ -13,15 +13,19 @@ import (
 
 type mockStore struct {
 	ports.Store
-	runs            map[string]domain.JourneyRun
-	steps           map[string]domain.JourneyStep
-	versions        map[string]domain.JourneyVersion
-	transitions     []domain.JourneyTransition
-	intents         []domain.JourneyMessageIntent
-	profile         *domain.Profile
-	quietHoursStart *int
-	quietHoursEnd   *int
-	defaultTimezone string
+	runs              map[string]domain.JourneyRun
+	steps             map[string]domain.JourneyStep
+	versions          map[string]domain.JourneyVersion
+	transitions       []domain.JourneyTransition
+	intents           []domain.JourneyMessageIntent
+	profile           *domain.Profile
+	quietHoursStart   *int
+	quietHoursEnd     *int
+	defaultTimezone   string
+	acceptEventsErr   error
+	acceptEventsCalls int
+	updateIntentHook  func(domain.JourneyMessageIntent) error
+	suppressed        bool
 }
 
 func (m *mockStore) IsProfileInSegment(ctx context.Context, p domain.Principal, segmentID string, profileID string) (bool, error) {
@@ -67,7 +71,8 @@ func (m *mockStore) GetProfileByIDSystem(ctx context.Context, tenantID, workspac
 }
 
 func (m *mockStore) AcceptEvents(ctx context.Context, p domain.Principal, events []domain.Event) ([]string, error) {
-	return nil, nil
+	m.acceptEventsCalls++
+	return nil, m.acceptEventsErr
 }
 
 func newMockStore() *mockStore {
@@ -160,6 +165,11 @@ func (m *mockStore) ClaimJourneyMessageIntent(ctx context.Context, workerID stri
 }
 
 func (m *mockStore) UpdateJourneyMessageIntent(ctx context.Context, intent domain.JourneyMessageIntent) error {
+	if m.updateIntentHook != nil {
+		if err := m.updateIntentHook(intent); err != nil {
+			return err
+		}
+	}
 	for i, existing := range m.intents {
 		if existing.ID == intent.ID {
 			m.intents[i] = intent
@@ -169,7 +179,6 @@ func (m *mockStore) UpdateJourneyMessageIntent(ctx context.Context, intent domai
 	m.intents = append(m.intents, intent)
 	return nil
 }
-
 
 func TestTickNextSkeleton(t *testing.T) {
 	store := newMockStore()
