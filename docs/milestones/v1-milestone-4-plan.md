@@ -369,9 +369,9 @@ Testing bar: unit + golden per milestone; one consolidated integration/determini
    overstatements in `v1-milestone-3-audit.md`. *Done when:* the test fails if the gate is removed. — done: TestJourneyPublishAndBackfillRequireHumanActor proves API-key actors receive 403 without publishing or enrolling, and the audit now accurately describes transactional scope and one-step-at-a-time workers.
 
 ### Milestone 9.1 — Experiment definitions & deterministic assignment
-1. **Migration** `018_experiments.sql` per §2.1 (Recipe 6.1) + scopes
+1. [x] **Migration** `018_experiments.sql` per §2.1 (Recipe 6.1) + scopes
    `experiments:read/write`, `reports:read` in `rbac.go` allowlist and the default array
-   (Recipe 6.5). *Done when:* tables exist; a fresh key carries the scopes.
+   (Recipe 6.5). *Done when:* tables exist; a fresh key carries the scopes. — done: `018_experiments.sql` applies with all three experiment tables, and TestExperimentMigrationAndDefaultScopesIntegration proves a fresh API key carries the experiment/report scopes.
 2. **Domain models** `Experiment`, `ExperimentVariant`, `ExperimentAssignment` (Recipe 6.2).
 3. **Store CRUD** `internal/postgres/experiments.go` + `ports.Store` (Recipe 6.3): create/get/
    list/update experiment (+ variants); `AssignExperiment(ctx, expID, profileID)` writing

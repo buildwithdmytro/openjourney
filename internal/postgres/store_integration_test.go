@@ -511,6 +511,51 @@ func TestJourneyRoleScopesIntegration(t *testing.T) {
 	}
 }
 
+func TestExperimentMigrationAndDefaultScopesIntegration(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, table := range []string{"experiments", "experiment_variants", "experiment_assignments"} {
+		var exists bool
+		if err := store.pool.QueryRow(ctx, `SELECT to_regclass('public.' || $1) IS NOT NULL`, table).Scan(&exists); err != nil {
+			t.Fatal(err)
+		}
+		if !exists {
+			t.Fatalf("table %s does not exist", table)
+		}
+	}
+
+	rawKey := fmt.Sprintf("experiment-default-scopes-%d", time.Now().UnixNano())
+	if err := store.EnsureDevelopmentTenant(ctx, rawKey); err != nil {
+		t.Fatal(err)
+	}
+	principal, err := store.Authenticate(ctx, rawKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, scope := range []string{"experiments:read", "experiments:write", "reports:read"} {
+		if !principal.HasScope(scope) {
+			t.Fatalf("fresh API key scopes %v do not include %q", principal.Scopes, scope)
+		}
+	}
+	if _, err := store.CreateRole(ctx, principal, "Experiment analyst", []string{
+		"experiments:read", "experiments:write", "reports:read",
+	}); err != nil {
+		t.Fatalf("CreateRole experiment/report scopes: %v", err)
+	}
+}
+
 func TestJourneysStoreIntegration(t *testing.T) {
 	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
 	if databaseURL == "" {
