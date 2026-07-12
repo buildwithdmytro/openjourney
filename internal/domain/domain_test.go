@@ -66,4 +66,22 @@ func TestEventValidate(t *testing.T) {
 			t.Fatalf("expected valid, got %v", err)
 		}
 	})
+
+	t.Run("valid journey message.sent", func(t *testing.T) {
+		e := valid
+		e.Type = "message.sent"
+		e.Payload = json.RawMessage(`{"journey_id":"journey-1","channel":"email","endpoint":"user@example.com"}`)
+		if err := e.Validate(now); err != nil {
+			t.Fatalf("expected journey message.sent to be valid, got %v", err)
+		}
+	})
+
+	t.Run("message.sent requires a campaign or journey", func(t *testing.T) {
+		e := valid
+		e.Type = "message.sent"
+		e.Payload = json.RawMessage(`{"channel":"email","endpoint":"user@example.com"}`)
+		if err := e.Validate(now); err == nil {
+			t.Fatal("expected message.sent without campaign_id or journey_id to be invalid")
+		}
+	})
 }

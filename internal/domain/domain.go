@@ -151,14 +151,15 @@ func (e Event) Validate(now time.Time) error {
 	case "message.sent":
 		var body struct {
 			CampaignID string `json:"campaign_id"`
+			JourneyID  string `json:"journey_id"`
 			Channel    string `json:"channel"`
 			Endpoint   string `json:"endpoint"`
 		}
 		if err := json.Unmarshal(e.Payload, &body); err != nil ||
-			strings.TrimSpace(body.CampaignID) == "" ||
+			(strings.TrimSpace(body.CampaignID) == "" && strings.TrimSpace(body.JourneyID) == "") ||
 			strings.TrimSpace(body.Channel) == "" ||
 			strings.TrimSpace(body.Endpoint) == "" {
-			return errors.New("message.sent payload requires campaign_id, channel, and endpoint")
+			return errors.New("message.sent payload requires campaign_id or journey_id, channel, and endpoint")
 		}
 	case "message.delivered":
 		var body struct {
@@ -592,4 +593,3 @@ type JourneyMessageIntent struct {
 	CreatedAt         time.Time       `json:"created_at"`
 	UpdatedAt         time.Time       `json:"updated_at"`
 }
-
