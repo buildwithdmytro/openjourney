@@ -2248,3 +2248,258 @@ func TestJourneyBackfill(t *testing.T) {
 		t.Fatalf("expected still exactly 1 run in DB, got %d", runsCount2)
 	}
 }
+
+func TestJourneyWorkspaceIsolation(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	key := fmt.Sprintf("journey-iso-%d", time.Now().UnixNano())
+	if err := store.EnsureDevelopmentTenant(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	p1, err := store.Authenticate(ctx, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	app1ID, err := store.GetFirstAppID(ctx, p1.TenantID, p1.WorkspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p1.AppID = app1ID
+
+	// Create workspace 2 and app 2 under the same tenant
+	var workspace2ID string
+	err = store.pool.QueryRow(ctx, "INSERT INTO workspaces(tenant_id, name) VALUES ($1, 'Workspace2') RETURNING id", p1.TenantID).Scan(&workspace2ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var app2ID string
+	err = store.pool.QueryRow(ctx, "INSERT INTO applications(tenant_id, workspace_id, name) VALUES ($1, $2, 'App2') RETURNING id", p1.TenantID, workspace2ID).Scan(&app2ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	p2 := p1
+	p2.WorkspaceID = workspace2ID
+	p2.AppID = app2ID
+
+	profileExtID := "profile-iso-test"
+
+	// Create profiles in both workspaces
+	p1Events := []domain.Event{
+		{
+			Type: "profile.updated", SchemaVersion: 1, ExternalID: profileExtID,
+			IdempotencyKey: "identify-iso-1", OccurredAt: time.Now().UTC(),
+			Payload: json.RawMessage(`{"attributes":{"country":"US"}}`),
+		},
+	}
+	if _, err = store.AcceptEvents(ctx, p1, p1Events); err != nil {
+		t.Fatal(err)
+	}
+	p2Events := []domain.Event{
+		{
+			Type: "profile.updated", SchemaVersion: 1, ExternalID: profileExtID,
+			IdempotencyKey: "identify-iso-2", OccurredAt: time.Now().UTC(),
+			Payload: json.RawMessage(`{"attributes":{"country":"US"}}`),
+		},
+	}
+	if _, err = store.AcceptEvents(ctx, p2, p2Events); err != nil {
+		t.Fatal(err)
+	}
+
+	// Project profiles
+	for i := 0; i < 2; i++ {
+		job, found, err := store.ClaimProjectionJob(ctx)
+		if err != nil || !found {
+			t.Fatalf("ClaimProjectionJob profile: err=%v, found=%v", err, found)
+		}
+		if err := store.ProjectEvent(ctx, job); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	profile1, _, _ := store.GetProfile(ctx, p1, profileExtID)
+	profile2, _, _ := store.GetProfile(ctx, p2, profileExtID)
+
+	validGraph := json.RawMessage(`{
+		"entry_node_id":"n1",
+		"nodes":[
+			{"id":"n1","type":"entry","config":{"trigger":"event","event_type":"order.created"}},
+			{"id":"n2","type":"wait_event","config":{"event_type":"payment.success","timeout":"24h"}},
+			{"id":"n3","type":"exit","config":{"reason":"success"}},
+			{"id":"n4","type":"exit","config":{"reason":"timeout"}}
+		],
+		"edges":[
+			{"from":"n1","to":"n2"},
+			{"from":"n2","to":"n3","branch":"success"},
+			{"from":"n2","to":"n4","branch":"timeout"}
+		]
+	}`)
+
+	// Create journey in Workspace 1 only
+	created, err := store.CreateJourney(ctx, p1, domain.Journey{Name: "Iso Journey", Graph: validGraph})
+	if err != nil {
+		t.Fatal(err)
+	}
+	blobs := &memoryBlobs{objects: map[string][]byte{}}
+	version, err := journeyflow.Publish(ctx, store, blobs, p1, created.ID, "00000000-0000-0000-0000-000000000001")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. Trigger enrollment event from Workspace 2. Should NOT enroll.
+	triggerEventW2 := []domain.Event{
+		{
+			Type: "order.created", SchemaVersion: 1, ExternalID: profileExtID,
+			IdempotencyKey: "order-w2", OccurredAt: time.Now().UTC(),
+			Payload: json.RawMessage(`{}`),
+		},
+	}
+	if _, err = store.AcceptEvents(ctx, p2, triggerEventW2); err != nil {
+		t.Fatal(err)
+	}
+	jobW2, foundW2, err := store.ClaimProjectionJob(ctx)
+	if err != nil || !foundW2 {
+		t.Fatalf("ClaimProjectionJob trigger W2: err=%v, found=%v", err, foundW2)
+	}
+	if err := store.ProjectEvent(ctx, jobW2); err != nil {
+		t.Fatal(err)
+	}
+
+	runsW1, err := store.GetJourneyRunsForProfile(ctx, p1.TenantID, version.ID, profile1.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runsW1) != 0 {
+		t.Fatalf("expected 0 runs for profile1 (Workspace 1) since trigger event was Workspace 2, got %d", len(runsW1))
+	}
+	runsW2, err := store.GetJourneyRunsForProfile(ctx, p1.TenantID, version.ID, profile2.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runsW2) != 0 {
+		t.Fatalf("expected 0 runs for profile2 (Workspace 2) since journey is in Workspace 1, got %d", len(runsW2))
+	}
+
+	// 2. Trigger enrollment event from Workspace 1. Should enroll profile1.
+	triggerEventW1 := []domain.Event{
+		{
+			Type: "order.created", SchemaVersion: 1, ExternalID: profileExtID,
+			IdempotencyKey: "order-w1", OccurredAt: time.Now().UTC(),
+			Payload: json.RawMessage(`{}`),
+		},
+	}
+	if _, err = store.AcceptEvents(ctx, p1, triggerEventW1); err != nil {
+		t.Fatal(err)
+	}
+	jobW1, foundW1, err := store.ClaimProjectionJob(ctx)
+	if err != nil || !foundW1 {
+		t.Fatalf("ClaimProjectionJob trigger W1: err=%v, found=%v", err, foundW1)
+	}
+	if err := store.ProjectEvent(ctx, jobW1); err != nil {
+		t.Fatal(err)
+	}
+
+	runsW1, err = store.GetJourneyRunsForProfile(ctx, p1.TenantID, version.ID, profile1.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runsW1) != 1 {
+		t.Fatalf("expected 1 run for profile1, got %d", len(runsW1))
+	}
+	runW1 := runsW1[0]
+
+	// Let's tick the run to advance to n2 (waiting).
+	deps := journeyflow.Deps{Clock: journeyflow.RealClock{}}
+	processed, err := journeyflow.TickNext(ctx, store, deps)
+	if err != nil || !processed {
+		t.Fatalf("TickNext entry: processed=%v, err=%v", processed, err)
+	}
+	processed, err = journeyflow.TickNext(ctx, store, deps)
+	if err != nil || !processed {
+		t.Fatalf("TickNext wait: processed=%v, err=%v", processed, err)
+	}
+
+	fetchedRunW1, err := store.GetJourneyRun(ctx, p1, runW1.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fetchedRunW1.Status != "waiting" {
+		t.Fatalf("expected run status to be 'waiting', got %s", fetchedRunW1.Status)
+	}
+
+	// 3. Send wait event trigger from Workspace 2. Should NOT resolve run in Workspace 1.
+	waitEventW2 := []domain.Event{
+		{
+			Type: "payment.success", SchemaVersion: 1, ExternalID: profileExtID,
+			IdempotencyKey: "payment-w2", OccurredAt: time.Now().UTC(),
+			Payload: json.RawMessage(`{}`),
+		},
+	}
+	if _, err = store.AcceptEvents(ctx, p2, waitEventW2); err != nil {
+		t.Fatal(err)
+	}
+	jobWaitW2, foundWaitW2, err := store.ClaimProjectionJob(ctx)
+	if err != nil || !foundWaitW2 {
+		t.Fatalf("ClaimProjectionJob wait W2: err=%v, found=%v", err, foundWaitW2)
+	}
+	if err := store.ProjectEvent(ctx, jobWaitW2); err != nil {
+		t.Fatal(err)
+	}
+
+	fetchedRunW1, err = store.GetJourneyRun(ctx, p1, runW1.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fetchedRunW1.Status != "waiting" {
+		t.Fatalf("expected run status to remain 'waiting' after Workspace 2 event, got %s", fetchedRunW1.Status)
+	}
+
+	// 4. Send wait event trigger from Workspace 1. Should resolve run in Workspace 1.
+	waitEventW1 := []domain.Event{
+		{
+			Type: "payment.success", SchemaVersion: 1, ExternalID: profileExtID,
+			IdempotencyKey: "payment-w1", OccurredAt: time.Now().UTC(),
+			Payload: json.RawMessage(`{}`),
+		},
+	}
+	if _, err = store.AcceptEvents(ctx, p1, waitEventW1); err != nil {
+		t.Fatal(err)
+	}
+	jobWaitW1, foundWaitW1, err := store.ClaimProjectionJob(ctx)
+	if err != nil || !foundWaitW1 {
+		t.Fatalf("ClaimProjectionJob wait W1: err=%v, found=%v", err, foundWaitW1)
+	}
+	if err := store.ProjectEvent(ctx, jobWaitW1); err != nil {
+		t.Fatal(err)
+	}
+
+	fetchedRunW1, err = store.GetJourneyRun(ctx, p1, runW1.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fetchedRunW1.Status != "active" {
+		t.Fatalf("expected run status to be 'active' after Workspace 1 event, got %s", fetchedRunW1.Status)
+	}
+
+	// 5. Try to read transitions of Workspace 1 run with Workspace 2 credentials. Should return 0 rows.
+	transitions, err := store.GetJourneyTransitions(ctx, p2, runW1.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(transitions) != 0 {
+		t.Fatalf("expected 0 transitions accessible by Workspace 2, got %d", len(transitions))
+	}
+
+	// Clean up
+	_, _ = store.pool.Exec(ctx, "DELETE FROM tenants WHERE id=$1", p1.TenantID)
+}
+

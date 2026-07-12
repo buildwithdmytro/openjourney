@@ -71,7 +71,7 @@ func Matches(ctx context.Context, store EvaluatorStore, tenantID, workspaceID, a
 		h := sha256.Sum256([]byte(extID))
 		subjectHash := fmt.Sprintf("%x", h)
 
-		sql, args := CompileClickHouseSingle(n, tenantID, subjectHash)
+		sql, args := CompileClickHouseSingle(n, tenantID, workspaceID, appID, subjectHash)
 		matched, err := store.QueryClickHouseMatches(ctx, sql, args)
 		if err != nil {
 			return false, err
@@ -120,14 +120,14 @@ func CompileConsentSingle(n *Consent, tenantID, appID, profileID string) (string
 	return sql, args
 }
 
-func CompileClickHouseSingle(n *EventHistory, tenantID, subjectHash string) (string, []any) {
+func CompileClickHouseSingle(n *EventHistory, tenantID, workspaceID, appID, subjectHash string) (string, []any) {
 	sql := `SELECT 1 FROM behavior_events
-		WHERE tenant_id = ? AND event_type = ? AND occurred_at >= now() - INTERVAL ? DAY AND subject_hash = ?
+		WHERE tenant_id = ? AND workspace_id = ? AND app_id = ? AND event_type = ? AND occurred_at >= now() - INTERVAL ? DAY AND subject_hash = ?
 		GROUP BY subject_hash HAVING count() >= ?`
 	minCount := n.MinCount
 	if minCount <= 0 {
 		minCount = 1
 	}
-	args := []any{tenantID, n.EventType, n.TimeWindowDays, subjectHash, minCount}
+	args := []any{tenantID, workspaceID, appID, n.EventType, n.TimeWindowDays, subjectHash, minCount}
 	return sql, args
 }

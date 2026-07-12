@@ -56,6 +56,79 @@ func (s *Store) CreateJourneyRun(ctx context.Context, run domain.JourneyRun) (bo
 	return inserted, nil
 }
 
+// EnrollJourneyRun atomically creates a run and its initial runnable step. The
+// returned boolean is false when the enrollment's uniqueness key already exists.
+func (s *Store) EnrollJourneyRun(ctx context.Context, run domain.JourneyRun, initialStep domain.JourneyStep) (string, bool, error) {
+	if run.TenantID == "" {
+		return "", false, errors.New("tenant_id is required")
+	}
+	if run.Status == "" {
+		run.Status = "active"
+	}
+	if len(run.State) == 0 {
+		run.State = json.RawMessage("{}")
+	}
+	if run.EnteredAt.IsZero() {
+		run.EnteredAt = time.Now()
+	}
+	if run.UpdatedAt.IsZero() {
+		run.UpdatedAt = time.Now()
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return "", false, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var runID string
+	err = tx.QueryRow(ctx, `INSERT INTO journey_runs (
+			tenant_id, workspace_id, journey_id, journey_version_id, profile_id,
+			subject_external_id, entry_key, reentry_sequence, status,
+			current_node_id, state, wait_event_type, wait_until, goal_reached,
+			entered_at, updated_at, completed_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+		ON CONFLICT (journey_version_id, profile_id, entry_key, reentry_sequence) DO NOTHING
+		RETURNING id`,
+		run.TenantID, run.WorkspaceID, run.JourneyID, run.JourneyVersionID, run.ProfileID,
+		run.SubjectExternalID, run.EntryKey, run.ReentrySequence, run.Status,
+		run.CurrentNodeID, run.State, run.WaitEventType, run.WaitUntil, run.GoalReached,
+		run.EnteredAt, run.UpdatedAt, run.CompletedAt).Scan(&runID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+
+	if initialStep.TenantID == "" {
+		initialStep.TenantID = run.TenantID
+	}
+	if initialStep.Status == "" {
+		initialStep.Status = "pending"
+	}
+	if initialStep.Kind == "" {
+		initialStep.Kind = "advance"
+	}
+	if initialStep.AvailableAt.IsZero() {
+		initialStep.AvailableAt = time.Now()
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO journey_steps
+		(run_id, tenant_id, node_id, kind, status, available_at, attempts)
+		VALUES ($1,$2,$3,$4,$5,$6,$7)`, runID, initialStep.TenantID,
+		initialStep.NodeID, initialStep.Kind, initialStep.Status, initialStep.AvailableAt,
+		initialStep.Attempts)
+	if err != nil {
+		return "", false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return "", false, err
+	}
+	telemetry.JourneyEnrollments.Add(ctx, 1, otelmetric.WithAttributes(
+		attribute.String("tenant_id", run.TenantID), attribute.String("journey_id", run.JourneyID)))
+	return runID, true, nil
+}
+
 func (s *Store) GetJourneyRun(ctx context.Context, p domain.Principal, runID string) (domain.JourneyRun, error) {
 	var out domain.JourneyRun
 	err := s.pool.QueryRow(ctx, `SELECT id, tenant_id, workspace_id, journey_id, journey_version_id, profile_id,
@@ -436,11 +509,12 @@ func (s *Store) GetJourneyRuns(ctx context.Context, p domain.Principal, journeyI
 }
 
 func (s *Store) GetJourneyTransitions(ctx context.Context, p domain.Principal, runID string) ([]domain.JourneyTransition, error) {
-	rows, err := s.pool.Query(ctx, `SELECT id, run_id, tenant_id, from_node, to_node, node_type, outcome, detail, occurred_at
-		FROM journey_transitions
-		WHERE tenant_id=$1 AND run_id=$2
-		ORDER BY occurred_at ASC`,
-		p.TenantID, runID)
+	rows, err := s.pool.Query(ctx, `SELECT t.id, t.run_id, t.tenant_id, t.from_node, t.to_node, t.node_type, t.outcome, t.detail, t.occurred_at
+		FROM journey_transitions t
+		JOIN journey_runs r ON t.run_id = r.id
+		WHERE t.tenant_id=$1 AND r.workspace_id=$2 AND t.run_id=$3
+		ORDER BY t.occurred_at ASC`,
+		p.TenantID, p.WorkspaceID, runID)
 	if err != nil {
 		return nil, err
 	}
@@ -598,8 +672,8 @@ func (s *Store) enrollEventTriggered(ctx context.Context, tx pgx.Tx, event domai
 	rows, err := tx.Query(ctx, `
 		SELECT id, journey_id, reentry_policy, max_reentries, graph
 		FROM journey_versions
-		WHERE tenant_id = $1 AND entry_kind = 'event' AND entry_event_type = $2 AND status = 'active'
-	`, event.Principal.TenantID, event.Type)
+		WHERE tenant_id = $1 AND workspace_id = $2 AND entry_kind = 'event' AND entry_event_type = $3 AND status = 'active'
+	`, event.Principal.TenantID, event.Principal.WorkspaceID, event.Type)
 	if err != nil {
 		return err
 	}
@@ -725,8 +799,9 @@ func (s *Store) resolveWaitingRuns(ctx context.Context, tx pgx.Tx, event domain.
 		SELECT r.id, r.current_node_id, v.graph
 		FROM journey_runs r
 		JOIN journey_versions v ON r.journey_version_id = v.id
-		WHERE r.tenant_id = $1 AND r.status = 'waiting' AND r.wait_event_type = $2 AND r.subject_external_id = $3
-	`, event.Principal.TenantID, event.Type, event.ExternalID)
+		JOIN profiles p ON r.profile_id = p.id
+		WHERE r.tenant_id = $1 AND r.workspace_id = $2 AND p.app_id = $3 AND r.status = 'waiting' AND r.wait_event_type = $4 AND r.subject_external_id = $5
+	`, event.Principal.TenantID, event.Principal.WorkspaceID, event.Principal.AppID, event.Type, event.ExternalID)
 	if err != nil {
 		return err
 	}
