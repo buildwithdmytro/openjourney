@@ -456,6 +456,45 @@ type Campaign struct {
 	UpdatedAt       time.Time  `json:"updated_at"`
 }
 
+type Experiment struct {
+	ID             string              `json:"id"`
+	TenantID       string              `json:"tenant_id"`
+	WorkspaceID    string              `json:"workspace_id"`
+	Name           string              `json:"name"`
+	Description    *string             `json:"description,omitempty"`
+	SubjectType    string              `json:"subject_type"` // campaign, journey
+	Status         string              `json:"status"`       // draft, running, completed, archived
+	Method         string              `json:"method"`       // frequentist
+	Seed           string              `json:"seed"`
+	HoldoutPct     int                 `json:"holdout_pct"`
+	PrimaryGoal    json.RawMessage     `json:"primary_goal,omitempty"`
+	GuardrailGoals json.RawMessage     `json:"guardrail_goals"`
+	WinnerVariant  *string             `json:"winner_variant,omitempty"`
+	Variants       []ExperimentVariant `json:"variants,omitempty"`
+	CreatedAt      time.Time           `json:"created_at"`
+	UpdatedAt      time.Time           `json:"updated_at"`
+}
+
+type ExperimentVariant struct {
+	ID           string    `json:"id"`
+	ExperimentID string    `json:"experiment_id"`
+	TenantID     string    `json:"tenant_id"`
+	Label        string    `json:"label"`
+	Weight       int       `json:"weight"`
+	IsControl    bool      `json:"is_control"`
+	TemplateID   *string   `json:"template_id,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+type ExperimentAssignment struct {
+	ExperimentID string    `json:"experiment_id"`
+	TenantID     string    `json:"tenant_id"`
+	WorkspaceID  string    `json:"workspace_id"`
+	ProfileID    string    `json:"profile_id"`
+	Variant      string    `json:"variant"`
+	AssignedAt   time.Time `json:"assigned_at"`
+}
+
 type Journey struct {
 	ID               string          `json:"id"`
 	TenantID         string          `json:"tenant_id"`

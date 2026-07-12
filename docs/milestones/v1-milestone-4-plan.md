@@ -372,7 +372,7 @@ Testing bar: unit + golden per milestone; one consolidated integration/determini
 1. [x] **Migration** `018_experiments.sql` per §2.1 (Recipe 6.1) + scopes
    `experiments:read/write`, `reports:read` in `rbac.go` allowlist and the default array
    (Recipe 6.5). *Done when:* tables exist; a fresh key carries the scopes. — done: `018_experiments.sql` applies with all three experiment tables, and TestExperimentMigrationAndDefaultScopesIntegration proves a fresh API key carries the experiment/report scopes.
-2. **Domain models** `Experiment`, `ExperimentVariant`, `ExperimentAssignment` (Recipe 6.2).
+2. [x] **Domain models** `Experiment`, `ExperimentVariant`, `ExperimentAssignment` (Recipe 6.2). — done: snake_case JSON domain structs mirror the experiment, variant, and assignment schema; full build/vet and scoped domain tests pass.
 3. **Store CRUD** `internal/postgres/experiments.go` + `ports.Store` (Recipe 6.3): create/get/
    list/update experiment (+ variants); `AssignExperiment(ctx, expID, profileID)` writing
    `experiment_assignments` `ON CONFLICT DO NOTHING`. Guard: the `seed` is immutable once
