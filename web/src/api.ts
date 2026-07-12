@@ -108,14 +108,14 @@ async function requestJSON<T>(baseURL: string, apiKey: string, path: string, ini
 }
 
 export async function listSchemas(baseURL: string, apiKey: string): Promise<EventSchema[]> {
-  return (await requestJSON<{ schemas: EventSchema[] }>(baseURL, apiKey, "/v1/schemas")).schemas;
+  return (await requestJSON<{ schemas: EventSchema[] | null }>(baseURL, apiKey, "/v1/schemas")).schemas ?? [];
 }
 export async function createSchema(baseURL: string, apiKey: string,
   input: Omit<EventSchema, "id" | "status" | "created_at">): Promise<EventSchema> {
   return requestJSON(baseURL, apiKey, "/v1/schemas", { method: "POST", body: JSON.stringify(input) });
 }
 export async function listAPIKeys(baseURL: string, apiKey: string): Promise<APIKey[]> {
-  return (await requestJSON<{ api_keys: APIKey[] }>(baseURL, apiKey, "/v1/api-keys")).api_keys;
+  return (await requestJSON<{ api_keys: APIKey[] | null }>(baseURL, apiKey, "/v1/api-keys")).api_keys ?? [];
 }
 export async function createAPIKey(baseURL: string, apiKey: string, name: string, scopes: string, expiresAt?: string):
 Promise<{ api_key: APIKey; secret: string }>;
@@ -134,11 +134,11 @@ export async function revokeAPIKey(baseURL: string, apiKey: string, id: string):
   return requestJSON(baseURL, apiKey, `/v1/api-keys/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 export async function getQueueStatus(baseURL: string, apiKey: string): Promise<QueueStatus[]> {
-  return (await requestJSON<{ queues: QueueStatus[] }>(baseURL, apiKey, "/v1/operations/queues")).queues;
+  return (await requestJSON<{ queues: QueueStatus[] | null }>(baseURL, apiKey, "/v1/operations/queues")).queues ?? [];
 }
 export async function listDeadLetters(baseURL: string, apiKey: string, queue = ""): Promise<DeadLetterItem[]> {
   const query = queue ? `?queue=${encodeURIComponent(queue)}` : "";
-  return (await requestJSON<{ dead_letters: DeadLetterItem[] }>(baseURL, apiKey, `/v1/operations/dlq${query}`)).dead_letters;
+  return (await requestJSON<{ dead_letters: DeadLetterItem[] | null }>(baseURL, apiKey, `/v1/operations/dlq${query}`)).dead_letters ?? [];
 }
 export async function retryDeadLetter(baseURL: string, apiKey: string, queue: string, id: string): Promise<void> {
   return requestJSON(baseURL, apiKey, `/v1/operations/dlq/${encodeURIComponent(queue)}/${encodeURIComponent(id)}/retry`, { method: "POST" });
@@ -163,19 +163,19 @@ export async function getPrivacyRequest(baseURL: string, apiKey: string, id: str
   return requestJSON(baseURL, apiKey, `/v1/privacy/requests/${encodeURIComponent(id)}`);
 }
 export async function listRoles(baseURL: string, apiKey: string): Promise<Role[]> {
-  return (await requestJSON<{ roles: Role[] }>(baseURL, apiKey, "/v1/roles")).roles;
+  return (await requestJSON<{ roles: Role[] | null }>(baseURL, apiKey, "/v1/roles")).roles ?? [];
 }
 export async function createRole(baseURL: string, apiKey: string, name: string, permissions: string[]): Promise<Role> {
   return requestJSON(baseURL, apiKey, "/v1/roles", { method: "POST", body: JSON.stringify({ name, permissions }) });
 }
 export async function listUsers(baseURL: string, apiKey: string): Promise<User[]> {
-  return (await requestJSON<{ users: User[] }>(baseURL, apiKey, "/v1/users")).users;
+  return (await requestJSON<{ users: User[] | null }>(baseURL, apiKey, "/v1/users")).users ?? [];
 }
 export async function createUser(baseURL: string, apiKey: string, user: UserInput): Promise<User> {
   return requestJSON(baseURL, apiKey, "/v1/users", { method: "POST", body: JSON.stringify(user) });
 }
 export async function listAuditEvents(baseURL: string, apiKey: string, limit = 100): Promise<AuditEvent[]> {
-  return (await requestJSON<{ audit_events: AuditEvent[] }>(baseURL, apiKey, `/v1/audit?limit=${limit}`)).audit_events;
+  return (await requestJSON<{ audit_events: AuditEvent[] | null }>(baseURL, apiKey, `/v1/audit?limit=${limit}`)).audit_events ?? [];
 }
 
 export type Segment = {
@@ -201,7 +201,7 @@ export type SegmentMember = {
 };
 
 export async function listSegments(baseURL: string, apiKey: string): Promise<Segment[]> {
-  return (await requestJSON<{ segments: Segment[] }>(baseURL, apiKey, "/v1/segments")).segments;
+  return (await requestJSON<{ segments: Segment[] | null }>(baseURL, apiKey, "/v1/segments")).segments ?? [];
 }
 
 export async function createSegment(baseURL: string, apiKey: string, input: Partial<Segment>): Promise<Segment> {
@@ -291,7 +291,8 @@ export type Suppression = {
 };
 
 export async function listSuppressions(baseURL: string, apiKey: string): Promise<Suppression[]> {
-  return requestJSON<Suppression[]>(baseURL, apiKey, "/v1/suppressions") ?? [];
+  const result = await requestJSON<Suppression[] | null>(baseURL, apiKey, "/v1/suppressions");
+  return Array.isArray(result) ? result : [];
 }
 
 export async function createSuppression(baseURL: string, apiKey: string, input: Partial<Suppression>): Promise<{ status: string }> {
@@ -322,7 +323,8 @@ export type Campaign = {
 };
 
 export async function listCampaigns(baseURL: string, apiKey: string): Promise<Campaign[]> {
-  return requestJSON<Campaign[]>(baseURL, apiKey, "/v1/campaigns") ?? [];
+  const result = await requestJSON<Campaign[] | null>(baseURL, apiKey, "/v1/campaigns");
+  return Array.isArray(result) ? result : [];
 }
 
 export async function getCampaign(baseURL: string, apiKey: string, id: string): Promise<Campaign> {
@@ -387,10 +389,9 @@ export type JourneyVersion = {
   published_at: string;
 };
 
-export async function publishJourney(baseURL: string, apiKey: string, id: string, approverUserID: string): Promise<JourneyVersion> {
+export async function publishJourney(baseURL: string, apiKey: string, id: string): Promise<JourneyVersion> {
   return requestJSON<JourneyVersion>(baseURL, apiKey, `/v1/journeys/${encodeURIComponent(id)}/publish`, {
     method: "POST",
-    body: JSON.stringify({ approver_user_id: approverUserID }),
   });
 }
 
@@ -474,8 +475,8 @@ export async function updateJourneyVersionStatus(baseURL: string, apiKey: string
   });
 }
 
-export async function getJourneyVersion(baseURL: string, apiKey: string, id: string, versionID: string): Promise<JourneyVersion> {
-  return requestJSON<JourneyVersion>(baseURL, apiKey, `/v1/journeys/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionID)}`);
+export async function getJourneyVersion(baseURL: string, apiKey: string, id: string, version: number): Promise<JourneyVersion> {
+  return requestJSON<JourneyVersion>(baseURL, apiKey, `/v1/journeys/${encodeURIComponent(id)}/versions/${version}`);
 }
 
 export async function cancelJourneyRun(baseURL: string, apiKey: string, id: string, runID: string): Promise<{ status: string }> {
@@ -493,7 +494,8 @@ export async function listJourneyRunTransitions(baseURL: string, apiKey: string,
 }
 
 export async function listJourneyDLQ(baseURL: string, apiKey: string): Promise<{ steps: JourneyStep[]; intents: JourneyMessageIntent[] }> {
-  return requestJSON<{ steps: JourneyStep[]; intents: JourneyMessageIntent[] }>(baseURL, apiKey, "/v1/journeys/dlq");
+  const result = await requestJSON<{ steps: JourneyStep[] | null; intents: JourneyMessageIntent[] | null }>(baseURL, apiKey, "/v1/journeys/dlq");
+  return { steps: result.steps ?? [], intents: result.intents ?? [] };
 }
 
 export async function retryJourneyDLQ(baseURL: string, apiKey: string, kind: string, id: string): Promise<{ status: string }> {
@@ -501,4 +503,3 @@ export async function retryJourneyDLQ(baseURL: string, apiKey: string, kind: str
     method: "POST",
   });
 }
-
