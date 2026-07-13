@@ -484,6 +484,24 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         "500": { $ref: "#/components/responses/Error" }
+  /v1/experiments/{id}/rollout:
+    post:
+      operationId: rolloutExperiment
+      description: Creates a campaign or immutable journey version pinned to the stored advisory winner. Requires an authenticated human user.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "201":
+          description: Winning variant rollout version created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExperimentRollout" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "500": { $ref: "#/components/responses/Error" }
   /v1/journeys:
     get:
       operationId: listJourneys
@@ -1014,6 +1032,19 @@ components:
               items: { $ref: "#/components/schemas/ExperimentVariant" }
             created_at: { type: string, format: date-time }
             updated_at: { type: string, format: date-time }
+    ExperimentRollout:
+      type: object
+      required: [experiment_id, winner_variant, subject_type]
+      additionalProperties: false
+      properties:
+        experiment_id: { type: string, format: uuid }
+        winner_variant: { type: string }
+        subject_type: { enum: [campaign, journey] }
+        campaign:
+          type: object
+          additionalProperties: true
+          description: Newly scheduled campaign pinned to the winning template.
+        journey_version: { $ref: "#/components/schemas/JourneyVersion" }
     JourneyInput:
       type: object
       required: [name]

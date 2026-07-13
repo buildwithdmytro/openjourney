@@ -614,8 +614,19 @@ type JourneyReport struct {
 }
 
 type ExperimentReport struct {
-	ExperimentID string                    `json:"experiment_id"`
-	Variants     []ExperimentVariantReport `json:"variants"`
+	ExperimentID  string                    `json:"experiment_id"`
+	WinnerVariant *string                   `json:"winner_variant,omitempty"`
+	Variants      []ExperimentVariantReport `json:"variants"`
+}
+
+// ExperimentRollout identifies the separately approved resource version that
+// is pinned to an experiment's advisory winner.
+type ExperimentRollout struct {
+	ExperimentID   string          `json:"experiment_id"`
+	WinnerVariant  string          `json:"winner_variant"`
+	SubjectType    string          `json:"subject_type"`
+	Campaign       *Campaign       `json:"campaign,omitempty"`
+	JourneyVersion *JourneyVersion `json:"journey_version,omitempty"`
 }
 
 type ExperimentVariantReport struct {

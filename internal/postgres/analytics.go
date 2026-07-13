@@ -320,5 +320,84 @@ func (s *Store) ExperimentReport(ctx context.Context, p domain.Principal, experi
 		report.Variants = append(report.Variants, vr)
 	}
 
+	winner := recommendWinner(report.Variants)
+	if (winner == nil && e.WinnerVariant != nil) || (winner != nil && (e.WinnerVariant == nil || *winner != *e.WinnerVariant)) {
+		result, err := s.pool.Exec(ctx, `UPDATE experiments SET winner_variant=$1, updated_at=now()
+			WHERE tenant_id=$2 AND workspace_id=$3 AND id=$4`, winner, p.TenantID, p.WorkspaceID, e.ID)
+		if err != nil {
+			return domain.ExperimentReport{}, err
+		}
+		if result.RowsAffected() == 0 {
+			return domain.ExperimentReport{}, ErrNotFound
+		}
+	}
+	report.WinnerVariant = winner
+
 	return report, nil
+}
+
+func recommendWinner(variants []domain.ExperimentVariantReport) *string {
+	var control *domain.ExperimentVariantReport
+	for i := range variants {
+		if variants[i].IsControl {
+			control = &variants[i]
+			break
+		}
+	}
+	if control == nil || control.Sent == 0 {
+		return nil
+	}
+
+	var bestVariant *domain.ExperimentVariantReport
+	for i := range variants {
+		v := &variants[i]
+		if v.IsControl {
+			continue
+		}
+
+		// A recommendation requires statistically significant positive uplift on
+		// the primary goal.
+		if v.PValue >= 0.05 || v.Uplift <= 0 {
+			continue
+		}
+
+		// Guardrail facts represent adverse outcomes (for example churn or
+		// complaints), so a statistically significant increase is a regression.
+		hasRegression := false
+		for _, vg := range v.Guardrails {
+			// Find control's matching guardrail
+			var cg *domain.ExperimentGuardrail
+			for _, cgCand := range control.Guardrails {
+				if cgCand.GoalName == vg.GoalName {
+					cg = &cgCand
+					break
+				}
+			}
+			if cg == nil {
+				continue
+			}
+
+			if vg.Rate > cg.Rate {
+				stats := experiment.CompareProportions(control.Sent, cg.Conversions, v.Sent, vg.Conversions)
+				if stats.PValue < 0.05 && stats.ZScore > 0 {
+					hasRegression = true
+					break
+				}
+			}
+		}
+
+		if hasRegression {
+			continue
+		}
+
+		if bestVariant == nil || v.Rate > bestVariant.Rate {
+			bestVariant = v
+		}
+	}
+
+	if bestVariant != nil {
+		ret := bestVariant.Label
+		return &ret
+	}
+	return nil
 }

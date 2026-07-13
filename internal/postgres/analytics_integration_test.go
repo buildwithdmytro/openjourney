@@ -309,7 +309,7 @@ func TestExperimentReport(t *testing.T) {
 	}
 
 	// Create dependencies for the campaign
-	var segmentID, identityID, templateID string
+	var segmentID, identityID, templateID, winnerTemplateID string
 	if err := store.pool.QueryRow(ctx, `INSERT INTO segments (tenant_id,workspace_id,name)
 		VALUES ($1,$2,'Experiment report segment') RETURNING id`, p.TenantID, p.WorkspaceID).Scan(&segmentID); err != nil {
 		t.Fatal(err)
@@ -325,6 +325,12 @@ func TestExperimentReport(t *testing.T) {
 		p.TenantID, p.WorkspaceID, identityID).Scan(&templateID); err != nil {
 		t.Fatal(err)
 	}
+	if err := store.pool.QueryRow(ctx, `INSERT INTO templates
+		(tenant_id,workspace_id,name,channel,html_template,sending_identity_id)
+		VALUES ($1,$2,'Experiment winner template','email','winner',$3) RETURNING id`,
+		p.TenantID, p.WorkspaceID, identityID).Scan(&winnerTemplateID); err != nil {
+		t.Fatal(err)
+	}
 	var campaignID string
 	if err := store.pool.QueryRow(ctx, `INSERT INTO campaigns
 		(tenant_id,workspace_id,name,segment_id,template_id) VALUES ($1,$2,'Experiment campaign',$3,$4) RETURNING id`,
@@ -334,17 +340,21 @@ func TestExperimentReport(t *testing.T) {
 
 	// Create experiment
 	exp, err := store.CreateExperiment(ctx, p, domain.Experiment{
-		Name:        "Test Stats Experiment",
-		SubjectType: "campaign",
-		Seed:        "some-seed",
-		PrimaryGoal: json.RawMessage(`{"event_type": "signup", "name": "signup"}`),
+		Name:           "Test Stats Experiment",
+		SubjectType:    "campaign",
+		Seed:           "some-seed",
+		PrimaryGoal:    json.RawMessage(`{"event_type": "signup", "name": "signup"}`),
 		GuardrailGoals: json.RawMessage(`[{"event_type": "churn", "name": "churn"}]`),
 		Variants: []domain.ExperimentVariant{
 			{Label: "control", Weight: 50, IsControl: true},
-			{Label: "treatment", Weight: 50, IsControl: false},
+			{Label: "treatment", Weight: 50, IsControl: false, TemplateID: &winnerTemplateID},
 		},
 	})
 	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.pool.Exec(ctx, `UPDATE campaigns SET experiment_id=$1
+		WHERE tenant_id=$2 AND workspace_id=$3 AND id=$4`, exp.ID, p.TenantID, p.WorkspaceID, campaignID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -409,7 +419,7 @@ func TestExperimentReport(t *testing.T) {
 		}
 	}
 
-	// Seed guardrail conversions: 5 in control, 15 in treatment
+	// Seed equal guardrail rates so the significant primary uplift is safe to recommend.
 	for i := 0; i < 5; i++ {
 		profileID := fmt.Sprintf("00000000-0000-0000-0000-%012d", i)
 		_, err = store.pool.Exec(ctx, `INSERT INTO conversion_facts
@@ -421,7 +431,7 @@ func TestExperimentReport(t *testing.T) {
 		}
 	}
 
-	for i := 0; i < 15; i++ {
+	for i := 0; i < 5; i++ {
 		profileID := fmt.Sprintf("00000000-0000-0000-0000-%012d", i+100)
 		_, err = store.pool.Exec(ctx, `INSERT INTO conversion_facts
 			(tenant_id, workspace_id, source_type, source_id, experiment_id, variant, profile_id, goal_name, occurred_at, attributed_send_at, source_event_id)
@@ -490,13 +500,35 @@ func TestExperimentReport(t *testing.T) {
 	if len(controlReport.Guardrails) != 1 || controlReport.Guardrails[0].GoalName != "churn" || controlReport.Guardrails[0].Conversions != 5 || controlReport.Guardrails[0].Rate != 0.05 {
 		t.Errorf("control guardrails: %+v", controlReport.Guardrails)
 	}
-	if len(treatmentReport.Guardrails) != 1 || treatmentReport.Guardrails[0].GoalName != "churn" || treatmentReport.Guardrails[0].Conversions != 15 || treatmentReport.Guardrails[0].Rate != 0.15 {
+	if len(treatmentReport.Guardrails) != 1 || treatmentReport.Guardrails[0].GoalName != "churn" || treatmentReport.Guardrails[0].Conversions != 5 || treatmentReport.Guardrails[0].Rate != 0.05 {
 		t.Errorf("treatment guardrails: %+v", treatmentReport.Guardrails)
+	}
+	if rpt.WinnerVariant == nil || *rpt.WinnerVariant != "treatment" {
+		t.Fatalf("winner recommendation = %v, want treatment", rpt.WinnerVariant)
+	}
+	var storedWinner *string
+	if err := store.pool.QueryRow(ctx, `SELECT winner_variant FROM experiments
+		WHERE tenant_id=$1 AND workspace_id=$2 AND id=$3`, p.TenantID, p.WorkspaceID, exp.ID).Scan(&storedWinner); err != nil {
+		t.Fatal(err)
+	}
+	if storedWinner == nil || *storedWinner != "treatment" {
+		t.Fatalf("stored winner = %v, want treatment", storedWinner)
 	}
 
 	// Isolation check
 	_, err = store.ExperimentReport(ctx, pOther, exp.ID)
 	if !errors.Is(err, ErrNotFound) {
 		t.Errorf("expected ErrNotFound for other workspace, got %v", err)
+	}
+
+	rollout, err := store.RolloutExperiment(ctx, p, exp.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rollout.Campaign == nil || rollout.Campaign.ID == campaignID || rollout.Campaign.Status != "scheduled" || rollout.Campaign.ExperimentID != nil {
+		t.Fatalf("campaign rollout was not a new pinned version: %+v", rollout)
+	}
+	if rollout.WinnerVariant != "treatment" || rollout.Campaign.TemplateID != winnerTemplateID {
+		t.Fatalf("campaign rollout winner/template mismatch: %+v", rollout)
 	}
 }

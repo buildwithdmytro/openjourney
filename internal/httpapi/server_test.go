@@ -23,6 +23,7 @@ type fakeStore struct {
 	localSession  domain.AuthSession
 	revokedToken  string
 	published     int
+	rollouts      int
 	runs          []domain.JourneyRun
 }
 
@@ -343,6 +344,13 @@ func (f *fakeStore) PublishJourney(ctx context.Context, p domain.Principal, jour
 		EntryKind: "event", EntryEventType: stringPtr("signup.completed"), ReentryPolicy: "once",
 		MaxReentries: 0, LatePolicy: "run", Status: "active", PublishedBy: &approverUserID,
 		PublishedAt: time.Now().UTC(),
+	}, nil
+}
+func (f *fakeStore) RolloutExperiment(_ context.Context, p domain.Principal, experimentID string) (domain.ExperimentRollout, error) {
+	f.rollouts++
+	return domain.ExperimentRollout{
+		ExperimentID: experimentID, WinnerVariant: "treatment", SubjectType: "journey",
+		JourneyVersion: &domain.JourneyVersion{ID: "version-2", JourneyID: "journey-1", TenantID: p.TenantID, WorkspaceID: p.WorkspaceID, Version: 2},
 	}, nil
 }
 func (f *fakeStore) SetJourneyVersionStatus(ctx context.Context, p domain.Principal, journeyID string, version int, status string) error {
@@ -991,6 +999,37 @@ func TestJourneyPublishAndBackfillRequireHumanActor(t *testing.T) {
 	}
 	if len(store.runs) != 0 {
 		t.Fatalf("API-key actor bypassed backfill gate: runs=%d", len(store.runs))
+	}
+}
+
+func TestExperimentRolloutRequiresHumanActorAndReturnsNewVersion(t *testing.T) {
+	store := &fakeStore{scopes: []string{"experiments:write"}}
+	server := NewWithSessionTTL(store, 75, nil, "http://localhost:3000", 12*time.Hour)
+
+	apiKeyRequest := httptest.NewRequest(http.MethodPost, "/v1/experiments/experiment-1/rollout", nil)
+	apiKeyRequest.Header.Set("Authorization", "Bearer api-key-actor")
+	apiKeyResponse := httptest.NewRecorder()
+	server.ServeHTTP(apiKeyResponse, apiKeyRequest)
+	if apiKeyResponse.Code != http.StatusForbidden {
+		t.Fatalf("non-user status=%d body=%s", apiKeyResponse.Code, apiKeyResponse.Body.String())
+	}
+	if !strings.Contains(apiKeyResponse.Body.String(), `"code":"human_approval_required"`) || store.rollouts != 0 {
+		t.Fatalf("non-user bypassed rollout gate: calls=%d body=%s", store.rollouts, apiKeyResponse.Body.String())
+	}
+
+	userRequest := httptest.NewRequest(http.MethodPost, "/v1/experiments/experiment-1/rollout", nil)
+	userRequest.Header.Set("Authorization", "Bearer test-key")
+	userResponse := httptest.NewRecorder()
+	server.ServeHTTP(userResponse, userRequest)
+	if userResponse.Code != http.StatusCreated {
+		t.Fatalf("user status=%d body=%s", userResponse.Code, userResponse.Body.String())
+	}
+	var rollout domain.ExperimentRollout
+	if err := json.Unmarshal(userResponse.Body.Bytes(), &rollout); err != nil {
+		t.Fatal(err)
+	}
+	if store.rollouts != 1 || rollout.JourneyVersion == nil || rollout.JourneyVersion.Version != 2 {
+		t.Fatalf("rollout calls=%d response=%+v", store.rollouts, rollout)
 	}
 }
 

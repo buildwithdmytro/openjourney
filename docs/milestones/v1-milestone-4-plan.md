@@ -439,11 +439,11 @@ Testing bar: unit + golden per milestone; one consolidated integration/determini
 2. [x] **Experiment report** `ExperimentReport` (per variant: sent, conversions, rate, uplift vs
    control, p-value, CI; guardrail rates). `GET /v1/reports/experiments/{id}`. *Done when:* a
    seeded experiment returns correct per-variant stats. — done: Store.ExperimentReport method and GET /v1/reports/experiments/{id} handler implemented and integration-tested.
-3. **Winner recommendation**: compute `winner_variant` when significance threshold met + no
+3. [x] **Winner recommendation**: compute `winner_variant` when significance threshold met + no
    guardrail regression; store as a recommendation. A separate `POST /v1/experiments/{id}/rollout`
    requires the **human-actor approval gate** (reuse the journeys publish gate) and creates a new
    campaign/journey version pinned to the winning variant. *Done when:* rollout is rejected for a
-   non-user actor and, for a user, produces a new version.
+   non-user actor and, for a user, produces a new version. — done: recommendation tests enforce significance and healthy guardrails, while HTTP and live-Postgres tests prove API-key rollout is rejected and a user-approved rollout creates a new scheduled campaign pinned to the winning template.
 
 ### Milestone 9.6 — Reports & Experiments UI
 1. **Experiments view**: CRUD, variant editor (label/weight/control/template), holdout %, bind

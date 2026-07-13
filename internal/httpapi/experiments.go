@@ -66,3 +66,25 @@ func (s *Server) updateExperiment(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, out)
 }
+
+func (s *Server) rolloutExperiment(w http.ResponseWriter, r *http.Request) {
+	p := principalFrom(r)
+	if p.ActorType != "user" || p.UserID == "" {
+		writeError(w, http.StatusForbidden, "human_approval_required", "experiment rollout requires an authenticated user")
+		return
+	}
+	out, err := s.store.RolloutExperiment(r.Context(), p, r.PathValue("id"))
+	if errors.Is(err, postgres.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "experiment or bound subject not found")
+		return
+	}
+	if errors.Is(err, postgres.ErrExperimentWinnerRequired) {
+		writeError(w, http.StatusConflict, "winner_required", "experiment has no recommended winner")
+		return
+	}
+	if err != nil {
+		internalError(w, err, "roll out experiment", p)
+		return
+	}
+	writeJSON(w, http.StatusCreated, out)
+}
