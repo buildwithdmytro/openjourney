@@ -403,10 +403,10 @@ Testing bar: unit + golden per milestone; one consolidated integration/determini
    increments on assignment. — done: authoritative assignment inserts increment the variant-labeled counter once, with a metric-reader test proving the value and label while conflict replays remain uncounted.
 
 ### Milestone 9.3 — Conversion goals & attribution
-1. **Migration** `020_analytics_facts.sql` — the `conversion_facts` table (engagement table too,
+1. [x] **Migration** `020_analytics_facts.sql` — the `conversion_facts` table (engagement table too,
    used in 9.4). Add goal storage: a `conversion_goal jsonb` + `attribution_window` on
    `campaigns`/`journey_versions` (frozen at publish/dispatch), and `experiments.primary_goal`.
-   *Done when:* columns/tables exist.
+   *Done when:* columns/tables exist. — done: migration 020 applies cleanly, and TestAnalyticsFactsMigrationIntegration proves both fact tables, frozen-goal columns, complete CHECK enums, idempotency constraints, and report indexes exist.
 2. **Goal freeze.** Persist the goal + window onto the immutable version at publish/dispatch
    (campaign: at `SaveCampaignManifestAndJobs`; journey: in the published `journey_versions`).
    *Done when:* the frozen goal is readable from the version, not live config.
