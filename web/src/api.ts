@@ -380,6 +380,66 @@ export async function updateExperiment(baseURL: string, apiKey: string, id: stri
   return requestJSON<Experiment>(baseURL, apiKey, `/v1/experiments/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(input) });
 }
 
+export type ReportCount = { total: number; unique: number };
+
+export type ReportFunnel = {
+  targeted: ReportCount;
+  sent: ReportCount;
+  suppressed: ReportCount;
+  no_consent: ReportCount;
+  fatigued: ReportCount;
+  render_failed: ReportCount;
+  send_failed: ReportCount;
+  failed: ReportCount;
+  holdout: ReportCount;
+  delivered: ReportCount;
+  opened: ReportCount;
+  clicked: ReportCount;
+  converted: ReportCount;
+};
+
+export type ReportDeliverability = {
+  bounced: ReportCount;
+  complained: ReportCount;
+  bounce_rate: number;
+  complaint_rate: number;
+};
+
+export type CampaignReport = { campaign_id: string; funnel: ReportFunnel; deliverability: ReportDeliverability };
+export type JourneyReport = { journey_id: string; funnel: ReportFunnel; deliverability: ReportDeliverability };
+
+export type ExperimentVariantReport = {
+  label: string;
+  is_control: boolean;
+  sent: number;
+  conversions: number;
+  rate: number;
+  uplift: number;
+  z_score: number;
+  p_value: number;
+  ci_low: number;
+  ci_high: number;
+  guardrails: Array<{ goal_name: string; conversions: number; rate: number }>;
+};
+
+export type ExperimentReport = {
+  experiment_id: string;
+  winner_variant?: string;
+  variants: ExperimentVariantReport[];
+};
+
+export async function getCampaignReport(baseURL: string, apiKey: string, id: string): Promise<CampaignReport> {
+  return requestJSON<CampaignReport>(baseURL, apiKey, `/v1/reports/campaigns/${encodeURIComponent(id)}`);
+}
+
+export async function getJourneyReport(baseURL: string, apiKey: string, id: string): Promise<JourneyReport> {
+  return requestJSON<JourneyReport>(baseURL, apiKey, `/v1/reports/journeys/${encodeURIComponent(id)}`);
+}
+
+export async function getExperimentReport(baseURL: string, apiKey: string, id: string): Promise<ExperimentReport> {
+  return requestJSON<ExperimentReport>(baseURL, apiKey, `/v1/reports/experiments/${encodeURIComponent(id)}`);
+}
+
 export type Journey = {
   id: string;
   tenant_id: string;

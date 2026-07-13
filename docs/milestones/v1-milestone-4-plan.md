@@ -448,10 +448,10 @@ Testing bar: unit + golden per milestone; one consolidated integration/determini
 ### Milestone 9.6 — Reports & Experiments UI
 1. [x] **Experiments view**: CRUD, variant editor (label/weight/control/template), holdout %, bind
    to a campaign or journey. *Done when:* `npm run build` passes; an experiment round-trips. — done: the authoring view creates/edits experiment status, holdout, weighted control/template variants, and draft campaign or journey-node bindings; focused round-trip tests plus full typecheck/build and 23-test frontend suite pass.
-2. **Reports view** (Recipe 6.20): SVG funnel bars, a variant-comparison table (rate/uplift/
+2. [x] **Reports view** (Recipe 6.20): SVG funnel bars, a variant-comparison table (rate/uplift/
    p-value with a clear "not yet significant" state), deliverability tiles; a "Report" link on
    campaign/journey rows. Follow the `dataviz` skill. *Done when:* charts render in light+dark
-   and match the API numbers.
+   and match the API numbers. — done: inline-SVG funnel, deliverability tiles, experiment comparison table, advisory significance states, and campaign/journey report links ship with focused tests proving exact API values in switchable light/dark themes; full typecheck/build and 26-test frontend suite pass.
 
 ### Milestone 9.7 — Integration, determinism, load & audit (closeout)
 1. **Determinism tests**: same subject → same variant across re-runs and a simulated process

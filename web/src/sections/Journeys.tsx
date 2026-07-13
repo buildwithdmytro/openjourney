@@ -1433,11 +1433,14 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
           {!loading && journeys.length > 0 && (
             <div className="journey-grid">
               {journeys.map(journey => (
-                <button key={journey.id} onClick={() => openEditor(journey)} className="journey-card">
-                  <div className="journey-card-top"><span className="journey-card-icon">⌁</span><span className={`pill ${journey.status}`}>{journey.status}</span></div>
-                  <div><h3>{journey.name}</h3><p>{journey.description || "No description yet"}</p></div>
-                  <footer><span>Version {journey.latest_version || "Draft"}</span><span>Updated {new Date(journey.updated_at).toLocaleDateString()}</span><b>Open →</b></footer>
-                </button>
+                <div className="journey-card-shell" key={journey.id}>
+                  <button onClick={() => openEditor(journey)} className="journey-card">
+                    <div className="journey-card-top"><span className="journey-card-icon">⌁</span><span className={`pill ${journey.status}`}>{journey.status}</span></div>
+                    <div><h3>{journey.name}</h3><p>{journey.description || "No description yet"}</p></div>
+                    <footer><span>Version {journey.latest_version || "Draft"}</span><span>Updated {new Date(journey.updated_at).toLocaleDateString()}</span><b>Open →</b></footer>
+                  </button>
+                  <a className="report-link journey-report-link" href={`#reports?type=journey&id=${encodeURIComponent(journey.id)}`}>View report</a>
+                </div>
               ))}
             </div>
           )}

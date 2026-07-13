@@ -86,6 +86,45 @@ button.danger { color: #a93838; background: #fff0f0; }
 .experiment-list td strong,.experiment-list td small { display: block; }
 .experiment-list td small { max-width: 260px; margin-top: 3px; color: #758092; }
 .experiment-list button { padding: 7px 10px; font-size: 11px; }
+.report-row-actions { display: flex; align-items: center; gap: 7px; }
+.report-link { display: inline-flex; align-items: center; justify-content: center; padding: 7px 10px; border: 1px solid #cfc8ff; border-radius: 8px; color: #5542d0; background: #f7f5ff; font-size: 11px; font-weight: 750; text-decoration: none; }
+.report-link:hover { border-color: #6f5cff; background: #efecff; }
+
+/* Postgres-backed reports and inline SVG charts */
+.reports-view { --report-bg: #f4f6f8; --report-surface: #fff; --report-ink: #1a2433; --report-muted: #6c7787; --report-border: #dfe4ea; --report-track: #eceff3; --report-accent: #6552e8; --report-good: #187d56; --report-good-bg: #e9f8f1; --report-warn: #8a5a00; --report-warn-bg: #fff4d6; display: grid; gap: 18px; padding: 2px; color: var(--report-ink); background: var(--report-bg); border-radius: 16px; transition: color .15s, background .15s; }
+.reports-view[data-theme="dark"] { --report-bg: #101722; --report-surface: #182231; --report-ink: #edf2f8; --report-muted: #aab6c6; --report-border: #344156; --report-track: #293646; --report-accent: #9b8cff; --report-good: #78dbb4; --report-good-bg: #183c34; --report-warn: #ffd27a; --report-warn-bg: #46391d; padding: 18px; }
+.report-controls,.report-card,.metric-tile { color: var(--report-ink); background: var(--report-surface); border: 1px solid var(--report-border); border-radius: 13px; box-shadow: 0 2px 9px rgba(9, 16, 28, .08); }
+.report-controls { display: flex; align-items: end; justify-content: space-between; gap: 18px; padding: 18px 20px; }
+.report-selectors { width: min(680px, 100%); display: grid; grid-template-columns: minmax(150px, .55fr) minmax(250px, 1fr); gap: 14px; }
+.reports-view label { color: var(--report-ink); }
+.reports-view select { color: var(--report-ink); background: var(--report-surface); border-color: var(--report-border); }
+.report-theme-toggle { white-space: nowrap; color: var(--report-ink); background: var(--report-track); }
+.report-card { padding: 22px; overflow: hidden; }
+.report-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+.report-card-heading h2 { margin: 4px 0 0; }
+.funnel-chart { display: block; width: 100%; min-width: 650px; height: auto; overflow: visible; }
+.funnel-label,.funnel-value { fill: var(--report-ink); font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: 13px; font-weight: 700; }
+.funnel-value { fill: var(--report-muted); font-size: 12px; font-weight: 600; }
+.funnel-track { fill: var(--report-track); }
+.funnel-bar { fill: var(--report-accent); }
+.deliverability-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.metric-tile { display: grid; gap: 7px; padding: 21px; }
+.metric-tile span { color: var(--report-muted); font-size: 12px; font-weight: 750; text-transform: uppercase; letter-spacing: .06em; }
+.metric-tile strong { font-size: 30px; letter-spacing: -.03em; }
+.metric-tile small { color: var(--report-muted); }
+.report-table-wrap { overflow-x: auto; }
+.variant-comparison { color: var(--report-ink); }
+.variant-comparison th,.variant-comparison td { border-color: var(--report-border); white-space: nowrap; }
+.variant-comparison th { color: var(--report-muted); }
+.variant-comparison td strong,.variant-comparison td small { display: block; }
+.variant-comparison td small { margin-top: 3px; color: var(--report-muted); }
+.winner-pill,.result-pill { display: inline-flex; padding: 5px 9px; border-radius: 999px; font-size: 11px; font-weight: 750; }
+.winner-pill,.result-pill.significant { color: var(--report-good); background: var(--report-good-bg); }
+.result-pill.pending { color: var(--report-warn); background: var(--report-warn-bg); }
+.report-note,.report-status { color: var(--report-muted); }
+.report-note { margin: 15px 0 0; font-size: 12px; }
+.report-status,.report-error { margin: 0; padding: 15px 18px; border-radius: 10px; background: var(--report-surface); }
+.report-error { color: #c34758; border: 1px solid #c34758; }
 
 /* Journey orchestration */
 .journeys-home { display: grid; gap: 24px; }
@@ -107,6 +146,7 @@ button.danger { color: #a93838; background: #fff0f0; }
 .journey-list-header h3 { margin: 0 0 3px; }
 .journey-list-header span { color: #758092; font-size: 12px; }
 .journey-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; padding: 20px; }
+.journey-card-shell { display: grid; gap: 8px; align-content: start; }
 .journey-card { min-height: 210px; padding: 20px; display: flex; flex-direction: column; justify-content: space-between; gap: 20px; text-align: left; color: inherit; background: white; border: 1px solid #dde2e9; border-radius: 13px; transition: transform .15s, border-color .15s, box-shadow .15s; }
 .journey-card:hover { transform: translateY(-2px); border-color: #a79bfa; box-shadow: 0 10px 25px rgba(44, 35, 106, .1); }
 .journey-card-top { display: flex; align-items: center; justify-content: space-between; }
@@ -115,6 +155,7 @@ button.danger { color: #a93838; background: #fff0f0; }
 .journey-card p { margin: 0; min-height: 36px; color: #6c7787; font-size: 12px; line-height: 1.5; }
 .journey-card footer { display: flex; flex-wrap: wrap; gap: 7px 14px; padding-top: 13px; border-top: 1px solid #edf0f3; color: #758092; font-size: 10px; }
 .journey-card footer b { margin-left: auto; color: #5c48dd; }
+.journey-report-link { justify-self: end; margin-right: 4px; }
 .journey-empty { min-height: 260px; display: grid; place-content: center; justify-items: center; text-align: center; padding: 30px; color: #758092; }
 .journey-empty > span { font-size: 35px; color: #6f5cff; }
 .journey-empty h3 { color: #1a2433; margin: 10px 0 4px; }
@@ -224,6 +265,9 @@ button.danger { color: #a93838; background: #fff0f0; }
   .experiment-editor { position: static; }
   .variant-row { grid-template-columns: 1fr 80px; }
   .variant-row label:nth-child(3) { grid-column: 1 / -1; }
+  .report-controls { align-items: stretch; flex-direction: column; }
+  .report-selectors,.deliverability-grid { grid-template-columns: 1fr; }
+  .report-theme-toggle { align-self: flex-start; }
 }
 
 .login-container {

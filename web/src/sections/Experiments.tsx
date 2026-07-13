@@ -279,7 +279,7 @@ export default function Experiments({ apiKey, baseURL }: { apiKey: string; baseU
       <div className="section-title"><div><span className="eyebrow">Workspace</span><h2>Experiments ({items.length})</h2></div></div>
       {loading && <p role="status">Loading experiments…</p>}
       {!loading && items.length === 0 ? <p className="muted">No experiments yet.</p> : <table><thead><tr><th>Name</th><th>Subject</th><th>Holdout</th><th>Status</th><th>Actions</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}>
-        <td><strong>{item.name}</strong>{item.description && <small>{item.description}</small>}</td><td>{item.subject_type}</td><td>{item.holdout_pct}%</td><td><span className={`pill ${item.status}`}>{item.status}</span></td><td><button type="button" className="secondary" onClick={() => void edit(item)}>Edit</button></td>
+        <td><strong>{item.name}</strong>{item.description && <small>{item.description}</small>}</td><td>{item.subject_type}</td><td>{item.holdout_pct}%</td><td><span className={`pill ${item.status}`}>{item.status}</span></td><td><div className="report-row-actions"><button type="button" className="secondary" onClick={() => void edit(item)}>Edit</button><a className="report-link" href={`#reports?type=experiment&id=${encodeURIComponent(item.id)}`}>Report</a></div></td>
       </tr>)}</tbody></table>}
     </article>
   </section>;

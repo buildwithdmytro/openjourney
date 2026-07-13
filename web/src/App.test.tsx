@@ -48,6 +48,11 @@ const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
   if (url.includes("/v1/operations/dlq")) return jsonResponse({ dead_letters: [] });
   if (url.includes("/v1/audit")) return jsonResponse({ audit_events: [{ id: "audit-1", actor_type: "api_key", actor_id: "key-1", action: "events.accept", resource_type: "event_batch", metadata: {}, occurred_at: "2026-01-01T00:00:00Z" }] });
   if (url.includes("/v1/suppressions")) return jsonResponse(null);
+  if (url.includes("/v1/campaigns")) return jsonResponse([{
+    id: "campaign-1", tenant_id: "tenant", workspace_id: "workspace", name: "Welcome campaign",
+    segment_id: "segment-1", template_id: "template-1", status: "completed", segment_version: 1,
+    template_version: 1, recipient_count: 100, created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z",
+  }]);
   if (url.includes("/v1/journeys") && init?.method === "POST") {
     return jsonResponse({
       id: "journey-2",
@@ -153,6 +158,7 @@ describe("App", () => {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "Journeys" }));
     await screen.findByText("Onboarding");
+    expect(screen.getByRole("link", { name: "View report" })).toHaveAttribute("href", "#reports?type=journey&id=journey-1");
     fireEvent.click(screen.getByText("+ Create journey"));
     fireEvent.change(screen.getByLabelText("Journey name"), { target: { value: "Welcome Series" } });
     fireEvent.click(screen.getByRole("button", { name: "Create and design" }));
@@ -160,6 +166,13 @@ describe("App", () => {
       method: "POST",
       body: expect.stringContaining("\"type\":\"entry\""),
     })));
+  });
+
+  it("links campaign rows to their report", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Campaigns" }));
+    await screen.findByText("Welcome campaign");
+    expect(screen.getByRole("link", { name: "Report" })).toHaveAttribute("href", "#reports?type=campaign&id=campaign-1");
   });
 
   it("offers plain-language journey design steps", async () => {

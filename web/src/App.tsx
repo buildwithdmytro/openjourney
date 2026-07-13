@@ -15,6 +15,7 @@ import { oidcConfigured, restoreOIDCSession, signIn, signOut } from "./auth";
 
 const Journeys = lazy(() => import("./sections/Journeys"));
 const Experiments = lazy(() => import("./sections/Experiments"));
+const Reports = lazy(() => import("./sections/Reports"));
 
 const apiBase = import.meta.env.VITE_API_BASE_URL || "/api";
 
@@ -38,7 +39,7 @@ class UIErrorBoundary extends Component<{ children: ReactNode; resetKey: string 
     return this.props.children;
   }
 }
-type View = "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "templates" | "campaigns" | "journeys" | "experiments" | "suppressions" | "sender-identities";
+type View = "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "suppressions" | "sender-identities";
 type CredentialSource = "manual" | "session" | "oidc";
 
 const viewTitles: Record<View, [string, string]> = {
@@ -54,9 +55,15 @@ const viewTitles: Record<View, [string, string]> = {
   campaigns: ["Campaigns", "Schedule and manage sharded marketing campaigns linked to segments and templates."],
   journeys: ["Journeys", "Design, publish, and monitor automated customer experiences."],
   experiments: ["Experiments", "Create controlled tests with stable audience assignment."],
+  reports: ["Reports", "Compare delivery, conversion, and experiment performance."],
   suppressions: ["Suppressions", "Manage bounces, complaints, and manually suppressed endpoints."],
   "sender-identities": ["Sender Identities", "Manage verified sender emails and webhook channels."],
 };
+
+function currentHashView(): View | null {
+  const hash = window.location.hash.slice(1).split("?")[0] as View;
+  return hash in viewTitles ? hash : null;
+}
 
 const AVAILABLE_SCOPES = [
   "*",
@@ -91,10 +98,7 @@ const AVAILABLE_SCOPES = [
 
 export function App() {
   const [healthy, setHealthy] = useState<boolean | null>(null);
-  const [view, setView] = useState<View>(() => {
-    const hash = window.location.hash.slice(1) as View;
-    return (hash in viewTitles) ? hash : "profiles";
-  });
+  const [view, setView] = useState<View>(() => currentHashView() || "profiles");
   const [apiKey, setAPIKey] = useState(() => sessionStorage.getItem("oj_session_token") || localStorage.getItem("oj_api_key") || "");
   const [credentialSource, setCredentialSource] = useState<CredentialSource>(() =>
     sessionStorage.getItem("oj_session_token") ? "session" : "manual");
@@ -129,17 +133,15 @@ export function App() {
   }, [apiKey, credentialSource]);
 
   useEffect(() => {
-    if (apiKey) {
+    if (apiKey && currentHashView() !== view) {
       window.location.hash = view;
     }
   }, [view, apiKey]);
 
   useEffect(() => {
     const handleHashChange = () => {
-      const hash = window.location.hash.slice(1) as View;
-      if (hash in viewTitles) {
-        setView(hash);
-      }
+      const hashView = currentHashView();
+      if (hashView) setView(hashView);
     };
     window.addEventListener("hashchange", handleHashChange);
     return () => window.removeEventListener("hashchange", handleHashChange);
@@ -235,7 +237,7 @@ export function App() {
       <aside>
         <div className="brand"><span>O</span> OpenJourney</div>
         <nav aria-label="Primary">
-          {(["profiles", "segments", "templates", "campaigns", "journeys", "experiments", "suppressions", "sender-identities", "schemas", "api-keys", "privacy", "access", "operations", "audit"] as View[]).map((item) => (
+          {(["profiles", "segments", "templates", "campaigns", "journeys", "experiments", "reports", "suppressions", "sender-identities", "schemas", "api-keys", "privacy", "access", "operations", "audit"] as View[]).map((item) => (
             <button key={item} className={view === item ? "active" : ""}
               onClick={() => setView(item)}>{viewTitles[item][0]}</button>
           ))}
@@ -266,6 +268,7 @@ export function App() {
           </Suspense>
         )}
         {view === "experiments" && <Suspense fallback={<p role="status">Loading experiments…</p>}><Experiments apiKey={apiKey} baseURL={apiBase} /></Suspense>}
+        {view === "reports" && <Suspense fallback={<p role="status">Loading reports…</p>}><Reports apiKey={apiKey} baseURL={apiBase} /></Suspense>}
         {view === "suppressions" && <Suppressions apiKey={apiKey} />}
         {view === "sender-identities" && <SenderIdentities apiKey={apiKey} />}
         {view === "schemas" && <Schemas apiKey={apiKey} />}
@@ -1493,6 +1496,7 @@ export function Campaigns({ apiKey }: { apiKey: string }) {
                       <td>
                         <div style={{ display: "flex", gap: "6px" }}>
                           <button className="secondary" style={{ padding: "4px 8px", fontSize: "12px" }} onClick={() => startEdit(c)}>Edit</button>
+                          <a className="report-link" href={`#reports?type=campaign&id=${encodeURIComponent(c.id)}`}>Report</a>
                           {c.status === "draft" && (
                             <button style={{ padding: "4px 8px", fontSize: "12px", background: "#48bd8b", color: "white" }} onClick={() => handleLaunchNow(c)}>Launch</button>
                           )}
