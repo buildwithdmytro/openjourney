@@ -619,6 +619,8 @@ type JourneyMessageIntent struct {
 	JourneyVersionID  string          `json:"journey_version_id"`
 	NodeID            string          `json:"node_id"`
 	ProfileID         string          `json:"profile_id"`
+	ExperimentID      *string         `json:"experiment_id,omitempty"`
+	Variant           string          `json:"variant,omitempty"`
 	TemplateID        string          `json:"template_id"`
 	Channel           string          `json:"channel"`
 	Endpoint          string          `json:"endpoint"`

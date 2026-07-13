@@ -24,6 +24,7 @@ type mockStore struct {
 	defaultTimezone   string
 	acceptEventsErr   error
 	acceptEventsCalls int
+	acceptedEvents    []domain.Event
 	updateIntentHook  func(domain.JourneyMessageIntent) error
 	suppressed        bool
 }
@@ -72,6 +73,7 @@ func (m *mockStore) GetProfileByIDSystem(ctx context.Context, tenantID, workspac
 
 func (m *mockStore) AcceptEvents(ctx context.Context, p domain.Principal, events []domain.Event) ([]string, error) {
 	m.acceptEventsCalls++
+	m.acceptedEvents = append(m.acceptedEvents, events...)
 	return nil, m.acceptEventsErr
 }
 

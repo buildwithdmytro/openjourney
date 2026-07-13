@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
+	"github.com/buildwithdmytro/openjourney/internal/experiment"
 )
 
 func TestDecodeConfigSupportedNodes(t *testing.T) {
@@ -171,6 +172,18 @@ type executorMockStore struct {
 	updatedProfileID  string
 	updatedAttrs      map[string]any
 	acceptedEvents    []domain.Event
+	experiments       map[string]domain.Experiment
+	assignments       []domain.ExperimentAssignment
+}
+
+func (m *executorMockStore) GetExperiment(_ context.Context, _ domain.Principal, id string) (domain.Experiment, error) {
+	return m.experiments[id], nil
+}
+
+func (m *executorMockStore) AssignExperiment(_ context.Context, p domain.Principal, experimentID, profileID, variant string) (domain.ExperimentAssignment, error) {
+	assignment := domain.ExperimentAssignment{ExperimentID: experimentID, TenantID: p.TenantID, WorkspaceID: p.WorkspaceID, ProfileID: profileID, Variant: variant}
+	m.assignments = append(m.assignments, assignment)
+	return assignment, nil
 }
 
 func (m *executorMockStore) EvaluateAudience(ctx context.Context, p domain.Principal, profileID string, dsl json.RawMessage) (bool, error) {
@@ -319,6 +332,57 @@ func TestExecuteSplitRandom(t *testing.T) {
 	}
 	if stateMap["n1"] == "" {
 		t.Errorf("expected state to record split choice")
+	}
+}
+
+func TestExecuteExperimentSplitMatchesSharedAssignment(t *testing.T) {
+	exp := domain.Experiment{ID: "exp-1", Seed: "journey-seed", Variants: []domain.ExperimentVariant{{Label: "control", Weight: 40}, {Label: "variant", Weight: 60}}}
+	store := &executorMockStore{experiments: map[string]domain.Experiment{exp.ID: exp}}
+	run := &domain.JourneyRun{ID: "r1", TenantID: "t1", WorkspaceID: "w1", ProfileID: "profile-42", Status: "active"}
+	graph := &Graph{
+		Nodes: []Node{
+			{ID: "split", Type: NodeTypeSplit, Config: json.RawMessage(`{"experiment_id":"exp-1","branches":[{"label":"control"},{"label":"variant"}]}`)},
+			{ID: "control-node", Type: NodeTypeExit}, {ID: "variant-node", Type: NodeTypeExit},
+		},
+		Edges: []Edge{{From: "split", To: "control-node", Branch: "control"}, {From: "split", To: "variant-node", Branch: "variant"}},
+	}
+
+	res, err := graph.Nodes[0].Execute(context.Background(), store, run, graph, time.Now(), "advance")
+	if err != nil {
+		t.Fatalf("execute experiment split: %v", err)
+	}
+	want, _ := experiment.Assign(exp.Seed, run.ProfileID, []experiment.Variant{{Label: "control", Weight: 40}, {Label: "variant", Weight: 60}}, 0)
+	if len(store.assignments) != 1 || store.assignments[0].Variant != want {
+		t.Fatalf("recorded assignments = %+v, want variant %q", store.assignments, want)
+	}
+	if (want == "control" && res.NextNodeID != "control-node") || (want == "variant" && res.NextNodeID != "variant-node") {
+		t.Fatalf("next node = %q for assignment %q", res.NextNodeID, want)
+	}
+}
+
+func TestExecuteExperimentMessageSelectsTemplateStampsAndHoldsOut(t *testing.T) {
+	variantTemplate := "variant-template"
+	exp := domain.Experiment{ID: "exp-1", Seed: "seed", Variants: []domain.ExperimentVariant{{Label: "variant", Weight: 100, TemplateID: &variantTemplate}}}
+	store := &executorMockStore{experiments: map[string]domain.Experiment{exp.ID: exp}}
+	run := &domain.JourneyRun{ID: "r1", TenantID: "t1", WorkspaceID: "w1", JourneyID: "j1", JourneyVersionID: "jv1", ProfileID: "p1", Status: "active"}
+	graph := &Graph{Nodes: []Node{{ID: "message", Type: NodeTypeMessage, Config: json.RawMessage(`{"template_id":"base-template","experiment_id":"exp-1"}`)}, {ID: "exit", Type: NodeTypeExit}}, Edges: []Edge{{From: "message", To: "exit"}}}
+
+	res, err := graph.Nodes[0].Execute(context.Background(), store, run, graph, time.Now(), "advance")
+	if err != nil {
+		t.Fatalf("execute experiment message: %v", err)
+	}
+	if res.MessageIntent.TemplateID != variantTemplate || res.MessageIntent.ExperimentID == nil || *res.MessageIntent.ExperimentID != exp.ID || res.MessageIntent.Variant != "variant" {
+		t.Fatalf("variant intent not selected/stamped: %+v", res.MessageIntent)
+	}
+
+	exp.HoldoutPct = 100
+	store.experiments[exp.ID] = exp
+	res, err = graph.Nodes[0].Execute(context.Background(), store, run, graph, time.Now(), "advance")
+	if err != nil {
+		t.Fatalf("execute holdout message: %v", err)
+	}
+	if res.MessageIntent.Status != "completed" || res.MessageIntent.Decision == nil || *res.MessageIntent.Decision != "holdout" || res.MessageIntent.Variant != "holdout" {
+		t.Fatalf("holdout intent should be terminal and unsendable: %+v", res.MessageIntent)
 	}
 }
 

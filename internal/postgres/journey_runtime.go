@@ -429,13 +429,15 @@ func (s *Store) AdvanceRunTx(ctx context.Context, runID string, run domain.Journ
 		}
 		_, err = tx.Exec(ctx, `INSERT INTO journey_message_intents (
 				run_id, tenant_id, workspace_id, journey_id, journey_version_id, node_id, profile_id,
-				template_id, channel, endpoint, transactional, status, attempts, available_at, locked_until, policy_snapshot
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+				experiment_id, variant, template_id, channel, endpoint, transactional, status, attempts,
+				available_at, locked_until, decision, reason, policy_snapshot
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
 			ON CONFLICT (run_id, node_id) DO NOTHING`,
 			messageIntent.RunID, messageIntent.TenantID, messageIntent.WorkspaceID, messageIntent.JourneyID,
-			messageIntent.JourneyVersionID, messageIntent.NodeID, messageIntent.ProfileID, messageIntent.TemplateID,
-			messageIntent.Channel, messageIntent.Endpoint, messageIntent.Transactional, messageIntent.Status,
-			messageIntent.Attempts, messageIntent.AvailableAt, messageIntent.LockedUntil, messageIntent.PolicySnapshot)
+			messageIntent.JourneyVersionID, messageIntent.NodeID, messageIntent.ProfileID, messageIntent.ExperimentID,
+			messageIntent.Variant, messageIntent.TemplateID, messageIntent.Channel, messageIntent.Endpoint,
+			messageIntent.Transactional, messageIntent.Status, messageIntent.Attempts, messageIntent.AvailableAt,
+			messageIntent.LockedUntil, messageIntent.Decision, messageIntent.Reason, messageIntent.PolicySnapshot)
 		if err != nil {
 			return fmt.Errorf("advance insert message intent: %w", err)
 		}
@@ -918,8 +920,8 @@ func (s *Store) ClaimJourneyMessageIntent(ctx context.Context, workerID string) 
 			FOR UPDATE OF jmi SKIP LOCKED
 			LIMIT 1
 		)
-		RETURNING id, run_id, tenant_id, workspace_id, journey_id, journey_version_id, node_id, profile_id, template_id, channel, endpoint, transactional, status, attempts, available_at, locked_until, decision, reason, provider_message_id, policy_snapshot, error_message, created_at, updated_at`).
-		Scan(&out.ID, &out.RunID, &out.TenantID, &out.WorkspaceID, &out.JourneyID, &out.JourneyVersionID, &out.NodeID, &out.ProfileID, &out.TemplateID, &out.Channel, &out.Endpoint, &out.Transactional, &out.Status, &out.Attempts, &out.AvailableAt, &out.LockedUntil, &out.Decision, &out.Reason, &out.ProviderMessageID, &out.PolicySnapshot, &out.ErrorMessage, &out.CreatedAt, &out.UpdatedAt)
+		RETURNING id, run_id, tenant_id, workspace_id, journey_id, journey_version_id, node_id, profile_id, experiment_id, variant, template_id, channel, endpoint, transactional, status, attempts, available_at, locked_until, decision, reason, provider_message_id, policy_snapshot, error_message, created_at, updated_at`).
+		Scan(&out.ID, &out.RunID, &out.TenantID, &out.WorkspaceID, &out.JourneyID, &out.JourneyVersionID, &out.NodeID, &out.ProfileID, &out.ExperimentID, &out.Variant, &out.TemplateID, &out.Channel, &out.Endpoint, &out.Transactional, &out.Status, &out.Attempts, &out.AvailableAt, &out.LockedUntil, &out.Decision, &out.Reason, &out.ProviderMessageID, &out.PolicySnapshot, &out.ErrorMessage, &out.CreatedAt, &out.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.JourneyMessageIntent{}, false, nil
 	}

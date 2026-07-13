@@ -42,8 +42,9 @@ type ConditionConfig struct {
 }
 
 type SplitConfig struct {
-	Mode     string        `json:"mode"`
-	Branches []SplitBranch `json:"branches"`
+	Mode         string        `json:"mode"`
+	ExperimentID string        `json:"experiment_id,omitempty"`
+	Branches     []SplitBranch `json:"branches"`
 }
 
 type SplitBranch struct {
@@ -54,6 +55,7 @@ type SplitBranch struct {
 
 type MessageConfig struct {
 	TemplateID    string `json:"template_id"`
+	ExperimentID  string `json:"experiment_id,omitempty"`
 	Channel       string `json:"channel,omitempty"`
 	Transactional bool   `json:"transactional"`
 }
@@ -266,7 +268,23 @@ func (n *Node) Execute(ctx context.Context, store ports.Store, run *domain.Journ
 			return ExecutionResult{}, err
 		}
 		var branch string
-		if cfg.Mode == "random" {
+		if cfg.ExperimentID != "" {
+			p := domain.Principal{TenantID: run.TenantID, WorkspaceID: run.WorkspaceID}
+			exp, err := store.GetExperiment(ctx, p, cfg.ExperimentID)
+			if err != nil {
+				return ExecutionResult{}, fmt.Errorf("get split experiment: %w", err)
+			}
+			variants := make([]experiment.Variant, 0, len(exp.Variants))
+			for _, candidate := range exp.Variants {
+				variants = append(variants, experiment.Variant{Label: candidate.Label, Weight: candidate.Weight})
+			}
+			computed, _ := experiment.Assign(exp.Seed, run.ProfileID, variants, exp.HoldoutPct)
+			stored, err := store.AssignExperiment(ctx, p, exp.ID, run.ProfileID, computed)
+			if err != nil {
+				return ExecutionResult{}, fmt.Errorf("record split experiment assignment: %w", err)
+			}
+			branch = stored.Variant
+		} else if cfg.Mode == "random" {
 			bucket := experiment.BucketOf(run.ProfileID+":"+n.ID, 100)
 			var cumulative uint64
 			for _, br := range cfg.Branches {
@@ -438,6 +456,35 @@ func (n *Node) Execute(ctx context.Context, store ports.Store, run *domain.Journ
 		if err := decodeNodeConfig(*n, &cfg); err != nil {
 			return ExecutionResult{}, err
 		}
+		templateID := cfg.TemplateID
+		var experimentID *string
+		variant := ""
+		holdout := false
+		if cfg.ExperimentID != "" {
+			p := domain.Principal{TenantID: run.TenantID, WorkspaceID: run.WorkspaceID}
+			exp, err := store.GetExperiment(ctx, p, cfg.ExperimentID)
+			if err != nil {
+				return ExecutionResult{}, fmt.Errorf("get message experiment: %w", err)
+			}
+			variants := make([]experiment.Variant, 0, len(exp.Variants))
+			for _, candidate := range exp.Variants {
+				variants = append(variants, experiment.Variant{Label: candidate.Label, Weight: candidate.Weight})
+			}
+			computed, _ := experiment.Assign(exp.Seed, run.ProfileID, variants, exp.HoldoutPct)
+			stored, err := store.AssignExperiment(ctx, p, exp.ID, run.ProfileID, computed)
+			if err != nil {
+				return ExecutionResult{}, fmt.Errorf("record message experiment assignment: %w", err)
+			}
+			variant = stored.Variant
+			holdout = variant == "holdout"
+			experimentID = &exp.ID
+			for _, candidate := range exp.Variants {
+				if candidate.Label == variant && candidate.TemplateID != nil && *candidate.TemplateID != "" {
+					templateID = *candidate.TemplateID
+					break
+				}
+			}
+		}
 		profile, err := store.GetProfileByIDSystem(ctx, run.TenantID, run.WorkspaceID, run.ProfileID)
 		if err != nil {
 			return ExecutionResult{}, fmt.Errorf("get profile for message node: %w", err)
@@ -495,13 +542,22 @@ func (n *Node) Execute(ctx context.Context, store ports.Store, run *domain.Journ
 			JourneyVersionID: run.JourneyVersionID,
 			NodeID:           n.ID,
 			ProfileID:        run.ProfileID,
-			TemplateID:       cfg.TemplateID,
+			ExperimentID:     experimentID,
+			Variant:          variant,
+			TemplateID:       templateID,
 			Channel:          channel,
 			Endpoint:         endpoint,
 			Transactional:    cfg.Transactional,
 			Status:           "pending",
 			AvailableAt:      now,
 			PolicySnapshot:   json.RawMessage("{}"),
+		}
+		if holdout {
+			decision, reason := "holdout", "experiment holdout"
+			messageIntent.Status = "completed"
+			messageIntent.Decision = &decision
+			messageIntent.Reason = &reason
+			trans.Outcome = "holdout"
 		}
 
 	case NodeTypeWaitEvent:

@@ -179,6 +179,7 @@ func TestDeliverNext_Success(t *testing.T) {
 	}
 
 	// Create an intent
+	experimentID := "experiment-1"
 	intent := domain.JourneyMessageIntent{
 		ID:               "intent-1",
 		RunID:            "run-1",
@@ -188,6 +189,8 @@ func TestDeliverNext_Success(t *testing.T) {
 		JourneyVersionID: "version-1",
 		NodeID:           "node-2",
 		ProfileID:        "profile-1",
+		ExperimentID:     &experimentID,
+		Variant:          "variant-a",
 		TemplateID:       "template-1",
 		Channel:          "email",
 		Endpoint:         "test@example.com",
@@ -233,6 +236,16 @@ func TestDeliverNext_Success(t *testing.T) {
 	}
 	if msg.HTML != "Body World" {
 		t.Errorf("expected rendered html Body World, got %s", msg.HTML)
+	}
+	if len(store.acceptedEvents) != 1 {
+		t.Fatalf("expected one message.sent event, got %d", len(store.acceptedEvents))
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(store.acceptedEvents[0].Payload, &payload); err != nil {
+		t.Fatalf("decode message.sent payload: %v", err)
+	}
+	if payload["experiment_id"] != experimentID || payload["variant"] != "variant-a" {
+		t.Fatalf("message.sent experiment stamps = %+v", payload)
 	}
 }
 

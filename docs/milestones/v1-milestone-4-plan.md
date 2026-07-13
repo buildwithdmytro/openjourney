@@ -394,11 +394,11 @@ Testing bar: unit + golden per milestone; one consolidated integration/determini
    on the `delivery_attempts` row and the `message.sent` payload. `holdout` → record
    `decision='holdout'`, do **not** send. *Done when:* a 2-variant + 10% holdout campaign
    produces the expected split and no sends for holdout. — done: TestDeliverNext_ExperimentVariantsAndHoldout proves the deterministic two-variant/10% holdout split across 500 recipients, no holdout provider sends, authoritative assignments, variant template selection, and disposition/event stamps.
-3. **Journey variant resolution.** The split node gains an optional `experiment_id` in its
+3. [x] **Journey variant resolution.** The split node gains an optional `experiment_id` in its
    config → branch label = variant (record the assignment); a message node with an
    `experiment_id` selects the variant template and stamps `variant`+`experiment_id` on the
    intent + `message.sent`. Reuse the existing deterministic branch pick. *Done when:* a journey
-   split bound to an experiment records assignments matching `experiment.Assign`.
+   split bound to an experiment records assignments matching `experiment.Assign`. — done: focused journey tests prove experiment splits persist the shared deterministic assignment, message variants select and stamp templates/intents/events, and holdouts create terminal unsendable intents; full Go build and vet pass.
 4. **Telemetry**: `openjourney_experiment_assignments_total{variant}`. *Done when:* counter
    increments on assignment.
 

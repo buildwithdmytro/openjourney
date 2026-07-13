@@ -430,6 +430,8 @@ emitSentEvent:
 		"run_id":             intent.RunID,
 		"channel":            intent.Channel,
 		"endpoint":           intent.Endpoint,
+		"experiment_id":      intent.ExperimentID,
+		"variant":            intent.Variant,
 	})
 	emittedEvent := domain.Event{
 		Type:           "message.sent",
