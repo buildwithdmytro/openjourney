@@ -91,6 +91,25 @@ func DispatchNext(ctx context.Context, store ports.Store, blobStore BlobStore) (
 		return true, fmt.Errorf("get template: %w", err)
 	}
 
+	var conversionGoal json.RawMessage
+	var attributionWindow string
+	if camp.ExperimentID != nil {
+		exp, err := store.GetExperiment(ctx, p, *camp.ExperimentID)
+		if err != nil {
+			return true, fmt.Errorf("get campaign experiment goal: %w", err)
+		}
+		conversionGoal = append(json.RawMessage(nil), exp.PrimaryGoal...)
+		if len(conversionGoal) > 0 {
+			var goal struct {
+				Window string `json:"window"`
+			}
+			if err := json.Unmarshal(conversionGoal, &goal); err != nil {
+				return true, fmt.Errorf("decode campaign conversion goal: %w", err)
+			}
+			attributionWindow = goal.Window
+		}
+	}
+
 	var dslStr string
 	if len(seg.DSL) > 0 {
 		dslStr = string(seg.DSL)
@@ -105,8 +124,6 @@ func DispatchNext(ctx context.Context, store ports.Store, blobStore BlobStore) (
 	}
 
 	profileLegs, consentLegs, clickhouseLegs := compileSegmentLegs(node)
-
-
 
 	manifestRecipients := make([]ManifestRecipient, len(recipients))
 	for i, r := range recipients {
@@ -126,6 +143,8 @@ func DispatchNext(ctx context.Context, store ports.Store, blobStore BlobStore) (
 		CompiledClickHouseLegs []string            `json:"compiled_clickhouse_legs"`
 		TemplateID             string              `json:"template_id"`
 		TemplateVersion        int                 `json:"template_version"`
+		ConversionGoal         json.RawMessage     `json:"conversion_goal,omitempty"`
+		AttributionWindow      string              `json:"attribution_window,omitempty"`
 		EvaluatedAt            time.Time           `json:"evaluated_at"`
 		Recipients             []ManifestRecipient `json:"recipients"`
 	}{
@@ -138,6 +157,8 @@ func DispatchNext(ctx context.Context, store ports.Store, blobStore BlobStore) (
 		CompiledClickHouseLegs: clickhouseLegs,
 		TemplateID:             camp.TemplateID,
 		TemplateVersion:        template.Version,
+		ConversionGoal:         conversionGoal,
+		AttributionWindow:      attributionWindow,
 		EvaluatedAt:            time.Now().UTC(),
 		Recipients:             manifestRecipients,
 	}
@@ -177,7 +198,7 @@ func DispatchNext(ctx context.Context, store ports.Store, blobStore BlobStore) (
 		shardIndex++
 	}
 
-	err = store.SaveCampaignManifestAndJobs(ctx, camp.ID, manifestKey, len(recipients), seg.Version, template.Version, jobs)
+	err = store.SaveCampaignManifestAndJobs(ctx, camp.ID, manifestKey, len(recipients), seg.Version, template.Version, conversionGoal, attributionWindow, jobs)
 	if err != nil {
 		return true, fmt.Errorf("save manifest and jobs: %w", err)
 	}
@@ -248,11 +269,13 @@ func RedispatchFromManifest(ctx context.Context, store ports.Store, blobStore Bl
 	}
 
 	var manifest struct {
-		CampaignID             string              `json:"campaign_id"`
-		SegmentID              string              `json:"segment_id"`
-		SegmentVersion         int                 `json:"segment_version"`
-		TemplateVersion        int                 `json:"template_version"`
-		Recipients             []ManifestRecipient `json:"recipients"`
+		CampaignID        string              `json:"campaign_id"`
+		SegmentID         string              `json:"segment_id"`
+		SegmentVersion    int                 `json:"segment_version"`
+		TemplateVersion   int                 `json:"template_version"`
+		ConversionGoal    json.RawMessage     `json:"conversion_goal"`
+		AttributionWindow string              `json:"attribution_window"`
+		Recipients        []ManifestRecipient `json:"recipients"`
 	}
 	if err := json.Unmarshal(manifestData, &manifest); err != nil {
 		return nil, fmt.Errorf("unmarshal manifest: %w", err)
@@ -289,7 +312,7 @@ func RedispatchFromManifest(ctx context.Context, store ports.Store, blobStore Bl
 		shardIndex++
 	}
 
-	err = store.SaveCampaignManifestAndJobs(ctx, camp.ID, *camp.ManifestKey, len(recipients), manifest.SegmentVersion, manifest.TemplateVersion, jobs)
+	err = store.SaveCampaignManifestAndJobs(ctx, camp.ID, *camp.ManifestKey, len(recipients), manifest.SegmentVersion, manifest.TemplateVersion, manifest.ConversionGoal, manifest.AttributionWindow, jobs)
 	if err != nil {
 		return nil, fmt.Errorf("save manifest and jobs: %w", err)
 	}

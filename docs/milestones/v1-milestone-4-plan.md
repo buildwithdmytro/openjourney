@@ -407,9 +407,9 @@ Testing bar: unit + golden per milestone; one consolidated integration/determini
    used in 9.4). Add goal storage: a `conversion_goal jsonb` + `attribution_window` on
    `campaigns`/`journey_versions` (frozen at publish/dispatch), and `experiments.primary_goal`.
    *Done when:* columns/tables exist. — done: migration 020 applies cleanly, and TestAnalyticsFactsMigrationIntegration proves both fact tables, frozen-goal columns, complete CHECK enums, idempotency constraints, and report indexes exist.
-2. **Goal freeze.** Persist the goal + window onto the immutable version at publish/dispatch
+2. [x] **Goal freeze.** Persist the goal + window onto the immutable version at publish/dispatch
    (campaign: at `SaveCampaignManifestAndJobs`; journey: in the published `journey_versions`).
-   *Done when:* the frozen goal is readable from the version, not live config.
+   *Done when:* the frozen goal is readable from the version, not live config. — done: a live-Postgres test proves campaign dispatch and journey publish retain their frozen goal/window after the experiment and draft graph are changed.
 3. **Attribution projection** (Recipe 6.17 + §3.2): a `ProjectEvent` case that, for an event
    matching a subject's active goal, does the bounded recent-send lookup and inserts a
    `conversion_facts` row idempotently, copying value from the payload's `value_field`.

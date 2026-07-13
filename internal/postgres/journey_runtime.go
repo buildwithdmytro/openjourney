@@ -655,7 +655,7 @@ func (s *Store) UpdateProfileAttributes(ctx context.Context, p domain.Principal,
 func (s *Store) ListActiveScheduledJourneyVersions(ctx context.Context) ([]domain.JourneyVersion, error) {
 	rows, err := s.pool.Query(ctx, `SELECT id, journey_id, tenant_id, workspace_id, version, graph, manifest_key,
 			entry_kind, entry_event_type, entry_segment_id, entry_schedule,
-			reentry_policy, max_reentries, late_policy, status, published_by, published_at
+			reentry_policy, max_reentries, late_policy, conversion_goal, attribution_window::text, status, published_by, published_at
 		FROM journey_versions
 		WHERE status='active' AND entry_kind='scheduled'`)
 	if err != nil {
@@ -668,7 +668,7 @@ func (s *Store) ListActiveScheduledJourneyVersions(ctx context.Context) ([]domai
 		var v domain.JourneyVersion
 		err := rows.Scan(&v.ID, &v.JourneyID, &v.TenantID, &v.WorkspaceID, &v.Version, &v.Graph, &v.ManifestKey,
 			&v.EntryKind, &v.EntryEventType, &v.EntrySegmentID, &v.EntrySchedule,
-			&v.ReentryPolicy, &v.MaxReentries, &v.LatePolicy, &v.Status, &v.PublishedBy, &v.PublishedAt)
+			&v.ReentryPolicy, &v.MaxReentries, &v.LatePolicy, &v.ConversionGoal, &v.AttributionWindow, &v.Status, &v.PublishedBy, &v.PublishedAt)
 		if err != nil {
 			return nil, err
 		}

@@ -27,9 +27,9 @@ func (s *Store) CreateCampaign(ctx context.Context, p domain.Principal, c domain
 	var out domain.Campaign
 	err := s.pool.QueryRow(ctx, `INSERT INTO campaigns (tenant_id, workspace_id, name, description, segment_id, template_id, experiment_id, status, scheduled_at, segment_version, template_version, recipient_count)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-		RETURNING id, tenant_id, workspace_id, name, description, segment_id, template_id, experiment_id, status, scheduled_at, manifest_key, segment_version, template_version, evaluated_at, recipient_count, created_at, updated_at`,
+		RETURNING id, tenant_id, workspace_id, name, description, segment_id, template_id, experiment_id, conversion_goal, attribution_window::text, status, scheduled_at, manifest_key, segment_version, template_version, evaluated_at, recipient_count, created_at, updated_at`,
 		p.TenantID, p.WorkspaceID, c.Name, c.Description, c.SegmentID, c.TemplateID, c.ExperimentID, c.Status, c.ScheduledAt, c.SegmentVersion, c.TemplateVersion, c.RecipientCount).
-		Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.Name, &out.Description, &out.SegmentID, &out.TemplateID, &out.ExperimentID, &out.Status, &out.ScheduledAt, &out.ManifestKey, &out.SegmentVersion, &out.TemplateVersion, &out.EvaluatedAt, &out.RecipientCount, &out.CreatedAt, &out.UpdatedAt)
+		Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.Name, &out.Description, &out.SegmentID, &out.TemplateID, &out.ExperimentID, &out.ConversionGoal, &out.AttributionWindow, &out.Status, &out.ScheduledAt, &out.ManifestKey, &out.SegmentVersion, &out.TemplateVersion, &out.EvaluatedAt, &out.RecipientCount, &out.CreatedAt, &out.UpdatedAt)
 	if err != nil {
 		return domain.Campaign{}, err
 	}
@@ -40,10 +40,10 @@ func (s *Store) CreateCampaign(ctx context.Context, p domain.Principal, c domain
 
 func (s *Store) GetCampaign(ctx context.Context, p domain.Principal, id string) (domain.Campaign, error) {
 	var out domain.Campaign
-	err := s.pool.QueryRow(ctx, `SELECT id, tenant_id, workspace_id, name, description, segment_id, template_id, experiment_id, status, scheduled_at, manifest_key, segment_version, template_version, evaluated_at, recipient_count, created_at, updated_at
+	err := s.pool.QueryRow(ctx, `SELECT id, tenant_id, workspace_id, name, description, segment_id, template_id, experiment_id, conversion_goal, attribution_window::text, status, scheduled_at, manifest_key, segment_version, template_version, evaluated_at, recipient_count, created_at, updated_at
 		FROM campaigns WHERE tenant_id=$1 AND workspace_id=$2 AND id=$3`,
 		p.TenantID, p.WorkspaceID, id).
-		Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.Name, &out.Description, &out.SegmentID, &out.TemplateID, &out.ExperimentID, &out.Status, &out.ScheduledAt, &out.ManifestKey, &out.SegmentVersion, &out.TemplateVersion, &out.EvaluatedAt, &out.RecipientCount, &out.CreatedAt, &out.UpdatedAt)
+		Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.Name, &out.Description, &out.SegmentID, &out.TemplateID, &out.ExperimentID, &out.ConversionGoal, &out.AttributionWindow, &out.Status, &out.ScheduledAt, &out.ManifestKey, &out.SegmentVersion, &out.TemplateVersion, &out.EvaluatedAt, &out.RecipientCount, &out.CreatedAt, &out.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Campaign{}, ErrNotFound
 	}
@@ -52,10 +52,10 @@ func (s *Store) GetCampaign(ctx context.Context, p domain.Principal, id string) 
 
 func (s *Store) GetCampaignSystem(ctx context.Context, tenantID, id string) (domain.Campaign, error) {
 	var out domain.Campaign
-	err := s.pool.QueryRow(ctx, `SELECT id, tenant_id, workspace_id, name, description, segment_id, template_id, experiment_id, status, scheduled_at, manifest_key, segment_version, template_version, evaluated_at, recipient_count, created_at, updated_at
+	err := s.pool.QueryRow(ctx, `SELECT id, tenant_id, workspace_id, name, description, segment_id, template_id, experiment_id, conversion_goal, attribution_window::text, status, scheduled_at, manifest_key, segment_version, template_version, evaluated_at, recipient_count, created_at, updated_at
 		FROM campaigns WHERE tenant_id=$1 AND id=$2`,
 		tenantID, id).
-		Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.Name, &out.Description, &out.SegmentID, &out.TemplateID, &out.ExperimentID, &out.Status, &out.ScheduledAt, &out.ManifestKey, &out.SegmentVersion, &out.TemplateVersion, &out.EvaluatedAt, &out.RecipientCount, &out.CreatedAt, &out.UpdatedAt)
+		Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.Name, &out.Description, &out.SegmentID, &out.TemplateID, &out.ExperimentID, &out.ConversionGoal, &out.AttributionWindow, &out.Status, &out.ScheduledAt, &out.ManifestKey, &out.SegmentVersion, &out.TemplateVersion, &out.EvaluatedAt, &out.RecipientCount, &out.CreatedAt, &out.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Campaign{}, ErrNotFound
 	}
@@ -66,9 +66,9 @@ func (s *Store) UpdateCampaign(ctx context.Context, p domain.Principal, c domain
 	var out domain.Campaign
 	err := s.pool.QueryRow(ctx, `UPDATE campaigns SET name=$4, description=$5, segment_id=$6, template_id=$7, experiment_id=$8, status=$9, scheduled_at=$10, manifest_key=$11, segment_version=$12, template_version=$13, evaluated_at=$14, recipient_count=$15, updated_at=now()
 		WHERE tenant_id=$1 AND workspace_id=$2 AND id=$3
-		RETURNING id, tenant_id, workspace_id, name, description, segment_id, template_id, experiment_id, status, scheduled_at, manifest_key, segment_version, template_version, evaluated_at, recipient_count, created_at, updated_at`,
+		RETURNING id, tenant_id, workspace_id, name, description, segment_id, template_id, experiment_id, conversion_goal, attribution_window::text, status, scheduled_at, manifest_key, segment_version, template_version, evaluated_at, recipient_count, created_at, updated_at`,
 		p.TenantID, p.WorkspaceID, c.ID, c.Name, c.Description, c.SegmentID, c.TemplateID, c.ExperimentID, c.Status, c.ScheduledAt, c.ManifestKey, c.SegmentVersion, c.TemplateVersion, c.EvaluatedAt, c.RecipientCount).
-		Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.Name, &out.Description, &out.SegmentID, &out.TemplateID, &out.ExperimentID, &out.Status, &out.ScheduledAt, &out.ManifestKey, &out.SegmentVersion, &out.TemplateVersion, &out.EvaluatedAt, &out.RecipientCount, &out.CreatedAt, &out.UpdatedAt)
+		Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.Name, &out.Description, &out.SegmentID, &out.TemplateID, &out.ExperimentID, &out.ConversionGoal, &out.AttributionWindow, &out.Status, &out.ScheduledAt, &out.ManifestKey, &out.SegmentVersion, &out.TemplateVersion, &out.EvaluatedAt, &out.RecipientCount, &out.CreatedAt, &out.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Campaign{}, ErrNotFound
 	}
@@ -81,7 +81,7 @@ func (s *Store) UpdateCampaign(ctx context.Context, p domain.Principal, c domain
 }
 
 func (s *Store) ListCampaigns(ctx context.Context, p domain.Principal) ([]domain.Campaign, error) {
-	rows, err := s.pool.Query(ctx, `SELECT id, tenant_id, workspace_id, name, description, segment_id, template_id, experiment_id, status, scheduled_at, manifest_key, segment_version, template_version, evaluated_at, recipient_count, created_at, updated_at
+	rows, err := s.pool.Query(ctx, `SELECT id, tenant_id, workspace_id, name, description, segment_id, template_id, experiment_id, conversion_goal, attribution_window::text, status, scheduled_at, manifest_key, segment_version, template_version, evaluated_at, recipient_count, created_at, updated_at
 		FROM campaigns WHERE tenant_id=$1 AND workspace_id=$2 ORDER BY created_at DESC`,
 		p.TenantID, p.WorkspaceID)
 	if err != nil {
@@ -92,7 +92,7 @@ func (s *Store) ListCampaigns(ctx context.Context, p domain.Principal) ([]domain
 	var out []domain.Campaign
 	for rows.Next() {
 		var c domain.Campaign
-		err := rows.Scan(&c.ID, &c.TenantID, &c.WorkspaceID, &c.Name, &c.Description, &c.SegmentID, &c.TemplateID, &c.ExperimentID, &c.Status, &c.ScheduledAt, &c.ManifestKey, &c.SegmentVersion, &c.TemplateVersion, &c.EvaluatedAt, &c.RecipientCount, &c.CreatedAt, &c.UpdatedAt)
+		err := rows.Scan(&c.ID, &c.TenantID, &c.WorkspaceID, &c.Name, &c.Description, &c.SegmentID, &c.TemplateID, &c.ExperimentID, &c.ConversionGoal, &c.AttributionWindow, &c.Status, &c.ScheduledAt, &c.ManifestKey, &c.SegmentVersion, &c.TemplateVersion, &c.EvaluatedAt, &c.RecipientCount, &c.CreatedAt, &c.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -111,8 +111,8 @@ func (s *Store) ClaimScheduledCampaign(ctx context.Context) (domain.Campaign, bo
 			FOR UPDATE SKIP LOCKED
 			LIMIT 1
 		)
-		RETURNING id, tenant_id, workspace_id, name, description, segment_id, template_id, experiment_id, status, scheduled_at, manifest_key, segment_version, template_version, evaluated_at, recipient_count, created_at, updated_at`).
-		Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.Name, &out.Description, &out.SegmentID, &out.TemplateID, &out.ExperimentID, &out.Status, &out.ScheduledAt, &out.ManifestKey, &out.SegmentVersion, &out.TemplateVersion, &out.EvaluatedAt, &out.RecipientCount, &out.CreatedAt, &out.UpdatedAt)
+		RETURNING id, tenant_id, workspace_id, name, description, segment_id, template_id, experiment_id, conversion_goal, attribution_window::text, status, scheduled_at, manifest_key, segment_version, template_version, evaluated_at, recipient_count, created_at, updated_at`).
+		Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.Name, &out.Description, &out.SegmentID, &out.TemplateID, &out.ExperimentID, &out.ConversionGoal, &out.AttributionWindow, &out.Status, &out.ScheduledAt, &out.ManifestKey, &out.SegmentVersion, &out.TemplateVersion, &out.EvaluatedAt, &out.RecipientCount, &out.CreatedAt, &out.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Campaign{}, false, nil
 	}
@@ -122,15 +122,16 @@ func (s *Store) ClaimScheduledCampaign(ctx context.Context) (domain.Campaign, bo
 	return out, true, nil
 }
 
-func (s *Store) SaveCampaignManifestAndJobs(ctx context.Context, campaignID string, manifestKey string, recipientCount int, segmentVersion int, templateVersion int, jobs []domain.DeliveryJob) error {
+func (s *Store) SaveCampaignManifestAndJobs(ctx context.Context, campaignID string, manifestKey string, recipientCount int, segmentVersion int, templateVersion int, conversionGoal json.RawMessage, attributionWindow string, jobs []domain.DeliveryJob) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
 
-	_, err = tx.Exec(ctx, `UPDATE campaigns SET status='sending', manifest_key=$1, recipient_count=$2, segment_version=$3, template_version=$4, evaluated_at=now(), updated_at=now() WHERE id=$5`,
-		manifestKey, recipientCount, segmentVersion, templateVersion, campaignID)
+	_, err = tx.Exec(ctx, `UPDATE campaigns SET status='sending', manifest_key=$1, recipient_count=$2, segment_version=$3, template_version=$4,
+		conversion_goal=$6, attribution_window=NULLIF($7, '')::interval, evaluated_at=now(), updated_at=now() WHERE id=$5`,
+		manifestKey, recipientCount, segmentVersion, templateVersion, campaignID, nullableJSON(conversionGoal), attributionWindow)
 	if err != nil {
 		return err
 	}

@@ -127,7 +127,7 @@ type Store interface {
 	UpdateJourneyMessageIntent(ctx context.Context, intent domain.JourneyMessageIntent) error
 
 	ClaimScheduledCampaign(ctx context.Context) (domain.Campaign, bool, error)
-	SaveCampaignManifestAndJobs(ctx context.Context, campaignID string, manifestKey string, recipientCount int, segmentVersion int, templateVersion int, jobs []domain.DeliveryJob) error
+	SaveCampaignManifestAndJobs(ctx context.Context, campaignID string, manifestKey string, recipientCount int, segmentVersion int, templateVersion int, conversionGoal json.RawMessage, attributionWindow string, jobs []domain.DeliveryJob) error
 	ClaimDeliveryJob(ctx context.Context, workerID string) (domain.DeliveryJob, bool, error)
 	CompleteDeliveryJob(ctx context.Context, jobID string) error
 	FailDeliveryJob(ctx context.Context, jobID string, errMsg string) error

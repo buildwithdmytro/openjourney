@@ -161,7 +161,7 @@ func TestCampaignsIntegration(t *testing.T) {
 			},
 		},
 	}
-	err = store.SaveCampaignManifestAndJobs(ctx, claimedCamp.ID, "manifests/holiday-promo.json", 2, 1, 1, jobs)
+	err = store.SaveCampaignManifestAndJobs(ctx, claimedCamp.ID, "manifests/holiday-promo.json", 2, 1, 1, nil, "", jobs)
 	if err != nil {
 		t.Fatalf("save manifest and jobs: %v", err)
 	}
@@ -914,4 +914,3 @@ func TestTenantFatigueQuotas(t *testing.T) {
 		t.Errorf("expected custom quotas 12, 42; got %d, %d", maxSends24h, maxSends7d)
 	}
 }
-

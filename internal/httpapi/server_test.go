@@ -375,7 +375,7 @@ func (f *fakeStore) GetCampaignSystem(ctx context.Context, tenantID, id string) 
 func (f *fakeStore) ClaimScheduledCampaign(ctx context.Context) (domain.Campaign, bool, error) {
 	return domain.Campaign{}, false, nil
 }
-func (f *fakeStore) SaveCampaignManifestAndJobs(ctx context.Context, campaignID string, manifestKey string, recipientCount int, segmentVersion int, templateVersion int, jobs []domain.DeliveryJob) error {
+func (f *fakeStore) SaveCampaignManifestAndJobs(ctx context.Context, campaignID string, manifestKey string, recipientCount int, segmentVersion int, templateVersion int, conversionGoal json.RawMessage, attributionWindow string, jobs []domain.DeliveryJob) error {
 	return nil
 }
 func (f *fakeStore) ClaimDeliveryJob(ctx context.Context, workerID string) (domain.DeliveryJob, bool, error) {

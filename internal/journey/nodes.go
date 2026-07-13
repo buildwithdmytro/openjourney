@@ -71,7 +71,11 @@ type ActionConfig struct {
 }
 
 type GoalConfig struct {
-	Name string `json:"name"`
+	Name       string          `json:"name"`
+	EventType  string          `json:"event_type,omitempty"`
+	Filter     json.RawMessage `json:"filter,omitempty"`
+	ValueField string          `json:"value_field,omitempty"`
+	Window     string          `json:"window,omitempty"`
 }
 
 type ExitConfig struct {

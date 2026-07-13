@@ -151,18 +151,22 @@ func (s *Store) PublishJourney(ctx context.Context, p domain.Principal, journeyI
 	if err != nil {
 		return domain.JourneyVersion{}, err
 	}
+	conversionGoal, attributionWindow, err := publishConversionGoal(graph)
+	if err != nil {
+		return domain.JourneyVersion{}, err
+	}
 
 	version := draft.LatestVersion + 1
 	var out domain.JourneyVersion
 	err = tx.QueryRow(ctx, `INSERT INTO journey_versions
-		(journey_id, tenant_id, workspace_id, version, graph, manifest_key, entry_kind, entry_event_type, entry_segment_id, entry_schedule, reentry_policy, max_reentries, late_policy, status, published_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, NULLIF($8, ''), NULLIF($9, '')::uuid, NULLIF($10, ''), $11, $12, $13, 'active', NULLIF($14, '')::uuid)
-		RETURNING id, journey_id, tenant_id, workspace_id, version, graph, manifest_key, entry_kind, entry_event_type, entry_segment_id, entry_schedule, reentry_policy, max_reentries, late_policy, status, published_by, published_at`,
+		(journey_id, tenant_id, workspace_id, version, graph, manifest_key, entry_kind, entry_event_type, entry_segment_id, entry_schedule, reentry_policy, max_reentries, late_policy, conversion_goal, attribution_window, status, published_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, NULLIF($8, ''), NULLIF($9, '')::uuid, NULLIF($10, ''), $11, $12, $13, $14, NULLIF($15, '')::interval, 'active', NULLIF($16, '')::uuid)
+		RETURNING id, journey_id, tenant_id, workspace_id, version, graph, manifest_key, entry_kind, entry_event_type, entry_segment_id, entry_schedule, reentry_policy, max_reentries, late_policy, conversion_goal, attribution_window::text, status, published_by, published_at`,
 		draft.ID, draft.TenantID, draft.WorkspaceID, version, draft.Graph, manifestKey,
-		entry.EntryKind, entry.EventType, entry.SegmentID, entry.Schedule, entry.ReentryPolicy, entry.MaxReentries, entry.LatePolicy, approverUserID).
+		entry.EntryKind, entry.EventType, entry.SegmentID, entry.Schedule, entry.ReentryPolicy, entry.MaxReentries, entry.LatePolicy, nullableJSON(conversionGoal), attributionWindow, approverUserID).
 		Scan(&out.ID, &out.JourneyID, &out.TenantID, &out.WorkspaceID, &out.Version, &out.Graph, &out.ManifestKey,
 			&out.EntryKind, &out.EntryEventType, &out.EntrySegmentID, &out.EntrySchedule, &out.ReentryPolicy,
-			&out.MaxReentries, &out.LatePolicy, &out.Status, &out.PublishedBy, &out.PublishedAt)
+			&out.MaxReentries, &out.LatePolicy, &out.ConversionGoal, &out.AttributionWindow, &out.Status, &out.PublishedBy, &out.PublishedAt)
 	if err != nil {
 		return domain.JourneyVersion{}, err
 	}
@@ -179,6 +183,30 @@ func (s *Store) PublishJourney(ctx context.Context, p domain.Principal, journeyI
 	}
 	_ = s.audit(ctx, p, "journey.publish", "journey", draft.ID, map[string]any{"version": out.Version, "manifest_key": manifestKey})
 	return out, nil
+}
+
+func publishConversionGoal(graph *journeygraph.Graph) (json.RawMessage, string, error) {
+	for _, node := range graph.Nodes {
+		if node.Type != journeygraph.NodeTypeGoal {
+			continue
+		}
+		cfgAny, err := journeygraph.DecodeConfig(node)
+		if err != nil {
+			return nil, "", err
+		}
+		cfg := cfgAny.(journeygraph.GoalConfig)
+		// A Milestone 3 path goal only has a name. An analytical conversion goal
+		// additionally names the accepted event and its attribution window.
+		if cfg.EventType == "" || cfg.Window == "" {
+			continue
+		}
+		goal, err := json.Marshal(cfg)
+		if err != nil {
+			return nil, "", err
+		}
+		return goal, cfg.Window, nil
+	}
+	return nil, "", nil
 }
 
 type publishEntry struct {
@@ -237,13 +265,13 @@ func (s *Store) GetJourneyVersion(ctx context.Context, tenantID, versionID strin
 	var out domain.JourneyVersion
 	err := s.pool.QueryRow(ctx, `SELECT id, journey_id, tenant_id, workspace_id, version, graph, manifest_key,
 			entry_kind, entry_event_type, entry_segment_id, entry_schedule, reentry_policy,
-			max_reentries, late_policy, status, published_by, published_at
+			max_reentries, late_policy, conversion_goal, attribution_window::text, status, published_by, published_at
 		FROM journey_versions
 		WHERE tenant_id=$1 AND id=$2`,
 		tenantID, versionID).
 		Scan(&out.ID, &out.JourneyID, &out.TenantID, &out.WorkspaceID, &out.Version, &out.Graph, &out.ManifestKey,
 			&out.EntryKind, &out.EntryEventType, &out.EntrySegmentID, &out.EntrySchedule, &out.ReentryPolicy,
-			&out.MaxReentries, &out.LatePolicy, &out.Status, &out.PublishedBy, &out.PublishedAt)
+			&out.MaxReentries, &out.LatePolicy, &out.ConversionGoal, &out.AttributionWindow, &out.Status, &out.PublishedBy, &out.PublishedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.JourneyVersion{}, ErrNotFound
 	}
@@ -254,13 +282,13 @@ func (s *Store) GetJourneyVersionNumber(ctx context.Context, p domain.Principal,
 	var out domain.JourneyVersion
 	err := s.pool.QueryRow(ctx, `SELECT id, journey_id, tenant_id, workspace_id, version, graph, manifest_key,
 			entry_kind, entry_event_type, entry_segment_id, entry_schedule, reentry_policy,
-			max_reentries, late_policy, status, published_by, published_at
+			max_reentries, late_policy, conversion_goal, attribution_window::text, status, published_by, published_at
 		FROM journey_versions
 		WHERE tenant_id=$1 AND workspace_id=$2 AND journey_id=$3 AND version=$4`,
 		p.TenantID, p.WorkspaceID, journeyID, version).
 		Scan(&out.ID, &out.JourneyID, &out.TenantID, &out.WorkspaceID, &out.Version, &out.Graph, &out.ManifestKey,
 			&out.EntryKind, &out.EntryEventType, &out.EntrySegmentID, &out.EntrySchedule, &out.ReentryPolicy,
-			&out.MaxReentries, &out.LatePolicy, &out.Status, &out.PublishedBy, &out.PublishedAt)
+			&out.MaxReentries, &out.LatePolicy, &out.ConversionGoal, &out.AttributionWindow, &out.Status, &out.PublishedBy, &out.PublishedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.JourneyVersion{}, ErrNotFound
 	}

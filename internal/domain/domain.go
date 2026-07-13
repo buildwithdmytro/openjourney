@@ -438,23 +438,25 @@ type Recipient struct {
 }
 
 type Campaign struct {
-	ID              string     `json:"id"`
-	TenantID        string     `json:"tenant_id"`
-	WorkspaceID     string     `json:"workspace_id"`
-	Name            string     `json:"name"`
-	Description     *string    `json:"description,omitempty"`
-	SegmentID       string     `json:"segment_id"`
-	TemplateID      string     `json:"template_id"`
-	ExperimentID    *string    `json:"experiment_id,omitempty"`
-	Status          string     `json:"status"` // draft, scheduled, building, sending, paused, completed, failed, archived
-	ScheduledAt     *time.Time `json:"scheduled_at,omitempty"`
-	ManifestKey     *string    `json:"manifest_key,omitempty"`
-	SegmentVersion  int        `json:"segment_version"`
-	TemplateVersion int        `json:"template_version"`
-	EvaluatedAt     *time.Time `json:"evaluated_at,omitempty"`
-	RecipientCount  int        `json:"recipient_count"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
+	ID                string          `json:"id"`
+	TenantID          string          `json:"tenant_id"`
+	WorkspaceID       string          `json:"workspace_id"`
+	Name              string          `json:"name"`
+	Description       *string         `json:"description,omitempty"`
+	SegmentID         string          `json:"segment_id"`
+	TemplateID        string          `json:"template_id"`
+	ExperimentID      *string         `json:"experiment_id,omitempty"`
+	ConversionGoal    json.RawMessage `json:"conversion_goal,omitempty"`
+	AttributionWindow *string         `json:"attribution_window,omitempty"`
+	Status            string          `json:"status"` // draft, scheduled, building, sending, paused, completed, failed, archived
+	ScheduledAt       *time.Time      `json:"scheduled_at,omitempty"`
+	ManifestKey       *string         `json:"manifest_key,omitempty"`
+	SegmentVersion    int             `json:"segment_version"`
+	TemplateVersion   int             `json:"template_version"`
+	EvaluatedAt       *time.Time      `json:"evaluated_at,omitempty"`
+	RecipientCount    int             `json:"recipient_count"`
+	CreatedAt         time.Time       `json:"created_at"`
+	UpdatedAt         time.Time       `json:"updated_at"`
 }
 
 type Experiment struct {
@@ -511,23 +513,25 @@ type Journey struct {
 }
 
 type JourneyVersion struct {
-	ID              string          `json:"id"`
-	JourneyID       string          `json:"journey_id"`
-	TenantID        string          `json:"tenant_id"`
-	WorkspaceID     string          `json:"workspace_id"`
-	Version         int             `json:"version"`
-	Graph           json.RawMessage `json:"graph"`
-	ManifestKey     *string         `json:"manifest_key,omitempty"`
-	EntryKind       string          `json:"entry_kind"` // event, scheduled
-	EntryEventType  *string         `json:"entry_event_type,omitempty"`
-	EntrySegmentID  *string         `json:"entry_segment_id,omitempty"`
-	EntrySchedule   *string         `json:"entry_schedule,omitempty"`
-	ReentryPolicy   string          `json:"reentry_policy"` // once, always, after_exit
-	MaxReentries    int             `json:"max_reentries"`
-	LatePolicy      string          `json:"late_policy"` // run, skip, reschedule
-	Status          string          `json:"status"`      // active, paused, archived
-	PublishedBy     *string         `json:"published_by,omitempty"`
-	PublishedAt     time.Time       `json:"published_at"`
+	ID                string          `json:"id"`
+	JourneyID         string          `json:"journey_id"`
+	TenantID          string          `json:"tenant_id"`
+	WorkspaceID       string          `json:"workspace_id"`
+	Version           int             `json:"version"`
+	Graph             json.RawMessage `json:"graph"`
+	ManifestKey       *string         `json:"manifest_key,omitempty"`
+	EntryKind         string          `json:"entry_kind"` // event, scheduled
+	EntryEventType    *string         `json:"entry_event_type,omitempty"`
+	EntrySegmentID    *string         `json:"entry_segment_id,omitempty"`
+	EntrySchedule     *string         `json:"entry_schedule,omitempty"`
+	ReentryPolicy     string          `json:"reentry_policy"` // once, always, after_exit
+	MaxReentries      int             `json:"max_reentries"`
+	LatePolicy        string          `json:"late_policy"` // run, skip, reschedule
+	ConversionGoal    json.RawMessage `json:"conversion_goal,omitempty"`
+	AttributionWindow *string         `json:"attribution_window,omitempty"`
+	Status            string          `json:"status"` // active, paused, archived
+	PublishedBy       *string         `json:"published_by,omitempty"`
+	PublishedAt       time.Time       `json:"published_at"`
 }
 
 type DeliveryJob struct {
