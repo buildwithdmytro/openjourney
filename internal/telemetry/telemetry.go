@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	otelprom "go.opentelemetry.io/otel/exporters/prometheus"
 	otelmetric "go.opentelemetry.io/otel/metric"
@@ -47,7 +48,16 @@ var (
 
 	JourneyDeadLettered = mustCounter(Meter.Int64Counter("openjourney_journey_dead_lettered_total",
 		otelmetric.WithDescription("Total number of journey dead-lettered steps or intents")))
+
+	ExperimentAssignments = mustCounter(Meter.Int64Counter("openjourney_experiment_assignments_total",
+		otelmetric.WithDescription("Total number of authoritative experiment assignments created")))
 )
+
+// RecordExperimentAssignment records one newly-created authoritative assignment. Callers must
+// not invoke it when an idempotent assignment insert resolves to an existing row.
+func RecordExperimentAssignment(ctx context.Context, variant string) {
+	ExperimentAssignments.Add(ctx, 1, otelmetric.WithAttributes(attribute.String("variant", variant)))
+}
 
 func mustCounter(c otelmetric.Int64Counter, err error) otelmetric.Int64Counter {
 	if err != nil {
@@ -55,7 +65,6 @@ func mustCounter(c otelmetric.Int64Counter, err error) otelmetric.Int64Counter {
 	}
 	return c
 }
-
 
 type Shutdown func(context.Context) error
 

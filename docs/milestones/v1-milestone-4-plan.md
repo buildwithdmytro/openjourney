@@ -399,8 +399,8 @@ Testing bar: unit + golden per milestone; one consolidated integration/determini
    `experiment_id` selects the variant template and stamps `variant`+`experiment_id` on the
    intent + `message.sent`. Reuse the existing deterministic branch pick. *Done when:* a journey
    split bound to an experiment records assignments matching `experiment.Assign`. — done: focused journey tests prove experiment splits persist the shared deterministic assignment, message variants select and stamp templates/intents/events, and holdouts create terminal unsendable intents; full Go build and vet pass.
-4. **Telemetry**: `openjourney_experiment_assignments_total{variant}`. *Done when:* counter
-   increments on assignment.
+4. [x] **Telemetry**: `openjourney_experiment_assignments_total{variant}`. *Done when:* counter
+   increments on assignment. — done: authoritative assignment inserts increment the variant-labeled counter once, with a metric-reader test proving the value and label while conflict replays remain uncounted.
 
 ### Milestone 9.3 — Conversion goals & attribution
 1. **Migration** `020_analytics_facts.sql` — the `conversion_facts` table (engagement table too,

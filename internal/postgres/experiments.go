@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
+	"github.com/buildwithdmytro/openjourney/internal/telemetry"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -171,6 +172,7 @@ func (s *Store) ListExperiments(ctx context.Context, p domain.Principal) ([]doma
 
 func (s *Store) AssignExperiment(ctx context.Context, p domain.Principal, experimentID, profileID, variant string) (domain.ExperimentAssignment, error) {
 	var out domain.ExperimentAssignment
+	var created bool
 	err := s.pool.QueryRow(ctx, `WITH authorized AS (
 		SELECT id FROM experiments WHERE tenant_id=$1 AND workspace_id=$2 AND id=$3
 	), inserted AS (
@@ -178,15 +180,18 @@ func (s *Store) AssignExperiment(ctx context.Context, p domain.Principal, experi
 		SELECT id, $1, $2, $4, $5 FROM authorized ON CONFLICT (experiment_id, profile_id) DO NOTHING
 		RETURNING experiment_id, tenant_id, workspace_id, profile_id, variant, assigned_at
 	)
-	SELECT experiment_id, tenant_id, workspace_id, profile_id, variant, assigned_at FROM inserted
+	SELECT experiment_id, tenant_id, workspace_id, profile_id, variant, assigned_at, true FROM inserted
 	UNION ALL
-	SELECT a.experiment_id, a.tenant_id, a.workspace_id, a.profile_id, a.variant, a.assigned_at
+	SELECT a.experiment_id, a.tenant_id, a.workspace_id, a.profile_id, a.variant, a.assigned_at, false
 	FROM experiment_assignments a JOIN authorized e ON e.id=a.experiment_id WHERE a.profile_id=$4
 	LIMIT 1`,
 		p.TenantID, p.WorkspaceID, experimentID, profileID, variant).
-		Scan(&out.ExperimentID, &out.TenantID, &out.WorkspaceID, &out.ProfileID, &out.Variant, &out.AssignedAt)
+		Scan(&out.ExperimentID, &out.TenantID, &out.WorkspaceID, &out.ProfileID, &out.Variant, &out.AssignedAt, &created)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.ExperimentAssignment{}, ErrNotFound
+	}
+	if err == nil && created {
+		telemetry.RecordExperimentAssignment(ctx, out.Variant)
 	}
 	return out, err
 }
