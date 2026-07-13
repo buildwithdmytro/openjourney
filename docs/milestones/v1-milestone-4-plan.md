@@ -458,9 +458,9 @@ Testing bar: unit + golden per milestone; one consolidated integration/determini
    restart; holdout excluded from sends; assignment distribution within tolerance of weights. — done: a fresh-process test invokes the assignment in two independent OS processes and matches the in-process result; focused tests also prove 100k-subject weighted/holdout distribution tolerance and 500-recipient campaign holdouts produce no sends.
 2. [x] **Attribution tests**: goal in/out of window; revenue summed; duplicate goal event → one
    conversion fact (projection idempotency). — done: a live-Postgres projection test proves two in-window purchases sum to 60 in scoped conversion facts, a replay remains one fact, and a 99-value out-of-window purchase creates no fact or revenue.
-3. **Report-accuracy integration test** (DB-gated, copy `TestCampaignsEndToEnd`): seed a
+3. [x] **Report-accuracy integration test** (DB-gated, copy `TestCampaignsEndToEnd`): seed a
    campaign + experiment + engagement + conversion events, drive projection, assert the funnel/
-   uplift/deliverability numbers exactly.
+   uplift/deliverability numbers exactly. — done: TestReportAccuracyFromProjectedEvents accepts and projects 75 live-Postgres engagement/conversion events, then proves exact campaign funnel totals/uniques, 7.5% bounce and 2.5% complaint rates, and control/treatment 10%/40% conversion with 3x uplift, p≈0.02846, and the treatment recommendation.
 4. **Load**: report-query latency over a large `engagement_facts`/`conversion_facts` set (assert
    indexed, sub-linear); projection throughput. *Done when:* documented within budget.
 5. **Telemetry**: `openjourney_experiment_assignments_total`, `openjourney_conversions_attributed_total`.
