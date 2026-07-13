@@ -433,9 +433,9 @@ Testing bar: unit + golden per milestone; one consolidated integration/determini
    *Done when:* endpoints return correct JSON. — done: focused handler tests prove both PostgreSQL-backed report routes return typed funnel/deliverability JSON, require `reports:read`, pass tenant/workspace principals and IDs to the store, and map scoped misses to 404 without ClickHouse wiring.
 
 ### Milestone 9.5 — Uplift, significance & winner recommendation
-1. **Stats** `internal/experiment/stats.go`: two-proportion z-test → `{rate, uplift, z, pValue,
+1. [x] **Stats** `internal/experiment/stats.go`: two-proportion z-test → `{rate, uplift, z, pValue,
    ciLow, ciHigh}`; frequentist, documented. Unit-test against known textbook inputs. *Done
-   when:* the math matches hand-computed values.
+   when:* the math matches hand-computed values. — done: CompareProportions z-test stats library unit-tested with textbook examples and edge cases.
 2. **Experiment report** `ExperimentReport` (per variant: sent, conversions, rate, uplift vs
    control, p-value, CI; guardrail rates). `GET /v1/reports/experiments/{id}`. *Done when:* a
    seeded experiment returns correct per-variant stats.

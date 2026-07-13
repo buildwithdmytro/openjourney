@@ -228,6 +228,9 @@ func (f *fakeStore) UpsertTrackedLink(_ context.Context, _ string, _ string, _ s
 func (f *fakeStore) GetProfileByID(_ context.Context, _, _, _ string) (domain.Profile, error) {
 	return domain.Profile{ID: "profile-1", ExternalID: "user-1", Attributes: json.RawMessage(`{}`)}, nil
 }
+func (f *fakeStore) GetProfileByIDSystem(_ context.Context, _, _, _ string) (domain.Profile, error) {
+	return domain.Profile{ID: "profile-1", ExternalID: "user-1", Attributes: json.RawMessage(`{}`)}, nil
+}
 func (f *fakeStore) IsSuppressed(ctx context.Context, p domain.Principal, channel, endpoint string) (bool, error) {
 	return false, nil
 }
