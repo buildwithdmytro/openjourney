@@ -446,8 +446,8 @@ Testing bar: unit + golden per milestone; one consolidated integration/determini
    non-user actor and, for a user, produces a new version. — done: recommendation tests enforce significance and healthy guardrails, while HTTP and live-Postgres tests prove API-key rollout is rejected and a user-approved rollout creates a new scheduled campaign pinned to the winning template.
 
 ### Milestone 9.6 — Reports & Experiments UI
-1. **Experiments view**: CRUD, variant editor (label/weight/control/template), holdout %, bind
-   to a campaign or journey. *Done when:* `npm run build` passes; an experiment round-trips.
+1. [x] **Experiments view**: CRUD, variant editor (label/weight/control/template), holdout %, bind
+   to a campaign or journey. *Done when:* `npm run build` passes; an experiment round-trips. — done: the authoring view creates/edits experiment status, holdout, weighted control/template variants, and draft campaign or journey-node bindings; focused round-trip tests plus full typecheck/build and 23-test frontend suite pass.
 2. **Reports view** (Recipe 6.20): SVG funnel bars, a variant-comparison table (rate/uplift/
    p-value with a clear "not yet significant" state), deliverability tiles; a "Report" link on
    campaign/journey rows. Follow the `dataviz` skill. *Done when:* charts render in light+dark

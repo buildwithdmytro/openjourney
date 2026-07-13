@@ -311,6 +311,7 @@ export type Campaign = {
   description?: string;
   segment_id: string;
   template_id: string;
+  experiment_id?: string | null;
   status: "draft" | "scheduled" | "building" | "sending" | "paused" | "completed" | "failed" | "archived";
   scheduled_at?: string;
   manifest_key?: string;
@@ -369,6 +370,14 @@ export async function listExperiments(baseURL: string, apiKey: string): Promise<
 
 export async function createExperiment(baseURL: string, apiKey: string, input: Partial<Experiment>): Promise<Experiment> {
   return requestJSON<Experiment>(baseURL, apiKey, "/v1/experiments", { method: "POST", body: JSON.stringify(input) });
+}
+
+export async function getExperiment(baseURL: string, apiKey: string, id: string): Promise<Experiment> {
+  return requestJSON<Experiment>(baseURL, apiKey, `/v1/experiments/${encodeURIComponent(id)}`);
+}
+
+export async function updateExperiment(baseURL: string, apiKey: string, id: string, input: Partial<Experiment>): Promise<Experiment> {
+  return requestJSON<Experiment>(baseURL, apiKey, `/v1/experiments/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(input) });
 }
 
 export type Journey = {

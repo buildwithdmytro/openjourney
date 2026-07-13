@@ -67,6 +67,26 @@ button.danger { color: #a93838; background: #fff0f0; }
 .replay { margin-top: 16px; display: grid; gap: 6px; padding: 14px; border-radius: 8px; background: #e9f8f1; color: #187d56; }
 .replay.drift { background: #fff0f0; color: #a93838; }
 
+/* Experiment authoring */
+.experiments-layout { display: grid; grid-template-columns: minmax(440px, .95fr) minmax(480px, 1.05fr); gap: 18px; align-items: start; }
+.experiment-editor { position: sticky; top: 20px; }
+.experiment-form { display: grid; grid-template-columns: 1fr; align-items: stretch; margin-top: 18px; }
+.experiment-inline-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.experiment-form fieldset { min-width: 0; margin: 4px 0; padding: 16px; border: 1px solid #e0e5eb; border-radius: 11px; }
+.experiment-form legend { padding: 0 7px; color: #344156; font-size: 13px; font-weight: 750; }
+.variant-editor > p,.experiment-binding > p { margin: 0 0 12px; }
+.variant-row { display: grid; grid-template-columns: minmax(90px, .7fr) 80px minmax(150px, 1.2fr) auto auto; gap: 8px; align-items: end; padding: 11px 0; border-bottom: 1px solid #edf0f3; }
+.variant-row label { font-size: 11px; }
+.variant-row input,.variant-row select { padding: 8px; font-size: 12px; }
+.variant-row button { padding: 9px 10px; font-size: 11px; }
+.variant-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 12px; color: #758092; font-size: 12px; }
+.experiment-binding { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.experiment-binding legend,.experiment-binding .field-help { grid-column: 1 / -1; }
+.experiment-list { overflow-x: auto; }
+.experiment-list td strong,.experiment-list td small { display: block; }
+.experiment-list td small { max-width: 260px; margin-top: 3px; color: #758092; }
+.experiment-list button { padding: 7px 10px; font-size: 11px; }
+
 /* Journey orchestration */
 .journeys-home { display: grid; gap: 24px; }
 .journeys-home-hero { color: white; min-height: 220px; padding: 34px; border-radius: 18px; display: flex; align-items: center; justify-content: space-between; gap: 40px; background: radial-gradient(circle at 85% 20%, rgba(138, 117, 255, .55), transparent 30%), linear-gradient(135deg, #17223b, #4435a5); box-shadow: 0 16px 40px rgba(39, 31, 93, .2); }
@@ -200,6 +220,10 @@ button.danger { color: #a93838; background: #fff0f0; }
   .journey-canvas { height: 600px; }
   .journey-inspector { border-left: 0; border-top: 1px solid #e4e7ec; }
   .template-editor-layout,.composer-inline-fields { grid-template-columns: 1fr; }
+  .experiments-layout { grid-template-columns: 1fr; }
+  .experiment-editor { position: static; }
+  .variant-row { grid-template-columns: 1fr 80px; }
+  .variant-row label:nth-child(3) { grid-column: 1 / -1; }
 }
 
 .login-container {
