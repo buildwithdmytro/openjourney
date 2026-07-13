@@ -105,6 +105,8 @@ func (s *Server) buildMux() http.Handler {
 	mux.Handle("GET /v1/experiments", s.authenticate("experiments:read", http.HandlerFunc(s.listExperiments)))
 	mux.Handle("GET /v1/experiments/{id}", s.authenticate("experiments:read", http.HandlerFunc(s.getExperiment)))
 	mux.Handle("PUT /v1/experiments/{id}", s.authenticate("experiments:write", http.HandlerFunc(s.updateExperiment)))
+	mux.Handle("GET /v1/reports/campaigns/{id}", s.authenticate("reports:read", http.HandlerFunc(s.getCampaignReport)))
+	mux.Handle("GET /v1/reports/journeys/{id}", s.authenticate("reports:read", http.HandlerFunc(s.getJourneyReport)))
 	mux.Handle("POST /v1/journeys", s.authenticate("journeys:write", http.HandlerFunc(s.createJourney)))
 	mux.Handle("GET /v1/journeys", s.authenticate("journeys:read", http.HandlerFunc(s.listJourneys)))
 	mux.Handle("GET /v1/journeys/dlq", s.authenticate("journeys:read", http.HandlerFunc(s.getJourneyDLQ)))

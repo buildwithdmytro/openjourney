@@ -428,9 +428,9 @@ Testing bar: unit + golden per milestone; one consolidated integration/determini
    **total** and **unique** (`COUNT(DISTINCT profile_id)`) with documented definitions, plus
    deliverability (bounce/complaint rate). Add to `ports.Store`. *Done when:* counts match
    seeded data. — done: a live-Postgres seeded test proves exact campaign/journey funnel and deliverability totals, distinct-profile counts, rates, two-workspace isolation, scoped misses, and covering disposition indexes.
-3. **Wire ClickHouse-free reads**: no `SetClickHouse` needed — reads use `s.pool`. HTTP
+3. [x] **Wire ClickHouse-free reads**: no `SetClickHouse` needed — reads use `s.pool`. HTTP
    `GET /v1/reports/campaigns/{id}`, `GET /v1/reports/journeys/{id}` (scope `reports:read`).
-   *Done when:* endpoints return correct JSON.
+   *Done when:* endpoints return correct JSON. — done: focused handler tests prove both PostgreSQL-backed report routes return typed funnel/deliverability JSON, require `reports:read`, pass tenant/workspace principals and IDs to the store, and map scoped misses to 404 without ClickHouse wiring.
 
 ### Milestone 9.5 — Uplift, significance & winner recommendation
 1. **Stats** `internal/experiment/stats.go`: two-proportion z-test → `{rate, uplift, z, pValue,
