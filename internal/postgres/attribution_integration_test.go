@@ -160,6 +160,12 @@ func TestProjectEventAttributesFrozenGoalWithinWindowIdempotentlyAndByWorkspace(
 		t.Fatalf("attributed send=%s, want %s", attributedSend, sendTime)
 	}
 
+	additionalRevenue := attributionTestEvent(t, store, p, "buyer-1", goalTime.Add(30*time.Minute),
+		json.RawMessage(`{"currency":"USD","order":{"total":17.25}}`))
+	if err := store.ProjectEvent(ctx, additionalRevenue); err != nil {
+		t.Fatal(err)
+	}
+
 	outside := attributionTestEvent(t, store, p, "buyer-1", goalTime.Add(3*time.Hour),
 		json.RawMessage(`{"currency":"USD","order":{"total":99}}`))
 	if err := store.ProjectEvent(ctx, outside); err != nil {
@@ -171,6 +177,23 @@ func TestProjectEventAttributesFrozenGoalWithinWindowIdempotentlyAndByWorkspace(
 	}
 	if outsideCount != 0 {
 		t.Fatalf("outside-window event created %d facts, want 0", outsideCount)
+	}
+
+	var (
+		attributedConversions int
+		totalRevenue          float64
+	)
+	if err := store.pool.QueryRow(ctx, `SELECT count(*), COALESCE(sum(value), 0)::float8
+		FROM conversion_facts
+		WHERE tenant_id=$1 AND workspace_id=$2 AND source_type='campaign' AND source_id=$3
+			AND goal_name='purchase'`, p.TenantID, p.WorkspaceID, campaign.ID).Scan(&attributedConversions, &totalRevenue); err != nil {
+		t.Fatal(err)
+	}
+	if attributedConversions != 2 {
+		t.Fatalf("attributed conversions=%d, want 2 (duplicate and outside-window events excluded)", attributedConversions)
+	}
+	if totalRevenue != 60 {
+		t.Fatalf("summed attributed revenue=%v, want 60", totalRevenue)
 	}
 }
 

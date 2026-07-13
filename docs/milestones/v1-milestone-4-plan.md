@@ -456,8 +456,8 @@ Testing bar: unit + golden per milestone; one consolidated integration/determini
 ### Milestone 9.7 — Integration, determinism, load & audit (closeout)
 1. [x] **Determinism tests**: same subject → same variant across re-runs and a simulated process
    restart; holdout excluded from sends; assignment distribution within tolerance of weights. — done: a fresh-process test invokes the assignment in two independent OS processes and matches the in-process result; focused tests also prove 100k-subject weighted/holdout distribution tolerance and 500-recipient campaign holdouts produce no sends.
-2. **Attribution tests**: goal in/out of window; revenue summed; duplicate goal event → one
-   conversion fact (projection idempotency).
+2. [x] **Attribution tests**: goal in/out of window; revenue summed; duplicate goal event → one
+   conversion fact (projection idempotency). — done: a live-Postgres projection test proves two in-window purchases sum to 60 in scoped conversion facts, a replay remains one fact, and a 99-value out-of-window purchase creates no fact or revenue.
 3. **Report-accuracy integration test** (DB-gated, copy `TestCampaignsEndToEnd`): seed a
    campaign + experiment + engagement + conversion events, drive projection, assert the funnel/
    uplift/deliverability numbers exactly.
