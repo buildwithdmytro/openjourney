@@ -2,205 +2,145 @@ package postgres
 
 import (
 	"context"
-	"encoding/json"
-	"strconv"
-	"strings"
-	"time"
+	"errors"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 	"github.com/jackc/pgx/v5"
 )
 
-type frozenConversionGoal struct {
-	Name       string `json:"name"`
-	ValueField string `json:"value_field"`
+// CampaignReport reads only campaign dispositions and projection-maintained fact
+// tables. Total is the number of rows at a stage; unique is COUNT(DISTINCT
+// profile_id). Bounce and complaint rates divide total facts by total sent.
+func (s *Store) CampaignReport(ctx context.Context, p domain.Principal, campaignID string) (domain.CampaignReport, error) {
+	if err := s.requireCampaignSource(ctx, p, campaignID); err != nil {
+		return domain.CampaignReport{}, err
+	}
+
+	report := domain.CampaignReport{CampaignID: campaignID}
+	if err := s.pool.QueryRow(ctx, `
+		SELECT
+			COUNT(*), COUNT(DISTINCT d.profile_id),
+			COUNT(*) FILTER (WHERE d.decision='sent'), COUNT(DISTINCT d.profile_id) FILTER (WHERE d.decision='sent'),
+			COUNT(*) FILTER (WHERE d.decision='suppressed'), COUNT(DISTINCT d.profile_id) FILTER (WHERE d.decision='suppressed'),
+			COUNT(*) FILTER (WHERE d.decision='no_consent'), COUNT(DISTINCT d.profile_id) FILTER (WHERE d.decision='no_consent'),
+			COUNT(*) FILTER (WHERE d.decision='fatigued'), COUNT(DISTINCT d.profile_id) FILTER (WHERE d.decision='fatigued'),
+			COUNT(*) FILTER (WHERE d.decision='render_failed'), COUNT(DISTINCT d.profile_id) FILTER (WHERE d.decision='render_failed'),
+			COUNT(*) FILTER (WHERE d.decision='send_failed'), COUNT(DISTINCT d.profile_id) FILTER (WHERE d.decision='send_failed'),
+			COUNT(*) FILTER (WHERE d.decision='failed'), COUNT(DISTINCT d.profile_id) FILTER (WHERE d.decision='failed'),
+			COUNT(*) FILTER (WHERE d.decision='holdout'), COUNT(DISTINCT d.profile_id) FILTER (WHERE d.decision='holdout')
+		FROM delivery_attempts d
+		JOIN campaigns c ON c.id=d.campaign_id AND c.tenant_id=d.tenant_id
+		WHERE c.tenant_id=$1 AND c.workspace_id=$2 AND c.id=$3
+			AND d.tenant_id=$1 AND d.campaign_id=$3`, p.TenantID, p.WorkspaceID, campaignID).Scan(
+		&report.Funnel.Targeted.Total, &report.Funnel.Targeted.Unique,
+		&report.Funnel.Sent.Total, &report.Funnel.Sent.Unique,
+		&report.Funnel.Suppressed.Total, &report.Funnel.Suppressed.Unique,
+		&report.Funnel.NoConsent.Total, &report.Funnel.NoConsent.Unique,
+		&report.Funnel.Fatigued.Total, &report.Funnel.Fatigued.Unique,
+		&report.Funnel.RenderFailed.Total, &report.Funnel.RenderFailed.Unique,
+		&report.Funnel.SendFailed.Total, &report.Funnel.SendFailed.Unique,
+		&report.Funnel.Failed.Total, &report.Funnel.Failed.Unique,
+		&report.Funnel.Holdout.Total, &report.Funnel.Holdout.Unique,
+	); err != nil {
+		return domain.CampaignReport{}, err
+	}
+	if err := s.readReportFacts(ctx, p, "campaign", campaignID, &report.Funnel, &report.Deliverability); err != nil {
+		return domain.CampaignReport{}, err
+	}
+	setDeliverabilityRates(report.Funnel.Sent.Total, &report.Deliverability)
+	return report, nil
 }
 
-type engagementPayload struct {
-	CampaignID        string `json:"campaign_id"`
-	JourneyID         string `json:"journey_id"`
-	NodeID            string `json:"node_id"`
-	Channel           string `json:"channel"`
-	Endpoint          string `json:"endpoint"`
-	ProviderMessageID string `json:"provider_message_id"`
+// JourneyReport uses the same definitions as CampaignReport, with message
+// intents as targeted dispositions and journey projection facts as later stages.
+func (s *Store) JourneyReport(ctx context.Context, p domain.Principal, journeyID string) (domain.JourneyReport, error) {
+	if err := s.requireJourneySource(ctx, p, journeyID); err != nil {
+		return domain.JourneyReport{}, err
+	}
+
+	report := domain.JourneyReport{JourneyID: journeyID}
+	if err := s.pool.QueryRow(ctx, `
+		SELECT
+			COUNT(*), COUNT(DISTINCT profile_id),
+			COUNT(*) FILTER (WHERE decision='sent'), COUNT(DISTINCT profile_id) FILTER (WHERE decision='sent'),
+			COUNT(*) FILTER (WHERE decision='suppressed'), COUNT(DISTINCT profile_id) FILTER (WHERE decision='suppressed'),
+			COUNT(*) FILTER (WHERE decision='no_consent'), COUNT(DISTINCT profile_id) FILTER (WHERE decision='no_consent'),
+			COUNT(*) FILTER (WHERE decision='fatigued'), COUNT(DISTINCT profile_id) FILTER (WHERE decision='fatigued'),
+			COUNT(*) FILTER (WHERE decision='render_failed'), COUNT(DISTINCT profile_id) FILTER (WHERE decision='render_failed'),
+			COUNT(*) FILTER (WHERE decision='send_failed'), COUNT(DISTINCT profile_id) FILTER (WHERE decision='send_failed'),
+			COUNT(*) FILTER (WHERE decision='failed'), COUNT(DISTINCT profile_id) FILTER (WHERE decision='failed'),
+			COUNT(*) FILTER (WHERE decision='holdout'), COUNT(DISTINCT profile_id) FILTER (WHERE decision='holdout')
+		FROM journey_message_intents
+		WHERE tenant_id=$1 AND workspace_id=$2 AND journey_id=$3`, p.TenantID, p.WorkspaceID, journeyID).Scan(
+		&report.Funnel.Targeted.Total, &report.Funnel.Targeted.Unique,
+		&report.Funnel.Sent.Total, &report.Funnel.Sent.Unique,
+		&report.Funnel.Suppressed.Total, &report.Funnel.Suppressed.Unique,
+		&report.Funnel.NoConsent.Total, &report.Funnel.NoConsent.Unique,
+		&report.Funnel.Fatigued.Total, &report.Funnel.Fatigued.Unique,
+		&report.Funnel.RenderFailed.Total, &report.Funnel.RenderFailed.Unique,
+		&report.Funnel.SendFailed.Total, &report.Funnel.SendFailed.Unique,
+		&report.Funnel.Failed.Total, &report.Funnel.Failed.Unique,
+		&report.Funnel.Holdout.Total, &report.Funnel.Holdout.Unique,
+	); err != nil {
+		return domain.JourneyReport{}, err
+	}
+	if err := s.readReportFacts(ctx, p, "journey", journeyID, &report.Funnel, &report.Deliverability); err != nil {
+		return domain.JourneyReport{}, err
+	}
+	setDeliverabilityRates(report.Funnel.Sent.Total, &report.Deliverability)
+	return report, nil
 }
 
-func (s *Store) projectEngagementFact(ctx context.Context, tx pgx.Tx, event domain.AcceptedEvent, profileID string) error {
-	eventType := map[string]string{
-		"message.delivered":  "delivered",
-		"email.opened":       "opened",
-		"link.clicked":       "clicked",
-		"message.bounced":    "bounced",
-		"message.complained": "complained",
-	}[event.Type]
-	if eventType == "" {
-		return nil
+func (s *Store) requireCampaignSource(ctx context.Context, p domain.Principal, sourceID string) error {
+	var id string
+	err := s.pool.QueryRow(ctx, `SELECT id FROM campaigns
+		WHERE tenant_id=$1 AND workspace_id=$2 AND id=$3`, p.TenantID, p.WorkspaceID, sourceID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
 	}
-
-	var payload engagementPayload
-	if err := json.Unmarshal(event.Payload, &payload); err != nil {
-		return err
-	}
-
-	var (
-		sourceType   string
-		sourceID     string
-		nodeID       *string
-		experimentID *string
-		variant      *string
-		resolvedID   string
-		channel      string
-	)
-	err := tx.QueryRow(ctx, `
-		SELECT source_type, source_id, node_id, experiment_id, variant, profile_id, channel
-		FROM (
-			SELECT 'campaign'::text AS source_type, da.campaign_id AS source_id,
-				NULL::text AS node_id, da.experiment_id, da.variant, da.profile_id, da.channel,
-				da.attempted_at AS sent_at
-			FROM delivery_attempts da
-			JOIN campaigns c ON c.id = da.campaign_id
-			WHERE da.tenant_id = $1 AND c.tenant_id = $1 AND c.workspace_id = $2
-			  AND da.decision IN ('sent','provider_sent')
-			  AND (NULLIF($3, '') IS NULL OR da.profile_id = NULLIF($3, '')::uuid)
-			  AND (NULLIF($4, '') IS NULL OR da.endpoint = $4)
-			  AND (NULLIF($5, '') IS NULL OR da.campaign_id = NULLIF($5, '')::uuid)
-			  AND NULLIF($6, '') IS NULL
-			  AND (NULLIF($8, '') IS NULL OR da.provider_message_id = $8)
-			UNION ALL
-			SELECT 'journey'::text AS source_type, jmi.journey_id AS source_id,
-				jmi.node_id, jmi.experiment_id, jmi.variant, jmi.profile_id, jmi.channel,
-				jmi.updated_at AS sent_at
-			FROM journey_message_intents jmi
-			WHERE jmi.tenant_id = $1 AND jmi.workspace_id = $2
-			  AND jmi.decision IN ('sent','provider_sent')
-			  AND (NULLIF($3, '') IS NULL OR jmi.profile_id = NULLIF($3, '')::uuid)
-			  AND (NULLIF($4, '') IS NULL OR jmi.endpoint = $4)
-			  AND NULLIF($5, '') IS NULL
-			  AND (NULLIF($6, '') IS NULL OR jmi.journey_id = NULLIF($6, '')::uuid)
-			  AND (NULLIF($7, '') IS NULL OR jmi.node_id = $7)
-			  AND (NULLIF($8, '') IS NULL OR jmi.provider_message_id = $8)
-		) engagement_send
-		ORDER BY sent_at DESC
-		LIMIT 1`, event.Principal.TenantID, event.Principal.WorkspaceID, profileID,
-		payload.Endpoint, payload.CampaignID, payload.JourneyID, payload.NodeID,
-		payload.ProviderMessageID).Scan(&sourceType, &sourceID, &nodeID, &experimentID,
-		&variant, &resolvedID, &channel)
-	if err == pgx.ErrNoRows {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	if payload.Channel != "" && !strings.EqualFold(payload.Channel, channel) {
-		return nil
-	}
-
-	_, err = tx.Exec(ctx, `INSERT INTO engagement_facts
-		(tenant_id, workspace_id, source_type, source_id, node_id, experiment_id, variant,
-		 profile_id, channel, event_type, occurred_at, source_event_id)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-		ON CONFLICT (source_event_id, event_type) DO NOTHING`,
-		event.Principal.TenantID, event.Principal.WorkspaceID, sourceType, sourceID, nodeID,
-		experimentID, variant, resolvedID, channel, eventType, event.OccurredAt, event.ID)
 	return err
 }
 
-func (s *Store) projectConversionFact(ctx context.Context, tx pgx.Tx, event domain.AcceptedEvent, profileID string) error {
-	var (
-		sourceType   string
-		sourceID     string
-		experimentID *string
-		variant      *string
-		sentAt       time.Time
-		goalJSON     []byte
-	)
-
-	err := tx.QueryRow(ctx, `
-		SELECT source_type, source_id, experiment_id, variant, sent_at, goal
-		FROM (
-			SELECT 'campaign'::text AS source_type, da.campaign_id AS source_id,
-				da.experiment_id, da.variant, da.attempted_at AS sent_at,
-				c.conversion_goal AS goal
-			FROM delivery_attempts da
-			JOIN campaigns c ON c.id = da.campaign_id
-			WHERE da.tenant_id = $1 AND c.tenant_id = $1 AND c.workspace_id = $2
-			  AND da.profile_id = $3 AND da.decision = 'sent'
-			  AND c.conversion_goal->>'event_type' = $4
-			  AND c.attribution_window IS NOT NULL
-			  AND da.attempted_at BETWEEN $5::timestamptz - c.attribution_window AND $5::timestamptz
-			  AND $6::jsonb @> COALESCE(c.conversion_goal->'filter', '{}'::jsonb)
-			UNION ALL
-			SELECT 'journey'::text AS source_type, jmi.journey_id AS source_id,
-				jmi.experiment_id, jmi.variant, jmi.updated_at AS sent_at,
-				jv.conversion_goal AS goal
-			FROM journey_message_intents jmi
-			JOIN journey_versions jv ON jv.id = jmi.journey_version_id
-			WHERE jmi.tenant_id = $1 AND jmi.workspace_id = $2
-			  AND jv.tenant_id = $1 AND jv.workspace_id = $2
-			  AND jmi.profile_id = $3 AND jmi.decision = 'sent'
-			  AND jv.conversion_goal->>'event_type' = $4
-			  AND jv.attribution_window IS NOT NULL
-			  AND jmi.updated_at BETWEEN $5::timestamptz - jv.attribution_window AND $5::timestamptz
-			  AND $6::jsonb @> COALESCE(jv.conversion_goal->'filter', '{}'::jsonb)
-		) attributed_sends
-		ORDER BY sent_at DESC
-		LIMIT 1`,
-		event.Principal.TenantID, event.Principal.WorkspaceID, profileID, event.Type,
-		event.OccurredAt, event.Payload,
-	).Scan(&sourceType, &sourceID, &experimentID, &variant, &sentAt, &goalJSON)
-	if err == pgx.ErrNoRows {
-		return nil
+func (s *Store) requireJourneySource(ctx context.Context, p domain.Principal, sourceID string) error {
+	var id string
+	err := s.pool.QueryRow(ctx, `SELECT id FROM journeys
+		WHERE tenant_id=$1 AND workspace_id=$2 AND id=$3`, p.TenantID, p.WorkspaceID, sourceID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
 	}
-	if err != nil {
-		return err
-	}
-
-	var goal frozenConversionGoal
-	if err := json.Unmarshal(goalJSON, &goal); err != nil {
-		return err
-	}
-	if goal.Name == "" {
-		goal.Name = event.Type
-	}
-	value := conversionValue(event.Payload, goal.ValueField)
-	_, err = tx.Exec(ctx, `INSERT INTO conversion_facts
-		(tenant_id, workspace_id, source_type, source_id, experiment_id, variant, profile_id,
-		 goal_name, value, occurred_at, attributed_send_at, source_event_id)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-		ON CONFLICT (source_event_id, goal_name) DO NOTHING`,
-		event.Principal.TenantID, event.Principal.WorkspaceID, sourceType, sourceID,
-		experimentID, variant, profileID, goal.Name, value, event.OccurredAt, sentAt, event.ID)
 	return err
 }
 
-func conversionValue(payload json.RawMessage, field string) float64 {
-	if field == "" {
-		return 0
+func (s *Store) readReportFacts(ctx context.Context, p domain.Principal, sourceType, sourceID string, funnel *domain.ReportFunnel, deliverability *domain.ReportDeliverability) error {
+	if err := s.pool.QueryRow(ctx, `
+		SELECT
+			COUNT(*) FILTER (WHERE event_type='delivered'), COUNT(DISTINCT profile_id) FILTER (WHERE event_type='delivered'),
+			COUNT(*) FILTER (WHERE event_type='opened'), COUNT(DISTINCT profile_id) FILTER (WHERE event_type='opened'),
+			COUNT(*) FILTER (WHERE event_type='clicked'), COUNT(DISTINCT profile_id) FILTER (WHERE event_type='clicked'),
+			COUNT(*) FILTER (WHERE event_type='bounced'), COUNT(DISTINCT profile_id) FILTER (WHERE event_type='bounced'),
+			COUNT(*) FILTER (WHERE event_type='complained'), COUNT(DISTINCT profile_id) FILTER (WHERE event_type='complained')
+		FROM engagement_facts
+		WHERE tenant_id=$1 AND workspace_id=$2 AND source_id=$3 AND source_type=$4`,
+		p.TenantID, p.WorkspaceID, sourceID, sourceType).Scan(
+		&funnel.Delivered.Total, &funnel.Delivered.Unique,
+		&funnel.Opened.Total, &funnel.Opened.Unique,
+		&funnel.Clicked.Total, &funnel.Clicked.Unique,
+		&deliverability.Bounced.Total, &deliverability.Bounced.Unique,
+		&deliverability.Complained.Total, &deliverability.Complained.Unique,
+	); err != nil {
+		return err
 	}
-	var value any
-	decoder := json.NewDecoder(strings.NewReader(string(payload)))
-	decoder.UseNumber()
-	if err := decoder.Decode(&value); err != nil {
-		return 0
+	return s.pool.QueryRow(ctx, `
+		SELECT COUNT(*), COUNT(DISTINCT profile_id)
+		FROM conversion_facts
+		WHERE tenant_id=$1 AND workspace_id=$2 AND source_id=$3 AND source_type=$4`,
+		p.TenantID, p.WorkspaceID, sourceID, sourceType).Scan(&funnel.Converted.Total, &funnel.Converted.Unique)
+}
+
+func setDeliverabilityRates(sent int64, deliverability *domain.ReportDeliverability) {
+	if sent == 0 {
+		return
 	}
-	for _, part := range strings.Split(field, ".") {
-		object, ok := value.(map[string]any)
-		if !ok {
-			return 0
-		}
-		value, ok = object[part]
-		if !ok {
-			return 0
-		}
-	}
-	switch number := value.(type) {
-	case json.Number:
-		parsed, _ := number.Float64()
-		return parsed
-	case string:
-		parsed, _ := strconv.ParseFloat(number, 64)
-		return parsed
-	default:
-		return 0
-	}
+	deliverability.BounceRate = float64(deliverability.Bounced.Total) / float64(sent)
+	deliverability.ComplaintRate = float64(deliverability.Complained.Total) / float64(sent)
 }

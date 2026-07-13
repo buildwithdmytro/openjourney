@@ -422,12 +422,12 @@ Testing bar: unit + golden per milestone; one consolidated integration/determini
    resolving `source_id`/`variant`/`experiment_id`/`profile_id` via a bounded lookup to
    `delivery_attempts`/`journey_message_intents`. *Done when:* projecting each event type creates
    one fact with the right variant. — done: a live-Postgres test projects all five campaign/journey engagement types with correct source, node, experiment variant, and profile metadata; duplicate projection stays at one fact and a cross-workspace source creates none.
-2. **Reports service** `internal/postgres/analytics.go` (Recipe 6.18): `CampaignReport`,
+2. [x] **Reports service** `internal/postgres/analytics.go` (Recipe 6.18): `CampaignReport`,
    `JourneyReport` returning the funnel (targeted/sent/suppressed from `delivery_attempts`;
    delivered/opened/clicked from `engagement_facts`; converted from `conversion_facts`) as both
    **total** and **unique** (`COUNT(DISTINCT profile_id)`) with documented definitions, plus
    deliverability (bounce/complaint rate). Add to `ports.Store`. *Done when:* counts match
-   seeded data.
+   seeded data. — done: a live-Postgres seeded test proves exact campaign/journey funnel and deliverability totals, distinct-profile counts, rates, two-workspace isolation, scoped misses, and covering disposition indexes.
 3. **Wire ClickHouse-free reads**: no `SetClickHouse` needed — reads use `s.pool`. HTTP
    `GET /v1/reports/campaigns/{id}`, `GET /v1/reports/journeys/{id}` (scope `reports:read`).
    *Done when:* endpoints return correct JSON.

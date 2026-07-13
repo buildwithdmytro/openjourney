@@ -566,6 +566,53 @@ type DeliveryAttempt struct {
 	CreatedAt         time.Time       `json:"created_at"`
 }
 
+// ReportCount records event/disposition rows (Total) and distinct non-null
+// profiles represented by those rows (Unique).
+type ReportCount struct {
+	Total  int64 `json:"total"`
+	Unique int64 `json:"unique"`
+}
+
+// ReportFunnel is the canonical source funnel. Targeted counts every disposition
+// row, while the decision fields count their exact delivery decision. Engagement
+// and conversion fields are projection-maintained facts, never raw event scans.
+type ReportFunnel struct {
+	Targeted     ReportCount `json:"targeted"`
+	Sent         ReportCount `json:"sent"`
+	Suppressed   ReportCount `json:"suppressed"`
+	NoConsent    ReportCount `json:"no_consent"`
+	Fatigued     ReportCount `json:"fatigued"`
+	RenderFailed ReportCount `json:"render_failed"`
+	SendFailed   ReportCount `json:"send_failed"`
+	Failed       ReportCount `json:"failed"`
+	Holdout      ReportCount `json:"holdout"`
+	Delivered    ReportCount `json:"delivered"`
+	Opened       ReportCount `json:"opened"`
+	Clicked      ReportCount `json:"clicked"`
+	Converted    ReportCount `json:"converted"`
+}
+
+// ReportDeliverability counts projected bounce/complaint facts. Rates use
+// total sent dispositions as the denominator and are zero when nothing was sent.
+type ReportDeliverability struct {
+	Bounced       ReportCount `json:"bounced"`
+	Complained    ReportCount `json:"complained"`
+	BounceRate    float64     `json:"bounce_rate"`
+	ComplaintRate float64     `json:"complaint_rate"`
+}
+
+type CampaignReport struct {
+	CampaignID     string               `json:"campaign_id"`
+	Funnel         ReportFunnel         `json:"funnel"`
+	Deliverability ReportDeliverability `json:"deliverability"`
+}
+
+type JourneyReport struct {
+	JourneyID      string               `json:"journey_id"`
+	Funnel         ReportFunnel         `json:"funnel"`
+	Deliverability ReportDeliverability `json:"deliverability"`
+}
+
 type JourneyRun struct {
 	ID                string          `json:"id"`
 	TenantID          string          `json:"tenant_id"`

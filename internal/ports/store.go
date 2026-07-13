@@ -135,6 +135,8 @@ type Store interface {
 	UpdateDeliveryAttempt(ctx context.Context, campaignID, profileID, channel, decision, reason, providerMsgID string, policySnapshot []byte) error
 	DeleteDeliveryAttempt(ctx context.Context, tenantID, campaignID, profileID, channel string) error
 	GetDeliveryAttempt(ctx context.Context, campaignID, profileID, channel string) (domain.DeliveryAttempt, error)
+	CampaignReport(ctx context.Context, p domain.Principal, campaignID string) (domain.CampaignReport, error)
+	JourneyReport(ctx context.Context, p domain.Principal, journeyID string) (domain.JourneyReport, error)
 }
 
 type TokenVerifier interface {
