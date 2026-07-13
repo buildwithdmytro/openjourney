@@ -607,18 +607,10 @@ paths:
   /v1/journeys/{id}/publish:
     post:
       operationId: publishJourney
+      description: Publishes with approval attributed to the authenticated user; API-key principals are not accepted.
       security: [{ bearerAuth: [] }]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              properties:
-                approver_user_id: { type: string, format: uuid }
       responses:
         "201":
           description: Journey draft published as an immutable version.
@@ -634,6 +626,7 @@ paths:
   /v1/journeys/{id}/backfill:
     post:
       operationId: backfillJourney
+      description: Backfills with approval attributed to the authenticated user; API-key principals are not accepted.
       security: [{ bearerAuth: [] }]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -643,11 +636,10 @@ paths:
           application/json:
             schema:
               type: object
-              required: [segment_id, approver_user_id]
+              required: [segment_id]
               additionalProperties: false
               properties:
                 segment_id: { type: string, format: uuid }
-                approver_user_id: { type: string, format: uuid }
       responses:
         "200":
           description: Members of the segment successfully enrolled into the journey's current published version.
@@ -670,13 +662,14 @@ paths:
       security: [{ bearerAuth: [] }]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
-        - { name: v, in: path, required: true, schema: { type: string } }
+        - { name: v, in: path, required: true, schema: { type: integer, minimum: 1 } }
       responses:
         "200":
           description: Journey version details.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/JourneyVersion" }
+        "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
@@ -686,7 +679,7 @@ paths:
       security: [{ bearerAuth: [] }]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
-        - { name: v, in: path, required: true, schema: { type: string } }
+        - { name: v, in: path, required: true, schema: { type: integer, minimum: 1 } }
       requestBody:
         required: true
         content:
@@ -1153,4 +1146,3 @@ components:
           type: object
           additionalProperties: true
         occurred_at: { type: string, format: date-time }
-

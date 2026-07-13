@@ -188,6 +188,43 @@ describe("App", () => {
     expect(screen.queryByText("Choose a message template")).not.toBeInTheDocument();
     fireEvent.keyDown(window, { key: "z", ctrlKey: true });
     expect(screen.getByText("Choose a message template")).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "z", ctrlKey: true, shiftKey: true });
+    expect(screen.queryByText("Choose a message template")).not.toBeInTheDocument();
+  });
+
+  it("reconnects a simple path when its middle step is deleted", async () => {
+    window.location.hash = "journeys";
+    render(<App />);
+    await screen.findByText("Onboarding");
+    fireEvent.click(screen.getByRole("button", { name: /Onboarding/ }));
+    fireEvent.click(await screen.findByText("Journey entry"));
+    fireEvent.click(screen.getByRole("button", { name: /Send a message/ }));
+    fireEvent.keyDown(window, { key: "Delete" });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => {
+      const update = fetchMock.mock.calls.find(([url, init]) => String(url).includes("/v1/journeys/journey-1") && init?.method === "PUT");
+      expect(update).toBeTruthy();
+      const payload = JSON.parse(String(update![1]?.body));
+      expect(payload.graph.edges).toEqual([{ from: "n1", to: "n2", branch: "" }]);
+    });
+  });
+
+  it("creates valid labeled paths when a decision is inserted", async () => {
+    window.location.hash = "journeys";
+    render(<App />);
+    await screen.findByText("Onboarding");
+    fireEvent.click(screen.getByRole("button", { name: /Onboarding/ }));
+    fireEvent.click(await screen.findByText("Journey entry"));
+    fireEvent.click(screen.getByRole("button", { name: /Decision/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => {
+      const update = fetchMock.mock.calls.find(([url, init]) => String(url).includes("/v1/journeys/journey-1") && init?.method === "PUT");
+      const payload = JSON.parse(String(update![1]?.body));
+      const decision = payload.graph.nodes.find((node: { type: string }) => node.type === "condition");
+      const decisionEdges = payload.graph.edges.filter((edge: { from: string }) => edge.from === decision.id);
+      expect(decisionEdges.map((edge: { branch: string }) => edge.branch).sort()).toEqual(["false", "true"]);
+      expect(payload.graph.nodes.filter((node: { type: string }) => node.type === "exit")).toHaveLength(2);
+    });
   });
 
   it("switches journey entry to scheduled when segment lists are empty", async () => {
@@ -240,5 +277,24 @@ describe("App", () => {
     render(<App />);
     expect(await screen.findByText("No suppressed endpoints found.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Suppress endpoint" })).toBeInTheDocument();
+  });
+
+  it("creates an email with the visual template composer", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Templates" }));
+    fireEvent.click(await screen.findByRole("button", { name: "+ New template" }));
+    expect(screen.getByRole("tab", { name: "Visual composer", selected: true })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Friendly welcome" } });
+    fireEvent.change(screen.getByLabelText("Headline"), { target: { value: "You’re in!" } });
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "We’re happy to welcome you." } });
+    fireEvent.click(screen.getByRole("button", { name: "Save template" }));
+    await waitFor(() => {
+      const create = fetchMock.mock.calls.find(([url, init]) => String(url).includes("/v1/templates") && init?.method === "POST");
+      expect(create).toBeTruthy();
+      const payload = JSON.parse(String(create![1]?.body));
+      expect(payload.html_template).toContain("data-openjourney-builder");
+      expect(payload.html_template).toContain("You’re in!");
+      expect(payload.html_template).toContain("We’re happy to welcome you.");
+    });
   });
 });

@@ -1,4 +1,4 @@
-import { FormEvent, lazy, Suspense, useEffect, useRef, useState } from "react";
+import { Component, ErrorInfo, FormEvent, lazy, ReactNode, Suspense, useEffect, useRef, useState } from "react";
 import {
   checkHealth, Consent, createAPIKey, createPrivacyRequest, createRole, createSchema, createUser,
   discardDeadLetter, getPrivacyRequest, getProfile, getQueueStatus, listAPIKeys, listAuditEvents,
@@ -18,6 +18,26 @@ const Experiments = lazy(() => import("./sections/Experiments"));
 
 const apiBase = import.meta.env.VITE_API_BASE_URL || "/api";
 
+class UIErrorBoundary extends Component<{ children: ReactNode; resetKey: string }, { error: Error | null }> {
+  state = { error: null as Error | null };
+
+  static getDerivedStateFromError(error: Error) { return { error }; }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error("OpenJourney UI failed", error, info.componentStack);
+  }
+
+  componentDidUpdate(previous: Readonly<{ children: ReactNode; resetKey: string }>) {
+    if (previous.resetKey !== this.props.resetKey && this.state.error) this.setState({ error: null });
+  }
+
+  render() {
+    if (this.state.error) {
+      return <section className="card ui-crash" role="alert"><h2>This view hit a problem</h2><p>{this.state.error.message}</p><button onClick={() => this.setState({ error: null })}>Try again</button></section>;
+    }
+    return this.props.children;
+  }
+}
 type View = "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "templates" | "campaigns" | "journeys" | "experiments" | "suppressions" | "sender-identities";
 type CredentialSource = "manual" | "session" | "oidc";
 
@@ -235,6 +255,7 @@ export function App() {
           <h1>{viewTitles[view][0]}</h1>
           <span>{viewTitles[view][1]}</span>
         </header>
+        <UIErrorBoundary resetKey={view}>
         {view === "profiles" && <Profiles apiKey={apiKey} />}
         {view === "segments" && <Segments apiKey={apiKey} />}
         {view === "templates" && <Templates apiKey={apiKey} />}
@@ -253,6 +274,7 @@ export function App() {
         {view === "access" && <Access apiKey={apiKey} />}
         {view === "operations" && <Operations apiKey={apiKey} />}
         {view === "audit" && <Audit apiKey={apiKey} />}
+        </UIErrorBoundary>
       </main>
     </div>
   );
@@ -269,7 +291,7 @@ function Profiles({ apiKey }: { apiKey: string }) {
     setLoading(true); setError("");
     try {
       const result = await getProfile(apiBase, apiKey, externalID);
-      setProfile(result.profile); setConsents(result.consents);
+      setProfile(result.profile); setConsents(Array.isArray(result.consents) ? result.consents : []);
     } catch (cause) {
       setProfile(null); setConsents([]);
       setError(message(cause));
@@ -781,6 +803,42 @@ function message(cause: unknown): string {
 // ─── Templates ───────────────────────────────────────────────────────────────
 
 type TemplateEditorView = "list" | "new" | "edit";
+type EmailComposer = { headline: string; message: string; buttonLabel: string; buttonURL: string; accentColor: string; backgroundColor: string };
+
+const defaultEmailComposer: EmailComposer = {
+  headline: "Welcome!",
+  message: "Thanks for joining us. We’re glad you’re here.",
+  buttonLabel: "Get started",
+  buttonURL: "https://example.com",
+  accentColor: "#6f5cff",
+  backgroundColor: "#f4f6f8",
+};
+
+function escapeTemplateText(value: string): string {
+  return value.replace(/&(?!#?\w+;)/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/\n/g, "<br>");
+}
+
+function buildComposerHTML(composer: EmailComposer): string {
+  const button = composer.buttonLabel.trim() ? `<a data-oj-button href="${escapeTemplateText(composer.buttonURL)}" style="display:inline-block;padding:12px 20px;border-radius:8px;background:${composer.accentColor};color:#fff;text-decoration:none;font-weight:700">${escapeTemplateText(composer.buttonLabel)}</a>` : "";
+  return `<div data-openjourney-builder="1" data-accent="${composer.accentColor}" data-background="${composer.backgroundColor}" style="margin:0;padding:32px 16px;background:${composer.backgroundColor};font-family:Arial,sans-serif;color:#1a2433"><div style="max-width:600px;margin:auto;padding:36px;background:#fff;border-radius:12px"><h1 data-oj-headline style="margin:0 0 16px;font-size:28px">${escapeTemplateText(composer.headline)}</h1><div data-oj-message style="margin:0 0 24px;line-height:1.65;color:#536071">${escapeTemplateText(composer.message)}</div>${button}</div></div>`;
+}
+
+function parseComposerHTML(html: string): EmailComposer | null {
+  if (!html.includes("data-openjourney-builder")) return null;
+  const document = new DOMParser().parseFromString(html, "text/html");
+  const root = document.querySelector<HTMLElement>("[data-openjourney-builder]");
+  if (!root) return null;
+  const message = root.querySelector<HTMLElement>("[data-oj-message]")?.innerText.replace(/\n+/g, "\n").trim() || "";
+  const button = root.querySelector<HTMLAnchorElement>("[data-oj-button]");
+  return {
+    headline: root.querySelector<HTMLElement>("[data-oj-headline]")?.textContent || "",
+    message,
+    buttonLabel: button?.textContent || "",
+    buttonURL: button?.getAttribute("href") || "",
+    accentColor: root.dataset.accent || "#6f5cff",
+    backgroundColor: root.dataset.background || "#f4f6f8",
+  };
+}
 
 function Templates({ apiKey }: { apiKey: string }) {
   const [items, setItems] = useState<Template[]>([]);
@@ -792,6 +850,8 @@ function Templates({ apiKey }: { apiKey: string }) {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [composerMode, setComposerMode] = useState<"visual" | "advanced">("visual");
+  const [composer, setComposer] = useState<EmailComposer>(defaultEmailComposer);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const reload = async () => {
@@ -808,7 +868,9 @@ function Templates({ apiKey }: { apiKey: string }) {
   useEffect(() => { void reload(); }, [apiKey]);
 
   const startNew = () => {
-    setEditing({ name: "", channel: "email", subject_template: "", html_template: "" });
+    setComposer(defaultEmailComposer);
+    setComposerMode("visual");
+    setEditing({ name: "", channel: "email", subject_template: "Welcome, {{ profile.attributes.first_name | default: 'friend' }}!", html_template: buildComposerHTML(defaultEmailComposer) });
     setPreview(null);
     setEditorView("new");
   };
@@ -816,6 +878,9 @@ function Templates({ apiKey }: { apiKey: string }) {
   const startEdit = async (id: string) => {
     try {
       const t = await getTemplate(apiBase, apiKey, id);
+      const parsedComposer = parseComposerHTML(t.html_template || "");
+      if (parsedComposer) setComposer(parsedComposer);
+      setComposerMode(parsedComposer ? "visual" : "advanced");
       setEditing(t);
       setPreview(null);
       setEditorView("edit");
@@ -860,6 +925,12 @@ function Templates({ apiKey }: { apiKey: string }) {
     }, 700);
   };
 
+  const updateComposer = (changes: Partial<EmailComposer>) => {
+    const next = { ...composer, ...changes };
+    setComposer(next);
+    schedulePreview({ ...editing, html_template: buildComposerHTML(next) });
+  };
+
   if (editorView === "list") {
     return (
       <section id="templates-section">
@@ -900,7 +971,7 @@ function Templates({ apiKey }: { apiKey: string }) {
   }
 
   return (
-    <section id="template-editor-section" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem", alignItems: "start" }}>
+    <section id="template-editor-section" className="template-editor-layout">
       <div>
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem" }}>
           <button className="secondary" id="back-to-templates-btn" onClick={() => setEditorView("list")}>← Back</button>
@@ -914,7 +985,7 @@ function Templates({ apiKey }: { apiKey: string }) {
           </label>
           <label>Channel
             <select id="template-channel" value={editing.channel ?? "email"}
-              onChange={e => schedulePreview({ ...editing, channel: e.target.value })}>
+              onChange={e => { const channel = e.target.value; if (channel === "webhook") setComposerMode("advanced"); schedulePreview({ ...editing, channel }); }}>
               <option value="email">Email</option>
               <option value="webhook">Webhook</option>
             </select>
@@ -930,26 +1001,32 @@ function Templates({ apiKey }: { apiKey: string }) {
               </select>
             </label>
           )}
-          {editing.channel !== "webhook" && (
-            <label>Subject (Liquid)
-              <input id="template-subject" value={editing.subject_template ?? ""}
-                placeholder="Hello {{ profile.attributes.name }}!"
+          {editing.channel !== "webhook" && <>
+            <div className="composer-mode-tabs" role="tablist" aria-label="Template editor mode">
+              <button type="button" role="tab" aria-selected={composerMode === "visual"} className={composerMode === "visual" ? "active" : ""} onClick={() => {
+                if (composerMode === "advanced" && !parseComposerHTML(editing.html_template || "") && !window.confirm("Switching to the visual composer will replace the current custom HTML. Continue?")) return;
+                setComposerMode("visual"); updateComposer({});
+              }}>Visual composer</button>
+              <button type="button" role="tab" aria-selected={composerMode === "advanced"} className={composerMode === "advanced" ? "active" : ""} onClick={() => setComposerMode("advanced")}>Advanced HTML</button>
+            </div>
+            <label>Email subject
+              <input id="template-subject" value={editing.subject_template ?? ""} placeholder="A warm welcome from our team"
                 onChange={e => schedulePreview({ ...editing, subject_template: e.target.value })} />
+              <button type="button" className="personalization-chip" onClick={() => schedulePreview({ ...editing, subject_template: `${editing.subject_template || ""} {{ profile.attributes.first_name }}`.trim() })}>+ First name</button>
             </label>
-          )}
-          <label>
-            {editing.channel === "webhook" ? "Body (Liquid JSON)" : "HTML body (Liquid)"}
-            <textarea id="template-body" rows={14}
-              value={(editing.channel === "webhook" ? editing.body_template : editing.html_template) ?? ""}
-              placeholder={editing.channel === "webhook"
-                ? '{ "user_id": "{{ profile.external_id }}" }'
-                : "<p>Hello <strong>{{ profile.attributes.name }}</strong>!</p>"}
-              style={{ fontFamily: "monospace", fontSize: "0.85rem" }}
-              onChange={e => {
-                const key = editing.channel === "webhook" ? "body_template" : "html_template";
-                schedulePreview({ ...editing, [key]: e.target.value });
-              }} />
-          </label>
+          </>}
+
+          {editing.channel === "email" && composerMode === "visual" ? <div className="email-composer-fields">
+            <label>Headline<input value={composer.headline} onChange={e => updateComposer({ headline: e.target.value })} placeholder="Welcome to our community" /></label>
+            <label>Message<textarea rows={6} value={composer.message} onChange={e => updateComposer({ message: e.target.value })} placeholder="Write your message in plain language…" /></label>
+            <div className="composer-inline-fields"><label>Button label<input value={composer.buttonLabel} onChange={e => updateComposer({ buttonLabel: e.target.value })} placeholder="Get started" /></label><label>Button link<input type="url" value={composer.buttonURL} onChange={e => updateComposer({ buttonURL: e.target.value })} placeholder="https://example.com" /></label></div>
+            <div className="composer-inline-fields"><label>Button color<input type="color" value={composer.accentColor} onChange={e => updateComposer({ accentColor: e.target.value })} /></label><label>Background<input type="color" value={composer.backgroundColor} onChange={e => updateComposer({ backgroundColor: e.target.value })} /></label></div>
+            <div className="personalization-row"><span>Personalize message:</span>{[["First name", "{{ profile.attributes.first_name }}"], ["Email", "{{ profile.attributes.email }}"], ["Customer ID", "{{ profile.external_id }}"]].map(([label, token]) => <button type="button" className="personalization-chip" key={label} onClick={() => updateComposer({ message: `${composer.message} ${token}`.trim() })}>+ {label}</button>)}</div>
+          </div> : <label>{editing.channel === "webhook" ? "Webhook body (JSON)" : "HTML and Liquid"}
+            <textarea id="template-body" rows={16} value={(editing.channel === "webhook" ? editing.body_template : editing.html_template) ?? ""}
+              placeholder={editing.channel === "webhook" ? '{ "user_id": "{{ profile.external_id }}" }' : "<p>Your HTML email…</p>"}
+              style={{ fontFamily: "monospace", fontSize: "0.85rem" }} onChange={e => { const key = editing.channel === "webhook" ? "body_template" : "html_template"; schedulePreview({ ...editing, [key]: e.target.value }); }} />
+          </label>}
           <button id="save-template-btn" type="submit" disabled={saving}>
             {saving ? "Saving…" : "Save template"}
           </button>
@@ -957,37 +1034,27 @@ function Templates({ apiKey }: { apiKey: string }) {
       </div>
 
       <div>
-        <h3 style={{ marginTop: 0, marginBottom: "0.75rem" }}>Live preview</h3>
-        <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.75rem" }}>
+        <h3 style={{ marginTop: 0, marginBottom: "0.25rem" }}>Email preview</h3>
+        <p className="muted" style={{ fontSize: "0.8rem", marginTop: 0 }}>This updates while you type. Personalization tokens appear after testing with a saved customer.</p>
+        {editing.id && <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.75rem" }}>
           <input id="preview-profile-id" placeholder="Profile external_id"
             value={previewProfileID} onChange={e => setPreviewProfileID(e.target.value)}
             style={{ flex: 1 }} />
           <button id="preview-btn" className="secondary"
             onClick={() => void handlePreview()}
             disabled={!editing.id || previewLoading || !previewProfileID.trim()}>
-            {previewLoading ? "…" : "Preview"}
+            {previewLoading ? "…" : "Test personalization"}
           </button>
-        </div>
-        {!editing.id && (
-          <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>Save the template first to enable live preview.</p>
-        )}
-        {preview && (
-          <div style={{ border: "1px solid var(--border)", borderRadius: "8px", overflow: "hidden" }}>
+        </div>}
+        {(editing.channel === "email" || preview) && (
+          <div className="email-preview-frame">
             <div style={{ padding: "0.5rem 1rem", background: "rgba(255,255,255,0.05)", borderBottom: "1px solid var(--border)" }}>
               <span style={{ fontSize: "0.75rem", color: "var(--muted)" }}>Subject: </span>
-              <strong style={{ fontSize: "0.9rem" }}>{preview.subject}</strong>
+              <strong style={{ fontSize: "0.9rem" }}>{preview?.subject || editing.subject_template || "Your email subject"}</strong>
             </div>
             <iframe id="preview-iframe" title="Template preview" sandbox="allow-same-origin"
-              srcDoc={preview.body}
+              srcDoc={preview?.body || editing.html_template || "<p>Start writing to preview your email.</p>"}
               style={{ width: "100%", height: "480px", border: "none", background: "#fff" }} />
-          </div>
-        )}
-        {!preview && editing.id && (
-          <div style={{
-            border: "1px dashed var(--border)", borderRadius: "8px", padding: "3rem 1rem",
-            textAlign: "center", color: "var(--muted)"
-          }}>
-            Enter a profile external_id and click Preview to render the template.
           </div>
         )}
       </div>

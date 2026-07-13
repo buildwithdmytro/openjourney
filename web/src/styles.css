@@ -138,7 +138,19 @@ button.danger { color: #a93838; background: #fff0f0; }
 .journey-canvas { position: relative; background: #f7f8fb; }
 .canvas-guidance { position: absolute; z-index: 5; top: 12px; left: 50%; transform: translateX(-50%); padding: 7px 12px; color: #687385; background: rgba(255,255,255,.94); border: 1px solid #e0e4ea; border-radius: 999px; box-shadow: 0 3px 10px rgba(20,32,49,.06); font-size: 10px; pointer-events: none; }
 .canvas-guidance.insert-mode { color: #4f3cc9; border-color: #bdb4f8; background: #f6f4ff; }
-.canvas-undo { position: absolute; z-index: 5; top: 12px; right: 12px; padding: 7px 10px; color: #4e596a; background: white; border: 1px solid #dfe3e9; border-radius: 8px; box-shadow: 0 3px 10px rgba(20,32,49,.06); font-size: 10px; }
+.canvas-history-controls { position: absolute; z-index: 5; top: 12px; right: 12px; display: flex; gap: 5px; }
+.canvas-history-controls button { padding: 7px 10px; color: #4e596a; background: white; border: 1px solid #dfe3e9; border-radius: 8px; box-shadow: 0 3px 10px rgba(20,32,49,.06); font-size: 10px; }
+.ui-crash { border-color: #efb9bf; background: #fff7f8; }.ui-crash h2 { color: #9d293b; }.ui-crash p { color: #6c3c44; }
+.template-editor-layout { display: grid; grid-template-columns: minmax(340px, .9fr) minmax(420px, 1.1fr); gap: 24px; align-items: start; }
+.composer-mode-tabs { display: flex; gap: 4px; padding: 4px; background: #eef1f5; border-radius: 9px; }
+.composer-mode-tabs button { flex: 1; padding: 8px 10px; color: #667184; background: transparent; font-size: 11px; }
+.composer-mode-tabs button.active { color: #4f3cc9; background: white; box-shadow: 0 2px 7px rgba(20,32,49,.08); }
+.email-composer-fields { display: grid; gap: 13px; padding: 16px; background: #f8f9fb; border: 1px solid #e2e6ec; border-radius: 11px; }
+.composer-inline-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.composer-inline-fields input[type="color"] { height: 42px; padding: 4px; cursor: pointer; }
+.personalization-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: #758092; font-size: 10px; }
+.personalization-chip { justify-self: start; width: auto; padding: 5px 8px; color: #5643d7; background: #f1eeff; border: 1px solid #dcd6ff; border-radius: 999px; font-size: 10px; }
+.email-preview-frame { overflow: hidden; border: 1px solid #dfe3e9; border-radius: 11px; box-shadow: 0 8px 24px rgba(20,32,49,.07); }
 .journey-node-label { display: flex; align-items: center; gap: 10px; }
 .journey-node-label > span:last-child { min-width: 0; display: grid; gap: 3px; }
 .journey-node-label strong { color: #253044; font-size: 12px; text-transform: none; }
@@ -187,6 +199,7 @@ button.danger { color: #a93838; background: #fff0f0; }
   .journey-step-library { max-height: 300px; border-right: 0; border-bottom: 1px solid #e4e7ec; }
   .journey-canvas { height: 600px; }
   .journey-inspector { border-left: 0; border-top: 1px solid #e4e7ec; }
+  .template-editor-layout,.composer-inline-fields { grid-template-columns: 1fr; }
 }
 
 .login-container {

@@ -151,8 +151,13 @@ func (s *Server) setJourneyVersionStatus(w http.ResponseWriter, r *http.Request)
 
 func (s *Server) getJourneyVersion(w http.ResponseWriter, r *http.Request) {
 	principal := principalFrom(r)
-	versionID := r.PathValue("v")
-	res, err := s.store.GetJourneyVersion(r.Context(), principal.TenantID, versionID)
+	journeyID := r.PathValue("id")
+	version, err := strconv.Atoi(r.PathValue("v"))
+	if err != nil || version < 1 {
+		writeError(w, http.StatusBadRequest, "invalid_version", "version must be a positive integer")
+		return
+	}
+	res, err := s.store.GetJourneyVersionNumber(r.Context(), principal, journeyID, version)
 	if errors.Is(err, postgres.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "not_found", "journey version not found")
 		return

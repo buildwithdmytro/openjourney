@@ -28,6 +28,16 @@ func Validate(graph *Graph) error {
 			if node.ID != graph.EntryNodeID {
 				return fmt.Errorf("entry node %s does not match entry_node_id %s", node.ID, graph.EntryNodeID)
 			}
+			cfgAny, _ := DecodeConfig(node)
+			cfg := cfgAny.(EntryConfig)
+			if cfg.Trigger == "scheduled" {
+				if cfg.SegmentID == "" {
+					return fmt.Errorf("entry node %s scheduled trigger requires segment_id", node.ID)
+				}
+				if _, err := validateSchedule(cfg.Schedule); err != nil {
+					return fmt.Errorf("entry node %s has invalid schedule: %w", node.ID, err)
+				}
+			}
 		}
 		if err := validateDurations(node); err != nil {
 			return err

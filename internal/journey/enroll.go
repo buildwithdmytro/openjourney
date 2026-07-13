@@ -3,7 +3,9 @@ package journey
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -111,33 +113,13 @@ func EnrollScheduledDue(ctx context.Context, store ports.Store, clock Clock) err
 				State:             json.RawMessage("{}"),
 			}
 
-			inserted, err := store.CreateJourneyRun(ctx, run)
+			step := domain.JourneyStep{TenantID: v.TenantID, NodeID: entryNodeID, Kind: "advance", Status: "pending", AvailableAt: now}
+			_, inserted, err := store.EnrollJourneyRun(ctx, run, step)
 			if err != nil {
-				return fmt.Errorf("create journey run: %w", err)
+				return fmt.Errorf("enroll journey run: %w", err)
 			}
 			if !inserted {
 				continue
-			}
-
-			runsAfterInsert, err := store.GetJourneyRunsForProfile(ctx, v.TenantID, v.ID, profileID)
-			if err != nil {
-				return fmt.Errorf("get runs after insert: %w", err)
-			}
-			if len(runsAfterInsert) == 0 {
-				continue
-			}
-			newRunID := runsAfterInsert[0].ID
-
-			step := domain.JourneyStep{
-				RunID:       newRunID,
-				TenantID:    v.TenantID,
-				NodeID:      entryNodeID,
-				Kind:        "advance",
-				Status:      "pending",
-				AvailableAt: now,
-			}
-			if err := store.InsertJourneyStep(ctx, step); err != nil {
-				return fmt.Errorf("insert journey step: %w", err)
 			}
 		}
 	}
@@ -145,12 +127,9 @@ func EnrollScheduledDue(ctx context.Context, store ports.Store, clock Clock) err
 }
 
 func isScheduledDue(schedule string, now time.Time) bool {
-	if schedule == "" {
-		return true
-	}
-	fields := strings.Fields(schedule)
-	if len(fields) < 5 {
-		return true
+	fields, err := validateSchedule(schedule)
+	if err != nil {
+		return false
 	}
 	minField := fields[0]
 	if minField == "*" {
@@ -162,11 +141,39 @@ func isScheduledDue(schedule string, now time.Time) bool {
 			return now.Minute()%interval == 0
 		}
 	}
-	var exact int
-	if _, err := fmt.Sscanf(minField, "%d", &exact); err == nil {
-		return now.Minute() == exact
+	exact, _ := strconv.Atoi(minField)
+	return now.Minute() == exact
+}
+
+func validateSchedule(schedule string) ([]string, error) {
+	if strings.TrimSpace(schedule) == "" {
+		return []string{"*", "*", "*", "*", "*"}, nil
 	}
-	return true
+	fields := strings.Fields(schedule)
+	if len(fields) != 5 {
+		return nil, errors.New("schedule must have exactly five fields")
+	}
+	for _, field := range fields[1:] {
+		if field != "*" {
+			return nil, errors.New("schedule only supports wildcard hour, day, month, and weekday fields")
+		}
+	}
+	minute := fields[0]
+	if minute == "*" {
+		return fields, nil
+	}
+	if strings.HasPrefix(minute, "*/") {
+		interval, err := strconv.Atoi(strings.TrimPrefix(minute, "*/"))
+		if err != nil || interval < 1 || interval > 59 {
+			return nil, errors.New("schedule minute interval must be between 1 and 59")
+		}
+		return fields, nil
+	}
+	exact, err := strconv.Atoi(minute)
+	if err != nil || exact < 0 || exact > 59 {
+		return nil, errors.New("schedule minute must be *, */1-59, or 0-59")
+	}
+	return fields, nil
 }
 
 func Backfill(ctx context.Context, store ports.Store, p domain.Principal, journeyID string, segmentID string, approverUserID string) (int, error) {
@@ -255,7 +262,8 @@ func Backfill(ctx context.Context, store ports.Store, p domain.Principal, journe
 			State:             json.RawMessage("{}"),
 		}
 
-		inserted, err := store.CreateJourneyRun(ctx, run)
+		step := domain.JourneyStep{TenantID: v.TenantID, NodeID: entryNodeID, Kind: "advance", Status: "pending", AvailableAt: now}
+		_, inserted, err := store.EnrollJourneyRun(ctx, run, step)
 		if err != nil {
 			return 0, fmt.Errorf("create journey run: %w", err)
 		}
@@ -263,26 +271,6 @@ func Backfill(ctx context.Context, store ports.Store, p domain.Principal, journe
 			continue
 		}
 
-		runsAfterInsert, err := store.GetJourneyRunsForProfile(ctx, v.TenantID, v.ID, profileID)
-		if err != nil {
-			return 0, fmt.Errorf("get runs after insert: %w", err)
-		}
-		if len(runsAfterInsert) == 0 {
-			continue
-		}
-		newRunID := runsAfterInsert[0].ID
-
-		step := domain.JourneyStep{
-			RunID:       newRunID,
-			TenantID:    v.TenantID,
-			NodeID:      entryNodeID,
-			Kind:        "advance",
-			Status:      "pending",
-			AvailableAt: now,
-		}
-		if err := store.InsertJourneyStep(ctx, step); err != nil {
-			return 0, fmt.Errorf("insert journey step: %w", err)
-		}
 		enrolledCount++
 	}
 

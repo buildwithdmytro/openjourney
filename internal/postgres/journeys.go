@@ -2,8 +2,11 @@ package postgres
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 	journeygraph "github.com/buildwithdmytro/openjourney/internal/journey"
@@ -136,6 +139,14 @@ func (s *Store) PublishJourney(ctx context.Context, p domain.Principal, journeyI
 	if err := journeygraph.Validate(graph); err != nil {
 		return domain.JourneyVersion{}, err
 	}
+	canonicalGraph, err := json.Marshal(graph)
+	if err != nil {
+		return domain.JourneyVersion{}, fmt.Errorf("marshal journey graph: %w", err)
+	}
+	digest := sha256.Sum256(canonicalGraph)
+	if strings.Contains(manifestKey, "/manifests/") && !strings.HasSuffix(manifestKey, fmt.Sprintf("/manifests/%x.json", digest)) {
+		return domain.JourneyVersion{}, errors.New("journey draft changed during publication; retry publish")
+	}
 	entry, err := publishEntryConfig(graph)
 	if err != nil {
 		return domain.JourneyVersion{}, err
@@ -239,6 +250,23 @@ func (s *Store) GetJourneyVersion(ctx context.Context, tenantID, versionID strin
 	return out, err
 }
 
+func (s *Store) GetJourneyVersionNumber(ctx context.Context, p domain.Principal, journeyID string, version int) (domain.JourneyVersion, error) {
+	var out domain.JourneyVersion
+	err := s.pool.QueryRow(ctx, `SELECT id, journey_id, tenant_id, workspace_id, version, graph, manifest_key,
+			entry_kind, entry_event_type, entry_segment_id, entry_schedule, reentry_policy,
+			max_reentries, late_policy, status, published_by, published_at
+		FROM journey_versions
+		WHERE tenant_id=$1 AND workspace_id=$2 AND journey_id=$3 AND version=$4`,
+		p.TenantID, p.WorkspaceID, journeyID, version).
+		Scan(&out.ID, &out.JourneyID, &out.TenantID, &out.WorkspaceID, &out.Version, &out.Graph, &out.ManifestKey,
+			&out.EntryKind, &out.EntryEventType, &out.EntrySegmentID, &out.EntrySchedule, &out.ReentryPolicy,
+			&out.MaxReentries, &out.LatePolicy, &out.Status, &out.PublishedBy, &out.PublishedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.JourneyVersion{}, ErrNotFound
+	}
+	return out, err
+}
+
 func (s *Store) SetJourneyVersionStatus(ctx context.Context, p domain.Principal, journeyID string, version int, status string) error {
 	res, err := s.pool.Exec(ctx, `UPDATE journey_versions SET status = $1, published_at = now()
 		WHERE tenant_id = $2 AND workspace_id = $3 AND journey_id = $4 AND version = $5`,
@@ -251,4 +279,3 @@ func (s *Store) SetJourneyVersionStatus(ctx context.Context, p domain.Principal,
 	}
 	return nil
 }
-

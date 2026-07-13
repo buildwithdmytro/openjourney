@@ -2,6 +2,7 @@ package journey
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -41,8 +42,12 @@ func Publish(ctx context.Context, store ports.Store, blobs BlobStore, p domain.P
 		return domain.JourneyVersion{}, err
 	}
 
-	version := draft.LatestVersion + 1
-	manifestKey := fmt.Sprintf("journeys/%s/%s/v%d.json", p.TenantID, journeyID, version)
+	// Content-addressed manifests are immutable and safe to upload before the
+	// database transaction. Concurrent publishes can never overwrite another
+	// version's graph, and a failed publication only leaves a deduplicated object
+	// that may be referenced by a later retry.
+	digest := sha256.Sum256(data)
+	manifestKey := fmt.Sprintf("journeys/%s/%s/manifests/%x.json", p.TenantID, journeyID, digest)
 	if err := blobs.Put(ctx, manifestKey, data, "application/json"); err != nil {
 		return domain.JourneyVersion{}, fmt.Errorf("put journey manifest: %w", err)
 	}

@@ -283,6 +283,12 @@ func (f *fakeStore) GetJourneyVersion(ctx context.Context, tenantID, versionID s
 		Graph: json.RawMessage(`{"entry_node_id":"n1","nodes":[{"id":"n1","type":"entry","config":{"trigger":"event","event_type":"signup.completed"}}],"edges":[]}`),
 	}, nil
 }
+func (f *fakeStore) GetJourneyVersionNumber(ctx context.Context, p domain.Principal, journeyID string, version int) (domain.JourneyVersion, error) {
+	return domain.JourneyVersion{
+		ID: "version-1", JourneyID: journeyID, TenantID: p.TenantID, WorkspaceID: p.WorkspaceID, Version: version,
+		Graph: json.RawMessage(`{"entry_node_id":"n1","nodes":[{"id":"n1","type":"entry","config":{"trigger":"event","event_type":"signup.completed"}}],"edges":[]}`),
+	}, nil
+}
 func (f *fakeStore) GetJourneyRunsForProfile(ctx context.Context, tenantID, versionID, profileID string) ([]domain.JourneyRun, error) {
 	var out []domain.JourneyRun
 	for _, r := range f.runs {
@@ -308,6 +314,11 @@ func (f *fakeStore) CreateJourneyRun(ctx context.Context, run domain.JourneyRun)
 	run.ID = "run-" + run.ProfileID
 	f.runs = append(f.runs, run)
 	return true, nil
+}
+
+func (f *fakeStore) EnrollJourneyRun(ctx context.Context, run domain.JourneyRun, step domain.JourneyStep) (string, bool, error) {
+	inserted, err := f.CreateJourneyRun(ctx, run)
+	return run.ID, inserted, err
 }
 func (f *fakeStore) InsertJourneyStep(ctx context.Context, step domain.JourneyStep) error {
 	return nil
@@ -855,13 +866,13 @@ func TestJourneyEndpoints(t *testing.T) {
 		t.Fatalf("expected 400 for missing segment_id, got %d", badBackfillRes1.Code)
 	}
 
-	// Backfill (missing approver_user_id)
+	// Backfill approval is derived from the authenticated user.
 	badBackfillReq2 := httptest.NewRequest(http.MethodPost, "/v1/journeys/journey-1/backfill", strings.NewReader(`{"segment_id":"segment-1"}`))
 	badBackfillReq2.Header.Set("Authorization", "Bearer test-key")
 	badBackfillRes2 := httptest.NewRecorder()
 	server.ServeHTTP(badBackfillRes2, badBackfillReq2)
-	if badBackfillRes2.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("expected 422 for missing approver_user_id, got %d", badBackfillRes2.Code)
+	if badBackfillRes2.Code != http.StatusOK {
+		t.Fatalf("expected 200 with principal-derived approval, got %d", badBackfillRes2.Code)
 	}
 
 	// Backfill (not found)
@@ -892,7 +903,7 @@ func TestJourneyEndpoints(t *testing.T) {
 	}
 
 	// Get Journey Version (success)
-	verReq := httptest.NewRequest(http.MethodGet, "/v1/journeys/journey-1/versions/version-1", nil)
+	verReq := httptest.NewRequest(http.MethodGet, "/v1/journeys/journey-1/versions/1", nil)
 	verReq.Header.Set("Authorization", "Bearer test-key")
 	verRes := httptest.NewRecorder()
 	server.ServeHTTP(verRes, verReq)

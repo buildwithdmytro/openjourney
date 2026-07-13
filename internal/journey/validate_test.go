@@ -69,6 +69,20 @@ func TestValidateInvalidGraphs(t *testing.T) {
 			},
 			wantErr: "invalid duration",
 		},
+		{
+			name: "scheduled entry without segment",
+			mutate: func(g *Graph) {
+				g.Nodes[0].Config = raw(`{"trigger":"scheduled","schedule":"* * * * *"}`)
+			},
+			wantErr: "requires segment_id",
+		},
+		{
+			name: "invalid scheduled entry expression",
+			mutate: func(g *Graph) {
+				g.Nodes[0].Config = raw(`{"trigger":"scheduled","segment_id":"seg-1","schedule":"not a schedule"}`)
+			},
+			wantErr: "invalid schedule",
+		},
 	}
 
 	for _, tc := range tests {

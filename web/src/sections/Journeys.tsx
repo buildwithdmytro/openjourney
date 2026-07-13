@@ -1,4 +1,4 @@
-import React, { FormEvent, useEffect, useState, useCallback, useMemo } from "react";
+import React, { FormEvent, useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
   ReactFlow,
   MiniMap,
@@ -10,6 +10,10 @@ import {
   Connection,
   Edge as FlowEdge,
   Node as FlowNode,
+  BaseEdge,
+  EdgeLabelRenderer,
+  getBezierPath,
+  EdgeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
@@ -20,7 +24,7 @@ import {
   publishJourney,
   listSegments,
   listTemplates,
-  listUsers,
+  listSchemas,
   getJourneyVersion,
   updateJourneyVersionStatus,
   cancelJourneyRun,
@@ -31,15 +35,77 @@ import {
   Journey,
   Segment,
   Template,
-  User,
   JourneyVersion,
   JourneyRun,
   JourneyTransition,
   JourneyStep,
   JourneyMessageIntent,
+  EventSchema,
 } from "../api";
 
 const apiBase = import.meta.env.VITE_API_BASE_URL || "/api";
+
+type InsertableEdgeData = { onInsert?: (edgeID: string) => void };
+
+function InsertableEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, markerEnd, style, label, data }: EdgeProps) {
+  const [path, labelX, labelY] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
+  const edgeData = data as InsertableEdgeData | undefined;
+  return (
+    <>
+      <BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} />
+      <EdgeLabelRenderer>
+        <div className="insert-edge-control" style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}>
+          {label && <span>{String(label)}</span>}
+          <button
+            type="button"
+            aria-label="Add step on this connection"
+            title="Add a step here"
+            onClick={(event) => { event.stopPropagation(); edgeData?.onInsert?.(id); }}
+          >+</button>
+        </div>
+      </EdgeLabelRenderer>
+    </>
+  );
+}
+
+const journeyEdgeTypes = { insertable: InsertableEdge };
+
+const stepCatalog = [
+  { type: "message", icon: "✉", title: "Send a message", description: "Send an email or webhook from a template", group: "Engage" },
+  { type: "delay", icon: "◷", title: "Wait", description: "Pause before moving to the next step", group: "Timing" },
+  { type: "wait_event", icon: "◎", title: "Wait for an event", description: "Continue when a customer takes an action", group: "Timing" },
+  { type: "condition", icon: "◇", title: "Decision", description: "Create Yes and No paths using customer data", group: "Paths" },
+  { type: "split", icon: "⑂", title: "Split paths", description: "Divide customers by percentage or audience", group: "Paths" },
+  { type: "action", icon: "↻", title: "Update profile", description: "Save a value on the customer profile", group: "Data" },
+  { type: "goal", icon: "⚑", title: "Mark a goal", description: "Record a successful journey outcome", group: "Finish" },
+  { type: "exit", icon: "✓", title: "Exit journey", description: "End this path", group: "Finish" },
+] as const;
+
+const stepMeta = (type: string) => stepCatalog.find((step) => step.type === type) ||
+  { type, icon: "•", title: type.replaceAll("_", " "), description: "Journey step", group: "Other" };
+
+function nodeSummary(type: string, config: Record<string, any>): string {
+  if (type === "entry") return config.trigger === "scheduled" ? "Scheduled audience entry" : `When ${config.event_type || "an event occurs"}`;
+  if (type === "delay") return `Wait ${config.duration || "for a while"}`;
+  if (type === "message") return config.template_id ? "Template selected" : "Choose a message template";
+  if (type === "wait_event") return `Wait for ${config.event_type || "an event"}`;
+  if (type === "condition") return `${config.dsl?.field || "Customer"} ${config.dsl?.operator || "matches"} ${config.dsl?.value ?? "a value"}`;
+  if (type === "split") return `${config.branches?.length || 2} customer paths`;
+  if (type === "action") return "Update customer attributes";
+  if (type === "goal") return config.name || "Journey goal";
+  if (type === "exit") return config.reason || "Journey complete";
+  return "Configure this step";
+}
+
+function nodeLabel(type: string, config: Record<string, any>) {
+  const meta = type === "entry" ? { icon: "→", title: "Journey entry" } : stepMeta(type);
+  return (
+    <div className="journey-node-label">
+      <span className={`journey-node-icon ${type}`}>{meta.icon}</span>
+      <span><strong>{meta.title}</strong><small>{nodeSummary(type, config)}</small></span>
+    </div>
+  );
+}
 
 function message(cause: unknown): string {
   if (cause instanceof Error) return cause.message;
@@ -56,8 +122,8 @@ const getNodeStyle = (type: string, selected: boolean) => {
     background: "#fff",
     color: "#222",
     boxShadow: selected ? "0 0 8px rgba(26, 115, 232, 0.6)" : "none",
-    width: 150,
-    textAlign: "center" as const,
+    width: 230,
+    textAlign: "left" as const,
     cursor: "pointer",
   };
   switch (type) {
@@ -81,7 +147,7 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
   const [journeys, setJourneys] = useState<Journey[]>([]);
   const [segments, setSegments] = useState<Segment[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
+  const [schemas, setSchemas] = useState<EventSchema[]>([]);
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -100,8 +166,15 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<FlowEdge>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
-  const [approverId, setApproverId] = useState("");
+  const [isDirty, setIsDirty] = useState(false);
+  const undoHistory = useRef<Array<{ nodes: FlowNode[]; edges: FlowEdge[] }>>([]);
+  const redoHistory = useRef<Array<{ nodes: FlowNode[]; edges: FlowEdge[] }>>([]);
+  const selectInsertionEdge = useCallback((edgeID: string) => {
+    setSelectedEdgeId(edgeID);
+    setSelectedNodeId(null);
+  }, []);
 
   // Operator states
   const [runs, setRuns] = useState<JourneyRun[]>([]);
@@ -116,19 +189,16 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
     setLoading(true);
     setError("");
     try {
-      const [jRes, sRes, tRes, uRes] = await Promise.all([
+      const [jRes, sRes, tRes, schemaRes] = await Promise.all([
         listJourneys(apiBase, apiKey),
         listSegments(apiBase, apiKey),
         listTemplates(apiBase, apiKey),
-        listUsers(apiBase, apiKey),
+        listSchemas(apiBase, apiKey),
       ]);
-      setJourneys(jRes);
-      setSegments(sRes);
-      setTemplates(tRes);
-      setUsers(uRes);
-      if (uRes.length > 0) {
-        setApproverId(uRes[0].id);
-      }
+      setJourneys(jRes ?? []);
+      setSegments(sRes ?? []);
+      setTemplates(tRes ?? []);
+      setSchemas(schemaRes ?? []);
     } catch (cause) {
       setError(message(cause));
     } finally {
@@ -151,14 +221,14 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
       setRuns(runsList);
       
       // Filter DLQ steps and intents for this journey
-      const journeySteps = dlqData.steps.filter(s => runsList.some(r => r.id === s.run_id));
-      const journeyIntents = dlqData.intents.filter(i => i.journey_id === journeyId);
+      const journeySteps = (dlqData.steps ?? []).filter(s => (runsList ?? []).some(r => r.id === s.run_id));
+      const journeyIntents = (dlqData.intents ?? []).filter(i => i.journey_id === journeyId);
       setDlqSteps(journeySteps);
       setDlqIntents(journeyIntents);
 
       if (editingJourney?.current_version_id) {
         try {
-          const ver = await getJourneyVersion(apiBase, apiKey, journeyId, editingJourney.current_version_id);
+          const ver = await getJourneyVersion(apiBase, apiKey, journeyId, latestVersion);
           setActiveVersion(ver);
         } catch {
           setActiveVersion(null);
@@ -256,7 +326,7 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
           ],
         };
       }
-      await createJourney(apiBase, apiKey, {
+      const created = await createJourney(apiBase, apiKey, {
         name,
         description: description || undefined,
         graph: parsedGraph,
@@ -265,6 +335,7 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
       setName("");
       setDescription("");
       await load();
+      openEditor(created);
     } catch (cause) {
       setError(message(cause));
     } finally {
@@ -278,6 +349,10 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
     setError("");
     setSuccessMsg("");
     setSelectedNodeId(null);
+    setSelectedEdgeId(null);
+    undoHistory.current = [];
+    redoHistory.current = [];
+    setIsDirty(false);
     setValidationErrors([]);
 
     const graph = (journey.graph || {}) as Record<string, any>;
@@ -288,7 +363,7 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
       id: n.id,
       type: "default",
       position: n.position || { x: 100 + idx * 100, y: 100 + idx * 100 },
-      data: { label: `${n.type}: ${n.id}`, config: n.config || {}, type: n.type },
+      data: { label: nodeLabel(n.type, n.config || {}), config: n.config || {}, type: n.type },
       style: getNodeStyle(n.type, false),
     }));
 
@@ -297,6 +372,8 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
       source: e.from,
       target: e.to,
       label: e.branch || undefined,
+      type: "insertable",
+      data: { onInsert: selectInsertionEdge },
     }));
 
     setNodes(flowNodes);
@@ -305,17 +382,23 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
   };
 
   const closeEditor = () => {
+    if (isDirty && !window.confirm("Discard your unsaved journey changes?")) return;
     setEditingJourney(null);
     setSelectedNodeId(null);
+    setSelectedEdgeId(null);
   };
 
   const onConnect = useCallback((params: Connection) => {
-    setEdges((eds) => addEdge({ ...params, label: "" }, eds));
-  }, [setEdges]);
+    undoHistory.current.push({ nodes, edges });
+    redoHistory.current = [];
+    setIsDirty(true);
+    setEdges((eds) => addEdge({ ...params, label: "", type: "insertable", data: { onInsert: selectInsertionEdge } }, eds));
+  }, [nodes, edges, setEdges, selectInsertionEdge]);
 
   // Sync node style selection
   const onNodeClick = useCallback((_: any, node: FlowNode) => {
     setSelectedNodeId(node.id);
+    setSelectedEdgeId(null);
     setNodes((nds) =>
       nds.map((n) => ({
         ...n,
@@ -323,6 +406,47 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
       }))
     );
   }, [setNodes]);
+
+  const onEdgeClick = useCallback((_: any, edge: FlowEdge) => {
+    setSelectedEdgeId(edge.id);
+    setSelectedNodeId(null);
+  }, []);
+
+  const rememberCanvas = useCallback(() => {
+    undoHistory.current.push({ nodes, edges });
+    if (undoHistory.current.length > 50) undoHistory.current.shift();
+    redoHistory.current = [];
+    setIsDirty(true);
+  }, [nodes, edges]);
+
+  const undoCanvas = useCallback(() => {
+    const previous = undoHistory.current.pop();
+    if (!previous) return;
+    redoHistory.current.push({ nodes, edges });
+    setNodes(previous.nodes);
+    setEdges(previous.edges);
+    setSelectedNodeId(null);
+    setSelectedEdgeId(null);
+    setIsDirty(true);
+  }, [nodes, edges, setNodes, setEdges]);
+
+  const redoCanvas = useCallback(() => {
+    const next = redoHistory.current.pop();
+    if (!next) return;
+    undoHistory.current.push({ nodes, edges });
+    setNodes(next.nodes);
+    setEdges(next.edges);
+    setSelectedNodeId(null);
+    setSelectedEdgeId(null);
+    setIsDirty(true);
+  }, [nodes, edges, setNodes, setEdges]);
+
+  useEffect(() => {
+    if (!isDirty) return;
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [isDirty]);
 
   // Convert React Flow nodes/edges back to DB graph
   const getGraphJSON = (): Record<string, any> => {
@@ -421,6 +545,9 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
         graph: graphData,
       });
       setSuccessMsg("Journey saved successfully.");
+      setIsDirty(false);
+      undoHistory.current = [];
+      redoHistory.current = [];
       await load();
     } catch (cause) {
       setError(message(cause));
@@ -439,10 +566,27 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
     }
     setSaving(true);
     try {
-      await publishJourney(apiBase, apiKey, editingJourney.id, approverId);
+      await publishJourney(apiBase, apiKey, editingJourney.id);
+      setIsDirty(false);
       setSuccessMsg("Journey published successfully!");
       await load();
-      closeEditor();
+      setEditingJourney(null);
+    } catch (cause) {
+      setError(message(cause));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCreateDraft = async () => {
+    if (!editingJourney) return;
+    setSaving(true);
+    setError("");
+    try {
+      const draft = await updateJourney(apiBase, apiKey, editingJourney.id, { status: "draft", graph: getGraphJSON() });
+      setEditingJourney(draft);
+      setIsDirty(false);
+      setSuccessMsg("An editable draft was created from the published journey.");
     } catch (cause) {
       setError(message(cause));
     } finally {
@@ -455,15 +599,28 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
     return nodes.find((n) => n.id === selectedNodeId) || null;
   }, [nodes, selectedNodeId]);
 
+  const suggestedCustomerFields = useMemo(() => {
+    const fields = new Set(["country", "email", "first_name", "last_name", "language", "timezone"]);
+    schemas.forEach((eventSchema) => {
+      const root = eventSchema.schema as { properties?: Record<string, unknown> };
+      const payload = root.properties?.payload as { properties?: Record<string, unknown> } | undefined;
+      Object.keys(payload?.properties || root.properties || {}).forEach((field) => {
+        if (field !== "payload") fields.add(field);
+      });
+    });
+    return [...fields].sort();
+  }, [schemas]);
+
   const updateSelectedNodeConfig = (key: string, value: any) => {
-    if (!selectedNodeId) return;
+    if (!selectedNodeId || editingJourney?.status !== "draft") return;
+    rememberCanvas();
     setNodes((nds) =>
       nds.map((n) => {
         if (n.id === selectedNodeId) {
           const config = { ...(n.data.config as Record<string, any>), [key]: value };
           return {
             ...n,
-            data: { ...n.data, config },
+            data: { ...n.data, config, label: nodeLabel(n.data.type as string, config) },
           };
         }
         return n;
@@ -472,7 +629,9 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
   };
 
   const addNode = (type: string) => {
-    const id = `n_${Date.now().toString().slice(-4)}`;
+    if (editingJourney?.status !== "draft") return;
+    rememberCanvas();
+    const id = `n_${crypto.randomUUID()}`;
     let defaultConfig: Record<string, any> = {};
     if (type === "delay") defaultConfig = { duration: "1h" };
     if (type === "condition") defaultConfig = { dsl: { field: "country", operator: "equals", value: "US" } };
@@ -483,61 +642,171 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
     if (type === "goal") defaultConfig = { name: "signup" };
     if (type === "exit") defaultConfig = { reason: "completed" };
 
+    const selectedEdge = edges.find((edge) => edge.id === selectedEdgeId);
+    const anchor = nodes.find((node) => node.id === selectedNodeId) || nodes.find((node) => node.id === selectedEdge?.source);
+    const canInsertAfterAnchor = anchor && !["condition", "split", "wait_event", "exit"].includes(anchor.data.type as string);
+    const insertionEdge = selectedEdge || (canInsertAfterAnchor ? edges.find((edge) => edge.source === anchor.id) : undefined);
+    const edgeTarget = nodes.find((node) => node.id === insertionEdge?.target);
+    const branchLabels = type === "condition" ? ["true", "false"] : type === "wait_event" ? ["success", "timeout"] : type === "split" ? ["a", "b"] : [];
+    const fallbackID = branchLabels.length > 0 && insertionEdge ? `n_${crypto.randomUUID()}` : "";
+    const downstreamNodeIDs = new Set<string>();
+    if (insertionEdge) {
+      const queue = [insertionEdge.target];
+      while (queue.length > 0) {
+        const nodeID = queue.shift()!;
+        if (downstreamNodeIDs.has(nodeID)) continue;
+        downstreamNodeIDs.add(nodeID);
+        edges.filter((edge) => edge.source === nodeID).forEach((edge) => queue.push(edge.target));
+      }
+    }
     const newNode: FlowNode = {
       id,
       type: "default",
-      position: { x: 200, y: 200 },
-      data: { label: `${type}: ${id}`, config: defaultConfig, type },
-      style: getNodeStyle(type, false),
+      position: insertionEdge && edgeTarget
+        ? { x: edgeTarget.position.x, y: edgeTarget.position.y }
+        : anchor ? { x: anchor.position.x, y: anchor.position.y + 170 } : { x: 260, y: 180 + nodes.length * 120 },
+      data: { label: nodeLabel(type, defaultConfig), config: defaultConfig, type },
+      style: getNodeStyle(type, true),
     };
-    setNodes((nds) => [...nds, newNode]);
+    const fallbackNode: FlowNode | null = fallbackID && edgeTarget ? {
+      id: fallbackID,
+      type: "default",
+      position: { x: edgeTarget.position.x + 300, y: edgeTarget.position.y + 190 },
+      data: { label: nodeLabel("exit", { reason: `${branchLabels[1]} path complete` }), config: { reason: `${branchLabels[1]} path complete` }, type: "exit" },
+      style: getNodeStyle("exit", false),
+    } : null;
+    setNodes((nds) => [
+      ...nds.map((node) => downstreamNodeIDs.has(node.id)
+        ? { ...node, position: { ...node.position, y: node.position.y + 190 } }
+        : node),
+      newNode,
+      ...(fallbackNode ? [fallbackNode] : []),
+    ]);
+    if (selectedEdge) {
+      setEdges((currentEdges) => [
+        ...currentEdges.filter((edge) => edge.id !== selectedEdge.id),
+        { ...selectedEdge, id: `${selectedEdge.source}-${id}`, target: id },
+        { id: `${id}-${selectedEdge.target}`, source: id, target: selectedEdge.target, label: branchLabels[0], type: "insertable", data: { onInsert: selectInsertionEdge } },
+        ...(fallbackID ? [{ id: `${id}-${fallbackID}`, source: id, target: fallbackID, label: branchLabels[1], type: "insertable", data: { onInsert: selectInsertionEdge } }] : []),
+      ]);
+    } else if (canInsertAfterAnchor) {
+      setEdges((currentEdges) => {
+        const outgoing = currentEdges.find((edge) => edge.source === anchor.id);
+        const withoutOutgoing = outgoing ? currentEdges.filter((edge) => edge.id !== outgoing.id) : currentEdges;
+        const inserted = [{ id: `${anchor.id}-${id}`, source: anchor.id, target: id, type: "insertable", data: { onInsert: selectInsertionEdge } } as FlowEdge];
+        if (outgoing) inserted.push({ ...outgoing, id: `${id}-${outgoing.target}`, source: id, label: branchLabels[0], data: { onInsert: selectInsertionEdge } });
+        if (fallbackID) inserted.push({ id: `${id}-${fallbackID}`, source: id, target: fallbackID, label: branchLabels[1], type: "insertable", data: { onInsert: selectInsertionEdge } });
+        return [...withoutOutgoing, ...inserted];
+      });
+    }
     setSelectedNodeId(id);
+    setSelectedEdgeId(null);
   };
 
   const deleteSelectedNode = () => {
+    if (editingJourney?.status !== "draft") return;
+    if (selectedEdgeId) {
+      rememberCanvas();
+      setEdges((current) => current.filter((edge) => edge.id !== selectedEdgeId));
+      setSelectedEdgeId(null);
+      return;
+    }
     if (!selectedNodeId) return;
-    if (nodes.find((n) => n.id === selectedNodeId)?.data.type === "entry") {
+    const nodeToDelete = nodes.find((n) => n.id === selectedNodeId);
+    if (nodeToDelete?.data.type === "entry") {
       setError("Cannot delete the entry node.");
       return;
     }
+    rememberCanvas();
     setNodes((nds) => nds.filter((n) => n.id !== selectedNodeId));
-    setEdges((eds) => eds.filter((e) => e.source !== selectedNodeId && e.target !== selectedNodeId));
+    setEdges((currentEdges) => {
+      const incoming = currentEdges.filter((edge) => edge.target === selectedNodeId);
+      const outgoing = currentEdges.filter((edge) => edge.source === selectedNodeId);
+      const remaining = currentEdges.filter((edge) => edge.source !== selectedNodeId && edge.target !== selectedNodeId);
+      if (incoming.length !== 1 || outgoing.length !== 1) return remaining;
+      const before = incoming[0];
+      const after = outgoing[0];
+      return [...remaining, {
+        id: `${before.source}-${after.target}-${crypto.randomUUID()}`,
+        source: before.source,
+        target: after.target,
+        label: before.label,
+        type: "insertable",
+        data: { onInsert: selectInsertionEdge },
+      }];
+    });
     setSelectedNodeId(null);
   };
 
+  useEffect(() => {
+    if (!editingJourney || editingJourney.status !== "draft" || editorMode !== "visual") return;
+    const handleCanvasShortcut = (event: KeyboardEvent) => {
+      const target = event.target;
+      const isTyping = target instanceof Element && target.matches("input, textarea, select, [contenteditable='true']");
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z" && event.shiftKey) {
+        event.preventDefault();
+        redoCanvas();
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        undoCanvas();
+        return;
+      }
+      if (!isTyping && (event.key === "Delete" || event.key === "Backspace")) {
+        event.preventDefault();
+        deleteSelectedNode();
+      }
+    };
+    window.addEventListener("keydown", handleCanvasShortcut);
+    return () => window.removeEventListener("keydown", handleCanvasShortcut);
+  }, [editingJourney, editorMode, selectedNodeId, selectedEdgeId, undoCanvas, redoCanvas]);
+
   // Rendering configs in sidebar
   const renderNodeConfigPanel = () => {
+    if (editingJourney?.status !== "draft") return <div className="journey-inspector-empty"><span>🔒</span><h3>Published journey</h3><p>This version is read-only. Create an editable draft to make changes.</p></div>;
+    if (selectedEdgeId) {
+      return (
+        <div className="journey-inspector-empty edge-selected">
+          <span>＋</span><h3>Insert a step here</h3>
+          <p>Choose any step from the left. The connection will be rewired automatically.</p>
+          <button className="danger" onClick={deleteSelectedNode}>Delete connection</button>
+        </div>
+      );
+    }
     if (!selectedNode) {
-      return <p className="muted">Select a node in the canvas to edit its properties.</p>;
+      return (
+        <div className="journey-inspector-empty">
+          <span>↖</span>
+          <h3>Select a step</h3>
+          <p>Choose a card on the canvas to review or change what happens at that point in the journey.</p>
+        </div>
+      );
     }
     const type = selectedNode.data.type as string;
     const config = selectedNode.data.config as any;
 
     return (
-      <div className="stack" style={{ gap: "1rem" }}>
-        <h3>Edit Node: {selectedNode.id} ({type})</h3>
-        <label>Node ID
-          <input
-            value={selectedNode.id}
-            readOnly
-            disabled
-            style={{ background: "#f1f3f4", cursor: "not-allowed" }}
-          />
-        </label>
+      <div className="journey-inspector-form">
+        <div className="journey-inspector-heading">
+          <span className={`journey-node-icon ${type}`}>{type === "entry" ? "→" : stepMeta(type).icon}</span>
+          <div><span>Step settings</span><h3>{type === "entry" ? "Journey entry" : stepMeta(type).title}</h3></div>
+        </div>
+        <p className="journey-help">{type === "entry" ? "Choose who enters this journey and when." : stepMeta(type).description}</p>
 
         {type === "entry" && (
           <>
-            <label>Trigger Type
+            <label>How should customers enter?
               <select
                 value={config.trigger || "event"}
                 onChange={(e) => updateSelectedNodeConfig("trigger", e.target.value)}
               >
-                <option value="event">Event Trigger</option>
-                <option value="scheduled">Scheduled/Segment</option>
+                <option value="event">When they perform an event</option>
+                <option value="scheduled">On a recurring schedule</option>
               </select>
             </label>
             {config.trigger === "event" ? (
-              <label>Event Type
+              <label>Event name
                 <input
                   value={config.event_type || ""}
                   onChange={(e) => updateSelectedNodeConfig("event_type", e.target.value)}
@@ -557,21 +826,22 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
                     ))}
                   </select>
                 </label>
-                <label>Schedule (Cron/Interval)
+                <label>Schedule
                   <input
                     value={config.schedule || ""}
                     onChange={(e) => updateSelectedNodeConfig("schedule", e.target.value)}
-                    placeholder="*/5 * * * *"
+                    placeholder="* * * * *"
                   />
+                  <small className="field-help">Use * * * * * for every minute or */15 * * * * for every 15 minutes.</small>
                 </label>
-                <label>Reentry Policy
+                <label>Can customers enter again?
                   <select
                     value={config.reentry_policy || "once"}
                     onChange={(e) => updateSelectedNodeConfig("reentry_policy", e.target.value)}
                   >
-                    <option value="once">Once</option>
-                    <option value="always">Always</option>
-                    <option value="after_exit">After Exit</option>
+                    <option value="once">No, only once</option>
+                    <option value="always">Yes, every time</option>
+                    <option value="after_exit">Yes, after they finish</option>
                   </select>
                 </label>
               </>
@@ -580,7 +850,7 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
         )}
 
         {type === "delay" && (
-          <label>Duration
+          <label>How long should customers wait?
             <input
               value={config.duration || ""}
               onChange={(e) => updateSelectedNodeConfig("duration", e.target.value)}
@@ -590,38 +860,53 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
         )}
 
         {type === "condition" && (
-          <label>Audience Condition (DSL JSON)
-            <textarea
-              value={JSON.stringify(config.dsl || {}, null, 2)}
-              onChange={(e) => {
-                try {
-                  const parsed = JSON.parse(e.target.value);
-                  updateSelectedNodeConfig("dsl", parsed);
-                } catch {
-                  // Allow typing invalid json momentarily
-                }
-              }}
-              rows={6}
-              style={{ fontFamily: "monospace" }}
-            />
-          </label>
+          <div className="condition-builder">
+            <span className="field-title">Send customers down “Yes” when</span>
+            <label>Customer field
+              <input
+                className="field-drop-target"
+                value={config.dsl?.field || ""}
+                placeholder="Drag a field here or type its name"
+                list="journey-customer-fields"
+                onDragOver={(event) => { event.preventDefault(); event.currentTarget.classList.add("drag-over"); }}
+                onDragLeave={(event) => event.currentTarget.classList.remove("drag-over")}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  event.currentTarget.classList.remove("drag-over");
+                  const field = event.dataTransfer.getData("application/x-openjourney-field") || event.dataTransfer.getData("text/plain");
+                  if (field) updateSelectedNodeConfig("dsl", { ...config.dsl, field });
+                }}
+                onChange={(e) => updateSelectedNodeConfig("dsl", { ...config.dsl, field: e.target.value })}
+              />
+              <datalist id="journey-customer-fields">{suggestedCustomerFields.map((field) => <option key={field} value={field} />)}</datalist>
+            </label>
+            <label>Comparison
+              <select value={config.dsl?.operator || "equals"} onChange={(e) => updateSelectedNodeConfig("dsl", { ...config.dsl, operator: e.target.value })}>
+                <option value="equals">is equal to</option><option value="not_equals">is not equal to</option>
+                <option value="contains">contains</option><option value="exists">has any value</option>
+              </select>
+            </label>
+            {config.dsl?.operator !== "exists" && <label>Value
+              <input value={config.dsl?.value ?? ""} placeholder="US" onChange={(e) => updateSelectedNodeConfig("dsl", { ...config.dsl, value: e.target.value })} />
+            </label>}
+          </div>
         )}
 
         {type === "split" && (
           <>
-            <label>Mode
+            <label>How should customers be divided?
               <select
                 value={config.mode || "random"}
                 onChange={(e) => updateSelectedNodeConfig("mode", e.target.value)}
               >
-                <option value="random">Random Weight %</option>
-                <option value="audience">Audience/Segment Membership</option>
+                <option value="random">Random percentage</option>
+                <option value="audience">By audience membership</option>
               </select>
             </label>
-            <h4>Branches</h4>
+            <h4>Paths</h4>
             {(config.branches || []).map((br: any, idx: number) => (
               <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", borderBottom: "1px solid #eee", paddingBottom: "0.5rem" }}>
-                <label>Label
+                <label>Path name
                   <input
                     value={br.label}
                     onChange={(e) => {
@@ -695,27 +980,28 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
                 ))}
               </select>
             </label>
-            <label style={{ flexDirection: "row", alignItems: "center", gap: "0.5rem" }}>
+            <label className="checkbox-row">
               <input
                 type="checkbox"
                 checked={config.transactional || false}
                 onChange={(e) => updateSelectedNodeConfig("transactional", e.target.checked)}
               />
-              Bypass quiet hours / fatigue (Transactional)
+              This is a transactional message
             </label>
+            <small className="field-help">Transactional messages can bypass marketing quiet hours and frequency limits.</small>
           </>
         )}
 
         {type === "wait_event" && (
           <>
-            <label>Wait Event Type
+            <label>Event to wait for
               <input
                 value={config.event_type || ""}
                 onChange={(e) => updateSelectedNodeConfig("event_type", e.target.value)}
                 placeholder="email.opened"
               />
             </label>
-            <label>Timeout Duration
+            <label>Stop waiting after
               <input
                 value={config.timeout || ""}
                 onChange={(e) => updateSelectedNodeConfig("timeout", e.target.value)}
@@ -779,7 +1065,7 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
           style={{ marginTop: "1rem" }}
           onClick={deleteSelectedNode}
         >
-          Delete Node
+          Delete step
         </button>
       </div>
     );
@@ -787,45 +1073,38 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
 
   if (editingJourney) {
     return (
-      <section className="stack" style={{ height: "100%" }}>
-        <div className="section-title">
-          <div>
-            <div className="eyebrow">Durable Journey Graph Builder</div>
-            <h2>{editingJourney.name} <span className={`pill ${editingJourney.status}`}>{editingJourney.status}</span></h2>
-            {editingJourney.description && <p className="muted">{editingJourney.description}</p>}
+      <section className="journey-workspace">
+        <div className="journey-topbar">
+          <div className="journey-title-block">
+            <button onClick={closeEditor} className="icon-button" aria-label="Back to journeys">←</button>
+            <div>
+              <div className="journey-title-line"><h2>{editingJourney.name}</h2><span className={`pill ${editingJourney.status}`}>{editingJourney.status}</span></div>
+              <p>{editingJourney.description || "Build and publish a customer journey"}</p>
+            </div>
           </div>
-          <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
-            <select value={editorMode} onChange={(e) => setEditorMode(e.target.value as any)}>
-              <option value="visual">Visual Builder</option>
-              <option value="json">Raw JSON Fallback</option>
-              <option value="operator">Operator Panel</option>
-            </select>
-            <button onClick={validateGraph} disabled={editorMode === "json"}>Validate</button>
-            <button onClick={handleSave} disabled={saving} className="primary">
-              {saving ? "Saving..." : "Save Draft"}
-            </button>
+          <div className="journey-actions">
+            <button onClick={validateGraph} disabled={editorMode === "json"} className="secondary">Check journey</button>
+            {editingJourney.status === "draft" ? <button onClick={handleSave} disabled={saving} className="secondary">
+              {saving ? "Saving..." : isDirty ? "Save changes" : "Saved"}
+            </button> : <button onClick={handleCreateDraft} disabled={saving} className="secondary">Create editable draft</button>}
             {editingJourney.status === "draft" && (
-              <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", borderLeft: "1px solid #ccc", paddingLeft: "1rem" }}>
-                <select value={approverId} onChange={(e) => setApproverId(e.target.value)}>
-                  {users.map((u) => (
-                    <option key={u.id} value={u.id}>{u.email || u.display_name}</option>
-                  ))}
-                </select>
-                <button onClick={handlePublish} disabled={saving} style={{ background: "#187d56", color: "#fff" }}>
-                  Publish
-                </button>
-              </div>
+              <button onClick={handlePublish} disabled={saving} className="publish-button">Publish journey</button>
             )}
-            <button onClick={closeEditor} className="secondary">Back</button>
           </div>
         </div>
+
+        <nav className="journey-tabs" aria-label="Journey workspace">
+          <button className={editorMode === "visual" ? "active" : ""} onClick={() => setEditorMode("visual")}>Journey</button>
+          <button className={editorMode === "operator" ? "active" : ""} onClick={() => setEditorMode("operator")}>Activity</button>
+          <button className={editorMode === "json" ? "active" : ""} onClick={() => setEditorMode("json")}>Advanced</button>
+        </nav>
 
         <ErrorMessage value={error} />
         {successMsg && <div style={{ color: "#187d56", background: "#e9f8f1", padding: "10px", borderRadius: "5px", fontWeight: "bold" }}>{successMsg}</div>}
 
         {validationErrors.length > 0 && (
-          <div style={{ color: "#c5221f", background: "#fce8e6", padding: "10px", borderRadius: "5px" }}>
-            <h4>Graph Validation Errors:</h4>
+          <div className="journey-validation" role="alert">
+            <div><strong>{validationErrors.length} {validationErrors.length === 1 ? "item needs" : "items need"} attention</strong><span>Fix these before publishing.</span></div>
             <ul>
               {validationErrors.map((err, idx) => (
                 <li key={idx}>{err}</li>
@@ -834,49 +1113,93 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
           </div>
         )}
 
-        <div style={{ display: "grid", gridTemplateColumns: (editorMode === "visual" || editorMode === "operator") ? "3fr 1fr" : "1fr", gap: "1.5rem", minHeight: "600px" }}>
+        <div className={`journey-editor-layout ${editorMode}`}>
           {editorMode === "visual" && (
             <>
-              <div style={{ border: "1px solid #dadce0", borderRadius: "8px", position: "relative", height: "100%", background: "#f8f9fa" }}>
+              <aside className="journey-step-library">
+                <div><span className="eyebrow">Add a step</span><h3>What happens next?</h3><p>Choose a step, then connect it to your journey.</p></div>
+                {["Engage", "Timing", "Paths", "Data", "Finish"].map((group) => (
+                  <div className="step-group" key={group}>
+                    <span>{group}</span>
+                    {stepCatalog.filter((step) => step.group === group).map((step) => (
+                      <button key={step.type} disabled={editingJourney.status !== "draft"} onClick={() => addNode(step.type)} className="step-library-item">
+                        <span className={`journey-node-icon ${step.type}`}>{step.icon}</span>
+                        <span><strong>{step.title}</strong><small>{step.description}</small></span>
+                        <b>+</b>
+                      </button>
+                    ))}
+                  </div>
+                ))}
+                <div className="customer-field-library">
+                  <div><span>Customer fields</span><small>Suggested from your available event schemas</small></div>
+                  <p>Drag a field into a Decision step.</p>
+                  <div className="field-chips">
+                    {suggestedCustomerFields.map((field) => (
+                      <button
+                        type="button"
+                        draggable
+                        key={field}
+                        onDragStart={(event) => {
+                          event.dataTransfer.setData("application/x-openjourney-field", field);
+                          event.dataTransfer.setData("text/plain", field);
+                          event.dataTransfer.effectAllowed = "copy";
+                        }}
+                        onClick={() => {
+                          if (selectedNode?.data.type === "condition") {
+                            const config = selectedNode.data.config as Record<string, any>;
+                            updateSelectedNodeConfig("dsl", { ...(config.dsl || {}), field });
+                          }
+                        }}
+                        title={selectedNode?.data.type === "condition" ? `Use ${field}` : "Select a Decision step, then click or drag"}
+                      >
+                        ⋮⋮ {field}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </aside>
+
+              <div className="journey-canvas">
+                <div className={`canvas-guidance ${selectedEdgeId ? "insert-mode" : ""}`}>
+                  {selectedEdgeId ? "Connection selected — choose a step to insert it here" : selectedNode ? "New linear steps are inserted after the selected step" : "Select a step or connection, then choose what happens next"}
+                </div>
                 <ReactFlow
                   nodes={nodes}
                   edges={edges}
+                  edgeTypes={journeyEdgeTypes}
                   onNodesChange={onNodesChange}
                   onEdgesChange={onEdgesChange}
+                  onNodeDragStart={() => rememberCanvas()}
+                  nodesDraggable={editingJourney.status === "draft"}
+                  nodesConnectable={editingJourney.status === "draft"}
                   onConnect={onConnect}
                   onNodeClick={onNodeClick}
+                  onEdgeClick={onEdgeClick}
+                  onPaneClick={() => { setSelectedNodeId(null); setSelectedEdgeId(null); }}
+                  deleteKeyCode={null}
                   fitView
                 >
-                  <Background color="#ccc" gap={16} />
+                  <Background color="#d9ddea" gap={24} size={1} />
                   <Controls />
                   <MiniMap />
                 </ReactFlow>
-
-                <div style={{ position: "absolute", top: 10, left: 10, zIndex: 4, display: "flex", flexWrap: "wrap", gap: "0.5rem", background: "rgba(255,255,255,0.9)", padding: "5px", borderRadius: "5px", border: "1px solid #ccc" }}>
-                  <button onClick={() => addNode("delay")}>+ Delay</button>
-                  <button onClick={() => addNode("condition")}>+ Condition</button>
-                  <button onClick={() => addNode("split")}>+ Split</button>
-                  <button onClick={() => addNode("message")}>+ Message</button>
-                  <button onClick={() => addNode("wait_event")}>+ Wait Event</button>
-                  <button onClick={() => addNode("action")}>+ Action</button>
-                  <button onClick={() => addNode("goal")}>+ Goal</button>
-                  <button onClick={() => addNode("exit")}>+ Exit</button>
-                </div>
+                <div className="canvas-history-controls"><button onClick={undoCanvas} disabled={undoHistory.current.length === 0} title="Undo (Ctrl/⌘+Z)">↶ Undo</button><button onClick={redoCanvas} disabled={redoHistory.current.length === 0} title="Redo (Ctrl/⌘+Shift+Z)">↷ Redo</button></div>
               </div>
 
-              <article className="card" style={{ height: "100%", overflowY: "auto" }}>
+              <aside className="journey-inspector">
                 {renderNodeConfigPanel()}
 
                 {selectedNode && (
-                  <div style={{ marginTop: "2rem", borderTop: "1px solid #eee", paddingTop: "1rem" }}>
-                    <h4>Edit Outgoing Edge Labels</h4>
-                    <p className="muted" style={{ fontSize: "11px" }}>If selected node is a Condition, Split, or Wait Event, outgoing edges must carry a branch label.</p>
+                  <details className="advanced-settings">
+                    <summary>Path connection settings</summary>
+                    <p className="field-help">Decision, split, and event steps need a label for every outgoing path.</p>
                     {edges.filter(e => e.source === selectedNode.id).map((e) => (
-                      <label key={e.id} style={{ display: "block", marginBottom: "0.5rem" }}>
-                        To Node {e.target} Branch Label
+                      <label key={e.id}>
+                        Path to {e.target}
                         <input
                           value={e.label ? String(e.label) : ""}
                           onChange={(evt) => {
+                            rememberCanvas();
                             setEdges((eds) =>
                               eds.map((edge) =>
                                 edge.id === e.id ? { ...edge, label: evt.target.value } : edge
@@ -886,17 +1209,17 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
                         />
                       </label>
                     ))}
-                  </div>
+                  </details>
                 )}
-              </article>
+              </aside>
             </>
           )}
 
           {editorMode === "json" && (
             <textarea
               value={rawJSON}
-              onChange={(e) => setRawJSON(e.target.value)}
-              style={{ width: "100%", height: "100%", fontFamily: "monospace", fontSize: "12px", border: "1px solid #ccc", padding: "10px", borderRadius: "5px" }}
+              onChange={(e) => { setRawJSON(e.target.value); setIsDirty(true); }}
+              className="journey-json-editor"
             />
           )}
 
@@ -1081,74 +1404,44 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
   }
 
   return (
-    <section className="stack">
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: "2rem" }}>
-        <article className="card" style={{ height: "fit-content" }}>
-          <h2>Create journey</h2>
-          <form onSubmit={handleCreate} className="schema-form" style={{ gridTemplateColumns: "1fr" }}>
-            <label>Name
-              <input value={name} onChange={event => setName(event.target.value)} required placeholder="Welcome Series" />
-            </label>
-            <label>Description
-              <input value={description} onChange={event => setDescription(event.target.value)} placeholder="Activation flow" />
-            </label>
-            <label>Graph
-              <textarea value={graph} onChange={event => setGraph(event.target.value)} rows={6} />
-            </label>
-            <button type="submit" disabled={saving || !apiKey || !name.trim()}>
-              {saving ? "Saving..." : "Create journey"}
-            </button>
+    <section className="journeys-home">
+      <div className="journeys-home-hero">
+        <div><span className="eyebrow">Customer journeys</span><h2>Turn customer moments into meaningful experiences</h2><p>Build automated, personal journeys without writing code.</p></div>
+        <details className="create-journey-panel">
+          <summary>+ Create journey</summary>
+          <form onSubmit={handleCreate}>
+            <label>Journey name<input value={name} onChange={event => setName(event.target.value)} required placeholder="New customer welcome" autoFocus /></label>
+            <label>What is this journey for?<input value={description} onChange={event => setDescription(event.target.value)} placeholder="Help new customers reach their first success" /></label>
+            <div className="starter-preview"><span>→</span><div><strong>Start with a simple journey</strong><small>We’ll create an entry and exit. Add messages, waits, and decisions in the visual builder.</small></div></div>
+            <div className="form-actions"><button type="button" className="secondary" onClick={() => { setName(""); setDescription(""); }}>Clear</button><button type="submit" disabled={saving || !apiKey || !name.trim()}>{saving ? "Creating..." : "Create and design"}</button></div>
           </form>
-          <ErrorMessage value={error} />
-        </article>
+        </details>
+      </div>
+      <ErrorMessage value={error} />
 
-        <article className="card">
-          <div className="section-title">
+      <article className="journey-list-card">
+          <div className="journey-list-header">
             <div>
-              <div className="eyebrow">Durable workflows</div>
-              <h2>Journeys ({journeys.length})</h2>
+              <h3>Your journeys</h3><span>{journeys.length} total</span>
             </div>
-            <button onClick={() => void load()} disabled={!apiKey || loading}>
+            <button className="secondary" onClick={() => void load()} disabled={!apiKey || loading}>
               {loading ? "Loading..." : "Refresh"}
             </button>
           </div>
-          {loading && <p>Loading journeys...</p>}
-          {!loading && journeys.length === 0 && <p className="muted">No journeys configured.</p>}
+          {loading && <div className="journey-empty"><span>◌</span><p>Loading journeys…</p></div>}
+          {!loading && journeys.length === 0 && <div className="journey-empty"><span>⌁</span><h3>Create your first customer journey</h3><p>Start with a welcome flow, an abandoned-cart reminder, or any customer moment you want to automate.</p></div>}
           {!loading && journeys.length > 0 && (
-            <div style={{ overflowX: "auto" }}>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Status</th>
-                    <th>Latest version</th>
-                    <th>Updated</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {journeys.map(journey => (
-                    <tr key={journey.id}>
-                      <td>
-                        <strong>{journey.name}</strong>
-                        {journey.description && <div style={{ fontSize: "11px", color: "var(--muted)" }}>{journey.description}</div>}
-                      </td>
-                      <td><span className={`pill ${journey.status}`}>{journey.status}</span></td>
-                      <td>{journey.latest_version}</td>
-                      <td>{new Date(journey.updated_at).toLocaleString()}</td>
-                      <td>
-                        <button onClick={() => openEditor(journey)} className="small secondary">
-                          Edit Graph
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="journey-grid">
+              {journeys.map(journey => (
+                <button key={journey.id} onClick={() => openEditor(journey)} className="journey-card">
+                  <div className="journey-card-top"><span className="journey-card-icon">⌁</span><span className={`pill ${journey.status}`}>{journey.status}</span></div>
+                  <div><h3>{journey.name}</h3><p>{journey.description || "No description yet"}</p></div>
+                  <footer><span>Version {journey.latest_version || "Draft"}</span><span>Updated {new Date(journey.updated_at).toLocaleDateString()}</span><b>Open →</b></footer>
+                </button>
+              ))}
             </div>
           )}
-        </article>
-      </div>
+      </article>
     </section>
   );
 }

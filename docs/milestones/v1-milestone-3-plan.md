@@ -609,7 +609,7 @@ task ends with a **Done when** check.
    and the intent is **not** `transactional`, reschedule `available_at` to the next window
    open. *Done when:* a unit test with a fixed clock defers a marketing send out of quiet
    hours and lets a transactional one through. — done: implemented quiet hours check in internal/journey/quiethours.go with full support for midnight-wrapping, timezone and DST computations, integrated with DeliverNext, and verified via extensive fixed-clock unit tests.
- 5. **Fatigue across channels** (§2.4): extend `SentCountSince` (`internal/postgres/delivery.go`)
+5. [x] **Fatigue across channels** (§2.4): extend `SentCountSince` (`internal/postgres/delivery.go`)
     to UNION `delivery_attempts` + `journey_message_intents` sends. *Done when:* a profile at
     its cap from campaign sends is `fatigued` for a journey send too. — done: extended `SentCountSince` with a `UNION ALL` query across campaign `delivery_attempts` and journey `journey_message_intents` and verified via a database integration test.
 6. [x] **Transactional priority + basic fairness**: the intent due-index already orders
@@ -645,20 +645,20 @@ task ends with a **Done when** check.
    `npm run build` passes and the views render against seeded data. — done: pause/resume toggle, run inspector (status + transition timeline), and DLQ table with retry button implemented in web/src/sections/Journeys.tsx, verified with tsc typecheck and vite production build.
 
 ### Milestone 8.8 — Fake-clock, replay/determinism, integration, load & audit (closeout)
-1. **Fake-clock end-to-end test** in `internal/postgres/journeys_integration_test.go` — done: TestJourneysFakeClockEndToEnd added and passes; verified correctly shifting database available_at and FakeClock time; bug fixed in CompileProfileSingle. (copy
+1. [x] **Fake-clock end-to-end test** in `internal/postgres/journeys_integration_test.go` — done: TestJourneysFakeClockEndToEnd added and passes; verified correctly shifting database available_at and FakeClock time; bug fixed in CompileProfileSingle. (copy
    the `TestCampaignsEndToEnd` build, `campaigns_integration_test.go:267`, DB-gated skip on
    `OPENJOURNEY_TEST_DATABASE_URL`): a full `entry→delay→condition→split→message→wait(timeout)→
    goal→exit` journey driven by advancing the `FakeClock`; assert transitions, one intent per
    message node, `message.sent` emitted, run `completed`. *Done when:* the fake-clock journey
    passes without real waiting.
-2. **Replay compatibility test** — done: TestJourneysReplayCompatibility added and passes; verified executing two sequential replays of identical inputs/setup against same published journey version resulting in byte-identical SHA256 hashes of transition causal history. (re-run a recorded step/event sequence against the pinned
+2. [x] **Replay compatibility test** — done: TestJourneysReplayCompatibility added and passes; verified executing two sequential replays of identical inputs/setup against same published journey version resulting in byte-identical SHA256 hashes of transition causal history. (re-run a recorded step/event sequence against the pinned
    immutable `journey_versions` graph → identical `journey_transitions` checksum (the journey
    analog of `TestCampaignsReproducibility`, `campaigns_integration_test.go:464`). *Done when:*
    two replays of the same version + inputs produce byte-identical transition sequences.)
-3. **Duplicate/reordered/late-event determinism tests** — done: TestJourneysDeterminism added and passes; verified (1) duplicate entry events are idempotent, (2) late/reordered wait_event trigger events do not cause premature transitions, and (3) wait_event trigger vs. timeout races resolve deterministically to exactly one branch. (duplicate entry
+3. [x] **Duplicate/reordered/late-event determinism tests** — done: TestJourneysDeterminism added and passes; verified (1) duplicate entry events are idempotent, (2) late/reordered wait_event trigger events do not cause premature transitions, and (3) wait_event trigger vs. timeout races resolve deterministically to exactly one branch. (duplicate entry
    event → one run; the awaited event + its timeout racing → exactly one branch taken. *Done when:*
    all three cases assert single, deterministic outcomes.)
-4. **Worker-kill load smoke** `scripts/smoke-journeys.sh` (copy
+4. [x] **Worker-kill load smoke** `scripts/smoke-journeys.sh` (copy
    `scripts/smoke-campaign-delivery.sh`): enroll N participants (event + time driven), kill
    `journeys-worker` mid-flight (`docker kill`), reset `locked_until`, restart, assert no
    duplicate `message.sent`, all runs terminal, deterministic branch counts. `chmod +x`; add
