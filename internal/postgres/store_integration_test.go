@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -553,6 +554,64 @@ func TestExperimentMigrationAndDefaultScopesIntegration(t *testing.T) {
 		"experiments:read", "experiments:write", "reports:read",
 	}); err != nil {
 		t.Fatalf("CreateRole experiment/report scopes: %v", err)
+	}
+}
+
+func TestExperimentBindingsMigrationIntegration(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	for table, columns := range map[string][]string{
+		"campaigns":               {"experiment_id"},
+		"delivery_attempts":       {"experiment_id", "variant"},
+		"journey_message_intents": {"experiment_id", "variant"},
+	} {
+		for _, column := range columns {
+			var exists bool
+			if err := store.pool.QueryRow(ctx, `SELECT EXISTS (
+				SELECT 1 FROM information_schema.columns
+				WHERE table_schema='public' AND table_name=$1 AND column_name=$2
+			)`, table, column).Scan(&exists); err != nil {
+				t.Fatal(err)
+			}
+			if !exists {
+				t.Fatalf("column %s.%s does not exist", table, column)
+			}
+		}
+	}
+
+	checks := map[string][]string{
+		"delivery_attempts_decision_check": {
+			"sent", "suppressed", "no_consent", "fatigued", "render_failed", "send_failed",
+			"failed", "holdout", "processing", "provider_sent", "retryable_failed", "event_emitted",
+		},
+		"journey_message_intents_decision_check": {
+			"sent", "suppressed", "no_consent", "fatigued", "render_failed", "send_failed",
+			"failed", "holdout", "processing", "provider_sent", "retryable_failed",
+		},
+	}
+	for constraint, decisions := range checks {
+		var definition string
+		if err := store.pool.QueryRow(ctx, `SELECT pg_get_constraintdef(oid)
+			FROM pg_constraint WHERE conname=$1`, constraint).Scan(&definition); err != nil {
+			t.Fatalf("read constraint %s: %v", constraint, err)
+		}
+		for _, decision := range decisions {
+			if !strings.Contains(definition, "'"+decision+"'") {
+				t.Errorf("constraint %s does not allow %q: %s", constraint, decision, definition)
+			}
+		}
 	}
 }
 

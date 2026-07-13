@@ -385,9 +385,9 @@ Testing bar: unit + golden per milestone; one consolidated integration/determini
 6. [x] **OpenAPI** entries for the new routes. *Done when:* redocly lints clean. — done: all four experiment CRUD routes and their experiment/variant schemas are documented; Redocly lint and the focused experiment endpoint test pass.
 
 ### Milestone 9.2 — Wire variants into campaigns & journeys
-1. **Migration** `019_experiment_bindings.sql` per §2.2 (`campaigns.experiment_id`;
+1. [x] **Migration** `019_experiment_bindings.sql` per §2.2 (`campaigns.experiment_id`;
    `variant`/`experiment_id` on both disposition tables; `holdout` decision + the missing
-   journey CHECK). *Done when:* columns/constraints exist.
+   journey CHECK). *Done when:* columns/constraints exist. — done: migration 019 applies cleanly, and TestExperimentBindingsMigrationIntegration proves every binding/stamp column and complete campaign/journey decision constraint exists.
 2. **Campaign variant resolution.** In `internal/campaigns/deliver.go`, if the campaign has an
    `experiment_id`, per recipient call `experiment.Assign`, write the assignment, and choose the
    variant's `template_id` (fall back to the campaign template); stamp `variant`+`experiment_id`
