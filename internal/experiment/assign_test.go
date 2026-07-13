@@ -1,6 +1,12 @@
 package experiment
 
-import "testing"
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"strings"
+	"testing"
+)
 
 func TestAssignStableAcrossRepeatedCallsAndRestartEquivalent(t *testing.T) {
 	variants := []Variant{{Label: "control", Weight: 50}, {Label: "treatment", Weight: 50}}
@@ -12,12 +18,49 @@ func TestAssignStableAcrossRepeatedCallsAndRestartEquivalent(t *testing.T) {
 		}
 	}
 
-	// Assign has no process-local state: invoking it again from only persisted inputs
-	// models reconstructing the assignment after a process restart.
+	// Reconstruct the inputs to prove repeated runs do not depend on slice or string identity.
 	restartedVariant, restartedHoldout := Assign(string([]byte("immutable-seed")), string([]byte("profile-42")), append([]Variant(nil), variants...), 10)
 	if restartedVariant != wantVariant || restartedHoldout != wantHoldout {
 		t.Fatalf("restart-equivalent assignment changed: got (%q, %t), want (%q, %t)", restartedVariant, restartedHoldout, wantVariant, wantHoldout)
 	}
+}
+
+func TestAssignStableAcrossFreshProcesses(t *testing.T) {
+	run := func() string {
+		t.Helper()
+		cmd := exec.Command(os.Args[0], "-test.run=^TestAssignFreshProcessHelper$")
+		cmd.Env = append(os.Environ(), "OPENJOURNEY_ASSIGN_FRESH_PROCESS=1")
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("fresh assignment process: %v\n%s", err, output)
+		}
+		for _, line := range strings.Split(string(output), "\n") {
+			if strings.HasPrefix(line, "assignment=") {
+				return line
+			}
+		}
+		t.Fatalf("fresh assignment process returned no assignment: %s", output)
+		return ""
+	}
+
+	first := run()
+	second := run()
+	if first != second {
+		t.Fatalf("assignment changed across process restart: first %q, second %q", first, second)
+	}
+	variant, holdout := Assign("immutable-seed", "profile-42", []Variant{{Label: "control", Weight: 50}, {Label: "treatment", Weight: 50}}, 10)
+	want := fmt.Sprintf("assignment=%s,%t", variant, holdout)
+	if first != want {
+		t.Fatalf("fresh process assignment = %q, in-process assignment = %q", first, want)
+	}
+}
+
+func TestAssignFreshProcessHelper(t *testing.T) {
+	if os.Getenv("OPENJOURNEY_ASSIGN_FRESH_PROCESS") != "1" {
+		return
+	}
+	variant, holdout := Assign("immutable-seed", "profile-42", []Variant{{Label: "control", Weight: 50}, {Label: "treatment", Weight: 50}}, 10)
+	fmt.Printf("assignment=%s,%t\n", variant, holdout)
 }
 
 func TestAssignHoldoutAndWeightedDistribution(t *testing.T) {

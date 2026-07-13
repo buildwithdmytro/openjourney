@@ -454,8 +454,8 @@ Testing bar: unit + golden per milestone; one consolidated integration/determini
    and match the API numbers. — done: inline-SVG funnel, deliverability tiles, experiment comparison table, advisory significance states, and campaign/journey report links ship with focused tests proving exact API values in switchable light/dark themes; full typecheck/build and 26-test frontend suite pass.
 
 ### Milestone 9.7 — Integration, determinism, load & audit (closeout)
-1. **Determinism tests**: same subject → same variant across re-runs and a simulated process
-   restart; holdout excluded from sends; assignment distribution within tolerance of weights.
+1. [x] **Determinism tests**: same subject → same variant across re-runs and a simulated process
+   restart; holdout excluded from sends; assignment distribution within tolerance of weights. — done: a fresh-process test invokes the assignment in two independent OS processes and matches the in-process result; focused tests also prove 100k-subject weighted/holdout distribution tolerance and 500-recipient campaign holdouts produce no sends.
 2. **Attribution tests**: goal in/out of window; revenue summed; duplicate goal event → one
    conversion fact (projection idempotency).
 3. **Report-accuracy integration test** (DB-gated, copy `TestCampaignsEndToEnd`): seed a
