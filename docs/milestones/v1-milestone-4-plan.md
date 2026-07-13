@@ -436,9 +436,9 @@ Testing bar: unit + golden per milestone; one consolidated integration/determini
 1. [x] **Stats** `internal/experiment/stats.go`: two-proportion z-test → `{rate, uplift, z, pValue,
    ciLow, ciHigh}`; frequentist, documented. Unit-test against known textbook inputs. *Done
    when:* the math matches hand-computed values. — done: CompareProportions z-test stats library unit-tested with textbook examples and edge cases.
-2. **Experiment report** `ExperimentReport` (per variant: sent, conversions, rate, uplift vs
+2. [x] **Experiment report** `ExperimentReport` (per variant: sent, conversions, rate, uplift vs
    control, p-value, CI; guardrail rates). `GET /v1/reports/experiments/{id}`. *Done when:* a
-   seeded experiment returns correct per-variant stats.
+   seeded experiment returns correct per-variant stats. — done: Store.ExperimentReport method and GET /v1/reports/experiments/{id} handler implemented and integration-tested.
 3. **Winner recommendation**: compute `winner_variant` when significance threshold met + no
    guardrail regression; store as a recommendation. A separate `POST /v1/experiments/{id}/rollout`
    requires the **human-actor approval gate** (reuse the journeys publish gate) and creates a new

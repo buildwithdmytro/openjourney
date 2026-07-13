@@ -2,8 +2,10 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"testing"
 	"time"
@@ -268,5 +270,233 @@ func assertReportCounts(t *testing.T, funnel domain.ReportFunnel, deliverability
 	}
 	if deliverability.ComplaintRate != 1.0/3.0 {
 		t.Errorf("complaint rate = %v, want %v", deliverability.ComplaintRate, 1.0/3.0)
+	}
+}
+
+func TestExperimentReport(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	key := fmt.Sprintf("experiment-report-%d", time.Now().UnixNano())
+	if err := store.EnsureDevelopmentTenant(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	p, err := store.Authenticate(ctx, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.AppID == "" {
+		p.AppID, err = store.GetFirstAppID(ctx, p.TenantID, p.WorkspaceID)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	pOther := domain.Principal{TenantID: p.TenantID}
+	if err := store.pool.QueryRow(ctx, `INSERT INTO workspaces (tenant_id,name)
+		VALUES ($1,'Experiment isolation') RETURNING id`, p.TenantID).Scan(&pOther.WorkspaceID); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create dependencies for the campaign
+	var segmentID, identityID, templateID string
+	if err := store.pool.QueryRow(ctx, `INSERT INTO segments (tenant_id,workspace_id,name)
+		VALUES ($1,$2,'Experiment report segment') RETURNING id`, p.TenantID, p.WorkspaceID).Scan(&segmentID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.pool.QueryRow(ctx, `INSERT INTO sending_identities
+		(tenant_id,workspace_id,channel,from_address,provider) VALUES ($1,$2,'email',$3,'ses') RETURNING id`,
+		p.TenantID, p.WorkspaceID, fmt.Sprintf("experiment-report-%d@example.com", time.Now().UnixNano())).Scan(&identityID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.pool.QueryRow(ctx, `INSERT INTO templates
+		(tenant_id,workspace_id,name,channel,html_template,sending_identity_id)
+		VALUES ($1,$2,'Experiment report template','email','hello',$3) RETURNING id`,
+		p.TenantID, p.WorkspaceID, identityID).Scan(&templateID); err != nil {
+		t.Fatal(err)
+	}
+	var campaignID string
+	if err := store.pool.QueryRow(ctx, `INSERT INTO campaigns
+		(tenant_id,workspace_id,name,segment_id,template_id) VALUES ($1,$2,'Experiment campaign',$3,$4) RETURNING id`,
+		p.TenantID, p.WorkspaceID, segmentID, templateID).Scan(&campaignID); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create experiment
+	exp, err := store.CreateExperiment(ctx, p, domain.Experiment{
+		Name:        "Test Stats Experiment",
+		SubjectType: "campaign",
+		Seed:        "some-seed",
+		PrimaryGoal: json.RawMessage(`{"event_type": "signup", "name": "signup"}`),
+		GuardrailGoals: json.RawMessage(`[{"event_type": "churn", "name": "churn"}]`),
+		Variants: []domain.ExperimentVariant{
+			{Label: "control", Weight: 50, IsControl: true},
+			{Label: "treatment", Weight: 50, IsControl: false},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Seed sends (delivery_attempts)
+	// Control: 100 sends
+	for i := 0; i < 100; i++ {
+		profileID := fmt.Sprintf("00000000-0000-0000-0000-%012d", i)
+		// Insert profile first (due to foreign key constraint)
+		_, err = store.pool.Exec(ctx, `INSERT INTO profiles (id, tenant_id, workspace_id, app_id, external_id)
+			VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING`, profileID, p.TenantID, p.WorkspaceID, p.AppID, fmt.Sprintf("p-c-%d", i))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, err = store.pool.Exec(ctx, `INSERT INTO delivery_attempts
+			(campaign_id, tenant_id, profile_id, channel, endpoint, decision, experiment_id, variant)
+			VALUES ($1, $2, $3, 'email', 'c@example.com', 'sent', $4, 'control')`,
+			campaignID, p.TenantID, profileID, exp.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Treatment: 100 sends
+	for i := 0; i < 100; i++ {
+		profileID := fmt.Sprintf("00000000-0000-0000-0000-%012d", i+100)
+		_, err = store.pool.Exec(ctx, `INSERT INTO profiles (id, tenant_id, workspace_id, app_id, external_id)
+			VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING`, profileID, p.TenantID, p.WorkspaceID, p.AppID, fmt.Sprintf("p-t-%d", i))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, err = store.pool.Exec(ctx, `INSERT INTO delivery_attempts
+			(campaign_id, tenant_id, profile_id, channel, endpoint, decision, experiment_id, variant)
+			VALUES ($1, $2, $3, 'email', 't@example.com', 'sent', $4, 'treatment')`,
+			campaignID, p.TenantID, profileID, exp.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Seed primary conversions: 10 in control, 20 in treatment
+	for i := 0; i < 10; i++ {
+		profileID := fmt.Sprintf("00000000-0000-0000-0000-%012d", i)
+		_, err = store.pool.Exec(ctx, `INSERT INTO conversion_facts
+			(tenant_id, workspace_id, source_type, source_id, experiment_id, variant, profile_id, goal_name, occurred_at, attributed_send_at, source_event_id)
+			VALUES ($1, $2, 'campaign', $3, $4, 'control', $5, 'signup', now(), now(), gen_random_uuid())`,
+			p.TenantID, p.WorkspaceID, campaignID, exp.ID, profileID)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for i := 0; i < 20; i++ {
+		profileID := fmt.Sprintf("00000000-0000-0000-0000-%012d", i+100)
+		_, err = store.pool.Exec(ctx, `INSERT INTO conversion_facts
+			(tenant_id, workspace_id, source_type, source_id, experiment_id, variant, profile_id, goal_name, occurred_at, attributed_send_at, source_event_id)
+			VALUES ($1, $2, 'campaign', $3, $4, 'treatment', $5, 'signup', now(), now(), gen_random_uuid())`,
+			p.TenantID, p.WorkspaceID, campaignID, exp.ID, profileID)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Seed guardrail conversions: 5 in control, 15 in treatment
+	for i := 0; i < 5; i++ {
+		profileID := fmt.Sprintf("00000000-0000-0000-0000-%012d", i)
+		_, err = store.pool.Exec(ctx, `INSERT INTO conversion_facts
+			(tenant_id, workspace_id, source_type, source_id, experiment_id, variant, profile_id, goal_name, occurred_at, attributed_send_at, source_event_id)
+			VALUES ($1, $2, 'campaign', $3, $4, 'control', $5, 'churn', now(), now(), gen_random_uuid())`,
+			p.TenantID, p.WorkspaceID, campaignID, exp.ID, profileID)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for i := 0; i < 15; i++ {
+		profileID := fmt.Sprintf("00000000-0000-0000-0000-%012d", i+100)
+		_, err = store.pool.Exec(ctx, `INSERT INTO conversion_facts
+			(tenant_id, workspace_id, source_type, source_id, experiment_id, variant, profile_id, goal_name, occurred_at, attributed_send_at, source_event_id)
+			VALUES ($1, $2, 'campaign', $3, $4, 'treatment', $5, 'churn', now(), now(), gen_random_uuid())`,
+			p.TenantID, p.WorkspaceID, campaignID, exp.ID, profileID)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Run report
+	rpt, err := store.ExperimentReport(ctx, p, exp.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if rpt.ExperimentID != exp.ID {
+		t.Errorf("expected experiment id %s, got %s", exp.ID, rpt.ExperimentID)
+	}
+
+	var controlReport, treatmentReport *domain.ExperimentVariantReport
+	for i := range rpt.Variants {
+		if rpt.Variants[i].Label == "control" {
+			controlReport = &rpt.Variants[i]
+		} else if rpt.Variants[i].Label == "treatment" {
+			treatmentReport = &rpt.Variants[i]
+		}
+	}
+
+	if controlReport == nil || treatmentReport == nil {
+		t.Fatal("missing control or treatment reports")
+	}
+
+	// Assert control stats
+	if controlReport.Sent != 100 {
+		t.Errorf("control sent: got %d, want 100", controlReport.Sent)
+	}
+	if controlReport.Conversions != 10 {
+		t.Errorf("control conversions: got %d, want 10", controlReport.Conversions)
+	}
+	if controlReport.Rate != 0.1 {
+		t.Errorf("control rate: got %f, want 0.1", controlReport.Rate)
+	}
+
+	// Assert treatment stats (matching Example 1 z-test calculations)
+	if treatmentReport.Sent != 100 {
+		t.Errorf("treatment sent: got %d, want 100", treatmentReport.Sent)
+	}
+	if treatmentReport.Conversions != 20 {
+		t.Errorf("treatment conversions: got %d, want 20", treatmentReport.Conversions)
+	}
+	if treatmentReport.Rate != 0.2 {
+		t.Errorf("treatment rate: got %f, want 0.2", treatmentReport.Rate)
+	}
+	if treatmentReport.Uplift != 1.0 {
+		t.Errorf("treatment uplift: got %f, want 1.0", treatmentReport.Uplift)
+	}
+	if math.Abs(treatmentReport.ZScore-1.980295) > 1e-5 {
+		t.Errorf("treatment z-score: got %f, want ~1.980295", treatmentReport.ZScore)
+	}
+	if math.Abs(treatmentReport.PValue-0.047670) > 1e-5 {
+		t.Errorf("treatment p-value: got %f, want ~0.047670", treatmentReport.PValue)
+	}
+
+	// Assert guardrail stats
+	if len(controlReport.Guardrails) != 1 || controlReport.Guardrails[0].GoalName != "churn" || controlReport.Guardrails[0].Conversions != 5 || controlReport.Guardrails[0].Rate != 0.05 {
+		t.Errorf("control guardrails: %+v", controlReport.Guardrails)
+	}
+	if len(treatmentReport.Guardrails) != 1 || treatmentReport.Guardrails[0].GoalName != "churn" || treatmentReport.Guardrails[0].Conversions != 15 || treatmentReport.Guardrails[0].Rate != 0.15 {
+		t.Errorf("treatment guardrails: %+v", treatmentReport.Guardrails)
+	}
+
+	// Isolation check
+	_, err = store.ExperimentReport(ctx, pOther, exp.ID)
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("expected ErrNotFound for other workspace, got %v", err)
 	}
 }

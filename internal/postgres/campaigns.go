@@ -323,12 +323,16 @@ func (s *Store) DeleteDeliveryAttempt(ctx context.Context, tenantID, campaignID,
 
 func (s *Store) GetDeliveryAttempt(ctx context.Context, campaignID, profileID, channel string) (domain.DeliveryAttempt, error) {
 	var out domain.DeliveryAttempt
+	var variantVal *string
 	err := s.pool.QueryRow(ctx, `SELECT id, campaign_id, tenant_id, profile_id, channel, endpoint, decision, reason, provider_message_id, policy_snapshot, attempted_at, created_at, experiment_id, variant
 		FROM delivery_attempts WHERE campaign_id=$1 AND profile_id=$2 AND channel=$3`,
 		campaignID, profileID, channel).
-		Scan(&out.ID, &out.CampaignID, &out.TenantID, &out.ProfileID, &out.Channel, &out.Endpoint, &out.Decision, &out.Reason, &out.ProviderMessageID, &out.PolicySnapshot, &out.AttemptedAt, &out.CreatedAt, &out.ExperimentID, &out.Variant)
+		Scan(&out.ID, &out.CampaignID, &out.TenantID, &out.ProfileID, &out.Channel, &out.Endpoint, &out.Decision, &out.Reason, &out.ProviderMessageID, &out.PolicySnapshot, &out.AttemptedAt, &out.CreatedAt, &out.ExperimentID, &variantVal)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.DeliveryAttempt{}, ErrNotFound
+	}
+	if err == nil && variantVal != nil {
+		out.Variant = *variantVal
 	}
 	return out, err
 }

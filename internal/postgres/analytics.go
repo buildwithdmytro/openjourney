@@ -2,9 +2,11 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
+	"github.com/buildwithdmytro/openjourney/internal/experiment"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -143,4 +145,180 @@ func setDeliverabilityRates(sent int64, deliverability *domain.ReportDeliverabil
 	}
 	deliverability.BounceRate = float64(deliverability.Bounced.Total) / float64(sent)
 	deliverability.ComplaintRate = float64(deliverability.Complained.Total) / float64(sent)
+}
+
+// ExperimentReport generates a statistical report for an experiment, comparing
+// each variant to the control variant on the primary goal and reporting guardrail rates.
+func (s *Store) ExperimentReport(ctx context.Context, p domain.Principal, experimentID string) (domain.ExperimentReport, error) {
+	e, err := s.GetExperiment(ctx, p, experimentID)
+	if err != nil {
+		return domain.ExperimentReport{}, err
+	}
+
+	var query string
+	if e.SubjectType == "campaign" {
+		query = `SELECT d.variant, COUNT(*)
+			FROM delivery_attempts d
+			JOIN campaigns c ON c.id = d.campaign_id AND c.tenant_id = d.tenant_id
+			WHERE c.tenant_id = $1 AND c.workspace_id = $2 AND d.experiment_id = $3
+				AND (d.decision = 'sent' OR d.decision = 'holdout') AND d.variant IS NOT NULL
+			GROUP BY d.variant`
+	} else {
+		query = `SELECT variant, COUNT(*)
+			FROM journey_message_intents
+			WHERE tenant_id = $1 AND workspace_id = $2 AND experiment_id = $3
+				AND (decision = 'sent' OR decision = 'holdout') AND variant IS NOT NULL
+			GROUP BY variant`
+	}
+
+	sends := make(map[string]int64)
+	rows, err := s.pool.Query(ctx, query, p.TenantID, p.WorkspaceID, experimentID)
+	if err != nil {
+		return domain.ExperimentReport{}, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var variant string
+		var count int64
+		if err := rows.Scan(&variant, &count); err != nil {
+			return domain.ExperimentReport{}, err
+		}
+		sends[variant] = count
+	}
+	if err := rows.Err(); err != nil {
+		return domain.ExperimentReport{}, err
+	}
+
+	conversions := make(map[string]map[string]int64)
+	cRows, err := s.pool.Query(ctx, `
+		SELECT variant, goal_name, COUNT(*)
+		FROM conversion_facts
+		WHERE tenant_id = $1 AND workspace_id = $2 AND experiment_id = $3 AND variant IS NOT NULL
+		GROUP BY variant, goal_name`, p.TenantID, p.WorkspaceID, experimentID)
+	if err != nil {
+		return domain.ExperimentReport{}, err
+	}
+	defer cRows.Close()
+	for cRows.Next() {
+		var variant, goalName string
+		var count int64
+		if err := cRows.Scan(&variant, &goalName, &count); err != nil {
+			return domain.ExperimentReport{}, err
+		}
+		if conversions[variant] == nil {
+			conversions[variant] = make(map[string]int64)
+		}
+		conversions[variant][goalName] = count
+	}
+	if err := cRows.Err(); err != nil {
+		return domain.ExperimentReport{}, err
+	}
+
+	var primaryGoal struct {
+		EventType string `json:"event_type"`
+		Name      string `json:"name"`
+	}
+	if len(e.PrimaryGoal) > 0 {
+		_ = json.Unmarshal(e.PrimaryGoal, &primaryGoal)
+	}
+	primaryGoalName := primaryGoal.Name
+	if primaryGoalName == "" {
+		primaryGoalName = primaryGoal.EventType
+	}
+
+	var guardrailGoals []struct {
+		EventType string `json:"event_type"`
+		Name      string `json:"name"`
+	}
+	if len(e.GuardrailGoals) > 0 {
+		_ = json.Unmarshal(e.GuardrailGoals, &guardrailGoals)
+	}
+
+	var controlVariant *domain.ExperimentVariant
+	for i := range e.Variants {
+		if e.Variants[i].IsControl {
+			controlVariant = &e.Variants[i]
+			break
+		}
+	}
+
+	var allLabels []string
+	labelToIsControl := make(map[string]bool)
+	for _, v := range e.Variants {
+		allLabels = append(allLabels, v.Label)
+		labelToIsControl[v.Label] = v.IsControl
+	}
+
+	hasHoldout := e.HoldoutPct > 0
+	if !hasHoldout {
+		if sends["holdout"] > 0 {
+			hasHoldout = true
+		} else {
+			for _, g := range conversions["holdout"] {
+				if g > 0 {
+					hasHoldout = true
+					break
+				}
+			}
+		}
+	}
+	if hasHoldout {
+		allLabels = append(allLabels, "holdout")
+		labelToIsControl["holdout"] = false
+	}
+
+	report := domain.ExperimentReport{
+		ExperimentID: experimentID,
+		Variants:     []domain.ExperimentVariantReport{},
+	}
+
+	for _, label := range allLabels {
+		sent := sends[label]
+		conv := conversions[label][primaryGoalName]
+
+		var stats experiment.VariantStats
+		if controlVariant != nil {
+			controlLabel := controlVariant.Label
+			controlSent := sends[controlLabel]
+			controlConv := conversions[controlLabel][primaryGoalName]
+			stats = experiment.CompareProportions(controlSent, controlConv, sent, conv)
+		} else {
+			stats = experiment.CompareProportions(0, 0, sent, conv)
+		}
+
+		vr := domain.ExperimentVariantReport{
+			Label:       label,
+			IsControl:   labelToIsControl[label],
+			Sent:        sent,
+			Conversions: conv,
+			Rate:        stats.Rate,
+			Uplift:      stats.Uplift,
+			ZScore:      stats.ZScore,
+			PValue:      stats.PValue,
+			CILow:       stats.CILow,
+			CIHigh:      stats.CIHigh,
+			Guardrails:  []domain.ExperimentGuardrail{},
+		}
+
+		for _, gGoal := range guardrailGoals {
+			gName := gGoal.Name
+			if gName == "" {
+				gName = gGoal.EventType
+			}
+			gConv := conversions[label][gName]
+			var gRate float64
+			if sent > 0 {
+				gRate = float64(gConv) / float64(sent)
+			}
+			vr.Guardrails = append(vr.Guardrails, domain.ExperimentGuardrail{
+				GoalName:    gName,
+				Conversions: gConv,
+				Rate:        gRate,
+			})
+		}
+
+		report.Variants = append(report.Variants, vr)
+	}
+
+	return report, nil
 }

@@ -34,3 +34,17 @@ func (s *Server) getJourneyReport(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, report)
 }
+
+func (s *Server) getExperimentReport(w http.ResponseWriter, r *http.Request) {
+	principal := principalFrom(r)
+	report, err := s.store.ExperimentReport(r.Context(), principal, r.PathValue("id"))
+	if errors.Is(err, postgres.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "experiment report not found")
+		return
+	}
+	if err != nil {
+		internalError(w, err, "get experiment report", principal)
+		return
+	}
+	writeJSON(w, http.StatusOK, report)
+}

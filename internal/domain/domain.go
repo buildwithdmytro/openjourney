@@ -613,6 +613,31 @@ type JourneyReport struct {
 	Deliverability ReportDeliverability `json:"deliverability"`
 }
 
+type ExperimentReport struct {
+	ExperimentID string                    `json:"experiment_id"`
+	Variants     []ExperimentVariantReport `json:"variants"`
+}
+
+type ExperimentVariantReport struct {
+	Label       string                `json:"label"`
+	IsControl   bool                  `json:"is_control"`
+	Sent        int64                 `json:"sent"`
+	Conversions int64                 `json:"conversions"`
+	Rate        float64               `json:"rate"`
+	Uplift      float64               `json:"uplift"`
+	ZScore      float64               `json:"z_score"`
+	PValue      float64               `json:"p_value"`
+	CILow       float64               `json:"ci_low"`
+	CIHigh      float64               `json:"ci_high"`
+	Guardrails  []ExperimentGuardrail `json:"guardrails"`
+}
+
+type ExperimentGuardrail struct {
+	GoalName    string  `json:"goal_name"`
+	Conversions int64   `json:"conversions"`
+	Rate        float64 `json:"rate"`
+}
+
 type JourneyRun struct {
 	ID                string          `json:"id"`
 	TenantID          string          `json:"tenant_id"`

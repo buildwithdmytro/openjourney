@@ -899,6 +899,7 @@ func (s *Store) resolveWaitingRuns(ctx context.Context, tx pgx.Tx, event domain.
 
 func (s *Store) ClaimJourneyMessageIntent(ctx context.Context, workerID string) (domain.JourneyMessageIntent, bool, error) {
 	var out domain.JourneyMessageIntent
+	var variantVal *string
 	err := s.pool.QueryRow(ctx, `UPDATE journey_message_intents SET
 			status='processing',
 			attempts=attempts+1,
@@ -921,12 +922,15 @@ func (s *Store) ClaimJourneyMessageIntent(ctx context.Context, workerID string) 
 			LIMIT 1
 		)
 		RETURNING id, run_id, tenant_id, workspace_id, journey_id, journey_version_id, node_id, profile_id, experiment_id, variant, template_id, channel, endpoint, transactional, status, attempts, available_at, locked_until, decision, reason, provider_message_id, policy_snapshot, error_message, created_at, updated_at`).
-		Scan(&out.ID, &out.RunID, &out.TenantID, &out.WorkspaceID, &out.JourneyID, &out.JourneyVersionID, &out.NodeID, &out.ProfileID, &out.ExperimentID, &out.Variant, &out.TemplateID, &out.Channel, &out.Endpoint, &out.Transactional, &out.Status, &out.Attempts, &out.AvailableAt, &out.LockedUntil, &out.Decision, &out.Reason, &out.ProviderMessageID, &out.PolicySnapshot, &out.ErrorMessage, &out.CreatedAt, &out.UpdatedAt)
+		Scan(&out.ID, &out.RunID, &out.TenantID, &out.WorkspaceID, &out.JourneyID, &out.JourneyVersionID, &out.NodeID, &out.ProfileID, &out.ExperimentID, &variantVal, &out.TemplateID, &out.Channel, &out.Endpoint, &out.Transactional, &out.Status, &out.Attempts, &out.AvailableAt, &out.LockedUntil, &out.Decision, &out.Reason, &out.ProviderMessageID, &out.PolicySnapshot, &out.ErrorMessage, &out.CreatedAt, &out.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.JourneyMessageIntent{}, false, nil
 	}
 	if err != nil {
 		return domain.JourneyMessageIntent{}, false, err
+	}
+	if variantVal != nil {
+		out.Variant = *variantVal
 	}
 	return out, true, nil
 }

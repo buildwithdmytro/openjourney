@@ -61,6 +61,45 @@ func (s *reportHTTPStore) JourneyReport(_ context.Context, p domain.Principal, i
 	}, nil
 }
 
+func (s *reportHTTPStore) ExperimentReport(_ context.Context, p domain.Principal, id string) (domain.ExperimentReport, error) {
+	s.principals = append(s.principals, p)
+	s.IDs = append(s.IDs, id)
+	if id == "missing" {
+		return domain.ExperimentReport{}, postgres.ErrNotFound
+	}
+	return domain.ExperimentReport{
+		ExperimentID: id,
+		Variants: []domain.ExperimentVariantReport{
+			{
+				Label:       "control",
+				IsControl:   true,
+				Sent:        100,
+				Conversions: 10,
+				Rate:        0.1,
+				Uplift:      0,
+				ZScore:      0,
+				PValue:      1,
+				CILow:       0,
+				CIHigh:      0,
+				Guardrails:  []domain.ExperimentGuardrail{},
+			},
+			{
+				Label:       "treatment",
+				IsControl:   false,
+				Sent:        100,
+				Conversions: 20,
+				Rate:        0.2,
+				Uplift:      1.0,
+				ZScore:      1.980295,
+				PValue:      0.047670,
+				CILow:       0.002002,
+				CIHigh:      0.197998,
+				Guardrails:  []domain.ExperimentGuardrail{},
+			},
+		},
+	}, nil
+}
+
 func TestReportEndpointsReturnJSONAndPassScopedPrincipal(t *testing.T) {
 	store := &reportHTTPStore{}
 	store.scopes = []string{"reports:read"}
@@ -94,6 +133,18 @@ func TestReportEndpointsReturnJSONAndPassScopedPrincipal(t *testing.T) {
 				}
 			},
 		},
+		{
+			path: "/v1/reports/experiments/experiment-5",
+			check: func(t *testing.T, body []byte) {
+				var got domain.ExperimentReport
+				if err := json.Unmarshal(body, &got); err != nil {
+					t.Fatalf("decode experiment report: %v", err)
+				}
+				if got.ExperimentID != "experiment-5" || len(got.Variants) != 2 || got.Variants[1].Label != "treatment" || got.Variants[1].PValue != 0.047670 {
+					t.Fatalf("unexpected experiment JSON: %+v", got)
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -110,7 +161,7 @@ func TestReportEndpointsReturnJSONAndPassScopedPrincipal(t *testing.T) {
 		tt.check(t, res.Body.Bytes())
 	}
 
-	if len(store.principals) != 2 || len(store.IDs) != 2 {
+	if len(store.principals) != 3 || len(store.IDs) != 3 {
 		t.Fatalf("report calls principals=%d ids=%v", len(store.principals), store.IDs)
 	}
 	for _, principal := range store.principals {
@@ -118,7 +169,7 @@ func TestReportEndpointsReturnJSONAndPassScopedPrincipal(t *testing.T) {
 			t.Fatalf("report received unscoped principal: %+v", principal)
 		}
 	}
-	if store.IDs[0] != "campaign-7" || store.IDs[1] != "journey-9" {
+	if store.IDs[0] != "campaign-7" || store.IDs[1] != "journey-9" || store.IDs[2] != "experiment-5" {
 		t.Fatalf("unexpected report IDs: %v", store.IDs)
 	}
 }
@@ -128,7 +179,7 @@ func TestReportEndpointsRequireReportsReadScope(t *testing.T) {
 	store.scopes = []string{"campaigns:read", "journeys:read"}
 	server := New(store, 75)
 
-	for _, path := range []string{"/v1/reports/campaigns/campaign-7", "/v1/reports/journeys/journey-9"} {
+	for _, path := range []string{"/v1/reports/campaigns/campaign-7", "/v1/reports/journeys/journey-9", "/v1/reports/experiments/experiment-5"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		req.Header.Set("Authorization", "Bearer test-key")
 		res := httptest.NewRecorder()
@@ -147,7 +198,7 @@ func TestReportEndpointsReturnNotFound(t *testing.T) {
 	store.scopes = []string{"reports:read"}
 	server := New(store, 75)
 
-	for _, path := range []string{"/v1/reports/campaigns/missing", "/v1/reports/journeys/missing"} {
+	for _, path := range []string{"/v1/reports/campaigns/missing", "/v1/reports/journeys/missing", "/v1/reports/experiments/missing"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		req.Header.Set("Authorization", "Bearer test-key")
 		res := httptest.NewRecorder()

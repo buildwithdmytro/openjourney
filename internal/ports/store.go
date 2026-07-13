@@ -137,6 +137,7 @@ type Store interface {
 	GetDeliveryAttempt(ctx context.Context, campaignID, profileID, channel string) (domain.DeliveryAttempt, error)
 	CampaignReport(ctx context.Context, p domain.Principal, campaignID string) (domain.CampaignReport, error)
 	JourneyReport(ctx context.Context, p domain.Principal, journeyID string) (domain.JourneyReport, error)
+	ExperimentReport(ctx context.Context, p domain.Principal, experimentID string) (domain.ExperimentReport, error)
 }
 
 type TokenVerifier interface {
