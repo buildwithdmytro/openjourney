@@ -2,30 +2,36 @@ package campaigns
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/buildwithdmytro/openjourney/internal/channels"
 	"github.com/buildwithdmytro/openjourney/internal/domain"
+	assignment "github.com/buildwithdmytro/openjourney/internal/experiment"
 	"github.com/buildwithdmytro/openjourney/internal/ports"
 )
 
 type mockStore struct {
 	ports.Store
-	jobs                   map[string]domain.DeliveryJob
-	campaigns              map[string]domain.Campaign
-	templates              map[string]domain.Template
-	identities             map[string]domain.SendingIdentity
-	profiles               map[string]domain.Profile
-	deliveryAttempts       map[string]domain.DeliveryAttempt
-	deletedAttempts        []string
-	failedJobs             map[string]string
-	completedJobs          map[string]bool
-	createdAttempts        []domain.DeliveryAttempt
-	updatedAttempts        []string
-	isSuppressedFunc       func(ctx context.Context, p domain.Principal, channel, endpoint string) (bool, error)
+	jobs             map[string]domain.DeliveryJob
+	campaigns        map[string]domain.Campaign
+	templates        map[string]domain.Template
+	identities       map[string]domain.SendingIdentity
+	profiles         map[string]domain.Profile
+	deliveryAttempts map[string]domain.DeliveryAttempt
+	deletedAttempts  []string
+	failedJobs       map[string]string
+	completedJobs    map[string]bool
+	createdAttempts  []domain.DeliveryAttempt
+	updatedAttempts  []string
+	isSuppressedFunc func(ctx context.Context, p domain.Principal, channel, endpoint string) (bool, error)
+	experiments      map[string]domain.Experiment
+	assignments      map[string]domain.ExperimentAssignment
+	emittedEvents    []domain.Event
 }
 
 func newMockStore() *mockStore {
@@ -38,6 +44,8 @@ func newMockStore() *mockStore {
 		deliveryAttempts: make(map[string]domain.DeliveryAttempt),
 		failedJobs:       make(map[string]string),
 		completedJobs:    make(map[string]bool),
+		experiments:      make(map[string]domain.Experiment),
+		assignments:      make(map[string]domain.ExperimentAssignment),
 	}
 }
 
@@ -66,6 +74,24 @@ func (m *mockStore) GetTemplate(ctx context.Context, p domain.Principal, id stri
 		return domain.Template{}, errors.New("template not found")
 	}
 	return t, nil
+}
+
+func (m *mockStore) GetExperiment(ctx context.Context, p domain.Principal, id string) (domain.Experiment, error) {
+	e, ok := m.experiments[id]
+	if !ok {
+		return domain.Experiment{}, ports.ErrNotFound
+	}
+	return e, nil
+}
+
+func (m *mockStore) AssignExperiment(ctx context.Context, p domain.Principal, experimentID, profileID, variant string) (domain.ExperimentAssignment, error) {
+	key := experimentID + ":" + profileID
+	if existing, ok := m.assignments[key]; ok {
+		return existing, nil
+	}
+	out := domain.ExperimentAssignment{ExperimentID: experimentID, TenantID: p.TenantID, WorkspaceID: p.WorkspaceID, ProfileID: profileID, Variant: variant}
+	m.assignments[key] = out
+	return out, nil
 }
 
 func (m *mockStore) GetSendingIdentity(ctx context.Context, p domain.Principal, id string) (domain.SendingIdentity, error) {
@@ -98,7 +124,6 @@ func (m *mockStore) GetTenantFatigueQuotas(ctx context.Context, p domain.Princip
 	return 5, 20, nil
 }
 
-
 func (m *mockStore) DeleteDeliveryAttempt(ctx context.Context, tenantID, campaignID, profileID, channel string) error {
 	m.deletedAttempts = append(m.deletedAttempts, profileID)
 	key := campaignID + ":" + profileID + ":" + channel
@@ -127,7 +152,19 @@ func (m *mockStore) UpdateDeliveryAttempt(ctx context.Context, campaignID, profi
 	return nil
 }
 
+func (m *mockStore) SetDeliveryAttemptExperiment(ctx context.Context, tenantID, campaignID, profileID, channel, experimentID, variant string) error {
+	key := campaignID + ":" + profileID + ":" + channel
+	att, ok := m.deliveryAttempts[key]
+	if !ok {
+		return ports.ErrNotFound
+	}
+	att.ExperimentID, att.Variant = &experimentID, variant
+	m.deliveryAttempts[key] = att
+	return nil
+}
+
 func (m *mockStore) AcceptEvents(ctx context.Context, p domain.Principal, events []domain.Event) ([]string, error) {
+	m.emittedEvents = append(m.emittedEvents, events...)
 	return []string{"event-id"}, nil
 }
 
@@ -163,10 +200,12 @@ func (m *mockStore) SentCountSince(ctx context.Context, p domain.Principal, prof
 }
 
 type testAdapter struct {
-	err error
+	err      error
+	messages []ports.RenderedMessage
 }
 
 func (a *testAdapter) Send(ctx context.Context, msg ports.RenderedMessage) (string, error) {
+	a.messages = append(a.messages, msg)
 	return "msg-123", a.err
 }
 
@@ -345,7 +384,6 @@ func (a *countingAdapter) Send(ctx context.Context, msg ports.RenderedMessage) (
 func (a *countingAdapter) ValidateConfig(identity domain.SendingIdentity) error {
 	return nil
 }
-
 
 func TestDeliverNext_PermanentError(t *testing.T) {
 	store := newMockStore()
@@ -617,5 +655,81 @@ func TestDeliverNext_RenderFailure(t *testing.T) {
 	}
 	if !foundRenderFailed {
 		t.Errorf("expected attempt to be updated to render_failed, got: %v", store.updatedAttempts)
+	}
+}
+
+func TestDeliverNext_ExperimentVariantsAndHoldout(t *testing.T) {
+	store := newMockStore()
+	experimentID := "experiment-1"
+	controlTemplateID, variantTemplateID := "template-control", "template-b"
+	controlSubject, variantSubject := "control", "variant-b"
+	store.templates[controlTemplateID] = domain.Template{ID: controlTemplateID, Channel: "email", SubjectTemplate: &controlSubject}
+	store.templates[variantTemplateID] = domain.Template{ID: variantTemplateID, Channel: "email", SubjectTemplate: &variantSubject}
+	store.experiments[experimentID] = domain.Experiment{
+		ID: experimentID, Seed: "campaign-seed", HoldoutPct: 10,
+		Variants: []domain.ExperimentVariant{
+			{Label: "control", Weight: 50},
+			{Label: "b", Weight: 50, TemplateID: &variantTemplateID},
+		},
+	}
+	store.campaigns["campaign-1"] = domain.Campaign{ID: "campaign-1", TenantID: "tenant-1", WorkspaceID: "workspace-1", TemplateID: controlTemplateID, ExperimentID: &experimentID}
+
+	job := domain.DeliveryJob{ID: "job-1", CampaignID: "campaign-1", TenantID: "tenant-1"}
+	expected := map[string]int{}
+	variants := []assignment.Variant{{Label: "control", Weight: 50}, {Label: "b", Weight: 50}}
+	for i := 0; i < 500; i++ {
+		profileID := fmt.Sprintf("profile-%03d", i)
+		store.profiles[profileID] = domain.Profile{ID: profileID, ExternalID: "external-" + profileID}
+		job.Recipients = append(job.Recipients, domain.Recipient{ProfileID: profileID, Endpoint: profileID + "@example.com"})
+		label, _ := assignment.Assign("campaign-seed", profileID, variants, 10)
+		expected[label]++
+	}
+	store.jobs[job.ID] = job
+	adapter := &testAdapter{}
+	processed, err := DeliverNext(context.Background(), store, "worker-1", Config{Adapter: adapter})
+	if err != nil || !processed {
+		t.Fatalf("DeliverNext = %v, %v", processed, err)
+	}
+
+	actual := map[string]int{}
+	for _, attempt := range store.deliveryAttempts {
+		actual[attempt.Variant]++
+		if attempt.ExperimentID == nil || *attempt.ExperimentID != experimentID {
+			t.Fatalf("attempt missing experiment stamp: %+v", attempt)
+		}
+		if attempt.Variant == "holdout" && attempt.Decision != "holdout" {
+			t.Fatalf("holdout decision = %q", attempt.Decision)
+		}
+	}
+	for _, label := range []string{"control", "b", "holdout"} {
+		if expected[label] == 0 || actual[label] != expected[label] {
+			t.Fatalf("%s assignments = %d, want deterministic %d", label, actual[label], expected[label])
+		}
+	}
+	if len(adapter.messages) != len(job.Recipients)-expected["holdout"] {
+		t.Fatalf("sends = %d, want %d", len(adapter.messages), len(job.Recipients)-expected["holdout"])
+	}
+	for _, message := range adapter.messages {
+		profileID := strings.TrimSuffix(message.Endpoint, "@example.com")
+		assigned := store.assignments[experimentID+":"+profileID].Variant
+		wantSubject := controlSubject
+		if assigned == "b" {
+			wantSubject = variantSubject
+		}
+		if message.Subject != wantSubject {
+			t.Fatalf("profile %s variant %s subject = %q, want %q", profileID, assigned, message.Subject, wantSubject)
+		}
+	}
+	if len(store.emittedEvents) != len(adapter.messages) {
+		t.Fatalf("message.sent events = %d, sends = %d", len(store.emittedEvents), len(adapter.messages))
+	}
+	for _, event := range store.emittedEvents {
+		var payload map[string]any
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload["experiment_id"] != experimentID || (payload["variant"] != "control" && payload["variant"] != "b") {
+			t.Fatalf("event payload stamps = %v", payload)
+		}
 	}
 }

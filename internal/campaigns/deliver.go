@@ -10,6 +10,7 @@ import (
 
 	"github.com/buildwithdmytro/openjourney/internal/channels"
 	"github.com/buildwithdmytro/openjourney/internal/domain"
+	assignment "github.com/buildwithdmytro/openjourney/internal/experiment"
 	"github.com/buildwithdmytro/openjourney/internal/policy"
 	"github.com/buildwithdmytro/openjourney/internal/ports"
 	"github.com/buildwithdmytro/openjourney/internal/render"
@@ -67,56 +68,6 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 		return true, nil
 	}
 
-	// Load Sending Identity
-	var identity domain.SendingIdentity
-	if template.SendingIdentityID != nil && *template.SendingIdentityID != "" {
-		identity, err = store.GetSendingIdentity(ctx, p, *template.SendingIdentityID)
-		if err != nil {
-			slog.Error("failed to get sending identity", "error", err, "sending_identity_id", *template.SendingIdentityID)
-			_ = store.FailDeliveryJob(ctx, job.ID, fmt.Sprintf("failed to get sending identity: %v", err))
-			return true, nil
-		}
-	} else {
-		identity = domain.SendingIdentity{
-			Channel:     "email",
-			Provider:    "fake",
-			MaxSendRate: 10,
-		}
-	}
-
-	// Resolve appropriate channel adapter
-	var adapter ports.ChannelAdapter
-	if cfg.Adapter != nil {
-		adapter = cfg.Adapter
-	} else {
-		switch identity.Provider {
-		case "ses":
-			if cfg.SESAdapter != nil {
-				adapter = cfg.SESAdapter
-			} else {
-				adapter = channels.NewSESAdapter()
-			}
-		case "webhook":
-			if cfg.WebhookAdapter != nil {
-				adapter = cfg.WebhookAdapter
-			} else {
-				adapter = channels.NewWebhookAdapter()
-			}
-		case "fake", "":
-			if cfg.FakeAdapter != nil {
-				adapter = cfg.FakeAdapter
-			} else {
-				adapter = channels.NewFakeAdapter()
-			}
-		default:
-			if cfg.FakeAdapter != nil {
-				adapter = cfg.FakeAdapter
-			} else {
-				adapter = channels.NewFakeAdapter()
-			}
-		}
-	}
-
 	// Fatigue checks caps from tenant_quotas configuration
 	maxSends24h, maxSends7d, err := store.GetTenantFatigueQuotas(ctx, p)
 	if err != nil {
@@ -126,26 +77,73 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 		maxSends7d = 20
 	}
 
-	caps := policy.Caps{
-		Channel:     template.Channel,
-		Topic:       "marketing",
-		MaxSends24h: maxSends24h,
-		MaxSends7d:  maxSends7d,
+	var exp domain.Experiment
+	if camp.ExperimentID != nil && *camp.ExperimentID != "" {
+		exp, err = store.GetExperiment(ctx, p, *camp.ExperimentID)
+		if err != nil {
+			_ = store.FailDeliveryJob(ctx, job.ID, fmt.Sprintf("failed to get experiment: %v", err))
+			return true, nil
+		}
 	}
-
 
 	var hasRetryableError bool
 	var retryableErrMsg string
 
 	// Process recipients
+	baseTemplate := template
 	for _, rec := range job.Recipients {
+		selectedTemplate := baseTemplate
+		variant := ""
+		if camp.ExperimentID != nil && *camp.ExperimentID != "" {
+			variants := make([]assignment.Variant, 0, len(exp.Variants))
+			for _, candidate := range exp.Variants {
+				variants = append(variants, assignment.Variant{Label: candidate.Label, Weight: candidate.Weight})
+			}
+			computed, _ := assignment.Assign(exp.Seed, rec.ProfileID, variants, exp.HoldoutPct)
+			stored, assignErr := store.AssignExperiment(ctx, p, exp.ID, rec.ProfileID, computed)
+			if assignErr != nil {
+				slog.Error("failed to assign experiment", "error", assignErr, "profile_id", rec.ProfileID)
+				continue
+			}
+			variant = stored.Variant
+			variantTemplateOK := true
+			for _, candidate := range exp.Variants {
+				if candidate.Label == variant && candidate.TemplateID != nil && *candidate.TemplateID != "" {
+					selectedTemplate, err = store.GetTemplate(ctx, p, *candidate.TemplateID)
+					if err != nil {
+						slog.Error("failed to get variant template", "error", err, "profile_id", rec.ProfileID)
+						variantTemplateOK = false
+					}
+					break
+				}
+			}
+			if !variantTemplateOK {
+				continue
+			}
+		}
+
+		var identity domain.SendingIdentity
+		if selectedTemplate.SendingIdentityID != nil && *selectedTemplate.SendingIdentityID != "" {
+			identity, err = store.GetSendingIdentity(ctx, p, *selectedTemplate.SendingIdentityID)
+			if err != nil {
+				slog.Error("failed to get sending identity", "error", err)
+				continue
+			}
+		} else {
+			identity = domain.SendingIdentity{Channel: "email", Provider: "fake", MaxSendRate: 10}
+		}
+		adapter := adapterFor(identity.Provider, cfg)
+		template = selectedTemplate
+		caps := policy.Caps{Channel: template.Channel, Topic: "marketing", MaxSends24h: maxSends24h, MaxSends7d: maxSends7d}
 		attempt := domain.DeliveryAttempt{
-			CampaignID: camp.ID,
-			TenantID:   camp.TenantID,
-			ProfileID:  rec.ProfileID,
-			Channel:    template.Channel,
-			Endpoint:   rec.Endpoint,
-			Decision:   "processing",
+			CampaignID:   camp.ID,
+			TenantID:     camp.TenantID,
+			ProfileID:    rec.ProfileID,
+			Channel:      template.Channel,
+			Endpoint:     rec.Endpoint,
+			Decision:     "processing",
+			ExperimentID: camp.ExperimentID,
+			Variant:      variant,
 		}
 		inserted, err := store.CreateDeliveryAttempt(ctx, attempt)
 		if err != nil {
@@ -170,6 +168,16 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 				attempt = existing
 			default:
 				// other state, skip to be safe
+				continue
+			}
+		}
+		if camp.ExperimentID != nil && *camp.ExperimentID != "" {
+			if err := store.SetDeliveryAttemptExperiment(ctx, camp.TenantID, camp.ID, rec.ProfileID, template.Channel, *camp.ExperimentID, variant); err != nil {
+				slog.Error("failed to stamp experiment on delivery attempt", "error", err)
+				continue
+			}
+			if variant == "holdout" {
+				_ = store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, "holdout", "experiment holdout", "", nil)
 				continue
 			}
 		}
@@ -314,6 +322,13 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 			"campaign_id": camp.ID,
 			"channel":     template.Channel,
 			"endpoint":    rec.Endpoint,
+			"experiment_id": func() string {
+				if camp.ExperimentID != nil {
+					return *camp.ExperimentID
+				}
+				return ""
+			}(),
+			"variant": variant,
 		})
 		emittedEvent := domain.Event{
 			Type:           "message.sent",
@@ -360,4 +375,27 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 
 	slog.Info("delivery job completed successfully", "job_id", job.ID)
 	return true, nil
+}
+
+func adapterFor(provider string, cfg Config) ports.ChannelAdapter {
+	if cfg.Adapter != nil {
+		return cfg.Adapter
+	}
+	switch provider {
+	case "ses":
+		if cfg.SESAdapter != nil {
+			return cfg.SESAdapter
+		}
+		return channels.NewSESAdapter()
+	case "webhook":
+		if cfg.WebhookAdapter != nil {
+			return cfg.WebhookAdapter
+		}
+		return channels.NewWebhookAdapter()
+	default:
+		if cfg.FakeAdapter != nil {
+			return cfg.FakeAdapter
+		}
+		return channels.NewFakeAdapter()
+	}
 }

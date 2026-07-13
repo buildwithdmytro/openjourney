@@ -25,11 +25,11 @@ func (s *Store) CreateCampaign(ctx context.Context, p domain.Principal, c domain
 	}
 
 	var out domain.Campaign
-	err := s.pool.QueryRow(ctx, `INSERT INTO campaigns (tenant_id, workspace_id, name, description, segment_id, template_id, status, scheduled_at, segment_version, template_version, recipient_count)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-		RETURNING id, tenant_id, workspace_id, name, description, segment_id, template_id, status, scheduled_at, manifest_key, segment_version, template_version, evaluated_at, recipient_count, created_at, updated_at`,
-		p.TenantID, p.WorkspaceID, c.Name, c.Description, c.SegmentID, c.TemplateID, c.Status, c.ScheduledAt, c.SegmentVersion, c.TemplateVersion, c.RecipientCount).
-		Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.Name, &out.Description, &out.SegmentID, &out.TemplateID, &out.Status, &out.ScheduledAt, &out.ManifestKey, &out.SegmentVersion, &out.TemplateVersion, &out.EvaluatedAt, &out.RecipientCount, &out.CreatedAt, &out.UpdatedAt)
+	err := s.pool.QueryRow(ctx, `INSERT INTO campaigns (tenant_id, workspace_id, name, description, segment_id, template_id, experiment_id, status, scheduled_at, segment_version, template_version, recipient_count)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		RETURNING id, tenant_id, workspace_id, name, description, segment_id, template_id, experiment_id, status, scheduled_at, manifest_key, segment_version, template_version, evaluated_at, recipient_count, created_at, updated_at`,
+		p.TenantID, p.WorkspaceID, c.Name, c.Description, c.SegmentID, c.TemplateID, c.ExperimentID, c.Status, c.ScheduledAt, c.SegmentVersion, c.TemplateVersion, c.RecipientCount).
+		Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.Name, &out.Description, &out.SegmentID, &out.TemplateID, &out.ExperimentID, &out.Status, &out.ScheduledAt, &out.ManifestKey, &out.SegmentVersion, &out.TemplateVersion, &out.EvaluatedAt, &out.RecipientCount, &out.CreatedAt, &out.UpdatedAt)
 	if err != nil {
 		return domain.Campaign{}, err
 	}
@@ -40,10 +40,10 @@ func (s *Store) CreateCampaign(ctx context.Context, p domain.Principal, c domain
 
 func (s *Store) GetCampaign(ctx context.Context, p domain.Principal, id string) (domain.Campaign, error) {
 	var out domain.Campaign
-	err := s.pool.QueryRow(ctx, `SELECT id, tenant_id, workspace_id, name, description, segment_id, template_id, status, scheduled_at, manifest_key, segment_version, template_version, evaluated_at, recipient_count, created_at, updated_at
+	err := s.pool.QueryRow(ctx, `SELECT id, tenant_id, workspace_id, name, description, segment_id, template_id, experiment_id, status, scheduled_at, manifest_key, segment_version, template_version, evaluated_at, recipient_count, created_at, updated_at
 		FROM campaigns WHERE tenant_id=$1 AND workspace_id=$2 AND id=$3`,
 		p.TenantID, p.WorkspaceID, id).
-		Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.Name, &out.Description, &out.SegmentID, &out.TemplateID, &out.Status, &out.ScheduledAt, &out.ManifestKey, &out.SegmentVersion, &out.TemplateVersion, &out.EvaluatedAt, &out.RecipientCount, &out.CreatedAt, &out.UpdatedAt)
+		Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.Name, &out.Description, &out.SegmentID, &out.TemplateID, &out.ExperimentID, &out.Status, &out.ScheduledAt, &out.ManifestKey, &out.SegmentVersion, &out.TemplateVersion, &out.EvaluatedAt, &out.RecipientCount, &out.CreatedAt, &out.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Campaign{}, ErrNotFound
 	}
@@ -52,10 +52,10 @@ func (s *Store) GetCampaign(ctx context.Context, p domain.Principal, id string) 
 
 func (s *Store) GetCampaignSystem(ctx context.Context, tenantID, id string) (domain.Campaign, error) {
 	var out domain.Campaign
-	err := s.pool.QueryRow(ctx, `SELECT id, tenant_id, workspace_id, name, description, segment_id, template_id, status, scheduled_at, manifest_key, segment_version, template_version, evaluated_at, recipient_count, created_at, updated_at
+	err := s.pool.QueryRow(ctx, `SELECT id, tenant_id, workspace_id, name, description, segment_id, template_id, experiment_id, status, scheduled_at, manifest_key, segment_version, template_version, evaluated_at, recipient_count, created_at, updated_at
 		FROM campaigns WHERE tenant_id=$1 AND id=$2`,
 		tenantID, id).
-		Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.Name, &out.Description, &out.SegmentID, &out.TemplateID, &out.Status, &out.ScheduledAt, &out.ManifestKey, &out.SegmentVersion, &out.TemplateVersion, &out.EvaluatedAt, &out.RecipientCount, &out.CreatedAt, &out.UpdatedAt)
+		Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.Name, &out.Description, &out.SegmentID, &out.TemplateID, &out.ExperimentID, &out.Status, &out.ScheduledAt, &out.ManifestKey, &out.SegmentVersion, &out.TemplateVersion, &out.EvaluatedAt, &out.RecipientCount, &out.CreatedAt, &out.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Campaign{}, ErrNotFound
 	}
@@ -64,11 +64,11 @@ func (s *Store) GetCampaignSystem(ctx context.Context, tenantID, id string) (dom
 
 func (s *Store) UpdateCampaign(ctx context.Context, p domain.Principal, c domain.Campaign) (domain.Campaign, error) {
 	var out domain.Campaign
-	err := s.pool.QueryRow(ctx, `UPDATE campaigns SET name=$4, description=$5, segment_id=$6, template_id=$7, status=$8, scheduled_at=$9, manifest_key=$10, segment_version=$11, template_version=$12, evaluated_at=$13, recipient_count=$14, updated_at=now()
+	err := s.pool.QueryRow(ctx, `UPDATE campaigns SET name=$4, description=$5, segment_id=$6, template_id=$7, experiment_id=$8, status=$9, scheduled_at=$10, manifest_key=$11, segment_version=$12, template_version=$13, evaluated_at=$14, recipient_count=$15, updated_at=now()
 		WHERE tenant_id=$1 AND workspace_id=$2 AND id=$3
-		RETURNING id, tenant_id, workspace_id, name, description, segment_id, template_id, status, scheduled_at, manifest_key, segment_version, template_version, evaluated_at, recipient_count, created_at, updated_at`,
-		p.TenantID, p.WorkspaceID, c.ID, c.Name, c.Description, c.SegmentID, c.TemplateID, c.Status, c.ScheduledAt, c.ManifestKey, c.SegmentVersion, c.TemplateVersion, c.EvaluatedAt, c.RecipientCount).
-		Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.Name, &out.Description, &out.SegmentID, &out.TemplateID, &out.Status, &out.ScheduledAt, &out.ManifestKey, &out.SegmentVersion, &out.TemplateVersion, &out.EvaluatedAt, &out.RecipientCount, &out.CreatedAt, &out.UpdatedAt)
+		RETURNING id, tenant_id, workspace_id, name, description, segment_id, template_id, experiment_id, status, scheduled_at, manifest_key, segment_version, template_version, evaluated_at, recipient_count, created_at, updated_at`,
+		p.TenantID, p.WorkspaceID, c.ID, c.Name, c.Description, c.SegmentID, c.TemplateID, c.ExperimentID, c.Status, c.ScheduledAt, c.ManifestKey, c.SegmentVersion, c.TemplateVersion, c.EvaluatedAt, c.RecipientCount).
+		Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.Name, &out.Description, &out.SegmentID, &out.TemplateID, &out.ExperimentID, &out.Status, &out.ScheduledAt, &out.ManifestKey, &out.SegmentVersion, &out.TemplateVersion, &out.EvaluatedAt, &out.RecipientCount, &out.CreatedAt, &out.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Campaign{}, ErrNotFound
 	}
@@ -81,7 +81,7 @@ func (s *Store) UpdateCampaign(ctx context.Context, p domain.Principal, c domain
 }
 
 func (s *Store) ListCampaigns(ctx context.Context, p domain.Principal) ([]domain.Campaign, error) {
-	rows, err := s.pool.Query(ctx, `SELECT id, tenant_id, workspace_id, name, description, segment_id, template_id, status, scheduled_at, manifest_key, segment_version, template_version, evaluated_at, recipient_count, created_at, updated_at
+	rows, err := s.pool.Query(ctx, `SELECT id, tenant_id, workspace_id, name, description, segment_id, template_id, experiment_id, status, scheduled_at, manifest_key, segment_version, template_version, evaluated_at, recipient_count, created_at, updated_at
 		FROM campaigns WHERE tenant_id=$1 AND workspace_id=$2 ORDER BY created_at DESC`,
 		p.TenantID, p.WorkspaceID)
 	if err != nil {
@@ -92,7 +92,7 @@ func (s *Store) ListCampaigns(ctx context.Context, p domain.Principal) ([]domain
 	var out []domain.Campaign
 	for rows.Next() {
 		var c domain.Campaign
-		err := rows.Scan(&c.ID, &c.TenantID, &c.WorkspaceID, &c.Name, &c.Description, &c.SegmentID, &c.TemplateID, &c.Status, &c.ScheduledAt, &c.ManifestKey, &c.SegmentVersion, &c.TemplateVersion, &c.EvaluatedAt, &c.RecipientCount, &c.CreatedAt, &c.UpdatedAt)
+		err := rows.Scan(&c.ID, &c.TenantID, &c.WorkspaceID, &c.Name, &c.Description, &c.SegmentID, &c.TemplateID, &c.ExperimentID, &c.Status, &c.ScheduledAt, &c.ManifestKey, &c.SegmentVersion, &c.TemplateVersion, &c.EvaluatedAt, &c.RecipientCount, &c.CreatedAt, &c.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -111,8 +111,8 @@ func (s *Store) ClaimScheduledCampaign(ctx context.Context) (domain.Campaign, bo
 			FOR UPDATE SKIP LOCKED
 			LIMIT 1
 		)
-		RETURNING id, tenant_id, workspace_id, name, description, segment_id, template_id, status, scheduled_at, manifest_key, segment_version, template_version, evaluated_at, recipient_count, created_at, updated_at`).
-		Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.Name, &out.Description, &out.SegmentID, &out.TemplateID, &out.Status, &out.ScheduledAt, &out.ManifestKey, &out.SegmentVersion, &out.TemplateVersion, &out.EvaluatedAt, &out.RecipientCount, &out.CreatedAt, &out.UpdatedAt)
+		RETURNING id, tenant_id, workspace_id, name, description, segment_id, template_id, experiment_id, status, scheduled_at, manifest_key, segment_version, template_version, evaluated_at, recipient_count, created_at, updated_at`).
+		Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.Name, &out.Description, &out.SegmentID, &out.TemplateID, &out.ExperimentID, &out.Status, &out.ScheduledAt, &out.ManifestKey, &out.SegmentVersion, &out.TemplateVersion, &out.EvaluatedAt, &out.RecipientCount, &out.CreatedAt, &out.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Campaign{}, false, nil
 	}
@@ -283,10 +283,10 @@ func (s *Store) CreateDeliveryAttempt(ctx context.Context, attempt domain.Delive
 	if len(policySnapshot) == 0 {
 		policySnapshot = []byte("{}")
 	}
-	res, err := s.pool.Exec(ctx, `INSERT INTO delivery_attempts (campaign_id, tenant_id, profile_id, channel, endpoint, decision, reason, provider_message_id, policy_snapshot, attempted_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+	res, err := s.pool.Exec(ctx, `INSERT INTO delivery_attempts (campaign_id, tenant_id, profile_id, channel, endpoint, decision, reason, provider_message_id, policy_snapshot, attempted_at, experiment_id, variant)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		ON CONFLICT (campaign_id, profile_id, channel) DO NOTHING`,
-		attempt.CampaignID, attempt.TenantID, attempt.ProfileID, attempt.Channel, attempt.Endpoint, attempt.Decision, attempt.Reason, attempt.ProviderMessageID, policySnapshot, attempt.AttemptedAt)
+		attempt.CampaignID, attempt.TenantID, attempt.ProfileID, attempt.Channel, attempt.Endpoint, attempt.Decision, attempt.Reason, attempt.ProviderMessageID, policySnapshot, attempt.AttemptedAt, attempt.ExperimentID, attempt.Variant)
 	if err != nil {
 		return false, err
 	}
@@ -302,6 +302,18 @@ func (s *Store) UpdateDeliveryAttempt(ctx context.Context, campaignID, profileID
 	return err
 }
 
+func (s *Store) SetDeliveryAttemptExperiment(ctx context.Context, tenantID, campaignID, profileID, channel, experimentID, variant string) error {
+	result, err := s.pool.Exec(ctx, `UPDATE delivery_attempts SET experiment_id=$5, variant=$6
+		WHERE tenant_id=$1 AND campaign_id=$2 AND profile_id=$3 AND channel=$4`, tenantID, campaignID, profileID, channel, experimentID, variant)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (s *Store) DeleteDeliveryAttempt(ctx context.Context, tenantID, campaignID, profileID, channel string) error {
 	_, err := s.pool.Exec(ctx, `DELETE FROM delivery_attempts WHERE tenant_id=$1 AND campaign_id=$2 AND profile_id=$3 AND channel=$4`,
 		tenantID, campaignID, profileID, channel)
@@ -310,10 +322,10 @@ func (s *Store) DeleteDeliveryAttempt(ctx context.Context, tenantID, campaignID,
 
 func (s *Store) GetDeliveryAttempt(ctx context.Context, campaignID, profileID, channel string) (domain.DeliveryAttempt, error) {
 	var out domain.DeliveryAttempt
-	err := s.pool.QueryRow(ctx, `SELECT id, campaign_id, tenant_id, profile_id, channel, endpoint, decision, reason, provider_message_id, policy_snapshot, attempted_at, created_at
+	err := s.pool.QueryRow(ctx, `SELECT id, campaign_id, tenant_id, profile_id, channel, endpoint, decision, reason, provider_message_id, policy_snapshot, attempted_at, created_at, experiment_id, variant
 		FROM delivery_attempts WHERE campaign_id=$1 AND profile_id=$2 AND channel=$3`,
 		campaignID, profileID, channel).
-		Scan(&out.ID, &out.CampaignID, &out.TenantID, &out.ProfileID, &out.Channel, &out.Endpoint, &out.Decision, &out.Reason, &out.ProviderMessageID, &out.PolicySnapshot, &out.AttemptedAt, &out.CreatedAt)
+		Scan(&out.ID, &out.CampaignID, &out.TenantID, &out.ProfileID, &out.Channel, &out.Endpoint, &out.Decision, &out.Reason, &out.ProviderMessageID, &out.PolicySnapshot, &out.AttemptedAt, &out.CreatedAt, &out.ExperimentID, &out.Variant)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.DeliveryAttempt{}, ErrNotFound
 	}

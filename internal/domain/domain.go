@@ -445,6 +445,7 @@ type Campaign struct {
 	Description     *string    `json:"description,omitempty"`
 	SegmentID       string     `json:"segment_id"`
 	TemplateID      string     `json:"template_id"`
+	ExperimentID    *string    `json:"experiment_id,omitempty"`
 	Status          string     `json:"status"` // draft, scheduled, building, sending, paused, completed, failed, archived
 	ScheduledAt     *time.Time `json:"scheduled_at,omitempty"`
 	ManifestKey     *string    `json:"manifest_key,omitempty"`
@@ -548,6 +549,8 @@ type DeliveryAttempt struct {
 	ID                string          `json:"id"`
 	CampaignID        string          `json:"campaign_id"`
 	TenantID          string          `json:"tenant_id"`
+	ExperimentID      *string         `json:"experiment_id,omitempty"`
+	Variant           string          `json:"variant,omitempty"`
 	ProfileID         string          `json:"profile_id"`
 	Channel           string          `json:"channel"`
 	Endpoint          string          `json:"endpoint"`

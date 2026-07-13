@@ -388,12 +388,12 @@ Testing bar: unit + golden per milestone; one consolidated integration/determini
 1. [x] **Migration** `019_experiment_bindings.sql` per §2.2 (`campaigns.experiment_id`;
    `variant`/`experiment_id` on both disposition tables; `holdout` decision + the missing
    journey CHECK). *Done when:* columns/constraints exist. — done: migration 019 applies cleanly, and TestExperimentBindingsMigrationIntegration proves every binding/stamp column and complete campaign/journey decision constraint exists.
-2. **Campaign variant resolution.** In `internal/campaigns/deliver.go`, if the campaign has an
+2. [x] **Campaign variant resolution.** In `internal/campaigns/deliver.go`, if the campaign has an
    `experiment_id`, per recipient call `experiment.Assign`, write the assignment, and choose the
    variant's `template_id` (fall back to the campaign template); stamp `variant`+`experiment_id`
    on the `delivery_attempts` row and the `message.sent` payload. `holdout` → record
    `decision='holdout'`, do **not** send. *Done when:* a 2-variant + 10% holdout campaign
-   produces the expected split and no sends for holdout.
+   produces the expected split and no sends for holdout. — done: TestDeliverNext_ExperimentVariantsAndHoldout proves the deterministic two-variant/10% holdout split across 500 recipients, no holdout provider sends, authoritative assignments, variant template selection, and disposition/event stamps.
 3. **Journey variant resolution.** The split node gains an optional `experiment_id` in its
    config → branch label = variant (record the assignment); a message node with an
    `experiment_id` selects the variant template and stamps `variant`+`experiment_id` on the

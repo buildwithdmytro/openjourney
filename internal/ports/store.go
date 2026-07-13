@@ -93,6 +93,7 @@ type Store interface {
 	UpdateExperiment(ctx context.Context, p domain.Principal, experiment domain.Experiment) (domain.Experiment, error)
 	ListExperiments(ctx context.Context, p domain.Principal) ([]domain.Experiment, error)
 	AssignExperiment(ctx context.Context, p domain.Principal, experimentID, profileID, variant string) (domain.ExperimentAssignment, error)
+	SetDeliveryAttemptExperiment(ctx context.Context, tenantID, campaignID, profileID, channel, experimentID, variant string) error
 	CreateJourney(ctx context.Context, p domain.Principal, j domain.Journey) (domain.Journey, error)
 	GetJourney(ctx context.Context, p domain.Principal, id string) (domain.Journey, error)
 	UpdateJourney(ctx context.Context, p domain.Principal, j domain.Journey) (domain.Journey, error)
