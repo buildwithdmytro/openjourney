@@ -417,11 +417,11 @@ Testing bar: unit + golden per milestone; one consolidated integration/determini
    window creates none; projecting twice creates one. — done: a live-Postgres test proves frozen-goal last-touch attribution records the correct workspace/source/experiment/variant/value inside the window, rejects outside-window and newer cross-workspace sends, and remains one row after duplicate projection.
 
 ### Milestone 9.4 — Engagement facts + funnel/deliverability reports
-1. **Engagement projection** (Recipe 6.17): `ProjectEvent` cases for `message.delivered`,
+1. [x] **Engagement projection** (Recipe 6.17): `ProjectEvent` cases for `message.delivered`,
    `email.opened`, `link.clicked`, `message.bounced`, `message.complained` → `engagement_facts`,
    resolving `source_id`/`variant`/`experiment_id`/`profile_id` via a bounded lookup to
    `delivery_attempts`/`journey_message_intents`. *Done when:* projecting each event type creates
-   one fact with the right variant.
+   one fact with the right variant. — done: a live-Postgres test projects all five campaign/journey engagement types with correct source, node, experiment variant, and profile metadata; duplicate projection stays at one fact and a cross-workspace source creates none.
 2. **Reports service** `internal/postgres/analytics.go` (Recipe 6.18): `CampaignReport`,
    `JourneyReport` returning the funnel (targeted/sent/suppressed from `delivery_attempts`;
    delivered/opened/clicked from `engagement_facts`; converted from `conversion_facts`) as both

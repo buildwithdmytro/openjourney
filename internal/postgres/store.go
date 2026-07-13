@@ -538,6 +538,9 @@ func (s *Store) ProjectEvent(ctx context.Context, event domain.AcceptedEvent) er
 			}
 		}
 	}
+	if err := s.projectEngagementFact(ctx, tx, event, profileID); err != nil {
+		return fmt.Errorf("project engagement fact: %w", err)
+	}
 	if profileID != "" {
 		if err := s.projectConversionFact(ctx, tx, event, profileID); err != nil {
 			return fmt.Errorf("project conversion fact: %w", err)
