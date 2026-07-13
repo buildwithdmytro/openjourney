@@ -539,6 +539,11 @@ func (s *Store) ProjectEvent(ctx context.Context, event domain.AcceptedEvent) er
 		}
 	}
 	if profileID != "" {
+		if err := s.projectConversionFact(ctx, tx, event, profileID); err != nil {
+			return fmt.Errorf("project conversion fact: %w", err)
+		}
+	}
+	if profileID != "" {
 		if err := s.enrollEventTriggered(ctx, tx, event, profileID); err != nil {
 			return fmt.Errorf("enroll event triggered: %w", err)
 		}

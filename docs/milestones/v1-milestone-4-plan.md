@@ -410,11 +410,11 @@ Testing bar: unit + golden per milestone; one consolidated integration/determini
 2. [x] **Goal freeze.** Persist the goal + window onto the immutable version at publish/dispatch
    (campaign: at `SaveCampaignManifestAndJobs`; journey: in the published `journey_versions`).
    *Done when:* the frozen goal is readable from the version, not live config. — done: a live-Postgres test proves campaign dispatch and journey publish retain their frozen goal/window after the experiment and draft graph are changed.
-3. **Attribution projection** (Recipe 6.17 + §3.2): a `ProjectEvent` case that, for an event
+3. [x] **Attribution projection** (Recipe 6.17 + §3.2): a `ProjectEvent` case that, for an event
    matching a subject's active goal, does the bounded recent-send lookup and inserts a
    `conversion_facts` row idempotently, copying value from the payload's `value_field`.
    *Done when:* a goal event inside the window creates one attributed conversion; outside the
-   window creates none; projecting twice creates one.
+   window creates none; projecting twice creates one. — done: a live-Postgres test proves frozen-goal last-touch attribution records the correct workspace/source/experiment/variant/value inside the window, rejects outside-window and newer cross-workspace sends, and remains one row after duplicate projection.
 
 ### Milestone 9.4 — Engagement facts + funnel/deliverability reports
 1. **Engagement projection** (Recipe 6.17): `ProjectEvent` cases for `message.delivered`,
