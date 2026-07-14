@@ -373,10 +373,10 @@ be registered in the adapter registry (10.0).**
 1. [x] **Migration** `023_device_tokens.sql` per §2.2 + scopes `device_tokens:read/write` in
    `rbac.go` allowlist and the `api_keys` default array. *Done when:* the table exists; a fresh
    key carries the scopes. — done: created 023_device_tokens.sql migration; added scopes to allowedPermissions allowlist in rbac.go; verified using TestDeviceTokensMigrationAndDefaultScopesIntegration.
-2. **Domain + store CRUD** `internal/postgres/device_tokens.go` (Recipe 6.24) + `ports.Store`:
+2. [x] **Domain + store CRUD** `internal/postgres/device_tokens.go` (Recipe 6.24) + `ports.Store`:
    `RegisterDeviceToken` (upsert), `RetireDeviceToken`, `ListActiveDeviceTokens`,
    `ListDeviceTokensByProfile`. Tenant+workspace+app scoped. *Done when:* re-register upserts to
-   one active row; a live-Postgres test proves two-workspace isolation.
+   one active row; a live-Postgres test proves two-workspace isolation. — done: implemented RegisterDeviceToken, RetireDeviceToken, RetireDeviceTokenByID, ListActiveDeviceTokens, and ListDeviceTokensByProfile in internal/postgres/device_tokens.go; verified using TestDeviceTokensCRUDIntegration.
 3. **HTTP + SDK sync contract**: `POST /v1/device-tokens` (register/refresh),
    `DELETE /v1/device-tokens/{id}` (deactivate), and an idempotent `POST /v1/device-tokens/sync`
    (client sends its full token set for a profile+app; server reconciles active/retired and

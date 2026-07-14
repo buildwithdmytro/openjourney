@@ -223,6 +223,23 @@ func (m *mockStore) GetProfileByPhone(ctx context.Context, tenantID string, phon
 	return domain.Profile{}, errors.New("profile not found")
 }
 
+func (m *mockStore) RegisterDeviceToken(ctx context.Context, tenantID, workspaceID, appID, profileID, platform, provider, token string) (domain.DeviceToken, error) {
+	return domain.DeviceToken{}, nil
+}
+func (m *mockStore) RetireDeviceToken(ctx context.Context, tenantID, appID, token string) error {
+	return nil
+}
+func (m *mockStore) RetireDeviceTokenByID(ctx context.Context, tenantID, id string) error {
+	return nil
+}
+func (m *mockStore) ListActiveDeviceTokens(ctx context.Context, tenantID, workspaceID, profileID string) ([]domain.DeviceToken, error) {
+	return nil, nil
+}
+func (m *mockStore) ListDeviceTokensByProfile(ctx context.Context, tenantID, workspaceID, profileID string) ([]domain.DeviceToken, error) {
+	return nil, nil
+}
+
+
 func (m *mockStore) GetSendingIdentityByProviderConfig(ctx context.Context, provider string, configKey string, configVal string) (domain.SendingIdentity, error) {
 	for _, iden := range m.identities {
 		if iden.Provider == provider {

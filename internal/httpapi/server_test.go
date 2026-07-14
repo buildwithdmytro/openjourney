@@ -34,6 +34,11 @@ type fakeStore struct {
 	getSendingIdentityFunc                 func(id string) (domain.SendingIdentity, error)
 	getSendingIdentityByProviderConfigFunc func(provider, configKey, configVal string) (domain.SendingIdentity, error)
 	AcceptEventsFunc                       func(ctx context.Context, p domain.Principal, events []domain.Event) ([]string, error)
+	registerDeviceTokenFunc       func(ctx context.Context, tenantID, workspaceID, appID, profileID, platform, provider, token string) (domain.DeviceToken, error)
+	retireDeviceTokenFunc         func(ctx context.Context, tenantID, appID, token string) error
+	retireDeviceTokenByIDFunc     func(ctx context.Context, tenantID, id string) error
+	listActiveDeviceTokensFunc    func(ctx context.Context, tenantID, workspaceID, profileID string) ([]domain.DeviceToken, error)
+	listDeviceTokensByProfileFunc func(ctx context.Context, tenantID, workspaceID, profileID string) ([]domain.DeviceToken, error)
 }
 
 type fakeBlobStore struct {
@@ -443,6 +448,36 @@ func (f *fakeStore) GetProfileByPhone(ctx context.Context, tenantID string, phon
 		return f.getProfileByPhoneFunc(tenantID, phone)
 	}
 	return domain.Profile{}, nil
+}
+func (f *fakeStore) RegisterDeviceToken(ctx context.Context, tenantID, workspaceID, appID, profileID, platform, provider, token string) (domain.DeviceToken, error) {
+	if f.registerDeviceTokenFunc != nil {
+		return f.registerDeviceTokenFunc(ctx, tenantID, workspaceID, appID, profileID, platform, provider, token)
+	}
+	return domain.DeviceToken{}, nil
+}
+func (f *fakeStore) RetireDeviceToken(ctx context.Context, tenantID, appID, token string) error {
+	if f.retireDeviceTokenFunc != nil {
+		return f.retireDeviceTokenFunc(ctx, tenantID, appID, token)
+	}
+	return nil
+}
+func (f *fakeStore) RetireDeviceTokenByID(ctx context.Context, tenantID, id string) error {
+	if f.retireDeviceTokenByIDFunc != nil {
+		return f.retireDeviceTokenByIDFunc(ctx, tenantID, id)
+	}
+	return nil
+}
+func (f *fakeStore) ListActiveDeviceTokens(ctx context.Context, tenantID, workspaceID, profileID string) ([]domain.DeviceToken, error) {
+	if f.listActiveDeviceTokensFunc != nil {
+		return f.listActiveDeviceTokensFunc(ctx, tenantID, workspaceID, profileID)
+	}
+	return nil, nil
+}
+func (f *fakeStore) ListDeviceTokensByProfile(ctx context.Context, tenantID, workspaceID, profileID string) ([]domain.DeviceToken, error) {
+	if f.listDeviceTokensByProfileFunc != nil {
+		return f.listDeviceTokensByProfileFunc(ctx, tenantID, workspaceID, profileID)
+	}
+	return nil, nil
 }
 func (f *fakeStore) GetSendingIdentityByProviderConfig(ctx context.Context, provider string, configKey string, configVal string) (domain.SendingIdentity, error) {
 	if f.getSendingIdentityByProviderConfigFunc != nil {

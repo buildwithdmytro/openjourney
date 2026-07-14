@@ -232,6 +232,21 @@ type Consent struct {
 	OccurredAt time.Time `json:"occurred_at"`
 }
 
+type DeviceToken struct {
+	ID          string    `json:"id"`
+	TenantID    string    `json:"tenant_id"`
+	WorkspaceID string    `json:"workspace_id"`
+	AppID       string    `json:"app_id"`
+	ProfileID   string    `json:"profile_id"`
+	Platform    string    `json:"platform"` // ios, android, web
+	Provider    string    `json:"provider"` // fcm, apns, http, fake
+	Token       string    `json:"token"`
+	Status      string    `json:"status"` // active, retired
+	LastSeenAt  time.Time `json:"last_seen_at"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
 type EventSchema struct {
 	ID            string          `json:"id"`
 	EventType     string          `json:"event_type"`

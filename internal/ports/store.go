@@ -86,6 +86,12 @@ type Store interface {
 	GetSendingIdentityByProviderConfig(ctx context.Context, provider string, configKey string, configVal string) (domain.SendingIdentity, error)
 	GetFirstAppID(ctx context.Context, tenantID, workspaceID string) (string, error)
 
+	RegisterDeviceToken(ctx context.Context, tenantID, workspaceID, appID, profileID, platform, provider, token string) (domain.DeviceToken, error)
+	RetireDeviceToken(ctx context.Context, tenantID, appID, token string) error
+	RetireDeviceTokenByID(ctx context.Context, tenantID, id string) error
+	ListActiveDeviceTokens(ctx context.Context, tenantID, workspaceID, profileID string) ([]domain.DeviceToken, error)
+	ListDeviceTokensByProfile(ctx context.Context, tenantID, workspaceID, profileID string) ([]domain.DeviceToken, error)
+
 	CreateCampaign(ctx context.Context, p domain.Principal, c domain.Campaign) (domain.Campaign, error)
 	GetCampaign(ctx context.Context, p domain.Principal, id string) (domain.Campaign, error)
 	GetCampaignSystem(ctx context.Context, tenantID, id string) (domain.Campaign, error)
