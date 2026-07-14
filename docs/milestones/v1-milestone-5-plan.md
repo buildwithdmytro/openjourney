@@ -331,10 +331,10 @@ be registered in the adapter registry (10.0).**
 2. [x] **Adapter registry** `internal/channels/registry.go` (§3.1): a `provider→ChannelAdapter` map
    built once, `For(provider)` with fake fallback. Register `ses`/`webhook`/`fake`. *Done when:*
    a unit test resolves each provider and unknown→fake. — done: `registry.go` + `registry_test.go`; TestRegistry_For / TestRegistry_DefaultRegistry_KnownProviders / TestRegistry_Register all PASS
-3. **Generic HTTP-provider adapter** `internal/channels/httpprovider.go` + `ProviderProfile`
+3. [x] **Generic HTTP-provider adapter** `internal/channels/httpprovider.go` + `ProviderProfile`
    seam (Recipe 6.21), copying `webhook.go` transport (`mapError`, timeout, `IsSafeURL` for the
    `http`/`fake` profiles). *Done when:* a `fake`/`http` profile sends and classifies a 5xx as
-   retryable, a 4xx as permanent.
+   retryable, a 4xx as permanent. — done: `httpprovider.go` + `httpprovider_test.go`; 10 profile tests PASS (5xx retryable, 4xx permanent, IsInvalidToken=false, BuildRequest validated)
 4. **Replace both provider switches** (`campaigns/deliver.go:380`, `journey/deliver.go:106`) with
    `registry.For(...)`; construct the registry in `cmd/campaigns-delivery/main.go:84` and
    `cmd/journeys-worker/main.go:84`. *Done when:* the existing email/webhook tests
