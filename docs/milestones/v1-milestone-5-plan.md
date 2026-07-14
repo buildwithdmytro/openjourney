@@ -357,9 +357,9 @@ be registered in the adapter registry (10.0).**
    (incl. variant when bound to an experiment). — done: Campaigns and journey delivery use template channel for default sending identity; SMS campaigns and journey nodes successfully send via the fake profile; tests verify correct disposition and message.sent event emission.
 
 ### Milestone 10.2 — SMS inbound: opt-out (STOP) + delivery receipts (DLR)
-1. **Inbound endpoint** `POST /v1/callbacks/sms/{provider}` (Recipe 6.23) mirroring
+1. [x] **Inbound endpoint** `POST /v1/callbacks/sms/{provider}` (Recipe 6.23) mirroring
    `handleSESCallback`: verify Twilio signature (`X-Twilio-Signature` HMAC) before trusting the
-   body. Route in `server.go` near `:128`. *Done when:* a forged (unsigned) request is 4xx.
+   body. Route in `server.go` near `:128`. *Done when:* a forged (unsigned) request is 4xx. — done: endpoint registered; signature validated via verifyTwilioSignature using sha1 HMAC matching Twilio request format; supports lookup by query params or global AccountSid db lookup.
 2. **STOP/START/HELP keyword handling** → `consent.changed(unsubscribed|subscribed, channel=sms)`
    + suppression insert/delete (reason `unsubscribe`); add the opt-out case to the suppression
    projection (`store.go:449`). *Done when:* a STOP webhook suppresses future sms to that phone

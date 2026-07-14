@@ -211,6 +211,19 @@ func (m *mockStore) SentCountSince(ctx context.Context, p domain.Principal, prof
 	return 0, nil
 }
 
+func (m *mockStore) GetSendingIdentityByProviderConfig(ctx context.Context, provider string, configKey string, configVal string) (domain.SendingIdentity, error) {
+	for _, iden := range m.identities {
+		if iden.Provider == provider {
+			// Basic JSON search mock
+			if strings.Contains(string(iden.Config), fmt.Sprintf("%q:%q", configKey, configVal)) ||
+				strings.Contains(string(iden.Config), fmt.Sprintf("%q: %q", configKey, configVal)) {
+				return iden, nil
+			}
+		}
+	}
+	return domain.SendingIdentity{}, errors.New("identity not found")
+}
+
 func (m *mockStore) GetProfileEmails(ctx context.Context, tenantID string, profileIDs []string) (map[string]string, error) {
 	out := make(map[string]string)
 	for _, id := range profileIDs {

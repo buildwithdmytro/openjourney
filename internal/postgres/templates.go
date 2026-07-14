@@ -66,6 +66,19 @@ func (s *Store) ListSendingIdentities(ctx context.Context, p domain.Principal) (
 	return out, rows.Err()
 }
 
+func (s *Store) GetSendingIdentityByProviderConfig(ctx context.Context, provider string, configKey string, configVal string) (domain.SendingIdentity, error) {
+	var out domain.SendingIdentity
+	err := s.pool.QueryRow(ctx, `SELECT id, tenant_id, workspace_id, channel, from_address, from_name, reply_to, provider, config, max_send_rate, verified, created_at
+		FROM sending_identities WHERE provider=$1 AND config->>$2 = $3 LIMIT 1`,
+		provider, configKey, configVal).
+		Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.Channel, &out.FromAddress, &out.FromName, &out.ReplyTo, &out.Provider, &out.Config, &out.MaxSendRate, &out.Verified, &out.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.SendingIdentity{}, ErrNotFound
+	}
+	return out, err
+}
+
+
 func (s *Store) CreateTemplate(ctx context.Context, p domain.Principal, tmpl domain.Template) (domain.Template, error) {
 	if tmpl.Name == "" {
 		return domain.Template{}, errors.New("name is required")

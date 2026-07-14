@@ -2,6 +2,9 @@ package httpapi
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha1"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -25,8 +28,10 @@ type fakeStore struct {
 	published       int
 	rollouts        int
 	runs            []domain.JourneyRun
-	getTemplateFunc func(id string) (domain.Template, error)
-	getProfileFunc  func(externalID string) (domain.Profile, error)
+	getTemplateFunc                        func(id string) (domain.Template, error)
+	getProfileFunc                         func(externalID string) (domain.Profile, error)
+	getSendingIdentityFunc                 func(id string) (domain.SendingIdentity, error)
+	getSendingIdentityByProviderConfigFunc func(provider, configKey, configVal string) (domain.SendingIdentity, error)
 }
 
 type fakeBlobStore struct {
@@ -211,6 +216,9 @@ func (f *fakeStore) CreateSendingIdentity(_ context.Context, _ domain.Principal,
 	return iden, nil
 }
 func (f *fakeStore) GetSendingIdentity(_ context.Context, _ domain.Principal, id string) (domain.SendingIdentity, error) {
+	if f.getSendingIdentityFunc != nil {
+		return f.getSendingIdentityFunc(id)
+	}
 	return domain.SendingIdentity{ID: id, Channel: "email"}, nil
 }
 func (f *fakeStore) ListSendingIdentities(_ context.Context, _ domain.Principal) ([]domain.SendingIdentity, error) {
@@ -424,6 +432,12 @@ func (f *fakeStore) GetProfileEmails(ctx context.Context, tenantID string, profi
 }
 func (f *fakeStore) GetProfilePhones(ctx context.Context, tenantID string, profileIDs []string) (map[string]string, error) {
 	return map[string]string{}, nil
+}
+func (f *fakeStore) GetSendingIdentityByProviderConfig(ctx context.Context, provider string, configKey string, configVal string) (domain.SendingIdentity, error) {
+	if f.getSendingIdentityByProviderConfigFunc != nil {
+		return f.getSendingIdentityByProviderConfigFunc(provider, configKey, configVal)
+	}
+	return domain.SendingIdentity{}, nil
 }
 func (f *fakeStore) GetFirstAppID(ctx context.Context, tenantID, workspaceID string) (string, error) {
 	return "app-1", nil
@@ -1156,4 +1170,83 @@ func TestTemplatePreviewSMS(t *testing.T) {
 		t.Errorf("expected UCS-2 warning, got %q", resp.Warning)
 	}
 }
+
+func TestSMSCallbackTwilioSignature(t *testing.T) {
+	store := &fakeStore{}
+	server := New(store, 75)
+
+	mockIdentity := domain.SendingIdentity{
+		ID:       "iden-sms-1",
+		TenantID: "tenant-sms",
+		Provider: "twilio",
+		Config:   json.RawMessage(`{"account_sid":"AC123", "auth_token":"my-secret-token"}`),
+	}
+
+	store.getSendingIdentityFunc = func(id string) (domain.SendingIdentity, error) {
+		if id == "iden-sms-1" {
+			return mockIdentity, nil
+		}
+		return domain.SendingIdentity{}, errors.New("not found")
+	}
+
+	store.getSendingIdentityByProviderConfigFunc = func(provider, configKey, configVal string) (domain.SendingIdentity, error) {
+		if provider == "twilio" && configKey == "account_sid" && configVal == "AC123" {
+			return mockIdentity, nil
+		}
+		return domain.SendingIdentity{}, errors.New("not found")
+	}
+
+	t.Run("unsigned request returns 4xx", func(t *testing.T) {
+		body := "AccountSid=AC123&From=%2B15555550100&Body=STOP"
+		req := httptest.NewRequest(http.MethodPost, "/v1/callbacks/sms/twilio", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		res := httptest.NewRecorder()
+
+		server.ServeHTTP(res, req)
+		if res.Code != http.StatusForbidden {
+			t.Errorf("expected 403 Forbidden, got %d", res.Code)
+		}
+	})
+
+	t.Run("correct signature returns 200 OK via global AccountSid lookup", func(t *testing.T) {
+		requestURL := "http://example.com/v1/callbacks/sms/twilio"
+		data := requestURL + "AccountSidAC123BodySTOPFrom+15555550100"
+		mac := hmac.New(sha1.New, []byte("my-secret-token"))
+		mac.Write([]byte(data))
+		signature := base64.StdEncoding.EncodeToString(mac.Sum(nil))
+
+		body := "AccountSid=AC123&From=%2B15555550100&Body=STOP"
+		req := httptest.NewRequest(http.MethodPost, "/v1/callbacks/sms/twilio", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("X-Twilio-Signature", signature)
+		req.Host = "example.com"
+		res := httptest.NewRecorder()
+
+		server.ServeHTTP(res, req)
+		if res.Code != http.StatusOK {
+			t.Errorf("expected 200 OK, got %d body=%s", res.Code, res.Body.String())
+		}
+	})
+
+	t.Run("correct signature returns 200 OK via query params lookup", func(t *testing.T) {
+		requestURL := "http://example.com/v1/callbacks/sms/twilio?tenant_id=tenant-sms&sending_identity_id=iden-sms-1"
+		data := requestURL + "AccountSidAC123BodySTOPFrom+15555550100"
+		mac := hmac.New(sha1.New, []byte("my-secret-token"))
+		mac.Write([]byte(data))
+		signature := base64.StdEncoding.EncodeToString(mac.Sum(nil))
+
+		body := "AccountSid=AC123&From=%2B15555550100&Body=STOP"
+		req := httptest.NewRequest(http.MethodPost, "/v1/callbacks/sms/twilio?tenant_id=tenant-sms&sending_identity_id=iden-sms-1", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("X-Twilio-Signature", signature)
+		req.Host = "example.com"
+		res := httptest.NewRecorder()
+
+		server.ServeHTTP(res, req)
+		if res.Code != http.StatusOK {
+			t.Errorf("expected 200 OK, got %d body=%s", res.Code, res.Body.String())
+		}
+	})
+}
+
 

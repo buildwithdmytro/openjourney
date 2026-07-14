@@ -1,6 +1,9 @@
 package httpapi
 
 import (
+	"bytes"
+	"crypto/hmac"
+	"crypto/sha1"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
@@ -12,6 +15,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -388,3 +392,132 @@ func confirmSNSSubscription(subscribeURL string) error {
 
 	return nil
 }
+
+func (s *Server) handleSMSCallback(w http.ResponseWriter, r *http.Request) {
+	provider := r.PathValue("provider")
+	if provider != "twilio" {
+		http.Error(w, "unsupported provider", http.StatusBadRequest)
+		return
+	}
+
+	// 1. Read body to parse form parameters and restore body for subsequent uses
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "failed to read body", http.StatusBadRequest)
+		return
+	}
+	r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "failed to parse form", http.StatusBadRequest)
+		return
+	}
+
+	// Restore body again just in case
+	r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+	// 2. Locate sending identity to verify signature
+	// We first try to get it from query params: tenant_id, workspace_id, sending_identity_id
+	var identity domain.SendingIdentity
+	tenantID := r.URL.Query().Get("tenant_id")
+	sendingIdentityID := r.URL.Query().Get("sending_identity_id")
+	accountSID := r.FormValue("AccountSid")
+
+	if tenantID != "" && sendingIdentityID != "" {
+		workspaceID := r.URL.Query().Get("workspace_id")
+		if workspaceID == "" {
+			workspaceID = "workspace-1"
+		}
+		p := domain.Principal{
+			TenantID:    tenantID,
+			WorkspaceID: workspaceID,
+			AppID:       "system",
+		}
+		identity, err = s.store.GetSendingIdentity(r.Context(), p, sendingIdentityID)
+		if err != nil {
+			slog.Error("failed to get sending identity for signature verification", "error", err, "tenant_id", tenantID, "sending_identity_id", sendingIdentityID)
+			http.Error(w, "sending identity not found", http.StatusBadRequest)
+			return
+		}
+	} else if accountSID != "" {
+		// Lookup sending identity globally by Twilio Account SID
+		identity, err = s.store.GetSendingIdentityByProviderConfig(r.Context(), "twilio", "account_sid", accountSID)
+		if err != nil {
+			slog.Error("failed to find sending identity by twilio account SID", "error", err, "account_sid", accountSID)
+			http.Error(w, "sending identity not found", http.StatusBadRequest)
+			return
+		}
+	} else {
+		http.Error(w, "missing context to verify signature", http.StatusBadRequest)
+		return
+	}
+
+	// Unmarshal Twilio config from identity
+	var twilioCfg struct {
+		AccountSID string `json:"account_sid"`
+		AuthToken  string `json:"auth_token"`
+	}
+	if len(identity.Config) > 0 && string(identity.Config) != "{}" {
+		if err := json.Unmarshal(identity.Config, &twilioCfg); err != nil {
+			slog.Error("invalid twilio identity config", "error", err, "identity_id", identity.ID)
+			http.Error(w, "invalid twilio config", http.StatusBadRequest)
+			return
+		}
+	}
+
+	if twilioCfg.AuthToken == "" {
+		slog.Error("twilio auth token not configured on sending identity", "identity_id", identity.ID)
+		http.Error(w, "twilio auth token not configured", http.StatusBadRequest)
+		return
+	}
+
+	// 3. Verify Twilio signature
+	signature := r.Header.Get("X-Twilio-Signature")
+	if signature == "" {
+		http.Error(w, "missing X-Twilio-Signature header", http.StatusForbidden)
+		return
+	}
+
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
+		scheme = proto
+	}
+	requestURL := fmt.Sprintf("%s://%s%s", scheme, r.Host, r.URL.RequestURI())
+
+	if !verifyTwilioSignature(twilioCfg.AuthToken, signature, requestURL, r.PostForm) {
+		slog.Warn("twilio signature verification failed", "identity_id", identity.ID, "url", requestURL)
+		http.Error(w, "signature verification failed", http.StatusForbidden)
+		return
+	}
+
+	// Signature is valid! We can trust the payload now.
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("signature valid"))
+}
+
+func verifyTwilioSignature(authToken string, signature string, requestURL string, params url.Values) bool {
+	var keys []string
+	for k := range params {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var sb strings.Builder
+	sb.WriteString(requestURL)
+	for _, k := range keys {
+		sb.WriteString(k)
+		if len(params[k]) > 0 {
+			sb.WriteString(params[k][0])
+		}
+	}
+
+	mac := hmac.New(sha1.New, []byte(authToken))
+	mac.Write([]byte(sb.String()))
+	expectedSignature := base64.StdEncoding.EncodeToString(mac.Sum(nil))
+
+	return hmac.Equal([]byte(signature), []byte(expectedSignature))
+}
+

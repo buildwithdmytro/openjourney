@@ -82,6 +82,7 @@ type Store interface {
 	GetTenantQuietHours(ctx context.Context, p domain.Principal) (*int, *int, string, error)
 	GetProfileEmails(ctx context.Context, tenantID string, profileIDs []string) (map[string]string, error)
 	GetProfilePhones(ctx context.Context, tenantID string, profileIDs []string) (map[string]string, error)
+	GetSendingIdentityByProviderConfig(ctx context.Context, provider string, configKey string, configVal string) (domain.SendingIdentity, error)
 	GetFirstAppID(ctx context.Context, tenantID, workspaceID string) (string, error)
 
 	CreateCampaign(ctx context.Context, p domain.Principal, c domain.Campaign) (domain.Campaign, error)
