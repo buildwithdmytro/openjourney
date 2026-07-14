@@ -47,7 +47,7 @@ func twilioEndpoint(accountSID string) string {
 // isTwilioPermanentError returns true for Twilio error codes that indicate a
 // permanent, non-retryable failure (invalid number, opted-out, blacklisted, etc.).
 // Reference: https://www.twilio.com/docs/api/errors
-func isTwilioPermanentError(code int) bool {
+func IsTwilioPermanentError(code int) bool {
 	switch code {
 	case 21211: // Invalid 'To' Phone Number
 		return true
@@ -184,7 +184,7 @@ func (p *TwilioSMSProfile) ParseResponse(resp *http.Response, body []byte) (stri
 	}
 
 	// 4xx: classify by Twilio error code.
-	retryable := !isTwilioPermanentError(twilioErr.Code)
+	retryable := !IsTwilioPermanentError(twilioErr.Code)
 	// If we couldn't parse an error code, assume permanent for 4xx.
 	if twilioErr.Code == 0 {
 		retryable = false

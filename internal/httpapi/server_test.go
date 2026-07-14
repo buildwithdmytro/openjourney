@@ -1380,5 +1380,175 @@ func TestSMSCallbackSTOPSTART(t *testing.T) {
 	})
 }
 
+func TestSMSCallbackDLR(t *testing.T) {
+	store := &fakeStore{}
+	server := New(store, 75)
+
+	mockIdentity := domain.SendingIdentity{
+		ID:       "iden-sms-1",
+		TenantID: "tenant-sms",
+		Provider: "twilio",
+		Config:   json.RawMessage(`{"account_sid":"AC123", "auth_token":"my-secret-token"}`),
+	}
+
+	store.getSendingIdentityFunc = func(id string) (domain.SendingIdentity, error) {
+		if id == "iden-sms-1" {
+			return mockIdentity, nil
+		}
+		return domain.SendingIdentity{}, errors.New("not found")
+	}
+
+	store.getSendingIdentityByProviderConfigFunc = func(provider, configKey, configVal string) (domain.SendingIdentity, error) {
+		if provider == "twilio" && configKey == "account_sid" && configVal == "AC123" {
+			return mockIdentity, nil
+		}
+		return domain.SendingIdentity{}, errors.New("not found")
+	}
+
+	store.getProfileByPhoneFunc = func(tenantID, phone string) (domain.Profile, error) {
+		if phone == "+15555550100" {
+			return domain.Profile{
+				ID:         "prof-123",
+				ExternalID: "ext-123",
+			}, nil
+		}
+		return domain.Profile{}, errors.New("not found")
+	}
+
+	var acceptedEvents []domain.Event
+	store.AcceptEventsFunc = func(ctx context.Context, p domain.Principal, events []domain.Event) ([]string, error) {
+		acceptedEvents = append(acceptedEvents, events...)
+		return []string{"event-1"}, nil
+	}
+
+	t.Run("delivered DLR emits message.delivered", func(t *testing.T) {
+		acceptedEvents = nil
+		requestURL := "http://example.com/v1/callbacks/sms/twilio"
+		// Parameters sorted alphabetically:
+		// AccountSid=AC123
+		// MessageSid=SM001
+		// MessageStatus=delivered
+		// To=+15555550100
+		data := requestURL + "AccountSidAC123MessageSidSM001MessageStatusdeliveredTo+15555550100"
+		mac := hmac.New(sha1.New, []byte("my-secret-token"))
+		mac.Write([]byte(data))
+		signature := base64.StdEncoding.EncodeToString(mac.Sum(nil))
+
+		body := "AccountSid=AC123&MessageSid=SM001&MessageStatus=delivered&To=%2B15555550100"
+		req := httptest.NewRequest(http.MethodPost, "/v1/callbacks/sms/twilio", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("X-Twilio-Signature", signature)
+		req.Host = "example.com"
+		res := httptest.NewRecorder()
+
+		server.ServeHTTP(res, req)
+		if res.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK, got %d body=%s", res.Code, res.Body.String())
+		}
+
+		if len(acceptedEvents) != 1 {
+			t.Fatalf("expected 1 accepted event, got %d", len(acceptedEvents))
+		}
+		event := acceptedEvents[0]
+		if event.Type != "message.delivered" {
+			t.Errorf("expected event.Type = message.delivered, got %q", event.Type)
+		}
+		if event.ExternalID != "ext-123" {
+			t.Errorf("expected ExternalID = ext-123, got %q", event.ExternalID)
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload["channel"] != "sms" {
+			t.Errorf("expected channel = sms, got %v", payload["channel"])
+		}
+		if payload["provider_message_id"] != "SM001" {
+			t.Errorf("expected provider_message_id = SM001, got %v", payload["provider_message_id"])
+		}
+	})
+
+	t.Run("permanent failure DLR emits message.bounced", func(t *testing.T) {
+		acceptedEvents = nil
+		requestURL := "http://example.com/v1/callbacks/sms/twilio"
+		// Parameters sorted alphabetically:
+		// AccountSid=AC123
+		// ErrorCode=30006
+		// MessageSid=SM002
+		// MessageStatus=failed
+		// To=+15555550100
+		data := requestURL + "AccountSidAC123ErrorCode30006MessageSidSM002MessageStatusfailedTo+15555550100"
+		mac := hmac.New(sha1.New, []byte("my-secret-token"))
+		mac.Write([]byte(data))
+		signature := base64.StdEncoding.EncodeToString(mac.Sum(nil))
+
+		body := "AccountSid=AC123&MessageSid=SM002&MessageStatus=failed&To=%2B15555550100&ErrorCode=30006"
+		req := httptest.NewRequest(http.MethodPost, "/v1/callbacks/sms/twilio", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("X-Twilio-Signature", signature)
+		req.Host = "example.com"
+		res := httptest.NewRecorder()
+
+		server.ServeHTTP(res, req)
+		if res.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK, got %d body=%s", res.Code, res.Body.String())
+		}
+
+		if len(acceptedEvents) != 1 {
+			t.Fatalf("expected 1 accepted event, got %d", len(acceptedEvents))
+		}
+		event := acceptedEvents[0]
+		if event.Type != "message.bounced" {
+			t.Errorf("expected event.Type = message.bounced, got %q", event.Type)
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload["bounce_type"] != "permanent" {
+			t.Errorf("expected bounce_type = permanent, got %v", payload["bounce_type"])
+		}
+		if payload["error_code"] != "30006" {
+			t.Errorf("expected error_code = 30006, got %v", payload["error_code"])
+		}
+	})
+
+	t.Run("transient failure DLR emits message.failed", func(t *testing.T) {
+		acceptedEvents = nil
+		requestURL := "http://example.com/v1/callbacks/sms/twilio"
+		// Parameters sorted alphabetically:
+		// AccountSid=AC123
+		// ErrorCode=30008
+		// MessageSid=SM003
+		// MessageStatus=failed
+		// To=+15555550100
+		data := requestURL + "AccountSidAC123ErrorCode30008MessageSidSM003MessageStatusfailedTo+15555550100"
+		mac := hmac.New(sha1.New, []byte("my-secret-token"))
+		mac.Write([]byte(data))
+		signature := base64.StdEncoding.EncodeToString(mac.Sum(nil))
+
+		body := "AccountSid=AC123&MessageSid=SM003&MessageStatus=failed&To=%2B15555550100&ErrorCode=30008"
+		req := httptest.NewRequest(http.MethodPost, "/v1/callbacks/sms/twilio", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("X-Twilio-Signature", signature)
+		req.Host = "example.com"
+		res := httptest.NewRecorder()
+
+		server.ServeHTTP(res, req)
+		if res.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK, got %d body=%s", res.Code, res.Body.String())
+		}
+
+		if len(acceptedEvents) != 1 {
+			t.Fatalf("expected 1 accepted event, got %d", len(acceptedEvents))
+		}
+		event := acceptedEvents[0]
+		if event.Type != "message.failed" {
+			t.Errorf("expected event.Type = message.failed, got %q", event.Type)
+		}
+	})
+}
+
+
 
 

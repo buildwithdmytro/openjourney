@@ -16,10 +16,12 @@ import (
 	"net/url"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/buildwithdmytro/openjourney/internal/channels"
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 )
 
@@ -494,6 +496,92 @@ func (s *Server) handleSMSCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Signature is valid! We can trust the payload now.
+	messageStatus := r.FormValue("MessageStatus")
+	if messageStatus != "" {
+		toPhone := r.FormValue("To")
+		messageSid := r.FormValue("MessageSid")
+
+		// Lookup profile by recipient phone number
+		var externalID, anonymousID string
+		profile, err := s.store.GetProfileByPhone(r.Context(), identity.TenantID, toPhone)
+		if err == nil {
+			externalID = profile.ExternalID
+			anonymousID = profile.AnonymousID
+			if externalID == "" {
+				externalID = profile.ID
+			}
+		}
+		if externalID == "" {
+			externalID = toPhone
+		}
+
+		var eventType string
+		var bounceType string
+		errorCodeStr := r.FormValue("ErrorCode")
+
+		if messageStatus == "delivered" {
+			eventType = "message.delivered"
+		} else if messageStatus == "failed" || messageStatus == "undelivered" {
+			isBounce := false
+			if errorCodeStr != "" {
+				if code, err := strconv.Atoi(errorCodeStr); err == nil {
+					isBounce = channels.IsTwilioPermanentError(code)
+				}
+			}
+			if isBounce {
+				eventType = "message.bounced"
+				bounceType = "permanent"
+			} else {
+				eventType = "message.failed"
+			}
+		}
+
+		if eventType != "" {
+			payloadMap := map[string]any{
+				"channel":             "sms",
+				"endpoint":            toPhone,
+				"provider_message_id": messageSid,
+			}
+			if bounceType != "" {
+				payloadMap["bounce_type"] = bounceType
+			}
+			if errorCodeStr != "" {
+				payloadMap["error_code"] = errorCodeStr
+			}
+
+			eventPayload, _ := json.Marshal(payloadMap)
+
+			dlrEvent := domain.Event{
+				Type:           eventType,
+				SchemaVersion:  1,
+				ExternalID:     externalID,
+				AnonymousID:    anonymousID,
+				IdempotencyKey: fmt.Sprintf("dlr-%s-%s", messageSid, eventType),
+				OccurredAt:     time.Now().UTC(),
+				Payload:        eventPayload,
+			}
+
+			p := domain.Principal{
+				TenantID:    identity.TenantID,
+				WorkspaceID: identity.WorkspaceID,
+				AppID:       "system",
+				ActorType:   "system",
+			}
+
+			_, err = s.store.AcceptEvents(r.Context(), p, []domain.Event{dlrEvent})
+			if err != nil {
+				slog.Error("failed to accept DLR event in SMS webhook", "error", err, "phone", toPhone, "status", messageStatus)
+				http.Error(w, "failed to process status callback", http.StatusInternalServerError)
+				return
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/xml")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`))
+		return
+	}
+
 	fromPhone := r.FormValue("From")
 	bodyText := r.FormValue("Body")
 	keyword := strings.ToUpper(strings.TrimSpace(bodyText))

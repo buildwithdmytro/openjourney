@@ -364,10 +364,10 @@ be registered in the adapter registry (10.0).**
    + suppression insert/delete (reason `unsubscribe`); add the opt-out case to the suppression
    projection (`store.go:449`). *Done when:* a STOP webhook suppresses future sms to that phone
    (policy gate blocks it); a START removes the suppression. — done: keywords STOP/START/HELP parsed in SMS callback; emits consent.changed event; projection inserts/deletes suppression for 'sms' channel and 'unsubscribe' reason.
-3. **DLR status callback** → normalize to `message.delivered` / `message.failed` /
+3. [x] **DLR status callback** → normalize to `message.delivered` / `message.failed` /
    `message.bounced` (invalid number → bounce → suppression), via `AcceptEvents`. *Done when:* a
    delivered DLR creates one `engagement_facts` row `channel='sms'`; a failed/invalid DLR is
-   recorded (and invalid → suppression). Telemetry `Bounces{channel=sms}`.
+   recorded (and invalid → suppression). Telemetry `Bounces{channel=sms}`. — done: parsed MessageStatus, ErrorCode, and To phone numbers from Twilio DLR callback; lookup profile and emitted message.delivered, message.bounced, or message.failed events using AcceptEvents; verified using TestSMSCallbackDLR.
 
 ### Milestone 10.3 — Device tokens: registration API + SDK sync contract
 1. **Migration** `022_device_tokens.sql` per §2.2 + scopes `device_tokens:read/write` in
