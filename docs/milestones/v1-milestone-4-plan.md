@@ -1,6 +1,6 @@
 # Phase 4 (slice) Implementation Plan: Experimentation & Analytics
 
-Status: proposed. Builds on completed Phase 2 (campaigns, email/webhook delivery,
+Status: complete with the explicitly documented 9.7.4 performance-test waiver. Builds on completed Phase 2 (campaigns, email/webhook delivery,
 `delivery_attempts`, `message.*` engagement events) and Phase 3 (durable journeys with
 deterministic split nodes — see [`v1-milestone-3-plan.md`](./v1-milestone-3-plan.md) and its
 review). Delivers the **experimentation + analytics slice** of `plan.md` Phase 4: A/B variants
@@ -466,8 +466,8 @@ Testing bar: unit + golden per milestone; one consolidated integration/determini
    intentionally omitted. No latency, throughput, or sub-linear performance claim is made. — done: user directed Milestone 4 finalization without performance tests on 2026-07-14.
 5. [x] **Telemetry**: `openjourney_experiment_assignments_total`, `openjourney_conversions_attributed_total`. — done: assignment inserts retain the variant-labeled counter, and committed conversion-fact inserts now increment a source/variant-labeled attribution counter; focused metric and live-Postgres replay tests prove both counters and exactly-once behavior.
 6. [x] **Run the suite**: `go build/vet/test ./...`, `go mod tidy`, `npm run build && npm audit`. — done: Go tidy/build/vet/tests and web typecheck/26 tests/build passed; npm audit found 0 vulnerabilities.
-7. **Audit doc** `docs/milestones/v1-milestone-4-audit.md` in the M2/M3 table format, one row per
-   requirement with direct evidence, incl. the 9.0 fixes.
+7. [x] **Audit doc** `docs/milestones/v1-milestone-4-audit.md` in the M2/M3 table format, one row per
+   requirement with direct evidence, incl. the 9.0 fixes. — done: the completion audit traces every 9.0–9.7 requirement to direct code/test evidence and records the performance-test waiver without making performance claims.
 
 ---
 
