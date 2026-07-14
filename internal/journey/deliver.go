@@ -97,7 +97,7 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 		}
 	} else {
 		identity = domain.SendingIdentity{
-			Channel:     "email",
+			Channel:     template.Channel,
 			Provider:    "fake",
 			MaxSendRate: 10,
 		}

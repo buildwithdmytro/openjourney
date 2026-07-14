@@ -135,7 +135,7 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 				continue
 			}
 		} else {
-			identity = domain.SendingIdentity{Channel: "email", Provider: "fake", MaxSendRate: 10}
+			identity = domain.SendingIdentity{Channel: selectedTemplate.Channel, Provider: "fake", MaxSendRate: 10}
 		}
 		adapter := adapterFor(identity.Provider, cfg)
 		template = selectedTemplate

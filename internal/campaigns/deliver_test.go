@@ -800,3 +800,104 @@ func TestDeliverNext_ExperimentVariantsAndHoldout(t *testing.T) {
 		}
 	}
 }
+
+func TestDeliverNext_SMSCampaign(t *testing.T) {
+	store := newMockStore()
+
+	campID := "camp-sms-1"
+	tmplID := "tmpl-sms-1"
+	profID := "prof-sms-1"
+	jobID := "job-sms-1"
+
+	store.campaigns[campID] = domain.Campaign{
+		ID:          campID,
+		TenantID:    "tenant-1",
+		WorkspaceID: "workspace-1",
+		TemplateID:  tmplID,
+	}
+
+	bodyTmpl := "Hello {{ profile.attributes.first_name }}!"
+	store.templates[tmplID] = domain.Template{
+		ID:           tmplID,
+		Channel:      "sms",
+		TextTemplate: &bodyTmpl,
+	}
+
+	store.profiles[profID] = domain.Profile{
+		ID:         profID,
+		ExternalID: "ext-sms-1",
+	}
+
+	store.jobs[jobID] = domain.DeliveryJob{
+		ID:         jobID,
+		CampaignID: campID,
+		TenantID:   "tenant-1",
+		Recipients: []domain.Recipient{
+			{
+				ProfileID: profID,
+				Endpoint:  "+15555550100",
+			},
+		},
+	}
+
+	adapter := &testAdapter{}
+	cfg := Config{
+		Adapter: adapter,
+	}
+
+	processed, err := DeliverNext(context.Background(), store, "worker-1", cfg)
+	if !processed {
+		t.Fatalf("expected processed=true")
+	}
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify delivery attempt
+	attemptKey := campID + ":" + profID + ":sms"
+	attempt, ok := store.deliveryAttempts[attemptKey]
+	if !ok {
+		t.Fatalf("expected delivery attempt to be created")
+	}
+	if attempt.Channel != "sms" {
+		t.Errorf("expected attempt.Channel = sms, got %q", attempt.Channel)
+	}
+	if attempt.Endpoint != "+15555550100" {
+		t.Errorf("expected attempt.Endpoint = +15555550100, got %q", attempt.Endpoint)
+	}
+	if attempt.Decision != "sent" {
+		t.Errorf("expected attempt.Decision = sent, got %q", attempt.Decision)
+	}
+
+	// Verify message sent via adapter
+	if len(adapter.messages) != 1 {
+		t.Fatalf("expected 1 sent message, got %d", len(adapter.messages))
+	}
+	msg := adapter.messages[0]
+	if msg.Channel != "sms" {
+		t.Errorf("expected msg.Channel = sms, got %q", msg.Channel)
+	}
+	if msg.Endpoint != "+15555550100" {
+		t.Errorf("expected msg.Endpoint = +15555550100, got %q", msg.Endpoint)
+	}
+
+	// Verify emitted event
+	if len(store.emittedEvents) != 1 {
+		t.Fatalf("expected 1 emitted event, got %d", len(store.emittedEvents))
+	}
+	event := store.emittedEvents[0]
+	if event.Type != "message.sent" {
+		t.Errorf("expected event.Type = message.sent, got %q", event.Type)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload["channel"] != "sms" {
+		t.Errorf("expected payload channel = sms, got %v", payload["channel"])
+	}
+	if payload["endpoint"] != "+15555550100" {
+		t.Errorf("expected payload endpoint = +15555550100, got %v", payload["endpoint"])
+	}
+}
+

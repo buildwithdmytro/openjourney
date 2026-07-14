@@ -350,11 +350,11 @@ be registered in the adapter registry (10.0).**
 3. [x] **SMS template + render**: `channel='sms'`, `text_template`/`body_template`; render body; note
    GSM-7/UCS-2 length (warn, don't block). *Done when:* an sms template renders a body with
    profile vars. — done: `render/sms.go` checks GSM-7 vs UCS-2 character sets and counts segments; `previewTemplate` renders SMS body templates and returns detailed encoding and segment warnings.
-4. **Send SMS end-to-end** from campaign + journey: `registry.For('twilio')`, stamp
+4. [x] **Send SMS end-to-end** from campaign + journey: `registry.For('twilio')`, stamp
    `channel='sms'` on `delivery_attempts`/`journey_message_intents` + the `message.sent` payload;
    reuse M4 variant stamping; `telemetry.MessagesSent{channel=sms}`. *Done when:* an sms campaign
    and an sms journey node send via the fake profile with correct disposition + `message.sent`
-   (incl. variant when bound to an experiment).
+   (incl. variant when bound to an experiment). — done: Campaigns and journey delivery use template channel for default sending identity; SMS campaigns and journey nodes successfully send via the fake profile; tests verify correct disposition and message.sent event emission.
 
 ### Milestone 10.2 — SMS inbound: opt-out (STOP) + delivery receipts (DLR)
 1. **Inbound endpoint** `POST /v1/callbacks/sms/{provider}` (Recipe 6.23) mirroring

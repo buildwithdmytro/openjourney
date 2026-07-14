@@ -131,6 +131,14 @@ func testDeliveryProfile() *domain.Profile {
 }
 
 func (m *mockStore) GetTemplate(ctx context.Context, p domain.Principal, id string) (domain.Template, error) {
+	if strings.Contains(id, "sms") {
+		text := "Hello {{name}}"
+		return domain.Template{
+			ID:           id,
+			Channel:      "sms",
+			TextTemplate: &text,
+		}, nil
+	}
 	subj := "Hello {{name}}"
 	html := "Body {{name}}"
 	return domain.Template{
@@ -422,3 +430,55 @@ func TestDeliverNext_QuietHours(t *testing.T) {
 		}
 	}
 }
+
+func TestDeliverNext_SMSJourney(t *testing.T) {
+	store := newMockStore()
+	fakeAdapter := channels.NewFakeAdapter()
+	cfg := Config{
+		FakeAdapter: fakeAdapter,
+	}
+
+	intent := domain.JourneyMessageIntent{
+		ID: "intent-sms-1", RunID: "run-sms-1", TenantID: "tenant-sms-1", WorkspaceID: "workspace-sms-1",
+		JourneyID: "journey-sms-1", JourneyVersionID: "version-sms-1", NodeID: "node-sms-1",
+		ProfileID: "profile-sms-1", TemplateID: "template-sms-1", Channel: "sms",
+		Endpoint: "+15555559999", Status: "pending",
+	}
+	store.intents = append(store.intents, intent)
+
+	store.profile = &domain.Profile{
+		ID:         "profile-sms-1",
+		ExternalID: "ext-sms-1",
+		Attributes: json.RawMessage(`{"name":"World"}`),
+	}
+
+	processed, err := DeliverNext(context.Background(), store, "worker-sms-1", cfg)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !processed {
+		t.Fatalf("expected processed to be true")
+	}
+
+	updatedIntent := store.intents[0]
+	if updatedIntent.Status != "completed" {
+		t.Errorf("expected status completed, got %s", updatedIntent.Status)
+	}
+	if updatedIntent.Decision == nil || *updatedIntent.Decision != "sent" {
+		t.Errorf("expected decision sent, got %v", updatedIntent.Decision)
+	}
+
+	// Adapter should have sent the message
+	sends := fakeAdapter.GetSends()
+	if len(sends) != 1 {
+		t.Fatalf("expected exactly 1 message sent, got %d", len(sends))
+	}
+	msg := sends[0]
+	if msg.Channel != "sms" {
+		t.Errorf("expected channel sms, got %q", msg.Channel)
+	}
+	if msg.Endpoint != "+15555559999" {
+		t.Errorf("expected endpoint +15555559999, got %q", msg.Endpoint)
+	}
+}
+
