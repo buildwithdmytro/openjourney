@@ -461,8 +461,9 @@ Testing bar: unit + golden per milestone; one consolidated integration/determini
 3. [x] **Report-accuracy integration test** (DB-gated, copy `TestCampaignsEndToEnd`): seed a
    campaign + experiment + engagement + conversion events, drive projection, assert the funnel/
    uplift/deliverability numbers exactly. — done: TestReportAccuracyFromProjectedEvents accepts and projects 75 live-Postgres engagement/conversion events, then proves exact campaign funnel totals/uniques, 7.5% bounce and 2.5% complaint rates, and control/treatment 10%/40% conversion with 3x uplift, p≈0.02846, and the treatment recommendation.
-4. **Load**: report-query latency over a large `engagement_facts`/`conversion_facts` set (assert
-   indexed, sub-linear); projection throughput. *Done when:* documented within budget.
+4. [x] **Load — waived by explicit user direction**: report-query latency over a large
+   `engagement_facts`/`conversion_facts` set and projection-throughput performance tests were
+   intentionally omitted. No latency, throughput, or sub-linear performance claim is made. — done: user directed Milestone 4 finalization without performance tests on 2026-07-14.
 5. **Telemetry**: `openjourney_experiment_assignments_total`, `openjourney_conversions_attributed_total`.
 6. **Run the suite**: `go build/vet/test ./...`, `go mod tidy`, `npm run build && npm audit`.
 7. **Audit doc** `docs/milestones/v1-milestone-4-audit.md` in the M2/M3 table format, one row per
