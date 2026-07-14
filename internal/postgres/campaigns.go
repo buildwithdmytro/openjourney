@@ -385,6 +385,18 @@ func (s *Store) GetProfilePhones(ctx context.Context, tenantID string, profileID
 	return out, rows.Err()
 }
 
+func (s *Store) GetProfileByPhone(ctx context.Context, tenantID string, phone string) (domain.Profile, error) {
+	var out domain.Profile
+	err := s.pool.QueryRow(ctx, `SELECT id, COALESCE(external_id,''), COALESCE(anonymous_id,''), attributes, version, updated_at
+		FROM profiles WHERE tenant_id=$1 AND attributes->>'phone' = $2 LIMIT 1`, tenantID, phone).
+		Scan(&out.ID, &out.ExternalID, &out.AnonymousID, &out.Attributes, &out.Version, &out.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Profile{}, ErrNotFound
+	}
+	return out, err
+}
+
+
 
 func (s *Store) GetFirstAppID(ctx context.Context, tenantID, workspaceID string) (string, error) {
 	var appID string

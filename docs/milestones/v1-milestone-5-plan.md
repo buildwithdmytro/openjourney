@@ -360,10 +360,10 @@ be registered in the adapter registry (10.0).**
 1. [x] **Inbound endpoint** `POST /v1/callbacks/sms/{provider}` (Recipe 6.23) mirroring
    `handleSESCallback`: verify Twilio signature (`X-Twilio-Signature` HMAC) before trusting the
    body. Route in `server.go` near `:128`. *Done when:* a forged (unsigned) request is 4xx. — done: endpoint registered; signature validated via verifyTwilioSignature using sha1 HMAC matching Twilio request format; supports lookup by query params or global AccountSid db lookup.
-2. **STOP/START/HELP keyword handling** → `consent.changed(unsubscribed|subscribed, channel=sms)`
+2. [x] **STOP/START/HELP keyword handling** → `consent.changed(unsubscribed|subscribed, channel=sms)`
    + suppression insert/delete (reason `unsubscribe`); add the opt-out case to the suppression
    projection (`store.go:449`). *Done when:* a STOP webhook suppresses future sms to that phone
-   (policy gate blocks it); a START removes the suppression.
+   (policy gate blocks it); a START removes the suppression. — done: keywords STOP/START/HELP parsed in SMS callback; emits consent.changed event; projection inserts/deletes suppression for 'sms' channel and 'unsubscribe' reason.
 3. **DLR status callback** → normalize to `message.delivered` / `message.failed` /
    `message.bounced` (invalid number → bounce → suppression), via `AcceptEvents`. *Done when:* a
    delivered DLR creates one `engagement_facts` row `channel='sms'`; a failed/invalid DLR is

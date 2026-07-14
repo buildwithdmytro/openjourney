@@ -211,6 +211,18 @@ func (m *mockStore) SentCountSince(ctx context.Context, p domain.Principal, prof
 	return 0, nil
 }
 
+func (m *mockStore) GetProfileByPhone(ctx context.Context, tenantID string, phone string) (domain.Profile, error) {
+	for _, prof := range m.profiles {
+		var attrs map[string]any
+		if len(prof.Attributes) > 0 && json.Unmarshal(prof.Attributes, &attrs) == nil {
+			if attrs["phone"] == phone {
+				return prof, nil
+			}
+		}
+	}
+	return domain.Profile{}, errors.New("profile not found")
+}
+
 func (m *mockStore) GetSendingIdentityByProviderConfig(ctx context.Context, provider string, configKey string, configVal string) (domain.SendingIdentity, error) {
 	for _, iden := range m.identities {
 		if iden.Provider == provider {

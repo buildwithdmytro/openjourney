@@ -30,8 +30,10 @@ type fakeStore struct {
 	runs            []domain.JourneyRun
 	getTemplateFunc                        func(id string) (domain.Template, error)
 	getProfileFunc                         func(externalID string) (domain.Profile, error)
+	getProfileByPhoneFunc                  func(tenantID, phone string) (domain.Profile, error)
 	getSendingIdentityFunc                 func(id string) (domain.SendingIdentity, error)
 	getSendingIdentityByProviderConfigFunc func(provider, configKey, configVal string) (domain.SendingIdentity, error)
+	AcceptEventsFunc                       func(ctx context.Context, p domain.Principal, events []domain.Event) ([]string, error)
 }
 
 type fakeBlobStore struct {
@@ -101,7 +103,10 @@ func (f *fakeStore) RevokeLocalSession(_ context.Context, token string) error {
 	f.revokedToken = token
 	return nil
 }
-func (f *fakeStore) AcceptEvents(_ context.Context, _ domain.Principal, events []domain.Event) ([]string, error) {
+func (f *fakeStore) AcceptEvents(ctx context.Context, p domain.Principal, events []domain.Event) ([]string, error) {
+	if f.AcceptEventsFunc != nil {
+		return f.AcceptEventsFunc(ctx, p, events)
+	}
 	f.accepted += len(events)
 	return []string{"event-1"}, nil
 }
@@ -432,6 +437,12 @@ func (f *fakeStore) GetProfileEmails(ctx context.Context, tenantID string, profi
 }
 func (f *fakeStore) GetProfilePhones(ctx context.Context, tenantID string, profileIDs []string) (map[string]string, error) {
 	return map[string]string{}, nil
+}
+func (f *fakeStore) GetProfileByPhone(ctx context.Context, tenantID string, phone string) (domain.Profile, error) {
+	if f.getProfileByPhoneFunc != nil {
+		return f.getProfileByPhoneFunc(tenantID, phone)
+	}
+	return domain.Profile{}, nil
 }
 func (f *fakeStore) GetSendingIdentityByProviderConfig(ctx context.Context, provider string, configKey string, configVal string) (domain.SendingIdentity, error) {
 	if f.getSendingIdentityByProviderConfigFunc != nil {
@@ -1248,5 +1259,126 @@ func TestSMSCallbackTwilioSignature(t *testing.T) {
 		}
 	})
 }
+
+func TestSMSCallbackSTOPSTART(t *testing.T) {
+	store := &fakeStore{}
+	server := New(store, 75)
+
+	mockIdentity := domain.SendingIdentity{
+		ID:       "iden-sms-1",
+		TenantID: "tenant-sms",
+		Provider: "twilio",
+		Config:   json.RawMessage(`{"account_sid":"AC123", "auth_token":"my-secret-token"}`),
+	}
+
+	store.getSendingIdentityFunc = func(id string) (domain.SendingIdentity, error) {
+		if id == "iden-sms-1" {
+			return mockIdentity, nil
+		}
+		return domain.SendingIdentity{}, errors.New("not found")
+	}
+
+	store.getSendingIdentityByProviderConfigFunc = func(provider, configKey, configVal string) (domain.SendingIdentity, error) {
+		if provider == "twilio" && configKey == "account_sid" && configVal == "AC123" {
+			return mockIdentity, nil
+		}
+		return domain.SendingIdentity{}, errors.New("not found")
+	}
+
+	store.getProfileByPhoneFunc = func(tenantID, phone string) (domain.Profile, error) {
+		if phone == "+15555550100" {
+			return domain.Profile{
+				ID:         "prof-123",
+				ExternalID: "ext-123",
+			}, nil
+		}
+		return domain.Profile{}, errors.New("not found")
+	}
+
+	var acceptedEvents []domain.Event
+	store.AcceptEventsFunc = func(ctx context.Context, p domain.Principal, events []domain.Event) ([]string, error) {
+		acceptedEvents = append(acceptedEvents, events...)
+		return []string{"event-1"}, nil
+	}
+
+	t.Run("STOP keyword emits consent.changed unsubscribed", func(t *testing.T) {
+		acceptedEvents = nil
+		requestURL := "http://example.com/v1/callbacks/sms/twilio"
+		data := requestURL + "AccountSidAC123BodySTOPFrom+15555550100MessageSidSM999"
+		mac := hmac.New(sha1.New, []byte("my-secret-token"))
+		mac.Write([]byte(data))
+		signature := base64.StdEncoding.EncodeToString(mac.Sum(nil))
+
+		body := "AccountSid=AC123&From=%2B15555550100&Body=STOP&MessageSid=SM999"
+		req := httptest.NewRequest(http.MethodPost, "/v1/callbacks/sms/twilio", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("X-Twilio-Signature", signature)
+		req.Host = "example.com"
+		res := httptest.NewRecorder()
+
+		server.ServeHTTP(res, req)
+		if res.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK, got %d body=%s", res.Code, res.Body.String())
+		}
+
+		if len(acceptedEvents) != 1 {
+			t.Fatalf("expected 1 accepted event, got %d", len(acceptedEvents))
+		}
+		event := acceptedEvents[0]
+		if event.Type != "consent.changed" {
+			t.Errorf("expected event.Type = consent.changed, got %q", event.Type)
+		}
+		if event.ExternalID != "ext-123" {
+			t.Errorf("expected ExternalID = ext-123, got %q", event.ExternalID)
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload["channel"] != "sms" {
+			t.Errorf("expected channel = sms, got %v", payload["channel"])
+		}
+		if payload["state"] != "unsubscribed" {
+			t.Errorf("expected state = unsubscribed, got %v", payload["state"])
+		}
+	})
+
+	t.Run("START keyword emits consent.changed subscribed", func(t *testing.T) {
+		acceptedEvents = nil
+		requestURL := "http://example.com/v1/callbacks/sms/twilio"
+		data := requestURL + "AccountSidAC123BodySTARTFrom+15555550100MessageSidSM888"
+		mac := hmac.New(sha1.New, []byte("my-secret-token"))
+		mac.Write([]byte(data))
+		signature := base64.StdEncoding.EncodeToString(mac.Sum(nil))
+
+		body := "AccountSid=AC123&From=%2B15555550100&Body=START&MessageSid=SM888"
+		req := httptest.NewRequest(http.MethodPost, "/v1/callbacks/sms/twilio", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("X-Twilio-Signature", signature)
+		req.Host = "example.com"
+		res := httptest.NewRecorder()
+
+		server.ServeHTTP(res, req)
+		if res.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK, got %d body=%s", res.Code, res.Body.String())
+		}
+
+		if len(acceptedEvents) != 1 {
+			t.Fatalf("expected 1 accepted event, got %d", len(acceptedEvents))
+		}
+		event := acceptedEvents[0]
+		if event.Type != "consent.changed" {
+			t.Errorf("expected event.Type = consent.changed, got %q", event.Type)
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload["state"] != "subscribed" {
+			t.Errorf("expected state = subscribed, got %v", payload["state"])
+		}
+	})
+}
+
 
 

@@ -494,8 +494,72 @@ func (s *Server) handleSMSCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Signature is valid! We can trust the payload now.
+	fromPhone := r.FormValue("From")
+	bodyText := r.FormValue("Body")
+	keyword := strings.ToUpper(strings.TrimSpace(bodyText))
+
+	var state string
+	switch keyword {
+	case "STOP", "QUIT", "CANCEL", "UNSUBSCRIBE":
+		state = "unsubscribed"
+	case "START", "YES", "SUBSCRIBE":
+		state = "subscribed"
+	}
+
+	if state != "" {
+		// Try to lookup profile by phone
+		var externalID, anonymousID string
+		profile, err := s.store.GetProfileByPhone(r.Context(), identity.TenantID, fromPhone)
+		if err == nil {
+			externalID = profile.ExternalID
+			anonymousID = profile.AnonymousID
+			if externalID == "" {
+				externalID = profile.ID
+			}
+		}
+		if externalID == "" {
+			externalID = fromPhone
+		}
+
+		eventPayload, _ := json.Marshal(map[string]any{
+			"channel": "sms",
+			"state":   state,
+			"evidence": map[string]any{
+				"keyword":     keyword,
+				"message_sid": r.FormValue("MessageSid"),
+				"from":        fromPhone,
+				"to":          r.FormValue("To"),
+			},
+		})
+
+		consentEvent := domain.Event{
+			Type:           "consent.changed",
+			SchemaVersion:  1,
+			ExternalID:     externalID,
+			AnonymousID:    anonymousID,
+			IdempotencyKey: fmt.Sprintf("consent-%s-%s", r.FormValue("MessageSid"), state),
+			OccurredAt:     time.Now().UTC(),
+			Payload:        eventPayload,
+		}
+
+		p := domain.Principal{
+			TenantID:    identity.TenantID,
+			WorkspaceID: identity.WorkspaceID,
+			AppID:       "system",
+			ActorType:   "system",
+		}
+
+		_, err = s.store.AcceptEvents(r.Context(), p, []domain.Event{consentEvent})
+		if err != nil {
+			slog.Error("failed to accept consent.changed event in SMS webhook", "error", err, "phone", fromPhone)
+			http.Error(w, "failed to process consent change", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/xml")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("signature valid"))
+	_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`))
 }
 
 func verifyTwilioSignature(authToken string, signature string, requestURL string, params url.Values) bool {

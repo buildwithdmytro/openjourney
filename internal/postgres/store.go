@@ -446,6 +446,40 @@ func (s *Store) ProjectEvent(ctx context.Context, event domain.AcceptedEvent) er
 		if err != nil {
 			return err
 		}
+
+		// Handle suppressions insertion/deletion for unsubscribe/subscribe
+		var endpoint string
+		var attributesJSON []byte
+		err = tx.QueryRow(ctx, `SELECT attributes FROM profiles WHERE id=$1`, profileID).Scan(&attributesJSON)
+		if err == nil && len(attributesJSON) > 0 {
+			var attrs map[string]any
+			if json.Unmarshal(attributesJSON, &attrs) == nil {
+				if body.Channel == "sms" {
+					endpoint, _ = attrs["phone"].(string)
+				} else if body.Channel == "email" {
+					endpoint, _ = attrs["email"].(string)
+				}
+			}
+		}
+		if endpoint != "" {
+			if body.State == "unsubscribed" {
+				_, err = tx.Exec(ctx, `INSERT INTO suppressions
+					(tenant_id, channel, endpoint, reason, source_event_id)
+					VALUES($1, $2, $3, $4, $5)
+					ON CONFLICT(tenant_id, channel, endpoint) DO NOTHING`,
+					event.Principal.TenantID, strings.ToLower(body.Channel), strings.ToLower(endpoint), "unsubscribe", event.ID)
+				if err != nil {
+					return err
+				}
+			} else if body.State == "subscribed" {
+				_, err = tx.Exec(ctx, `DELETE FROM suppressions
+					WHERE tenant_id=$1 AND channel=$2 AND endpoint=$3 AND reason=$4`,
+					event.Principal.TenantID, strings.ToLower(body.Channel), strings.ToLower(endpoint), "unsubscribe")
+				if err != nil {
+					return err
+				}
+			}
+		}
 	case "message.bounced", "message.complained":
 		var body struct {
 			Channel    string `json:"channel"`
