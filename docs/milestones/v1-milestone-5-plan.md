@@ -335,10 +335,10 @@ be registered in the adapter registry (10.0).**
    seam (Recipe 6.21), copying `webhook.go` transport (`mapError`, timeout, `IsSafeURL` for the
    `http`/`fake` profiles). *Done when:* a `fake`/`http` profile sends and classifies a 5xx as
    retryable, a 4xx as permanent. — done: `httpprovider.go` + `httpprovider_test.go`; 10 profile tests PASS (5xx retryable, 4xx permanent, IsInvalidToken=false, BuildRequest validated)
-4. **Replace both provider switches** (`campaigns/deliver.go:380`, `journey/deliver.go:106`) with
+4. [x] **Replace both provider switches** (`campaigns/deliver.go:380`, `journey/deliver.go:106`) with
    `registry.For(...)`; construct the registry in `cmd/campaigns-delivery/main.go:84` and
    `cmd/journeys-worker/main.go:84`. *Done when:* the existing email/webhook tests
-   (`deliver_test.go` in both packages) still pass unchanged (behavior-preserving refactor).
+   (`deliver_test.go` in both packages) still pass unchanged (behavior-preserving refactor). — done: Registry field added to both Configs; adapterFor uses registry.For() when set; both cmd mains build DefaultRegistry+register ses; all campaigns/journey/channels tests PASS unchanged
 
 ### Milestone 10.1 — SMS outbound (campaign + journey, variant-aware)
 1. **Twilio SMS profile** `internal/channels/profiles_sms.go` (Recipe 6.21): Basic-auth POST,

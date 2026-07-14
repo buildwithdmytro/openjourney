@@ -20,11 +20,16 @@ import (
 type Config struct {
 	TrackingSecretKey []byte
 	TrackingBaseURL   string
-	Adapter           ports.ChannelAdapter
-	SESAdapter        ports.ChannelAdapter
-	WebhookAdapter    ports.ChannelAdapter
-	FakeAdapter       ports.ChannelAdapter
-	Clock             Clock
+	// Registry is the preferred way to supply adapters (built once per process).
+	// When set, adapter resolution delegates to Registry.For(provider).
+	Registry *channels.Registry
+	// The following fields are kept for backward compatibility with existing tests
+	// that inject adapters directly. Registry takes precedence.
+	Adapter        ports.ChannelAdapter
+	SESAdapter     ports.ChannelAdapter
+	WebhookAdapter ports.ChannelAdapter
+	FakeAdapter    ports.ChannelAdapter
+	Clock          Clock
 }
 
 func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Config) (bool, error) {
@@ -98,11 +103,16 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 		}
 	}
 
-	// Resolve appropriate channel adapter
+	// Resolve appropriate channel adapter.
+	// cfg.Adapter overrides everything (unit-test injection path).
 	var adapter ports.ChannelAdapter
 	if cfg.Adapter != nil {
 		adapter = cfg.Adapter
+	} else if cfg.Registry != nil {
+		// Registry is the preferred production path.
+		adapter = cfg.Registry.For(identity.Provider)
 	} else {
+		// Backward-compatible fallback for tests that set individual adapter fields.
 		switch identity.Provider {
 		case "ses":
 			if cfg.SESAdapter != nil {

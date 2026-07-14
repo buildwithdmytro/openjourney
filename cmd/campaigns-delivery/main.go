@@ -85,15 +85,15 @@ func main() {
 	if os.Getenv("OPENJOURNEY_MOCK_SES") == "true" {
 		sesAdapter = channels.NewFakeAdapter()
 	}
-	webhookAdapter := channels.NewWebhookAdapter()
-	fakeAdapter := channels.NewFakeAdapter()
+
+	// Build the adapter registry once for this process.
+	reg := channels.DefaultRegistry()
+	reg.Register("ses", sesAdapter)
 
 	deliveryCfg := campaigns.Config{
 		TrackingSecretKey: []byte(cfg.TrackingSecretKey),
 		TrackingBaseURL:   cfg.TrackingBaseURL,
-		SESAdapter:        sesAdapter,
-		WebhookAdapter:    webhookAdapter,
-		FakeAdapter:       fakeAdapter,
+		Registry:          reg,
 	}
 
 	slog.Info("starting campaigns delivery worker", "worker_id", workerID, "watch", watch)
