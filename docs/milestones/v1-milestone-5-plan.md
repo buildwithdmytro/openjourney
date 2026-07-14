@@ -341,9 +341,9 @@ be registered in the adapter registry (10.0).**
    (`deliver_test.go` in both packages) still pass unchanged (behavior-preserving refactor). — done: Registry field added to both Configs; adapterFor uses registry.For() when set; both cmd mains build DefaultRegistry+register ses; all campaigns/journey/channels tests PASS unchanged
 
 ### Milestone 10.1 — SMS outbound (campaign + journey, variant-aware)
-1. **Twilio SMS profile** `internal/channels/profiles_sms.go` (Recipe 6.21): Basic-auth POST,
+1. [x] **Twilio SMS profile** `internal/channels/profiles_sms.go` (Recipe 6.21): Basic-auth POST,
    body `{To, From, Body}` (+ `StatusCallback` URL), parse `sid`→provider-id, classify Twilio
-   error codes. Also a `http` generic-SMS profile. *Done when:* the profile table-test passes.
+   error codes. Also a `http` generic-SMS profile. *Done when:* the profile table-test passes. — done: `profiles_sms.go` + `profiles_sms_test.go`; 13 tests PASS (request shape, Basic auth, form-encoding, SID parse, permanent/retryable error-code classification; twilio+http in DefaultRegistry)
 2. **Channel-aware campaign recipients** (Recipe 6.22): a `GetProfilePhones` mirror of
    `GetProfileEmails` (`campaigns.go:340`); `dispatch.go` branches on `template.Channel`; skip
    profiles with no phone. *Done when:* an sms campaign resolves E.164 phones only.

@@ -23,6 +23,8 @@ func NewRegistry(adapters map[string]ports.ChannelAdapter, fallback ports.Channe
 // DefaultRegistry builds the production-default registry with:
 //   - "ses"     → a fresh SESAdapter
 //   - "webhook" → a fresh WebhookAdapter
+//   - "twilio"  → a fresh TwilioSMSAdapter (HTTPProviderAdapter + TwilioSMSProfile)
+//   - "http"    → a fresh HTTPProviderAdapter with HTTPGenericProfile (generic gateway)
 //   - "fake"    → a fresh FakeAdapter (also the fallback for unknown providers)
 func DefaultRegistry() *Registry {
 	fake := NewFakeAdapter()
@@ -30,6 +32,8 @@ func DefaultRegistry() *Registry {
 		map[string]ports.ChannelAdapter{
 			"ses":     NewSESAdapter(),
 			"webhook": NewWebhookAdapter(),
+			"twilio":  NewTwilioSMSAdapter(),
+			"http":    NewHTTPProviderAdapter(&HTTPGenericProfile{}, "sms"),
 			"fake":    fake,
 		},
 		fake,
