@@ -32,6 +32,12 @@ type mockStore struct {
 	experiments      map[string]domain.Experiment
 	assignments      map[string]domain.ExperimentAssignment
 	emittedEvents    []domain.Event
+	segments         map[string]domain.Segment
+	resolvedSegment  map[string][]string
+	manifestJobs     map[string][]domain.DeliveryJob
+	manifestKeys     map[string]string
+	profileEmails    map[string]string
+	profilePhones    map[string]string
 }
 
 func newMockStore() *mockStore {
@@ -46,6 +52,12 @@ func newMockStore() *mockStore {
 		completedJobs:    make(map[string]bool),
 		experiments:      make(map[string]domain.Experiment),
 		assignments:      make(map[string]domain.ExperimentAssignment),
+		segments:         make(map[string]domain.Segment),
+		resolvedSegment:  make(map[string][]string),
+		manifestJobs:     make(map[string][]domain.DeliveryJob),
+		manifestKeys:     make(map[string]string),
+		profileEmails:    make(map[string]string),
+		profilePhones:    make(map[string]string),
 	}
 }
 
@@ -197,6 +209,61 @@ func (m *mockStore) IsSuppressed(ctx context.Context, p domain.Principal, channe
 
 func (m *mockStore) SentCountSince(ctx context.Context, p domain.Principal, profileID string, since time.Time) (int, error) {
 	return 0, nil
+}
+
+func (m *mockStore) GetProfileEmails(ctx context.Context, tenantID string, profileIDs []string) (map[string]string, error) {
+	out := make(map[string]string)
+	for _, id := range profileIDs {
+		if email, ok := m.profileEmails[id]; ok {
+			out[id] = email
+		}
+	}
+	return out, nil
+}
+
+func (m *mockStore) GetProfilePhones(ctx context.Context, tenantID string, profileIDs []string) (map[string]string, error) {
+	out := make(map[string]string)
+	for _, id := range profileIDs {
+		if phone, ok := m.profilePhones[id]; ok {
+			out[id] = phone
+		}
+	}
+	return out, nil
+}
+
+func (m *mockStore) ClaimScheduledCampaign(ctx context.Context) (domain.Campaign, bool, error) {
+	for _, c := range m.campaigns {
+		if c.Status == "scheduled" {
+			// Update status to processing/dispatching to mock actual claim behavior
+			c.Status = "dispatching"
+			m.campaigns[c.ID] = c
+			return c, true, nil
+		}
+	}
+	return domain.Campaign{}, false, nil
+}
+
+func (m *mockStore) ResolveSegment(ctx context.Context, p domain.Principal, segmentID string) ([]string, error) {
+	return m.resolvedSegment[segmentID], nil
+}
+
+func (m *mockStore) GetSegment(ctx context.Context, p domain.Principal, id string) (domain.Segment, error) {
+	seg, ok := m.segments[id]
+	if !ok {
+		return domain.Segment{}, errors.New("segment not found")
+	}
+	return seg, nil
+}
+
+func (m *mockStore) SaveCampaignManifestAndJobs(ctx context.Context, campaignID string, manifestKey string, recipientCount int, segmentVersion int, templateVersion int, conversionGoal json.RawMessage, attributionWindow string, jobs []domain.DeliveryJob) error {
+	m.manifestKeys[campaignID] = manifestKey
+	m.manifestJobs[campaignID] = jobs
+	return nil
+}
+
+func (m *mockStore) UpdateCampaign(ctx context.Context, p domain.Principal, c domain.Campaign) (domain.Campaign, error) {
+	m.campaigns[c.ID] = c
+	return c, nil
 }
 
 type testAdapter struct {

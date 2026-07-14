@@ -344,9 +344,9 @@ be registered in the adapter registry (10.0).**
 1. [x] **Twilio SMS profile** `internal/channels/profiles_sms.go` (Recipe 6.21): Basic-auth POST,
    body `{To, From, Body}` (+ `StatusCallback` URL), parse `sid`→provider-id, classify Twilio
    error codes. Also a `http` generic-SMS profile. *Done when:* the profile table-test passes. — done: `profiles_sms.go` + `profiles_sms_test.go`; 13 tests PASS (request shape, Basic auth, form-encoding, SID parse, permanent/retryable error-code classification; twilio+http in DefaultRegistry)
-2. **Channel-aware campaign recipients** (Recipe 6.22): a `GetProfilePhones` mirror of
+2. [x] **Channel-aware campaign recipients** (Recipe 6.22): a `GetProfilePhones` mirror of
    `GetProfileEmails` (`campaigns.go:340`); `dispatch.go` branches on `template.Channel`; skip
-   profiles with no phone. *Done when:* an sms campaign resolves E.164 phones only.
+   profiles with no phone. *Done when:* an sms campaign resolves E.164 phones only. — done: `GetProfilePhones` implemented in real/fake stores; `dispatch.go` template channel branching; tests verify SMS campaign resolves E.164 phone numbers and skips profiles without one.
 3. **SMS template + render**: `channel='sms'`, `text_template`/`body_template`; render body; note
    GSM-7/UCS-2 length (warn, don't block). *Done when:* an sms template renders a body with
    profile vars.

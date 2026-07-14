@@ -63,20 +63,41 @@ func DispatchNext(ctx context.Context, store ports.Store, blobStore BlobStore) (
 		return true, fmt.Errorf("resolve segment: %w", err)
 	}
 
-	// 2. Fetch profiles' emails to keep only profiles with an email endpoint
-	profileEmails, err := store.GetProfileEmails(ctx, camp.TenantID, profileIDs)
+	template, err := store.GetTemplate(ctx, p, camp.TemplateID)
 	if err != nil {
-		return true, fmt.Errorf("get profile emails: %w", err)
+		return true, fmt.Errorf("get template: %w", err)
 	}
 
-	// Keep only profiles that have an email endpoint
+	// 2. Fetch profiles' endpoints based on channel
 	var recipients []domain.Recipient
-	for _, pID := range profileIDs {
-		if email, exists := profileEmails[pID]; exists && email != "" {
-			recipients = append(recipients, domain.Recipient{
-				ProfileID: pID,
-				Endpoint:  email,
-			})
+	if template.Channel == "sms" {
+		profilePhones, err := store.GetProfilePhones(ctx, camp.TenantID, profileIDs)
+		if err != nil {
+			return true, fmt.Errorf("get profile phones: %w", err)
+		}
+		for _, pID := range profileIDs {
+			if phone, exists := profilePhones[pID]; exists && phone != "" {
+				recipients = append(recipients, domain.Recipient{
+					ProfileID: pID,
+					Endpoint:  phone,
+				})
+			}
+		}
+	} else if template.Channel == "push" {
+		// Active device token fan-out is implemented in 10.4.3
+		recipients = []domain.Recipient{}
+	} else {
+		profileEmails, err := store.GetProfileEmails(ctx, camp.TenantID, profileIDs)
+		if err != nil {
+			return true, fmt.Errorf("get profile emails: %w", err)
+		}
+		for _, pID := range profileIDs {
+			if email, exists := profileEmails[pID]; exists && email != "" {
+				recipients = append(recipients, domain.Recipient{
+					ProfileID: pID,
+					Endpoint:  email,
+				})
+			}
 		}
 	}
 
@@ -84,11 +105,6 @@ func DispatchNext(ctx context.Context, store ports.Store, blobStore BlobStore) (
 	seg, err := store.GetSegment(ctx, p, camp.SegmentID)
 	if err != nil {
 		return true, fmt.Errorf("get segment: %w", err)
-	}
-
-	template, err := store.GetTemplate(ctx, p, camp.TemplateID)
-	if err != nil {
-		return true, fmt.Errorf("get template: %w", err)
 	}
 
 	var conversionGoal json.RawMessage

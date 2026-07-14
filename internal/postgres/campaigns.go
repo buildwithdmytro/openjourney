@@ -361,6 +361,31 @@ func (s *Store) GetProfileEmails(ctx context.Context, tenantID string, profileID
 	return out, rows.Err()
 }
 
+func (s *Store) GetProfilePhones(ctx context.Context, tenantID string, profileIDs []string) (map[string]string, error) {
+	if len(profileIDs) == 0 {
+		return map[string]string{}, nil
+	}
+	rows, err := s.pool.Query(ctx, `SELECT id, attributes->>'phone' FROM profiles WHERE tenant_id=$1 AND id=ANY($2)`, tenantID, profileIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make(map[string]string)
+	for rows.Next() {
+		var id string
+		var phone *string
+		if err := rows.Scan(&id, &phone); err != nil {
+			return nil, err
+		}
+		if phone != nil && *phone != "" {
+			out[id] = *phone
+		}
+	}
+	return out, rows.Err()
+}
+
+
 func (s *Store) GetFirstAppID(ctx context.Context, tenantID, workspaceID string) (string, error) {
 	var appID string
 	err := s.pool.QueryRow(ctx, `SELECT id FROM applications WHERE tenant_id = $1 AND workspace_id = $2 ORDER BY id LIMIT 1`, tenantID, workspaceID).Scan(&appID)

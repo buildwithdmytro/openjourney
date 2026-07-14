@@ -413,6 +413,9 @@ func (f *fakeStore) GetDeliveryAttempt(ctx context.Context, campaignID, profileI
 func (f *fakeStore) GetProfileEmails(ctx context.Context, tenantID string, profileIDs []string) (map[string]string, error) {
 	return map[string]string{}, nil
 }
+func (f *fakeStore) GetProfilePhones(ctx context.Context, tenantID string, profileIDs []string) (map[string]string, error) {
+	return map[string]string{}, nil
+}
 func (f *fakeStore) GetFirstAppID(ctx context.Context, tenantID, workspaceID string) (string, error) {
 	return "app-1", nil
 }
