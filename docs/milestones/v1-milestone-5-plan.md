@@ -328,9 +328,9 @@ be registered in the adapter registry (10.0).**
    (`sending_identities.channel`, `.provider`, `templates.channel`, templates body-presence),
    add `title_template` + `push_data`. *Done when:* an `sms` and a `push` template + identity
    insert successfully; an unknown channel still fails the CHECK. — done: `022_sms_push_channels.sql` applied; sms+push identity+template inserts succeed; `fax` channel fails `sending_identities_channel_check`; `go build ./...` BUILD OK
-2. **Adapter registry** `internal/channels/registry.go` (§3.1): a `provider→ChannelAdapter` map
+2. [x] **Adapter registry** `internal/channels/registry.go` (§3.1): a `provider→ChannelAdapter` map
    built once, `For(provider)` with fake fallback. Register `ses`/`webhook`/`fake`. *Done when:*
-   a unit test resolves each provider and unknown→fake.
+   a unit test resolves each provider and unknown→fake. — done: `registry.go` + `registry_test.go`; TestRegistry_For / TestRegistry_DefaultRegistry_KnownProviders / TestRegistry_Register all PASS
 3. **Generic HTTP-provider adapter** `internal/channels/httpprovider.go` + `ProviderProfile`
    seam (Recipe 6.21), copying `webhook.go` transport (`mapError`, timeout, `IsSafeURL` for the
    `http`/`fake` profiles). *Done when:* a `fake`/`http` profile sends and classifies a 5xx as
