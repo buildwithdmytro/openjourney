@@ -557,6 +557,50 @@ func TestExperimentMigrationAndDefaultScopesIntegration(t *testing.T) {
 	}
 }
 
+func TestDeviceTokensMigrationAndDefaultScopesIntegration(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	var exists bool
+	if err := store.pool.QueryRow(ctx, `SELECT to_regclass('public.device_tokens') IS NOT NULL`).Scan(&exists); err != nil {
+		t.Fatal(err)
+	}
+	if !exists {
+		t.Fatalf("table device_tokens does not exist")
+	}
+
+	rawKey := fmt.Sprintf("device-tokens-default-scopes-%d", time.Now().UnixNano())
+	if err := store.EnsureDevelopmentTenant(ctx, rawKey); err != nil {
+		t.Fatal(err)
+	}
+	principal, err := store.Authenticate(ctx, rawKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, scope := range []string{"device_tokens:read", "device_tokens:write"} {
+		if !principal.HasScope(scope) {
+			t.Fatalf("fresh API key scopes %v do not include %q", principal.Scopes, scope)
+		}
+	}
+	if _, err := store.CreateRole(ctx, principal, "Mobile dev", []string{
+		"device_tokens:read", "device_tokens:write",
+	}); err != nil {
+		t.Fatalf("CreateRole device_tokens scopes: %v", err)
+	}
+}
+
+
 func TestExperimentBindingsMigrationIntegration(t *testing.T) {
 	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
 	if databaseURL == "" {

@@ -370,9 +370,9 @@ be registered in the adapter registry (10.0).**
    recorded (and invalid → suppression). Telemetry `Bounces{channel=sms}`. — done: parsed MessageStatus, ErrorCode, and To phone numbers from Twilio DLR callback; lookup profile and emitted message.delivered, message.bounced, or message.failed events using AcceptEvents; verified using TestSMSCallbackDLR.
 
 ### Milestone 10.3 — Device tokens: registration API + SDK sync contract
-1. **Migration** `022_device_tokens.sql` per §2.2 + scopes `device_tokens:read/write` in
+1. [x] **Migration** `023_device_tokens.sql` per §2.2 + scopes `device_tokens:read/write` in
    `rbac.go` allowlist and the `api_keys` default array. *Done when:* the table exists; a fresh
-   key carries the scopes.
+   key carries the scopes. — done: created 023_device_tokens.sql migration; added scopes to allowedPermissions allowlist in rbac.go; verified using TestDeviceTokensMigrationAndDefaultScopesIntegration.
 2. **Domain + store CRUD** `internal/postgres/device_tokens.go` (Recipe 6.24) + `ports.Store`:
    `RegisterDeviceToken` (upsert), `RetireDeviceToken`, `ListActiveDeviceTokens`,
    `ListDeviceTokensByProfile`. Tenant+workspace+app scoped. *Done when:* re-register upserts to
