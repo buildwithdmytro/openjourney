@@ -17,14 +17,16 @@ import (
 
 type fakeStore struct {
 	ports.Store
-	accepted      int
-	scopes        []string
-	oidcPrincipal *domain.Principal
-	localSession  domain.AuthSession
-	revokedToken  string
-	published     int
-	rollouts      int
-	runs          []domain.JourneyRun
+	accepted        int
+	scopes          []string
+	oidcPrincipal   *domain.Principal
+	localSession    domain.AuthSession
+	revokedToken    string
+	published       int
+	rollouts        int
+	runs            []domain.JourneyRun
+	getTemplateFunc func(id string) (domain.Template, error)
+	getProfileFunc  func(externalID string) (domain.Profile, error)
 }
 
 type fakeBlobStore struct {
@@ -98,7 +100,11 @@ func (f *fakeStore) AcceptEvents(_ context.Context, _ domain.Principal, events [
 	f.accepted += len(events)
 	return []string{"event-1"}, nil
 }
-func (f *fakeStore) GetProfile(context.Context, domain.Principal, string) (domain.Profile, []domain.Consent, error) {
+func (f *fakeStore) GetProfile(_ context.Context, _ domain.Principal, externalID string) (domain.Profile, []domain.Consent, error) {
+	if f.getProfileFunc != nil {
+		prof, err := f.getProfileFunc(externalID)
+		return prof, nil, err
+	}
 	return domain.Profile{ID: "profile-1", Attributes: json.RawMessage(`{}`)}, nil, nil
 }
 func (f *fakeStore) ClaimProjectionJob(context.Context) (domain.AcceptedEvent, bool, error) {
@@ -215,6 +221,9 @@ func (f *fakeStore) CreateTemplate(_ context.Context, _ domain.Principal, tmpl d
 	return tmpl, nil
 }
 func (f *fakeStore) GetTemplate(_ context.Context, _ domain.Principal, id string) (domain.Template, error) {
+	if f.getTemplateFunc != nil {
+		return f.getTemplateFunc(id)
+	}
 	return domain.Template{ID: id, Name: "Test Template", Channel: "email"}, nil
 }
 func (f *fakeStore) UpdateTemplate(_ context.Context, _ domain.Principal, tmpl domain.Template) (domain.Template, error) {
@@ -1077,3 +1086,74 @@ func TestTemplateListEndpointsUseResponseEnvelopes(t *testing.T) {
 func ptrString(s string) *string {
 	return &s
 }
+
+func TestTemplatePreviewSMS(t *testing.T) {
+	store := &fakeStore{scopes: []string{"templates:read", "profiles:read"}}
+	server := New(store, 75)
+
+	// Set up mock template and profile
+	store.getTemplateFunc = func(id string) (domain.Template, error) {
+		textTmpl := "Hello {{ profile.attributes.first_name }}! Welcome to openjourney 🚀."
+		return domain.Template{
+			ID:           id,
+			Name:         "SMS Template",
+			Channel:      "sms",
+			TextTemplate: &textTmpl,
+			Version:      1,
+		}, nil
+	}
+
+	store.getProfileFunc = func(externalID string) (domain.Profile, error) {
+		return domain.Profile{
+			ID:         "prof-123",
+			ExternalID: externalID,
+			Attributes: json.RawMessage(`{"first_name": "Alice"}`),
+		}, nil
+	}
+
+	bodyJSON := `{"external_id":"user-123"}`
+	previewReq := httptest.NewRequest(http.MethodPost, "/v1/templates/tmpl-sms/preview", strings.NewReader(bodyJSON))
+	previewReq.Header.Set("Authorization", "Bearer test-key")
+	previewReq.Header.Set("Content-Type", "application/json")
+	previewRes := httptest.NewRecorder()
+
+	server.ServeHTTP(previewRes, previewReq)
+	if previewRes.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", previewRes.Code, previewRes.Body.String())
+	}
+
+	var resp struct {
+		Subject      string `json:"subject"`
+		Body         string `json:"body"`
+		SmsEncoding  string `json:"sms_encoding"`
+		SmsCharCount int    `json:"sms_char_count"`
+		SmsSegments  int    `json:"sms_segments"`
+		Warning      string `json:"warning"`
+	}
+
+	if err := json.Unmarshal(previewRes.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	expectedBody := "Hello Alice! Welcome to openjourney 🚀."
+	if resp.Body != expectedBody {
+		t.Errorf("expected body %q, got %q", expectedBody, resp.Body)
+	}
+
+	if resp.SmsEncoding != "UCS-2" {
+		t.Errorf("expected encoding UCS-2, got %q", resp.SmsEncoding)
+	}
+
+	if resp.SmsCharCount != 38 {
+		t.Errorf("expected char count 38, got %d", resp.SmsCharCount)
+	}
+
+	if resp.SmsSegments != 1 {
+		t.Errorf("expected 1 segment, got %d", resp.SmsSegments)
+	}
+
+	if !strings.Contains(resp.Warning, "contains non-GSM-7 characters") {
+		t.Errorf("expected UCS-2 warning, got %q", resp.Warning)
+	}
+}
+

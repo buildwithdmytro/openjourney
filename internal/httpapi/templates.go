@@ -173,8 +173,16 @@ func (s *Server) previewTemplate(w http.ResponseWriter, r *http.Request) {
 		subjectTmpl = *tmpl.SubjectTemplate
 	}
 	htmlTmpl := ""
-	if tmpl.HTMLTemplate != nil {
-		htmlTmpl = *tmpl.HTMLTemplate
+	if tmpl.Channel == "sms" {
+		if tmpl.TextTemplate != nil && *tmpl.TextTemplate != "" {
+			htmlTmpl = *tmpl.TextTemplate
+		} else if tmpl.BodyTemplate != nil && *tmpl.BodyTemplate != "" {
+			htmlTmpl = *tmpl.BodyTemplate
+		}
+	} else {
+		if tmpl.HTMLTemplate != nil {
+			htmlTmpl = *tmpl.HTMLTemplate
+		}
 	}
 
 	subject, err := render.Render(subjectTmpl, vars)
@@ -188,10 +196,27 @@ func (s *Server) previewTemplate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	resp := map[string]any{
 		"subject": subject,
 		"body":    body,
-	})
+	}
+
+	if tmpl.Channel == "sms" {
+		isUCS2, charCount, segments := render.AnalyzeSMS(body)
+		resp["sms_encoding"] = "GSM-7"
+		if isUCS2 {
+			resp["sms_encoding"] = "UCS-2"
+		}
+		resp["sms_char_count"] = charCount
+		resp["sms_segments"] = segments
+		if isUCS2 {
+			resp["warning"] = fmt.Sprintf("Message contains non-GSM-7 characters. Encoded in UCS-2: %d chars, %d segment(s).", charCount, segments)
+		} else if segments > 1 {
+			resp["warning"] = fmt.Sprintf("Message is long: %d chars, %d segment(s).", charCount, segments)
+		}
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // redirectLink handles GET /r/{token}: verifies the HMAC, emits link.clicked, then 302 to the original URL.

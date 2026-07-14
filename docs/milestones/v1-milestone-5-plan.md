@@ -347,9 +347,9 @@ be registered in the adapter registry (10.0).**
 2. [x] **Channel-aware campaign recipients** (Recipe 6.22): a `GetProfilePhones` mirror of
    `GetProfileEmails` (`campaigns.go:340`); `dispatch.go` branches on `template.Channel`; skip
    profiles with no phone. *Done when:* an sms campaign resolves E.164 phones only. — done: `GetProfilePhones` implemented in real/fake stores; `dispatch.go` template channel branching; tests verify SMS campaign resolves E.164 phone numbers and skips profiles without one.
-3. **SMS template + render**: `channel='sms'`, `text_template`/`body_template`; render body; note
+3. [x] **SMS template + render**: `channel='sms'`, `text_template`/`body_template`; render body; note
    GSM-7/UCS-2 length (warn, don't block). *Done when:* an sms template renders a body with
-   profile vars.
+   profile vars. — done: `render/sms.go` checks GSM-7 vs UCS-2 character sets and counts segments; `previewTemplate` renders SMS body templates and returns detailed encoding and segment warnings.
 4. **Send SMS end-to-end** from campaign + journey: `registry.For('twilio')`, stamp
    `channel='sms'` on `delivery_attempts`/`journey_message_intents` + the `message.sent` payload;
    reuse M4 variant stamping; `telemetry.MessagesSent{channel=sms}`. *Done when:* an sms campaign
