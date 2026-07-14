@@ -51,12 +51,24 @@ var (
 
 	ExperimentAssignments = mustCounter(Meter.Int64Counter("openjourney_experiment_assignments_total",
 		otelmetric.WithDescription("Total number of authoritative experiment assignments created")))
+
+	ConversionsAttributed = mustCounter(Meter.Int64Counter("openjourney_conversions_attributed_total",
+		otelmetric.WithDescription("Total number of conversion facts attributed to a send")))
 )
 
 // RecordExperimentAssignment records one newly-created authoritative assignment. Callers must
 // not invoke it when an idempotent assignment insert resolves to an existing row.
 func RecordExperimentAssignment(ctx context.Context, variant string) {
 	ExperimentAssignments.Add(ctx, 1, otelmetric.WithAttributes(attribute.String("variant", variant)))
+}
+
+// RecordConversionAttributed records one newly committed conversion fact. Callers must not
+// invoke it for an idempotent replay that did not insert a row.
+func RecordConversionAttributed(ctx context.Context, sourceType, variant string) {
+	ConversionsAttributed.Add(ctx, 1, otelmetric.WithAttributes(
+		attribute.String("source_type", sourceType),
+		attribute.String("variant", variant),
+	))
 }
 
 func mustCounter(c otelmetric.Int64Counter, err error) otelmetric.Int64Counter {

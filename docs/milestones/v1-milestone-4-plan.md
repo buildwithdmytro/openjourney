@@ -464,7 +464,7 @@ Testing bar: unit + golden per milestone; one consolidated integration/determini
 4. [x] **Load — waived by explicit user direction**: report-query latency over a large
    `engagement_facts`/`conversion_facts` set and projection-throughput performance tests were
    intentionally omitted. No latency, throughput, or sub-linear performance claim is made. — done: user directed Milestone 4 finalization without performance tests on 2026-07-14.
-5. **Telemetry**: `openjourney_experiment_assignments_total`, `openjourney_conversions_attributed_total`.
+5. [x] **Telemetry**: `openjourney_experiment_assignments_total`, `openjourney_conversions_attributed_total`. — done: assignment inserts retain the variant-labeled counter, and committed conversion-fact inserts now increment a source/variant-labeled attribution counter; focused metric and live-Postgres replay tests prove both counters and exactly-once behavior.
 6. **Run the suite**: `go build/vet/test ./...`, `go mod tidy`, `npm run build && npm audit`.
 7. **Audit doc** `docs/milestones/v1-milestone-4-audit.md` in the M2/M3 table format, one row per
    requirement with direct evidence, incl. the 9.0 fixes.

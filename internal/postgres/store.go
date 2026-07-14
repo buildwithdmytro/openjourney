@@ -398,6 +398,8 @@ func (s *Store) ProjectEvent(ctx context.Context, event domain.AcceptedEvent) er
 	}
 	defer tx.Rollback(ctx)
 	var profileID string
+	var conversionAttributed bool
+	var conversionSourceType, conversionVariant string
 	if event.Type != "message.bounced" && event.Type != "message.complained" {
 		var err error
 		profileID, err = ensureProfile(ctx, tx, event)
@@ -542,7 +544,8 @@ func (s *Store) ProjectEvent(ctx context.Context, event domain.AcceptedEvent) er
 		return fmt.Errorf("project engagement fact: %w", err)
 	}
 	if profileID != "" {
-		if err := s.projectConversionFact(ctx, tx, event, profileID); err != nil {
+		conversionAttributed, conversionSourceType, conversionVariant, err = s.projectConversionFact(ctx, tx, event, profileID)
+		if err != nil {
 			return fmt.Errorf("project conversion fact: %w", err)
 		}
 	}
@@ -560,7 +563,13 @@ func (s *Store) ProjectEvent(ctx context.Context, event domain.AcceptedEvent) er
 		completed_at=now(),last_error=NULL WHERE event_id=$1`, event.ID); err != nil {
 		return err
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	if conversionAttributed {
+		telemetry.RecordConversionAttributed(ctx, conversionSourceType, conversionVariant)
+	}
+	return nil
 }
 
 func ensureProfile(ctx context.Context, tx pgx.Tx, event domain.AcceptedEvent) (string, error) {

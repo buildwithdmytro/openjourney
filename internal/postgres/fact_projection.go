@@ -105,7 +105,7 @@ func (s *Store) projectEngagementFact(ctx context.Context, tx pgx.Tx, event doma
 	return err
 }
 
-func (s *Store) projectConversionFact(ctx context.Context, tx pgx.Tx, event domain.AcceptedEvent, profileID string) error {
+func (s *Store) projectConversionFact(ctx context.Context, tx pgx.Tx, event domain.AcceptedEvent, profileID string) (bool, string, string, error) {
 	var (
 		sourceType   string
 		sourceID     string
@@ -149,28 +149,35 @@ func (s *Store) projectConversionFact(ctx context.Context, tx pgx.Tx, event doma
 		event.OccurredAt, event.Payload,
 	).Scan(&sourceType, &sourceID, &experimentID, &variant, &sentAt, &goalJSON)
 	if err == pgx.ErrNoRows {
-		return nil
+		return false, "", "", nil
 	}
 	if err != nil {
-		return err
+		return false, "", "", err
 	}
 
 	var goal frozenConversionGoal
 	if err := json.Unmarshal(goalJSON, &goal); err != nil {
-		return err
+		return false, "", "", err
 	}
 	if goal.Name == "" {
 		goal.Name = event.Type
 	}
 	value := conversionValue(event.Payload, goal.ValueField)
-	_, err = tx.Exec(ctx, `INSERT INTO conversion_facts
+	result, err := tx.Exec(ctx, `INSERT INTO conversion_facts
 		(tenant_id, workspace_id, source_type, source_id, experiment_id, variant, profile_id,
 		 goal_name, value, occurred_at, attributed_send_at, source_event_id)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
 		ON CONFLICT (source_event_id, goal_name) DO NOTHING`,
 		event.Principal.TenantID, event.Principal.WorkspaceID, sourceType, sourceID,
 		experimentID, variant, profileID, goal.Name, value, event.OccurredAt, sentAt, event.ID)
-	return err
+	if err != nil {
+		return false, "", "", err
+	}
+	variantLabel := ""
+	if variant != nil {
+		variantLabel = *variant
+	}
+	return result.RowsAffected() == 1, sourceType, variantLabel, nil
 }
 
 func conversionValue(payload json.RawMessage, field string) float64 {

@@ -9,6 +9,10 @@ import (
 	"time"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
 func TestProjectEventAttributesFrozenGoalWithinWindowIdempotentlyAndByWorkspace(t *testing.T) {
@@ -34,6 +38,14 @@ func TestProjectEventAttributesFrozenGoalWithinWindowIdempotentlyAndByWorkspace(
 	if err != nil {
 		t.Fatal(err)
 	}
+	metricReader := metric.NewManualReader()
+	metricProvider := metric.NewMeterProvider(metric.WithReader(metricReader))
+	previousMetricProvider := otel.GetMeterProvider()
+	otel.SetMeterProvider(metricProvider)
+	t.Cleanup(func() {
+		otel.SetMeterProvider(previousMetricProvider)
+		_ = metricProvider.Shutdown(ctx)
+	})
 
 	var profileID string
 	err = store.pool.QueryRow(ctx, `INSERT INTO profiles
@@ -195,6 +207,29 @@ func TestProjectEventAttributesFrozenGoalWithinWindowIdempotentlyAndByWorkspace(
 	if totalRevenue != 60 {
 		t.Fatalf("summed attributed revenue=%v, want 60", totalRevenue)
 	}
+
+	var collected metricdata.ResourceMetrics
+	if err := metricReader.Collect(ctx, &collected); err != nil {
+		t.Fatal(err)
+	}
+	for _, scope := range collected.ScopeMetrics {
+		for _, measurement := range scope.Metrics {
+			if measurement.Name != "openjourney_conversions_attributed_total" {
+				continue
+			}
+			sum, ok := measurement.Data.(metricdata.Sum[int64])
+			if !ok || len(sum.DataPoints) != 1 || sum.DataPoints[0].Value != 2 {
+				t.Fatalf("conversion attribution counter data=%#v, want one point with value 2", measurement.Data)
+			}
+			sourceType, sourceOK := sum.DataPoints[0].Attributes.Value(attribute.Key("source_type"))
+			variant, variantOK := sum.DataPoints[0].Attributes.Value(attribute.Key("variant"))
+			if !sourceOK || sourceType.AsString() != "campaign" || !variantOK || variant.AsString() != "b" {
+				t.Fatalf("conversion attribution labels source=%v/%v variant=%v/%v", sourceType, sourceOK, variant, variantOK)
+			}
+			return
+		}
+	}
+	t.Fatal("conversion attribution counter was not collected")
 }
 
 func attributionTestEvent(t *testing.T, store *Store, p domain.Principal, externalID string, occurredAt time.Time, payload json.RawMessage) domain.AcceptedEvent {
