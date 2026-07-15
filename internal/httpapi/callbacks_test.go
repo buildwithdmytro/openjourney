@@ -424,3 +424,141 @@ func TestHandleSESCallback_EmptyAllowlistRejectsAll(t *testing.T) {
 	}
 }
 
+// --- Push callback tests ---
+
+func TestHandlePushCallback_Delivered(t *testing.T) {
+	var captured []domain.Event
+	store := &fakeStore{}
+	store.getSendingIdentityFunc = func(id string) (domain.SendingIdentity, error) {
+		return domain.SendingIdentity{
+			ID: id, TenantID: "ten-1", Channel: "push", Provider: "fcm",
+			Config: json.RawMessage(`{}`),
+		}, nil
+	}
+	store.AcceptEventsFunc = func(_ context.Context, _ domain.Principal, events []domain.Event) ([]string, error) {
+		captured = append(captured, events...)
+		return nil, nil
+	}
+	server := New(store, 0)
+
+	body, _ := json.Marshal(map[string]string{
+		"event": "delivered", "token": "tok-abc",
+		"tenant_id": "ten-1", "sending_identity_id": "iden-1",
+		"provider_message_id": "fcm-msg-1",
+	})
+	req := httptest.NewRequest("POST", "/v1/callbacks/push/fcm", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if len(captured) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(captured))
+	}
+	evt := captured[0]
+	if evt.Type != "message.delivered" {
+		t.Errorf("expected message.delivered, got %q", evt.Type)
+	}
+	var payload map[string]any
+	_ = json.Unmarshal(evt.Payload, &payload)
+	if payload["channel"] != "push" {
+		t.Errorf("expected channel=push, got %v", payload["channel"])
+	}
+	if payload["endpoint"] != "tok-abc" {
+		t.Errorf("expected endpoint=tok-abc, got %v", payload["endpoint"])
+	}
+}
+
+func TestHandlePushCallback_InvalidToken_RetiresToken(t *testing.T) {
+	var retiredToken string
+	var captured []domain.Event
+	store := &fakeStore{}
+	store.getSendingIdentityFunc = func(id string) (domain.SendingIdentity, error) {
+		return domain.SendingIdentity{
+			ID: id, TenantID: "ten-1", Channel: "push", Provider: "fcm",
+			Config: json.RawMessage(`{}`),
+		}, nil
+	}
+	store.retireDeviceTokenFunc = func(_ context.Context, _, _, token string) error {
+		retiredToken = token
+		return nil
+	}
+	store.AcceptEventsFunc = func(_ context.Context, _ domain.Principal, events []domain.Event) ([]string, error) {
+		captured = append(captured, events...)
+		return nil, nil
+	}
+	server := New(store, 0)
+
+	body, _ := json.Marshal(map[string]string{
+		"event": "invalid_token", "token": "stale-tok-xyz",
+		"tenant_id": "ten-1", "sending_identity_id": "iden-1",
+	})
+	req := httptest.NewRequest("POST", "/v1/callbacks/push/fcm", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if retiredToken != "stale-tok-xyz" {
+		t.Errorf("expected stale-tok-xyz retired, got %q", retiredToken)
+	}
+	if len(captured) != 1 || captured[0].Type != "message.failed" {
+		t.Errorf("expected message.failed event, got %v", captured)
+	}
+}
+
+func TestHandlePushCallback_BadSignatureRejected(t *testing.T) {
+	var captured []domain.Event
+	store := &fakeStore{}
+	store.getSendingIdentityFunc = func(id string) (domain.SendingIdentity, error) {
+		return domain.SendingIdentity{
+			ID: id, TenantID: "ten-1", Channel: "push", Provider: "fcm",
+			Config: json.RawMessage(`{"webhook_secret":"supersecret"}`),
+		}, nil
+	}
+	store.AcceptEventsFunc = func(_ context.Context, _ domain.Principal, events []domain.Event) ([]string, error) {
+		captured = append(captured, events...)
+		return nil, nil
+	}
+	server := New(store, 0)
+
+	body, _ := json.Marshal(map[string]string{
+		"event": "delivered", "token": "tok-abc",
+		"tenant_id": "ten-1", "sending_identity_id": "iden-1",
+		"provider_message_id": "fcm-msg-1",
+	})
+	req := httptest.NewRequest("POST", "/v1/callbacks/push/fcm", bytes.NewReader(body))
+	req.Header.Set("X-Push-Signature", "sha256=badhex0000")
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", w.Code)
+	}
+	if len(captured) != 0 {
+		t.Errorf("expected no events on bad signature, got %d", len(captured))
+	}
+}
+
+func TestHandlePushCallback_UnsupportedProvider(t *testing.T) {
+	store := &fakeStore{}
+	server := New(store, 0)
+
+	body, _ := json.Marshal(map[string]string{
+		"event": "delivered", "token": "tok-abc",
+		"tenant_id": "ten-1", "sending_identity_id": "iden-1",
+	})
+	req := httptest.NewRequest("POST", "/v1/callbacks/push/onesignal", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for unsupported provider, got %d", w.Code)
+	}
+}
+
+
+
+

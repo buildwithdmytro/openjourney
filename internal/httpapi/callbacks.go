@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/hmac"
 	"crypto/sha1"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
@@ -672,4 +673,166 @@ func verifyTwilioSignature(authToken string, signature string, requestURL string
 
 	return hmac.Equal([]byte(signature), []byte(expectedSignature))
 }
+
+// handlePushCallback processes push delivery receipts and invalid-token feedback
+// from FCM or APNs for POST /v1/callbacks/push/{provider}.
+//
+// Auth: HMAC-SHA256 over the raw body with the sending identity's webhook_secret,
+// passed as the X-Push-Signature header in the form "sha256=<hex>".
+//
+// Request body (JSON):
+//
+//	{
+//	  "event":              "delivered" | "invalid_token",
+//	  "token":              "<device token>",
+//	  "provider_message_id": "<optional provider msg id>",
+//	  "sending_identity_id": "<uuid>",
+//	  "tenant_id":           "<uuid>",
+//	  "workspace_id":        "<uuid>"   // optional, defaults to "workspace-1"
+//	}
+func (s *Server) handlePushCallback(w http.ResponseWriter, r *http.Request) {
+	provider := r.PathValue("provider")
+	if provider != "fcm" && provider != "apns" {
+		http.Error(w, "unsupported provider", http.StatusBadRequest)
+		return
+	}
+
+	// 1. Read body
+	bodyBytes, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
+	if err != nil {
+		http.Error(w, "failed to read body", http.StatusBadRequest)
+		return
+	}
+
+	// 2. Parse payload
+	var payload struct {
+		Event             string `json:"event"`
+		Token             string `json:"token"`
+		ProviderMessageID string `json:"provider_message_id"`
+		SendingIdentityID string `json:"sending_identity_id"`
+		TenantID          string `json:"tenant_id"`
+		WorkspaceID       string `json:"workspace_id"`
+	}
+	if err := json.Unmarshal(bodyBytes, &payload); err != nil {
+		http.Error(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	if payload.TenantID == "" || payload.SendingIdentityID == "" {
+		http.Error(w, "tenant_id and sending_identity_id are required", http.StatusBadRequest)
+		return
+	}
+	if payload.WorkspaceID == "" {
+		payload.WorkspaceID = "workspace-1"
+	}
+
+	// 3. Fetch sending identity for signature verification
+	p := domain.Principal{
+		TenantID:    payload.TenantID,
+		WorkspaceID: payload.WorkspaceID,
+		AppID:       "system",
+		ActorType:   "system",
+	}
+	identity, err := s.store.GetSendingIdentity(r.Context(), p, payload.SendingIdentityID)
+	if err != nil {
+		slog.Error("push callback: sending identity not found", "error", err,
+			"tenant_id", payload.TenantID, "sending_identity_id", payload.SendingIdentityID)
+		http.Error(w, "sending identity not found", http.StatusBadRequest)
+		return
+	}
+
+	// 4. Verify HMAC-SHA256 signature
+	var identCfg struct {
+		WebhookSecret string `json:"webhook_secret"`
+	}
+	if len(identity.Config) > 0 && string(identity.Config) != "{}" {
+		_ = json.Unmarshal(identity.Config, &identCfg)
+	}
+	if identCfg.WebhookSecret != "" {
+		sig := r.Header.Get("X-Push-Signature")
+		if sig == "" {
+			http.Error(w, "missing X-Push-Signature header", http.StatusForbidden)
+			return
+		}
+		// Accept "sha256=<hex>" or bare hex
+		sigHex := strings.TrimPrefix(sig, "sha256=")
+		mac := hmac.New(sha256.New, []byte(identCfg.WebhookSecret))
+		mac.Write(bodyBytes)
+		expected := fmt.Sprintf("%x", mac.Sum(nil))
+		if !hmac.Equal([]byte(sigHex), []byte(expected)) {
+			slog.Warn("push callback: signature verification failed",
+				"identity_id", identity.ID, "provider", provider)
+			http.Error(w, "signature verification failed", http.StatusForbidden)
+			return
+		}
+	}
+
+	// 5. Process event
+	switch payload.Event {
+	case "delivered":
+		if payload.Token == "" {
+			http.Error(w, "token is required for delivered event", http.StatusBadRequest)
+			return
+		}
+		eventPayload, _ := json.Marshal(map[string]any{
+			"channel":             "push",
+			"endpoint":            payload.Token,
+			"provider_message_id": payload.ProviderMessageID,
+			"provider":            provider,
+		})
+		evt := domain.Event{
+			Type:           "message.delivered",
+			SchemaVersion:  1,
+			ExternalID:     payload.Token, // best available identifier
+			IdempotencyKey: fmt.Sprintf("push-dlr-%s-%s", payload.ProviderMessageID, payload.Token),
+			OccurredAt:     time.Now().UTC(),
+			Payload:        eventPayload,
+		}
+		if _, err := s.store.AcceptEvents(r.Context(), p, []domain.Event{evt}); err != nil {
+			slog.Error("push callback: failed to accept message.delivered event",
+				"error", err, "token", payload.Token)
+			http.Error(w, "failed to process receipt", http.StatusInternalServerError)
+			return
+		}
+
+	case "invalid_token":
+		if payload.Token == "" {
+			http.Error(w, "token is required for invalid_token event", http.StatusBadRequest)
+			return
+		}
+		// Retire the token
+		appID, err := s.store.GetFirstAppID(r.Context(), payload.TenantID, payload.WorkspaceID)
+		if err != nil {
+			slog.Error("push callback: failed to resolve app for token retirement",
+				"error", err, "tenant_id", payload.TenantID)
+			appID = "app-1" // best-effort fallback
+		}
+		if err := s.store.RetireDeviceToken(r.Context(), payload.TenantID, appID, payload.Token); err != nil {
+			slog.Error("push callback: failed to retire invalid device token",
+				"error", err, "token", payload.Token)
+			// non-fatal; still return 200
+		}
+		eventPayload, _ := json.Marshal(map[string]any{
+			"channel":  "push",
+			"endpoint": payload.Token,
+			"provider": provider,
+			"reason":   "invalid_token",
+		})
+		evt := domain.Event{
+			Type:           "message.failed",
+			SchemaVersion:  1,
+			ExternalID:     payload.Token,
+			IdempotencyKey: fmt.Sprintf("push-inv-%s", payload.Token),
+			OccurredAt:     time.Now().UTC(),
+			Payload:        eventPayload,
+		}
+		_, _ = s.store.AcceptEvents(r.Context(), p, []domain.Event{evt})
+
+	default:
+		http.Error(w, "unsupported event type", http.StatusBadRequest)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
 

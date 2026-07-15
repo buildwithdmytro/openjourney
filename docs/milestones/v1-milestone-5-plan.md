@@ -408,10 +408,10 @@ be registered in the adapter registry (10.0).**
    `RetireDeviceToken` idempotently and record the disposition (`decision='failed'`, not a
    retryable). Telemetry `openjourney_push_tokens_retired_total`. *Done when:* a send returning
    `UNREGISTERED` retires that token and the next fan-out excludes it. — done: added `InvalidToken` field to `DeliveryError` and `IsInvalidToken()`/`IsInvalidTokenError()` helpers; `HTTPProviderAdapter.Send` now populates `InvalidToken` from `ProviderProfile.IsInvalidToken`; campaign and journey delivery paths check `IsInvalidTokenError` first, call `RetireDeviceToken`, emit telemetry counter `openjourney_push_tokens_retired_total`, and record `decision='failed'`; `FakeAdapter` gained `SendErr` injection; verified by `TestDeliverNext_InvalidTokenRetirement_Campaign` and `TestDeliverNext_InvalidTokenRetirement_Journey`.
-2. **Push receipt endpoint** `POST /v1/callbacks/push/{provider}` (Recipe 6.23): delivery
+2. [x] **Push receipt endpoint** `POST /v1/callbacks/push/{provider}` (Recipe 6.23): delivery
    receipts → `message.delivered`; provider invalid-token feedback → retire token. Signature/auth
    verified. *Done when:* a delivery receipt creates one `engagement_facts` row `channel='push'`;
-   a feedback-invalid token is retired.
+   a feedback-invalid token is retired. — done: added `handlePushCallback` to `callbacks.go` supporting `fcm`/`apns` providers; HMAC-SHA256 signature verification via `X-Push-Signature` header using `webhook_secret` from sending identity config; `delivered` events emit `message.delivered` via `AcceptEvents`; `invalid_token` events call `RetireDeviceToken` then emit `message.failed`; route registered as `POST /v1/callbacks/push/{provider}` in `server.go`; verified by `TestHandlePushCallback_Delivered`, `TestHandlePushCallback_InvalidToken_RetiresToken`, `TestHandlePushCallback_BadSignatureRejected`, `TestHandlePushCallback_UnsupportedProvider`.
 3. **(If split) Direct APNs JWT** — implement ES256 JWT minting + HTTP/2 transport for the `apns`
    profile if deferred from 10.4.1. *Done when:* the APNs profile builds a valid signed request
    in its table test.
