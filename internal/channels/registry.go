@@ -34,6 +34,8 @@ func DefaultRegistry() *Registry {
 			"webhook": NewWebhookAdapter(),
 			"twilio":  NewTwilioSMSAdapter(),
 			"http":    NewHTTPProviderAdapter(&HTTPGenericProfile{}, "sms"),
+			"fcm":     NewFCMPushAdapter(),
+			"apns":    NewAPNsPushAdapter(),
 			"fake":    fake,
 		},
 		fake,

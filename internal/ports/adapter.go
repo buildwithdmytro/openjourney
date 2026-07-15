@@ -14,6 +14,8 @@ type RenderedMessage struct {
 	HTML     string                 `json:"html,omitempty"`
 	Text     string                 `json:"text,omitempty"`
 	Body     string                 `json:"body,omitempty"`
+	Title    string                 `json:"title,omitempty"`
+	Data     map[string]string      `json:"data,omitempty"`
 	Identity       domain.SendingIdentity `json:"identity"`
 	IdempotencyKey string                 `json:"idempotency_key,omitempty"`
 }

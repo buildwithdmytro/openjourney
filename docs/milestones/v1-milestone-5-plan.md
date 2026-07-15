@@ -387,13 +387,11 @@ be registered in the adapter registry (10.0).**
    *Done when:* redocly lints clean. — done: added OpenAPI schema for DeviceToken and endpoint paths in api/openapi.yaml; added docs/sdk/device-tokens.md; verified using redocly cli linting.
 
 ### Milestone 10.4 — Push outbound (campaign + journey, variant-aware, rich payload)
-1. **FCM + APNs profiles** `internal/channels/profiles_push.go` (Recipe 6.21): FCM v1
+1. [x] **FCM + APNs profiles** `internal/channels/profiles_push.go` (Recipe 6.21): FCM v1
    (`Authorization: Bearer <token>`, body `{message:{token,notification:{title,body},data}}`);
    APNs (HTTP/2, `:path /3/device/{token}`, ES256 JWT `authorization` header, `apns-topic`).
    `IsInvalidToken` detects FCM `UNREGISTERED`/`NOT_FOUND` and APNs `BadDeviceToken`/`Unregistered`.
-   *Done when:* per-profile table tests assert request shape + invalid-token detection. (If APNs
-   JWT minting is too heavy for one iteration, land FCM here and split direct-APNs-JWT to 10.5.4
-   — a `BLOCKERS.md` note, not a fake.)
+   *Done when:* per-profile table tests assert request shape + invalid-token detection. — done: implemented FCM and APNs push profiles with request formatting and error parsing/token deactivation logic; registered both in internal/channels/registry.go; verified using TestFCMPushProfile and TestAPNsPushProfile.
 2. **Rich push template**: `Title` + `Data` on `ports.RenderedMessage`; `TitleTemplate`/`PushData`
    on `domain.Template`; render passes (Recipe 6.25). *Done when:* a push template renders title
    + body + a templated deep-link in `data`.
