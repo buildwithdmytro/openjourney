@@ -84,8 +84,19 @@ func DispatchNext(ctx context.Context, store ports.Store, blobStore BlobStore) (
 			}
 		}
 	} else if template.Channel == "push" {
-		// Active device token fan-out is implemented in 10.4.3
-		recipients = []domain.Recipient{}
+		for _, pID := range profileIDs {
+			tokens, err := store.ListActiveDeviceTokens(ctx, camp.TenantID, camp.WorkspaceID, pID)
+			if err != nil {
+				slog.Error("failed to list active device tokens for profile in dispatch", "error", err, "profile_id", pID)
+				continue
+			}
+			for _, tok := range tokens {
+				recipients = append(recipients, domain.Recipient{
+					ProfileID: pID,
+					Endpoint:  tok.Token,
+				})
+			}
+		}
 	} else {
 		profileEmails, err := store.GetProfileEmails(ctx, camp.TenantID, profileIDs)
 		if err != nil {

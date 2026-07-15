@@ -128,14 +128,46 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 		}
 
 		var identity domain.SendingIdentity
-		if selectedTemplate.SendingIdentityID != nil && *selectedTemplate.SendingIdentityID != "" {
-			identity, err = store.GetSendingIdentity(ctx, p, *selectedTemplate.SendingIdentityID)
+		if selectedTemplate.Channel == "push" {
+			activeTokens, err := store.ListActiveDeviceTokens(ctx, camp.TenantID, camp.WorkspaceID, rec.ProfileID)
 			if err != nil {
-				slog.Error("failed to get sending identity", "error", err)
+				slog.Error("failed to list active device tokens for profile", "error", err, "profile_id", rec.ProfileID)
 				continue
 			}
+			var matchingToken *domain.DeviceToken
+			for _, t := range activeTokens {
+				if t.Token == rec.Endpoint {
+					matchingToken = &t
+					break
+				}
+			}
+			if matchingToken == nil {
+				slog.Warn("device token no longer active, skipping send", "token", rec.Endpoint, "profile_id", rec.ProfileID)
+				continue
+			}
+
+			idents, err := store.ListSendingIdentities(ctx, p)
+			if err == nil {
+				for _, iden := range idents {
+					if iden.Provider == matchingToken.Provider {
+						identity = iden
+						break
+					}
+				}
+			}
+			if identity.ID == "" {
+				identity = domain.SendingIdentity{Channel: "push", Provider: matchingToken.Provider, MaxSendRate: 10}
+			}
 		} else {
-			identity = domain.SendingIdentity{Channel: selectedTemplate.Channel, Provider: "fake", MaxSendRate: 10}
+			if selectedTemplate.SendingIdentityID != nil && *selectedTemplate.SendingIdentityID != "" {
+				identity, err = store.GetSendingIdentity(ctx, p, *selectedTemplate.SendingIdentityID)
+				if err != nil {
+					slog.Error("failed to get sending identity", "error", err)
+					continue
+				}
+			} else {
+				identity = domain.SendingIdentity{Channel: selectedTemplate.Channel, Provider: "fake", MaxSendRate: 10}
+			}
 		}
 		adapter := adapterFor(identity.Provider, cfg)
 		template = selectedTemplate

@@ -38,6 +38,7 @@ type mockStore struct {
 	manifestKeys     map[string]string
 	profileEmails    map[string]string
 	profilePhones    map[string]string
+	deviceTokens     []domain.DeviceToken
 }
 
 func newMockStore() *mockStore {
@@ -223,6 +224,14 @@ func (m *mockStore) GetProfileByPhone(ctx context.Context, tenantID string, phon
 	return domain.Profile{}, errors.New("profile not found")
 }
 
+func (m *mockStore) ListSendingIdentities(ctx context.Context, p domain.Principal) ([]domain.SendingIdentity, error) {
+	var out []domain.SendingIdentity
+	for _, iden := range m.identities {
+		out = append(out, iden)
+	}
+	return out, nil
+}
+
 func (m *mockStore) RegisterDeviceToken(ctx context.Context, tenantID, workspaceID, appID, profileID, platform, provider, token string) (domain.DeviceToken, error) {
 	return domain.DeviceToken{}, nil
 }
@@ -233,7 +242,13 @@ func (m *mockStore) RetireDeviceTokenByID(ctx context.Context, tenantID, id stri
 	return nil
 }
 func (m *mockStore) ListActiveDeviceTokens(ctx context.Context, tenantID, workspaceID, profileID string) ([]domain.DeviceToken, error) {
-	return nil, nil
+	var out []domain.DeviceToken
+	for _, tok := range m.deviceTokens {
+		if tok.ProfileID == profileID && tok.Status == "active" {
+			out = append(out, tok)
+		}
+	}
+	return out, nil
 }
 func (m *mockStore) ListDeviceTokensByProfile(ctx context.Context, tenantID, workspaceID, profileID string) ([]domain.DeviceToken, error) {
 	return nil, nil
@@ -940,6 +955,97 @@ func TestDeliverNext_SMSCampaign(t *testing.T) {
 	}
 	if payload["endpoint"] != "+15555550100" {
 		t.Errorf("expected payload endpoint = +15555550100, got %v", payload["endpoint"])
+	}
+}
+
+func TestDeliverNext_PushCampaign(t *testing.T) {
+	store := newMockStore()
+
+	campID := "camp-push-1"
+	tmplID := "tmpl-push-1"
+	profID := "prof-push-1"
+	jobID := "job-push-1"
+
+	store.campaigns[campID] = domain.Campaign{
+		ID:          campID,
+		TenantID:    "tenant-1",
+		WorkspaceID: "workspace-1",
+		TemplateID:  tmplID,
+	}
+
+	bodyTmpl := "Hello {{ profile.attributes.first_name }}!"
+	titleTmpl := "Greeting"
+	store.templates[tmplID] = domain.Template{
+		ID:            tmplID,
+		Channel:       "push",
+		BodyTemplate:  &bodyTmpl,
+		TitleTemplate: &titleTmpl,
+	}
+
+	store.profiles[profID] = domain.Profile{
+		ID:         profID,
+		ExternalID: "ext-push-1",
+	}
+
+	// Active device tokens for resolving the provider
+	store.deviceTokens = []domain.DeviceToken{
+		{ProfileID: profID, Token: "token-push-100", Provider: "fcm", Status: "active"},
+	}
+
+	store.jobs[jobID] = domain.DeliveryJob{
+		ID:         jobID,
+		CampaignID: campID,
+		TenantID:   "tenant-1",
+		Recipients: []domain.Recipient{
+			{
+				ProfileID: profID,
+				Endpoint:  "token-push-100",
+			},
+		},
+	}
+
+	adapter := &testAdapter{}
+	cfg := Config{
+		Adapter: adapter,
+	}
+
+	processed, err := DeliverNext(context.Background(), store, "worker-1", cfg)
+	if !processed {
+		t.Fatalf("expected processed=true")
+	}
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify delivery attempt
+	attemptKey := campID + ":" + profID + ":push"
+	attempt, ok := store.deliveryAttempts[attemptKey]
+	if !ok {
+		t.Fatalf("expected delivery attempt to be created")
+	}
+	if attempt.Channel != "push" {
+		t.Errorf("expected attempt.Channel = push, got %q", attempt.Channel)
+	}
+	if attempt.Endpoint != "token-push-100" {
+		t.Errorf("expected attempt.Endpoint = token-push-100, got %q", attempt.Endpoint)
+	}
+	if attempt.Decision != "sent" {
+		t.Errorf("expected attempt.Decision = sent, got %q", attempt.Decision)
+	}
+
+	// Verify message sent via adapter
+	if len(adapter.messages) != 1 {
+		t.Fatalf("expected 1 sent message, got %d", len(adapter.messages))
+	}
+	msg := adapter.messages[0]
+	if msg.Channel != "push" {
+		t.Errorf("expected msg.Channel = push, got %q", msg.Channel)
+	}
+	if msg.Endpoint != "token-push-100" {
+		t.Errorf("expected msg.Endpoint = token-push-100, got %q", msg.Endpoint)
+	}
+	if msg.Identity.Provider != "fcm" {
+		t.Errorf("expected provider fcm resolved from token, got %q", msg.Identity.Provider)
 	}
 }
 

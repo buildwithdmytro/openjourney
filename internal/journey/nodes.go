@@ -156,7 +156,7 @@ type ExecutionResult struct {
 	WaitEventType *string
 	WaitUntil     *time.Time
 	State         json.RawMessage
-	MessageIntent *domain.JourneyMessageIntent
+	MessageIntents []domain.JourneyMessageIntent
 }
 
 func (n *Node) Execute(ctx context.Context, store ports.Store, run *domain.JourneyRun, graph *Graph, now time.Time, stepKind string) (ExecutionResult, error) {
@@ -169,7 +169,7 @@ func (n *Node) Execute(ctx context.Context, store ports.Store, run *domain.Journ
 	var waitEventType *string
 	var waitUntil *time.Time
 	var nextState = run.State
-	var messageIntent *domain.JourneyMessageIntent
+	var messageIntents []domain.JourneyMessageIntent
 
 	switch n.Type {
 	case NodeTypeEntry:
@@ -506,13 +506,31 @@ func (n *Node) Execute(ctx context.Context, store ports.Store, run *domain.Journ
 		if channel == "" {
 			channel = "email"
 		}
-		var endpoint string
+		var endpoints []string
 		if channel == "email" {
-			endpoint, _ = attrs["email"].(string)
+			if email, ok := attrs["email"].(string); ok && email != "" {
+				endpoints = append(endpoints, email)
+			}
 		} else if channel == "sms" {
-			endpoint, _ = attrs["phone"].(string)
+			if phone, ok := attrs["phone"].(string); ok && phone != "" {
+				endpoints = append(endpoints, phone)
+			}
+		} else if channel == "push" {
+			tokens, err := store.ListActiveDeviceTokens(ctx, run.TenantID, run.WorkspaceID, run.ProfileID)
+			if err != nil {
+				return ExecutionResult{}, fmt.Errorf("list active device tokens for message node: %w", err)
+			}
+			for _, tok := range tokens {
+				endpoints = append(endpoints, tok.Token)
+			}
 		} else {
-			endpoint, _ = attrs[channel].(string)
+			if ep, ok := attrs[channel].(string); ok && ep != "" {
+				endpoints = append(endpoints, ep)
+			}
+		}
+
+		if len(endpoints) == 0 {
+			endpoints = []string{""}
 		}
 
 		nxt, err := findNextNode(graph, n.ID, "")
@@ -538,30 +556,33 @@ func (n *Node) Execute(ctx context.Context, store ports.Store, run *domain.Journ
 			Detail:   json.RawMessage("{}"),
 		}
 
-		messageIntent = &domain.JourneyMessageIntent{
-			RunID:            run.ID,
-			TenantID:         run.TenantID,
-			WorkspaceID:      run.WorkspaceID,
-			JourneyID:        run.JourneyID,
-			JourneyVersionID: run.JourneyVersionID,
-			NodeID:           n.ID,
-			ProfileID:        run.ProfileID,
-			ExperimentID:     experimentID,
-			Variant:          variant,
-			TemplateID:       templateID,
-			Channel:          channel,
-			Endpoint:         endpoint,
-			Transactional:    cfg.Transactional,
-			Status:           "pending",
-			AvailableAt:      now,
-			PolicySnapshot:   json.RawMessage("{}"),
-		}
-		if holdout {
-			decision, reason := "holdout", "experiment holdout"
-			messageIntent.Status = "completed"
-			messageIntent.Decision = &decision
-			messageIntent.Reason = &reason
-			trans.Outcome = "holdout"
+		for _, endpoint := range endpoints {
+			intent := domain.JourneyMessageIntent{
+				RunID:            run.ID,
+				TenantID:         run.TenantID,
+				WorkspaceID:      run.WorkspaceID,
+				JourneyID:        run.JourneyID,
+				JourneyVersionID: run.JourneyVersionID,
+				NodeID:           n.ID,
+				ProfileID:        run.ProfileID,
+				ExperimentID:     experimentID,
+				Variant:          variant,
+				TemplateID:       templateID,
+				Channel:          channel,
+				Endpoint:         endpoint,
+				Transactional:    cfg.Transactional,
+				Status:           "pending",
+				AvailableAt:      now,
+				PolicySnapshot:   json.RawMessage("{}"),
+			}
+			if holdout {
+				decision, reason := "holdout", "experiment holdout"
+				intent.Status = "completed"
+				intent.Decision = &decision
+				intent.Reason = &reason
+				trans.Outcome = "holdout"
+			}
+			messageIntents = append(messageIntents, intent)
 		}
 
 	case NodeTypeWaitEvent:
@@ -637,7 +658,7 @@ func (n *Node) Execute(ctx context.Context, store ports.Store, run *domain.Journ
 		WaitEventType: waitEventType,
 		WaitUntil:     waitUntil,
 		State:         nextState,
-		MessageIntent: messageIntent,
+		MessageIntents: messageIntents,
 	}, nil
 }
 

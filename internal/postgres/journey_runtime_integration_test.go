@@ -1196,7 +1196,7 @@ func TestJourneyDeliveryIntegration(t *testing.T) {
 		Outcome:  "advanced",
 	}
 
-	err = store.AdvanceRunTx(ctx, runID, run, stepID, nil, trans, &intent)
+	err = store.AdvanceRunTx(ctx, runID, run, stepID, nil, trans, []domain.JourneyMessageIntent{intent})
 	if err != nil {
 		t.Fatalf("failed to advance and insert intent: %v", err)
 	}
@@ -1443,7 +1443,7 @@ func TestSentCountSince_FatigueAcrossChannels(t *testing.T) {
 		Outcome:  "advanced",
 	}
 
-	err = store.AdvanceRunTx(ctx, runID, run, stepID, nil, trans, &intent)
+	err = store.AdvanceRunTx(ctx, runID, run, stepID, nil, trans, []domain.JourneyMessageIntent{intent})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -311,7 +311,7 @@ func (s *Store) RecordTransition(ctx context.Context, trans domain.JourneyTransi
 	return err
 }
 
-func (s *Store) AdvanceRunTx(ctx context.Context, runID string, run domain.JourneyRun, stepID string, nextStep *domain.JourneyStep, trans domain.JourneyTransition, messageIntent *domain.JourneyMessageIntent) error {
+func (s *Store) AdvanceRunTx(ctx context.Context, runID string, run domain.JourneyRun, stepID string, nextStep *domain.JourneyStep, trans domain.JourneyTransition, messageIntents []domain.JourneyMessageIntent) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -423,21 +423,21 @@ func (s *Store) AdvanceRunTx(ctx context.Context, runID string, run domain.Journ
 		return fmt.Errorf("advance record transition: %w", err)
 	}
 
-	if messageIntent != nil {
-		if len(messageIntent.PolicySnapshot) == 0 {
-			messageIntent.PolicySnapshot = json.RawMessage("{}")
+	for _, intent := range messageIntents {
+		if len(intent.PolicySnapshot) == 0 {
+			intent.PolicySnapshot = json.RawMessage("{}")
 		}
 		_, err = tx.Exec(ctx, `INSERT INTO journey_message_intents (
 				run_id, tenant_id, workspace_id, journey_id, journey_version_id, node_id, profile_id,
 				experiment_id, variant, template_id, channel, endpoint, transactional, status, attempts,
 				available_at, locked_until, decision, reason, policy_snapshot
 			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
-			ON CONFLICT (run_id, node_id) DO NOTHING`,
-			messageIntent.RunID, messageIntent.TenantID, messageIntent.WorkspaceID, messageIntent.JourneyID,
-			messageIntent.JourneyVersionID, messageIntent.NodeID, messageIntent.ProfileID, messageIntent.ExperimentID,
-			messageIntent.Variant, messageIntent.TemplateID, messageIntent.Channel, messageIntent.Endpoint,
-			messageIntent.Transactional, messageIntent.Status, messageIntent.Attempts, messageIntent.AvailableAt,
-			messageIntent.LockedUntil, messageIntent.Decision, messageIntent.Reason, messageIntent.PolicySnapshot)
+			ON CONFLICT (run_id, node_id, endpoint) DO NOTHING`,
+			intent.RunID, intent.TenantID, intent.WorkspaceID, intent.JourneyID,
+			intent.JourneyVersionID, intent.NodeID, intent.ProfileID, intent.ExperimentID,
+			intent.Variant, intent.TemplateID, intent.Channel, intent.Endpoint,
+			intent.Transactional, intent.Status, intent.Attempts, intent.AvailableAt,
+			intent.LockedUntil, intent.Decision, intent.Reason, intent.PolicySnapshot)
 		if err != nil {
 			return fmt.Errorf("advance insert message intent: %w", err)
 		}

@@ -27,6 +27,8 @@ type mockStore struct {
 	acceptedEvents    []domain.Event
 	updateIntentHook  func(domain.JourneyMessageIntent) error
 	suppressed        bool
+	deviceTokens     []domain.DeviceToken
+	identities       []domain.SendingIdentity
 }
 
 func (m *mockStore) IsProfileInSegment(ctx context.Context, p domain.Principal, segmentID string, profileID string) (bool, error) {
@@ -137,7 +139,7 @@ func (m *mockStore) RescheduleJourneyStep(ctx context.Context, stepID string, av
 	return nil
 }
 
-func (m *mockStore) AdvanceRunTx(ctx context.Context, runID string, run domain.JourneyRun, stepID string, nextStep *domain.JourneyStep, trans domain.JourneyTransition, messageIntent *domain.JourneyMessageIntent) error {
+func (m *mockStore) AdvanceRunTx(ctx context.Context, runID string, run domain.JourneyRun, stepID string, nextStep *domain.JourneyStep, trans domain.JourneyTransition, messageIntents []domain.JourneyMessageIntent) error {
 	m.runs[runID] = run
 	step := m.steps[stepID]
 	step.Status = "completed"
@@ -148,8 +150,8 @@ func (m *mockStore) AdvanceRunTx(ctx context.Context, runID string, run domain.J
 		m.steps[nextStep.ID] = *nextStep
 	}
 	m.transitions = append(m.transitions, trans)
-	if messageIntent != nil {
-		m.intents = append(m.intents, *messageIntent)
+	for _, intent := range messageIntents {
+		m.intents = append(m.intents, intent)
 	}
 	return nil
 }
@@ -180,6 +182,20 @@ func (m *mockStore) UpdateJourneyMessageIntent(ctx context.Context, intent domai
 	}
 	m.intents = append(m.intents, intent)
 	return nil
+}
+
+func (m *mockStore) ListActiveDeviceTokens(ctx context.Context, tenantID, workspaceID, profileID string) ([]domain.DeviceToken, error) {
+	var out []domain.DeviceToken
+	for _, tok := range m.deviceTokens {
+		if tok.ProfileID == profileID && tok.Status == "active" {
+			out = append(out, tok)
+		}
+	}
+	return out, nil
+}
+
+func (m *mockStore) ListSendingIdentities(ctx context.Context, p domain.Principal) ([]domain.SendingIdentity, error) {
+	return m.identities, nil
 }
 
 func TestTickNextSkeleton(t *testing.T) {

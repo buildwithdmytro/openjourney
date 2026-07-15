@@ -371,8 +371,8 @@ func TestExecuteExperimentMessageSelectsTemplateStampsAndHoldsOut(t *testing.T) 
 	if err != nil {
 		t.Fatalf("execute experiment message: %v", err)
 	}
-	if res.MessageIntent.TemplateID != variantTemplate || res.MessageIntent.ExperimentID == nil || *res.MessageIntent.ExperimentID != exp.ID || res.MessageIntent.Variant != "variant" {
-		t.Fatalf("variant intent not selected/stamped: %+v", res.MessageIntent)
+	if len(res.MessageIntents) != 1 || res.MessageIntents[0].TemplateID != variantTemplate || res.MessageIntents[0].ExperimentID == nil || *res.MessageIntents[0].ExperimentID != exp.ID || res.MessageIntents[0].Variant != "variant" {
+		t.Fatalf("variant intent not selected/stamped: %+v", res.MessageIntents)
 	}
 
 	exp.HoldoutPct = 100
@@ -381,8 +381,8 @@ func TestExecuteExperimentMessageSelectsTemplateStampsAndHoldsOut(t *testing.T) 
 	if err != nil {
 		t.Fatalf("execute holdout message: %v", err)
 	}
-	if res.MessageIntent.Status != "completed" || res.MessageIntent.Decision == nil || *res.MessageIntent.Decision != "holdout" || res.MessageIntent.Variant != "holdout" {
-		t.Fatalf("holdout intent should be terminal and unsendable: %+v", res.MessageIntent)
+	if len(res.MessageIntents) != 1 || res.MessageIntents[0].Status != "completed" || res.MessageIntents[0].Decision == nil || *res.MessageIntents[0].Decision != "holdout" || res.MessageIntents[0].Variant != "holdout" {
+		t.Fatalf("holdout intent should be terminal and unsendable: %+v", res.MessageIntents)
 	}
 }
 
@@ -603,10 +603,10 @@ func TestExecuteMessage(t *testing.T) {
 	if res.NextNodeID != "n2" {
 		t.Errorf("expected NextNodeID 'n2', got %q", res.NextNodeID)
 	}
-	if res.MessageIntent == nil {
-		t.Fatalf("expected MessageIntent to be populated, but got nil")
+	if len(res.MessageIntents) != 1 {
+		t.Fatalf("expected 1 MessageIntent, but got %d", len(res.MessageIntents))
 	}
-	intent := res.MessageIntent
+	intent := res.MessageIntents[0]
 	if intent.TemplateID != "tmpl-123" {
 		t.Errorf("expected TemplateID 'tmpl-123', got %q", intent.TemplateID)
 	}

@@ -83,23 +83,67 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 
 	// Load Sending Identity
 	var identity domain.SendingIdentity
-	if template.SendingIdentityID != nil && *template.SendingIdentityID != "" {
-		identity, err = store.GetSendingIdentity(ctx, p, *template.SendingIdentityID)
+	if template.Channel == "push" {
+		activeTokens, err := store.ListActiveDeviceTokens(ctx, intent.TenantID, intent.WorkspaceID, intent.ProfileID)
 		if err != nil {
-			slog.Error("failed to get sending identity", "error", err, "sending_identity_id", *template.SendingIdentityID)
+			slog.Error("failed to list active device tokens for profile", "error", err, "profile_id", intent.ProfileID)
 			intent.Status = "failed"
-			errMsg := fmt.Sprintf("failed to get sending identity: %v", err)
+			errMsg := fmt.Sprintf("failed to list active device tokens: %v", err)
 			intent.ErrorMessage = &errMsg
-			dec := "render_failed"
+			dec := "failed"
 			intent.Decision = &dec
 			_ = store.UpdateJourneyMessageIntent(ctx, intent)
 			return true, nil
 		}
+		var matchingToken *domain.DeviceToken
+		for _, t := range activeTokens {
+			if t.Token == intent.Endpoint {
+				matchingToken = &t
+				break
+			}
+		}
+		if matchingToken == nil {
+			slog.Warn("device token no longer active, skipping send", "token", intent.Endpoint, "profile_id", intent.ProfileID)
+			intent.Status = "completed"
+			dec := "failed"
+			intent.Decision = &dec
+			reason := "device token no longer active"
+			intent.Reason = &reason
+			_ = store.UpdateJourneyMessageIntent(ctx, intent)
+			return true, nil
+		}
+
+		idents, err := store.ListSendingIdentities(ctx, p)
+		if err == nil {
+			for _, iden := range idents {
+				if iden.Provider == matchingToken.Provider {
+					identity = iden
+					break
+				}
+			}
+		}
+		if identity.ID == "" {
+			identity = domain.SendingIdentity{Channel: "push", Provider: matchingToken.Provider, MaxSendRate: 10}
+		}
 	} else {
-		identity = domain.SendingIdentity{
-			Channel:     template.Channel,
-			Provider:    "fake",
-			MaxSendRate: 10,
+		if template.SendingIdentityID != nil && *template.SendingIdentityID != "" {
+			identity, err = store.GetSendingIdentity(ctx, p, *template.SendingIdentityID)
+			if err != nil {
+				slog.Error("failed to get sending identity", "error", err, "sending_identity_id", *template.SendingIdentityID)
+				intent.Status = "failed"
+				errMsg := fmt.Sprintf("failed to get sending identity: %v", err)
+				intent.ErrorMessage = &errMsg
+				dec := "render_failed"
+				intent.Decision = &dec
+				_ = store.UpdateJourneyMessageIntent(ctx, intent)
+				return true, nil
+			}
+		} else {
+			identity = domain.SendingIdentity{
+				Channel:     template.Channel,
+				Provider:    "fake",
+				MaxSendRate: 10,
+			}
 		}
 	}
 

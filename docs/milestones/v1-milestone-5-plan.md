@@ -395,10 +395,10 @@ be registered in the adapter registry (10.0).**
 2. [x] **Rich push template**: `Title` + `Data` on `ports.RenderedMessage`; `TitleTemplate`/`PushData`
    on `domain.Template`; render passes (Recipe 6.25). *Done when:* a push template renders title
    + body + a templated deep-link in `data`. — done: added TitleTemplate and PushData to domain.Template and RenderedMessage; updated template preview rendering logic in internal/httpapi/templates.go; verified with TestTemplatePreviewPush unit test and templates integration tests.
-3. **Push endpoint fan-out** (Recipe 6.22): campaign + journey resolve a profile's active
+3. [x] **Push endpoint fan-out** (Recipe 6.22): campaign + journey resolve a profile's active
    `device_tokens` and enqueue **one send + one disposition row per token** (provider chosen by
    the token's `provider`/`platform`); stamp `channel='push'` + variant. *Done when:* a push
-   campaign to a profile with 2 active tokens makes 2 provider calls with 2 disposition rows.
+   campaign to a profile with 2 active tokens makes 2 provider calls with 2 disposition rows. — done: implemented database migration 024 widening delivery attempts & journey message intents uniqueness to include the endpoint token; updated campaigns dispatch and journey nodes execution to retrieve and build multiple intents/recipient records for each active device token; verified with unit tests.
 4. **Send push end-to-end** from campaign + journey; `telemetry.MessagesSent{channel=push}`;
    reuse M4 variant stamping. *Done when:* a push campaign and a push journey node send via the
    fake profile with correct per-token dispositions + `message.sent`.

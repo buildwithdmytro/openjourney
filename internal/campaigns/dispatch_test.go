@@ -179,3 +179,94 @@ func TestDispatchNext_EmailCampaignResolvesEmailsOnly(t *testing.T) {
 		}
 	}
 }
+
+func TestDispatchNext_PushCampaignResolvesDeviceTokens(t *testing.T) {
+	store := newMockStore()
+	blobs := &memoryBlobStore{objects: make(map[string][]byte)}
+
+	campID := "camp-push"
+	tmplID := "tmpl-push"
+	segID := "seg-push"
+
+	// 1. Setup template (channel = push)
+	store.templates[tmplID] = domain.Template{
+		ID:      tmplID,
+		Channel: "push",
+		Version: 1,
+	}
+
+	// 2. Setup segment
+	store.segments[segID] = domain.Segment{
+		ID:      segID,
+		Version: 1,
+		DSL:     []byte(`{}`),
+	}
+
+	// 3. Setup profiles and their active device tokens
+	store.resolvedSegment[segID] = []string{"prof-1", "prof-2", "prof-3"}
+	store.deviceTokens = []domain.DeviceToken{
+		{ProfileID: "prof-1", Token: "token-1-a", Status: "active"},
+		{ProfileID: "prof-1", Token: "token-1-b", Status: "active"},
+		{ProfileID: "prof-1", Token: "token-retired", Status: "retired"},
+		{ProfileID: "prof-2", Token: "token-2-a", Status: "active"},
+	}
+
+	// 4. Setup campaign
+	store.campaigns[campID] = domain.Campaign{
+		ID:          campID,
+		TenantID:    "tenant-1",
+		WorkspaceID: "workspace-1",
+		SegmentID:   segID,
+		TemplateID:  tmplID,
+		Status:      "scheduled",
+	}
+
+	// 5. Run DispatchNext
+	dispatched, err := DispatchNext(context.Background(), store, blobs)
+	if err != nil {
+		t.Fatalf("DispatchNext failed: %v", err)
+	}
+	if !dispatched {
+		t.Fatalf("expected dispatched=true")
+	}
+
+	// 6. Verify jobs and recipients
+	jobs := store.manifestJobs[campID]
+	if len(jobs) != 1 {
+		t.Fatalf("expected 1 delivery job, got %d", len(jobs))
+	}
+
+	job := jobs[0]
+	if len(job.Recipients) != 3 {
+		t.Fatalf("expected 3 recipients in job, got %d: %v", len(job.Recipients), job.Recipients)
+	}
+
+	expectedRecipients := map[string][]string{
+		"prof-1": {"token-1-a", "token-1-b"},
+		"prof-2": {"token-2-a"},
+	}
+
+	foundCount := 0
+	for _, r := range job.Recipients {
+		tokens, ok := expectedRecipients[r.ProfileID]
+		if !ok {
+			t.Errorf("unexpected profile: %s", r.ProfileID)
+			continue
+		}
+		foundTok := false
+		for _, tok := range tokens {
+			if r.Endpoint == tok {
+				foundTok = true
+				foundCount++
+				break
+			}
+		}
+		if !foundTok {
+			t.Errorf("unexpected token %s for profile %s", r.Endpoint, r.ProfileID)
+		}
+	}
+
+	if foundCount != 3 {
+		t.Errorf("expected to match 3 resolved tokens, got %d", foundCount)
+	}
+}
