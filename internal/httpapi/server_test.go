@@ -1584,6 +1584,125 @@ func TestSMSCallbackDLR(t *testing.T) {
 	})
 }
 
+func TestDeviceTokensAPI(t *testing.T) {
+	store := &fakeStore{
+		scopes: []string{"device_tokens:write"},
+	}
+	server := New(store, 75)
+
+	t.Run("POST /v1/device-tokens registers token", func(t *testing.T) {
+		store.registerDeviceTokenFunc = func(ctx context.Context, tenantID, workspaceID, appID, profileID, platform, provider, token string) (domain.DeviceToken, error) {
+			if tenantID != "tenant" || workspaceID != "workspace" || appID != "app" {
+				return domain.DeviceToken{}, errors.New("invalid principal values")
+			}
+			return domain.DeviceToken{
+				ID:          "token-id-1",
+				TenantID:    tenantID,
+				WorkspaceID: workspaceID,
+				AppID:       appID,
+				ProfileID:   profileID,
+				Platform:    platform,
+				Provider:    provider,
+				Token:       token,
+				Status:      "active",
+			}, nil
+		}
+
+		body := `{"profile_id":"prof-123", "platform":"ios", "provider":"fcm", "token":"token-val"}`
+		req := httptest.NewRequest(http.MethodPost, "/v1/device-tokens", strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer test-key")
+		req.Header.Set("Content-Type", "application/json")
+		res := httptest.NewRecorder()
+
+		server.ServeHTTP(res, req)
+		if res.Code != http.StatusCreated {
+			t.Fatalf("expected 201 Created, got %d body=%s", res.Code, res.Body.String())
+		}
+
+		var resp domain.DeviceToken
+		if err := json.Unmarshal(res.Body.Bytes(), &resp); err != nil {
+			t.Fatal(err)
+		}
+		if resp.ID != "token-id-1" || resp.Token != "token-val" {
+			t.Errorf("unexpected registered token: %+v", resp)
+		}
+	})
+
+	t.Run("DELETE /v1/device-tokens/{id} deactivates token", func(t *testing.T) {
+		calledID := ""
+		store.retireDeviceTokenByIDFunc = func(ctx context.Context, tenantID, id string) error {
+			if tenantID != "tenant" {
+				return errors.New("invalid tenant")
+			}
+			calledID = id
+			return nil
+		}
+
+		req := httptest.NewRequest(http.MethodDelete, "/v1/device-tokens/token-id-1", nil)
+		req.Header.Set("Authorization", "Bearer test-key")
+		res := httptest.NewRecorder()
+
+		server.ServeHTTP(res, req)
+		if res.Code != http.StatusNoContent {
+			t.Fatalf("expected 204 No Content, got %d body=%s", res.Code, res.Body.String())
+		}
+		if calledID != "token-id-1" {
+			t.Errorf("expected retire for ID %q, got %q", "token-id-1", calledID)
+		}
+	})
+
+	t.Run("POST /v1/device-tokens/sync reconciles tokens", func(t *testing.T) {
+		// Mock active list to return: [token-existing, token-to-drop]
+		store.listActiveDeviceTokensFunc = func(ctx context.Context, tenantID, workspaceID, profileID string) ([]domain.DeviceToken, error) {
+			return []domain.DeviceToken{
+				{Token: "token-existing", Status: "active"},
+				{Token: "token-to-drop", Status: "active"},
+			}, nil
+		}
+
+		var registered []string
+		store.registerDeviceTokenFunc = func(ctx context.Context, tenantID, workspaceID, appID, profileID, platform, provider, token string) (domain.DeviceToken, error) {
+			registered = append(registered, token)
+			return domain.DeviceToken{Token: token, Status: "active"}, nil
+		}
+
+		var retired []string
+		store.retireDeviceTokenFunc = func(ctx context.Context, tenantID, appID, token string) error {
+			retired = append(retired, token)
+			return nil
+		}
+
+		// Client sends token-existing (refresh) and token-new (register)
+		body := `{
+			"profile_id": "prof-123",
+			"tokens": [
+				{"token": "token-existing", "platform": "ios", "provider": "fcm"},
+				{"token": "token-new", "platform": "android", "provider": "fcm"}
+			]
+		}`
+		req := httptest.NewRequest(http.MethodPost, "/v1/device-tokens/sync", strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer test-key")
+		req.Header.Set("Content-Type", "application/json")
+		res := httptest.NewRecorder()
+
+		server.ServeHTTP(res, req)
+		if res.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK, got %d body=%s", res.Code, res.Body.String())
+		}
+
+		// Assertions:
+		// token-existing and token-new should have been registered/refreshed
+		if len(registered) != 2 || registered[0] != "token-existing" || registered[1] != "token-new" {
+			t.Errorf("unexpected registered tokens list: %v", registered)
+		}
+		// token-to-drop should have been retired
+		if len(retired) != 1 || retired[0] != "token-to-drop" {
+			t.Errorf("expected retired list to contain token-to-drop, got %v", retired)
+		}
+	})
+}
+
+
 
 
 

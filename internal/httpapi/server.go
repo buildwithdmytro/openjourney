@@ -130,6 +130,10 @@ func (s *Server) buildMux() http.Handler {
 	mux.Handle("GET /v1/suppressions", s.authenticate("suppressions:read", http.HandlerFunc(s.listSuppressions)))
 	mux.Handle("POST /v1/suppressions", s.authenticate("suppressions:write", http.HandlerFunc(s.createSuppression)))
 	mux.Handle("DELETE /v1/suppressions", s.authenticate("suppressions:write", http.HandlerFunc(s.deleteSuppression)))
+
+	mux.Handle("POST /v1/device-tokens", s.authenticate("device_tokens:write", http.HandlerFunc(s.registerDeviceToken)))
+	mux.Handle("DELETE /v1/device-tokens/{id}", s.authenticate("device_tokens:write", http.HandlerFunc(s.deactivateDeviceToken)))
+	mux.Handle("POST /v1/device-tokens/sync", s.authenticate("device_tokens:write", http.HandlerFunc(s.syncDeviceTokens)))
 	mux.Handle("GET /v1/api-keys", s.authenticate("api_keys:read", http.HandlerFunc(s.listAPIKeys)))
 	mux.Handle("POST /v1/api-keys", s.authenticate("api_keys:write", http.HandlerFunc(s.createAPIKey)))
 	mux.Handle("DELETE /v1/api-keys/{id}", s.authenticate("api_keys:write", http.HandlerFunc(s.revokeAPIKey)))
