@@ -295,19 +295,21 @@ type SendingIdentity struct {
 }
 
 type Template struct {
-	ID                string     `json:"id"`
-	TenantID          string     `json:"tenant_id"`
-	WorkspaceID       string     `json:"workspace_id"`
-	Name              string     `json:"name"`
-	Channel           string     `json:"channel"` // email, webhook
-	SubjectTemplate   *string    `json:"subject_template,omitempty"`
-	HTMLTemplate      *string    `json:"html_template,omitempty"`
-	TextTemplate      *string    `json:"text_template,omitempty"`
-	BodyTemplate      *string    `json:"body_template,omitempty"`
-	SendingIdentityID *string    `json:"sending_identity_id,omitempty"`
-	Version           int        `json:"version"`
-	CreatedAt         time.Time  `json:"created_at"`
-	UpdatedAt         time.Time  `json:"updated_at"`
+	ID                string            `json:"id"`
+	TenantID          string            `json:"tenant_id"`
+	WorkspaceID       string            `json:"workspace_id"`
+	Name              string            `json:"name"`
+	Channel           string            `json:"channel"` // email, webhook
+	SubjectTemplate   *string           `json:"subject_template,omitempty"`
+	HTMLTemplate      *string           `json:"html_template,omitempty"`
+	TextTemplate      *string           `json:"text_template,omitempty"`
+	BodyTemplate      *string           `json:"body_template,omitempty"`
+	TitleTemplate     *string           `json:"title_template,omitempty"`
+	PushData          map[string]string `json:"push_data,omitempty"`
+	SendingIdentityID *string           `json:"sending_identity_id,omitempty"`
+	Version           int               `json:"version"`
+	CreatedAt         time.Time         `json:"created_at"`
+	UpdatedAt         time.Time         `json:"updated_at"`
 }
 
 type APIKey struct {

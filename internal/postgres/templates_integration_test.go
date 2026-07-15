@@ -117,6 +117,44 @@ func TestTemplatesIntegration(t *testing.T) {
 		t.Errorf("expected same link ID on conflict, got %s and %s", linkID1, linkID2)
 	}
 
+	// 4. Test Push Templates
+	titleTmpl := "Title for {{ profile.attributes.name }}"
+	bodyTmpl := "Body with link: {{ deep_link }}"
+	pushTmpl, err := store.CreateTemplate(ctx, p, domain.Template{
+		Name:          "Push Template",
+		Channel:       "push",
+		TitleTemplate: &titleTmpl,
+		BodyTemplate:  &bodyTmpl,
+		PushData: map[string]string{
+			"deep_link": "https://example.com/promo?id={{ profile.id }}",
+			"image":     "https://example.com/img.png",
+		},
+	})
+	if err != nil {
+		t.Fatalf("create push template: %v", err)
+	}
+
+	fetchedPushTmpl, err := store.GetTemplate(ctx, p, pushTmpl.ID)
+	if err != nil {
+		t.Fatalf("get push template: %v", err)
+	}
+	if fetchedPushTmpl.TitleTemplate == nil || *fetchedPushTmpl.TitleTemplate != titleTmpl {
+		t.Errorf("expected TitleTemplate %q, got %v", titleTmpl, fetchedPushTmpl.TitleTemplate)
+	}
+	if fetchedPushTmpl.PushData["deep_link"] != "https://example.com/promo?id={{ profile.id }}" {
+		t.Errorf("expected deep_link data to match")
+	}
+
+	// Update push template
+	fetchedPushTmpl.PushData["image"] = "https://example.com/new-img.png"
+	updatedPushTmpl, err := store.UpdateTemplate(ctx, p, fetchedPushTmpl)
+	if err != nil {
+		t.Fatalf("update push template: %v", err)
+	}
+	if updatedPushTmpl.Version != 2 {
+		t.Errorf("expected push template version bump to 2, got %d", updatedPushTmpl.Version)
+	}
+
 	// Clean up
 	_, _ = store.pool.Exec(ctx, "DELETE FROM tenants WHERE id=$1", tenantID)
 }

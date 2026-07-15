@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
@@ -86,14 +87,22 @@ func (s *Store) CreateTemplate(ctx context.Context, p domain.Principal, tmpl dom
 	if tmpl.Channel == "" {
 		return domain.Template{}, errors.New("channel is required")
 	}
+	var pushDataBytes []byte
+	if tmpl.PushData != nil {
+		pushDataBytes, _ = json.Marshal(tmpl.PushData)
+	}
 	var out domain.Template
-	err := s.pool.QueryRow(ctx, `INSERT INTO templates (tenant_id, workspace_id, name, channel, subject_template, html_template, text_template, body_template, sending_identity_id, version)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 1)
-		RETURNING id, tenant_id, workspace_id, name, channel, subject_template, html_template, text_template, body_template, sending_identity_id, version, created_at, updated_at`,
-		p.TenantID, p.WorkspaceID, tmpl.Name, tmpl.Channel, tmpl.SubjectTemplate, tmpl.HTMLTemplate, tmpl.TextTemplate, tmpl.BodyTemplate, tmpl.SendingIdentityID).
-		Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.Name, &out.Channel, &out.SubjectTemplate, &out.HTMLTemplate, &out.TextTemplate, &out.BodyTemplate, &out.SendingIdentityID, &out.Version, &out.CreatedAt, &out.UpdatedAt)
+	var outPushData []byte
+	err := s.pool.QueryRow(ctx, `INSERT INTO templates (tenant_id, workspace_id, name, channel, subject_template, html_template, text_template, body_template, title_template, push_data, sending_identity_id, version)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 1)
+		RETURNING id, tenant_id, workspace_id, name, channel, subject_template, html_template, text_template, body_template, title_template, push_data, sending_identity_id, version, created_at, updated_at`,
+		p.TenantID, p.WorkspaceID, tmpl.Name, tmpl.Channel, tmpl.SubjectTemplate, tmpl.HTMLTemplate, tmpl.TextTemplate, tmpl.BodyTemplate, tmpl.TitleTemplate, pushDataBytes, tmpl.SendingIdentityID).
+		Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.Name, &out.Channel, &out.SubjectTemplate, &out.HTMLTemplate, &out.TextTemplate, &out.BodyTemplate, &out.TitleTemplate, &outPushData, &out.SendingIdentityID, &out.Version, &out.CreatedAt, &out.UpdatedAt)
 	if err != nil {
 		return domain.Template{}, err
+	}
+	if len(outPushData) > 0 {
+		_ = json.Unmarshal(outPushData, &out.PushData)
 	}
 	_ = s.audit(ctx, p, "template.create", "template", out.ID, map[string]any{"name": out.Name})
 	return out, nil
@@ -101,14 +110,21 @@ func (s *Store) CreateTemplate(ctx context.Context, p domain.Principal, tmpl dom
 
 func (s *Store) GetTemplate(ctx context.Context, p domain.Principal, id string) (domain.Template, error) {
 	var out domain.Template
-	err := s.pool.QueryRow(ctx, `SELECT id, tenant_id, workspace_id, name, channel, subject_template, html_template, text_template, body_template, sending_identity_id, version, created_at, updated_at
+	var outPushData []byte
+	err := s.pool.QueryRow(ctx, `SELECT id, tenant_id, workspace_id, name, channel, subject_template, html_template, text_template, body_template, title_template, push_data, sending_identity_id, version, created_at, updated_at
 		FROM templates WHERE tenant_id=$1 AND workspace_id=$2 AND id=$3`,
 		p.TenantID, p.WorkspaceID, id).
-		Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.Name, &out.Channel, &out.SubjectTemplate, &out.HTMLTemplate, &out.TextTemplate, &out.BodyTemplate, &out.SendingIdentityID, &out.Version, &out.CreatedAt, &out.UpdatedAt)
+		Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.Name, &out.Channel, &out.SubjectTemplate, &out.HTMLTemplate, &out.TextTemplate, &out.BodyTemplate, &out.TitleTemplate, &outPushData, &out.SendingIdentityID, &out.Version, &out.CreatedAt, &out.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Template{}, ErrNotFound
 	}
-	return out, err
+	if err != nil {
+		return domain.Template{}, err
+	}
+	if len(outPushData) > 0 {
+		_ = json.Unmarshal(outPushData, &out.PushData)
+	}
+	return out, nil
 }
 
 func (s *Store) UpdateTemplate(ctx context.Context, p domain.Principal, tmpl domain.Template) (domain.Template, error) {
@@ -118,32 +134,50 @@ func (s *Store) UpdateTemplate(ctx context.Context, p domain.Principal, tmpl dom
 	}
 
 	version := existing.Version
+	pushDataChanged := false
+	existingJSON, _ := json.Marshal(existing.PushData)
+	newJSON, _ := json.Marshal(tmpl.PushData)
+	if string(existingJSON) != string(newJSON) {
+		pushDataChanged = true
+	}
+
 	if valueOrEmpty(existing.SubjectTemplate) != valueOrEmpty(tmpl.SubjectTemplate) ||
 		valueOrEmpty(existing.HTMLTemplate) != valueOrEmpty(tmpl.HTMLTemplate) ||
 		valueOrEmpty(existing.TextTemplate) != valueOrEmpty(tmpl.TextTemplate) ||
-		valueOrEmpty(existing.BodyTemplate) != valueOrEmpty(tmpl.BodyTemplate) {
+		valueOrEmpty(existing.BodyTemplate) != valueOrEmpty(tmpl.BodyTemplate) ||
+		valueOrEmpty(existing.TitleTemplate) != valueOrEmpty(tmpl.TitleTemplate) ||
+		pushDataChanged {
 		version++
 	}
 
+	var pushDataBytes []byte
+	if tmpl.PushData != nil {
+		pushDataBytes, _ = json.Marshal(tmpl.PushData)
+	}
+
 	var out domain.Template
+	var outPushData []byte
 	err = s.pool.QueryRow(ctx, `UPDATE templates
-		SET name=$1, subject_template=$2, html_template=$3, text_template=$4, body_template=$5, sending_identity_id=$6, version=$7, updated_at=now()
-		WHERE tenant_id=$8 AND workspace_id=$9 AND id=$10
-		RETURNING id, tenant_id, workspace_id, name, channel, subject_template, html_template, text_template, body_template, sending_identity_id, version, created_at, updated_at`,
-		tmpl.Name, tmpl.SubjectTemplate, tmpl.HTMLTemplate, tmpl.TextTemplate, tmpl.BodyTemplate, tmpl.SendingIdentityID, version, p.TenantID, p.WorkspaceID, tmpl.ID).
-		Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.Name, &out.Channel, &out.SubjectTemplate, &out.HTMLTemplate, &out.TextTemplate, &out.BodyTemplate, &out.SendingIdentityID, &out.Version, &out.CreatedAt, &out.UpdatedAt)
+		SET name=$1, subject_template=$2, html_template=$3, text_template=$4, body_template=$5, title_template=$6, push_data=$7, sending_identity_id=$8, version=$9, updated_at=now()
+		WHERE tenant_id=$10 AND workspace_id=$11 AND id=$12
+		RETURNING id, tenant_id, workspace_id, name, channel, subject_template, html_template, text_template, body_template, title_template, push_data, sending_identity_id, version, created_at, updated_at`,
+		tmpl.Name, tmpl.SubjectTemplate, tmpl.HTMLTemplate, tmpl.TextTemplate, tmpl.BodyTemplate, tmpl.TitleTemplate, pushDataBytes, tmpl.SendingIdentityID, version, p.TenantID, p.WorkspaceID, tmpl.ID).
+		Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.Name, &out.Channel, &out.SubjectTemplate, &out.HTMLTemplate, &out.TextTemplate, &out.BodyTemplate, &out.TitleTemplate, &outPushData, &out.SendingIdentityID, &out.Version, &out.CreatedAt, &out.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Template{}, ErrNotFound
 	}
 	if err != nil {
 		return domain.Template{}, err
 	}
+	if len(outPushData) > 0 {
+		_ = json.Unmarshal(outPushData, &out.PushData)
+	}
 	_ = s.audit(ctx, p, "template.update", "template", out.ID, map[string]any{"name": out.Name})
 	return out, nil
 }
 
 func (s *Store) ListTemplates(ctx context.Context, p domain.Principal) ([]domain.Template, error) {
-	rows, err := s.pool.Query(ctx, `SELECT id, tenant_id, workspace_id, name, channel, subject_template, html_template, text_template, body_template, sending_identity_id, version, created_at, updated_at
+	rows, err := s.pool.Query(ctx, `SELECT id, tenant_id, workspace_id, name, channel, subject_template, html_template, text_template, body_template, title_template, push_data, sending_identity_id, version, created_at, updated_at
 		FROM templates WHERE tenant_id=$1 AND workspace_id=$2 ORDER BY name`,
 		p.TenantID, p.WorkspaceID)
 	if err != nil {
@@ -153,9 +187,13 @@ func (s *Store) ListTemplates(ctx context.Context, p domain.Principal) ([]domain
 	var out []domain.Template
 	for rows.Next() {
 		var tmpl domain.Template
-		err := rows.Scan(&tmpl.ID, &tmpl.TenantID, &tmpl.WorkspaceID, &tmpl.Name, &tmpl.Channel, &tmpl.SubjectTemplate, &tmpl.HTMLTemplate, &tmpl.TextTemplate, &tmpl.BodyTemplate, &tmpl.SendingIdentityID, &tmpl.Version, &tmpl.CreatedAt, &tmpl.UpdatedAt)
+		var outPushData []byte
+		err := rows.Scan(&tmpl.ID, &tmpl.TenantID, &tmpl.WorkspaceID, &tmpl.Name, &tmpl.Channel, &tmpl.SubjectTemplate, &tmpl.HTMLTemplate, &tmpl.TextTemplate, &tmpl.BodyTemplate, &tmpl.TitleTemplate, &outPushData, &tmpl.SendingIdentityID, &tmpl.Version, &tmpl.CreatedAt, &tmpl.UpdatedAt)
 		if err != nil {
 			return nil, err
+		}
+		if len(outPushData) > 0 {
+			_ = json.Unmarshal(outPushData, &tmpl.PushData)
 		}
 		out = append(out, tmpl)
 	}

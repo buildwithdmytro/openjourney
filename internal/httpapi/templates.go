@@ -179,26 +179,62 @@ func (s *Server) previewTemplate(w http.ResponseWriter, r *http.Request) {
 		} else if tmpl.BodyTemplate != nil && *tmpl.BodyTemplate != "" {
 			htmlTmpl = *tmpl.BodyTemplate
 		}
+	} else if tmpl.Channel == "push" {
+		if tmpl.BodyTemplate != nil && *tmpl.BodyTemplate != "" {
+			htmlTmpl = *tmpl.BodyTemplate
+		} else if tmpl.TextTemplate != nil && *tmpl.TextTemplate != "" {
+			htmlTmpl = *tmpl.TextTemplate
+		}
 	} else {
 		if tmpl.HTMLTemplate != nil {
 			htmlTmpl = *tmpl.HTMLTemplate
 		}
 	}
 
-	subject, err := render.Render(subjectTmpl, vars)
-	if err != nil {
-		writeError(w, http.StatusUnprocessableEntity, "render_error", fmt.Sprintf("subject: %v", err))
-		return
+	subject := ""
+	if tmpl.Channel != "push" {
+		subject, err = render.Render(subjectTmpl, vars)
+		if err != nil {
+			writeError(w, http.StatusUnprocessableEntity, "render_error", fmt.Sprintf("subject: %v", err))
+			return
+		}
 	}
-	body, err := render.Render(htmlTmpl, vars)
+
+	var body string
+	body, err = render.Render(htmlTmpl, vars)
 	if err != nil {
 		writeError(w, http.StatusUnprocessableEntity, "render_error", fmt.Sprintf("body: %v", err))
 		return
 	}
 
+	title := ""
+	if tmpl.Channel == "push" && tmpl.TitleTemplate != nil {
+		title, err = render.Render(*tmpl.TitleTemplate, vars)
+		if err != nil {
+			writeError(w, http.StatusUnprocessableEntity, "render_error", fmt.Sprintf("title: %v", err))
+			return
+		}
+	}
+
+	renderedPushData := make(map[string]string)
+	if tmpl.Channel == "push" && tmpl.PushData != nil {
+		for k, v := range tmpl.PushData {
+			renderedVal, err := render.Render(v, vars)
+			if err != nil {
+				writeError(w, http.StatusUnprocessableEntity, "render_error", fmt.Sprintf("push_data[%s]: %v", k, err))
+				return
+			}
+			renderedPushData[k] = renderedVal
+		}
+	}
+
 	resp := map[string]any{
 		"subject": subject,
 		"body":    body,
+	}
+	if tmpl.Channel == "push" {
+		resp["title"] = title
+		resp["push_data"] = renderedPushData
 	}
 
 	if tmpl.Channel == "sms" {

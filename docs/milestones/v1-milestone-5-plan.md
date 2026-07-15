@@ -392,9 +392,9 @@ be registered in the adapter registry (10.0).**
    APNs (HTTP/2, `:path /3/device/{token}`, ES256 JWT `authorization` header, `apns-topic`).
    `IsInvalidToken` detects FCM `UNREGISTERED`/`NOT_FOUND` and APNs `BadDeviceToken`/`Unregistered`.
    *Done when:* per-profile table tests assert request shape + invalid-token detection. — done: implemented FCM and APNs push profiles with request formatting and error parsing/token deactivation logic; registered both in internal/channels/registry.go; verified using TestFCMPushProfile and TestAPNsPushProfile.
-2. **Rich push template**: `Title` + `Data` on `ports.RenderedMessage`; `TitleTemplate`/`PushData`
+2. [x] **Rich push template**: `Title` + `Data` on `ports.RenderedMessage`; `TitleTemplate`/`PushData`
    on `domain.Template`; render passes (Recipe 6.25). *Done when:* a push template renders title
-   + body + a templated deep-link in `data`.
+   + body + a templated deep-link in `data`. — done: added TitleTemplate and PushData to domain.Template and RenderedMessage; updated template preview rendering logic in internal/httpapi/templates.go; verified with TestTemplatePreviewPush unit test and templates integration tests.
 3. **Push endpoint fan-out** (Recipe 6.22): campaign + journey resolve a profile's active
    `device_tokens` and enqueue **one send + one disposition row per token** (provider chosen by
    the token's `provider`/`platform`); stamp `channel='push'` + variant. *Done when:* a push

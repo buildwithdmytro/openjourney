@@ -1217,6 +1217,66 @@ func TestTemplatePreviewSMS(t *testing.T) {
 	}
 }
 
+func TestTemplatePreviewPush(t *testing.T) {
+	store := &fakeStore{scopes: []string{"templates:read", "profiles:read"}}
+	server := New(store, 75)
+
+	store.getTemplateFunc = func(id string) (domain.Template, error) {
+		titleTmpl := "Hello {{ profile.attributes.first_name }}!"
+		bodyTmpl := "Welcome to push notifications."
+		return domain.Template{
+			ID:            id,
+			Name:          "Push Template",
+			Channel:       "push",
+			TitleTemplate: &titleTmpl,
+			BodyTemplate:  &bodyTmpl,
+			PushData: map[string]string{
+				"deep_link": "https://example.com/promo?name={{ profile.attributes.first_name }}",
+			},
+			Version: 1,
+		}, nil
+	}
+
+	store.getProfileFunc = func(externalID string) (domain.Profile, error) {
+		return domain.Profile{
+			ID:         "prof-123",
+			ExternalID: externalID,
+			Attributes: json.RawMessage(`{"first_name": "Bob"}`),
+		}, nil
+	}
+
+	bodyJSON := `{"external_id":"user-456"}`
+	previewReq := httptest.NewRequest(http.MethodPost, "/v1/templates/tmpl-push/preview", strings.NewReader(bodyJSON))
+	previewReq.Header.Set("Authorization", "Bearer test-key")
+	previewReq.Header.Set("Content-Type", "application/json")
+	previewRes := httptest.NewRecorder()
+
+	server.ServeHTTP(previewRes, previewReq)
+	if previewRes.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", previewRes.Code, previewRes.Body.String())
+	}
+
+	var resp struct {
+		Title    string            `json:"title"`
+		Body     string            `json:"body"`
+		PushData map[string]string `json:"push_data"`
+	}
+
+	if err := json.Unmarshal(previewRes.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if resp.Title != "Hello Bob!" {
+		t.Errorf("expected title 'Hello Bob!', got %q", resp.Title)
+	}
+	if resp.Body != "Welcome to push notifications." {
+		t.Errorf("expected body, got %q", resp.Body)
+	}
+	if resp.PushData["deep_link"] != "https://example.com/promo?name=Bob" {
+		t.Errorf("expected rendered deep_link, got %q", resp.PushData["deep_link"])
+	}
+}
+
 func TestSMSCallbackTwilioSignature(t *testing.T) {
 	store := &fakeStore{}
 	server := New(store, 75)
