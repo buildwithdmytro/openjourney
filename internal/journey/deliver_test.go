@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -548,6 +549,65 @@ func TestDeliverNext_PushJourney(t *testing.T) {
 	}
 	if msg.Identity.Provider != "fcm" {
 		t.Errorf("expected provider fcm resolved from token, got %q", msg.Identity.Provider)
+	}
+}
+
+func TestDeliverNext_InvalidTokenRetirement_Journey(t *testing.T) {
+	store := newMockStore()
+	badToken := "stale-journey-token"
+
+	intent := domain.JourneyMessageIntent{
+		ID: "intent-invalid-1", RunID: "run-inv-1", TenantID: "tenant-inv-1", WorkspaceID: "workspace-inv-1",
+		JourneyID: "journey-inv-1", JourneyVersionID: "version-inv-1", NodeID: "node-inv-1",
+		ProfileID: "profile-inv-1", TemplateID: "template-push-invalid", Channel: "push",
+		Endpoint: badToken, Status: "pending",
+	}
+	store.intents = append(store.intents, intent)
+
+	store.profile = &domain.Profile{
+		ID:         "profile-inv-1",
+		ExternalID: "ext-inv-1",
+		Attributes: json.RawMessage(`{"name":"World"}`),
+	}
+	store.deviceTokens = []domain.DeviceToken{
+		{ProfileID: "profile-inv-1", Token: badToken, Provider: "fcm", Status: "active"},
+	}
+
+	// Inject an invalid-token error
+	invalidTokenErr := &channels.DeliveryError{
+		Err:          fmt.Errorf("UNREGISTERED"),
+		Retryable:    false,
+		InvalidToken: true,
+	}
+	fakeAdapter := channels.NewFakeAdapter()
+	fakeAdapter.SendErr = invalidTokenErr
+	cfg := Config{FakeAdapter: fakeAdapter}
+
+	processed, err := DeliverNext(context.Background(), store, "worker-inv-1", cfg)
+	if err != nil {
+		t.Fatalf("expected no caller-visible error, got %v", err)
+	}
+	if !processed {
+		t.Fatalf("expected processed=true")
+	}
+
+	// Intent should be completed with decision='failed'
+	updatedIntent := store.intents[0]
+	if updatedIntent.Status != "completed" {
+		t.Errorf("expected status completed, got %s", updatedIntent.Status)
+	}
+	if updatedIntent.Decision == nil || *updatedIntent.Decision != "failed" {
+		t.Errorf("expected decision='failed', got %v", updatedIntent.Decision)
+	}
+
+	// Token should be retired
+	if len(store.retiredTokens) != 1 || store.retiredTokens[0] != badToken {
+		t.Errorf("expected token %q retired, got %v", badToken, store.retiredTokens)
+	}
+
+	// No provider send should have occurred
+	if len(fakeAdapter.GetSends()) != 0 {
+		t.Errorf("expected 0 sends, got %d", len(fakeAdapter.GetSends()))
 	}
 }
 

@@ -29,6 +29,7 @@ type mockStore struct {
 	suppressed        bool
 	deviceTokens     []domain.DeviceToken
 	identities       []domain.SendingIdentity
+	retiredTokens    []string
 }
 
 func (m *mockStore) IsProfileInSegment(ctx context.Context, p domain.Principal, segmentID string, profileID string) (bool, error) {
@@ -197,6 +198,19 @@ func (m *mockStore) ListActiveDeviceTokens(ctx context.Context, tenantID, worksp
 func (m *mockStore) ListSendingIdentities(ctx context.Context, p domain.Principal) ([]domain.SendingIdentity, error) {
 	return m.identities, nil
 }
+
+func (m *mockStore) RetireDeviceToken(ctx context.Context, tenantID, appID, token string) error {
+	m.retiredTokens = append(m.retiredTokens, token)
+	// Mark the token inactive in the slice so fan-out skips it next cycle
+	for i, tok := range m.deviceTokens {
+		if tok.Token == token {
+			m.deviceTokens[i].Status = "inactive"
+		}
+	}
+	return nil
+}
+
+func (m *mockStore) RetireDeviceTokenByID(ctx context.Context, tenantID, id string) error { return nil }
 
 func TestTickNextSkeleton(t *testing.T) {
 	store := newMockStore()

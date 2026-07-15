@@ -21,8 +21,9 @@ import (
 
 // DeliveryError wraps an inner error and categorizes whether it's safe to retry.
 type DeliveryError struct {
-	Err       error
-	Retryable bool
+	Err          error
+	Retryable    bool
+	InvalidToken bool
 }
 
 func (e *DeliveryError) Error() string {
@@ -41,11 +42,27 @@ func (e *DeliveryError) IsRetryable() bool {
 	return e.Retryable
 }
 
+func (e *DeliveryError) IsInvalidToken() bool {
+	return e.InvalidToken
+}
+
 // IsRetryableError is a convenience helper to check if a delivery error is retryable.
 func IsRetryableError(err error) bool {
 	var de *DeliveryError
 	if errors.As(err, &de) {
 		return de.IsRetryable()
+	}
+	return false
+}
+
+// IsInvalidTokenError is a convenience helper to check if an error is an invalid device token.
+func IsInvalidTokenError(err error) bool {
+	type invalidTokenError interface {
+		IsInvalidToken() bool
+	}
+	var ite invalidTokenError
+	if errors.As(err, &ite) {
+		return ite.IsInvalidToken()
 	}
 	return false
 }

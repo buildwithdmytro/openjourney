@@ -54,6 +54,9 @@ var (
 
 	ConversionsAttributed = mustCounter(Meter.Int64Counter("openjourney_conversions_attributed_total",
 		otelmetric.WithDescription("Total number of conversion facts attributed to a send")))
+
+	PushTokensRetired = mustCounter(Meter.Int64Counter("openjourney_push_tokens_retired_total",
+		otelmetric.WithDescription("Total number of push tokens retired due to permanent failure")))
 )
 
 // RecordExperimentAssignment records one newly-created authoritative assignment. Callers must

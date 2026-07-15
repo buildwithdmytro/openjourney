@@ -423,7 +423,25 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 			providerMsgID, err = adapter.Send(ctx, msg)
 			if err != nil {
 				slog.Error("failed to send journey message via adapter", "error", err, "profile_id", intent.ProfileID)
-				if channels.IsRetryableError(err) {
+				if channels.IsInvalidTokenError(err) {
+					appID, errApp := store.GetFirstAppID(ctx, intent.TenantID, intent.WorkspaceID)
+					if errApp != nil {
+						appID = "app-1"
+					}
+					retireErr := store.RetireDeviceToken(ctx, intent.TenantID, appID, intent.Endpoint)
+					if retireErr != nil {
+						slog.Error("failed to retire invalid device token", "error", retireErr, "token", intent.Endpoint)
+					} else {
+						telemetry.PushTokensRetired.Add(ctx, 1)
+					}
+					intent.Status = "completed"
+					dec := "failed"
+					intent.Decision = &dec
+					reason := fmt.Sprintf("invalid token retired: %v", err)
+					intent.Reason = &reason
+					intent.ErrorMessage = &reason
+					_ = store.UpdateJourneyMessageIntent(ctx, intent)
+				} else if channels.IsRetryableError(err) {
 					intent.Status = "failed"
 					dec := "retryable_failed"
 					if intent.Attempts >= 3 {

@@ -11,8 +11,9 @@ import (
 
 // FakeAdapter is a thread-safe ChannelAdapter mock for unit tests and local sandboxed runs.
 type FakeAdapter struct {
-	mu    sync.Mutex
-	Sends []ports.RenderedMessage
+	mu      sync.Mutex
+	Sends   []ports.RenderedMessage
+	SendErr error // if non-nil, returned by Send instead of success
 }
 
 // NewFakeAdapter creates an initialized FakeAdapter.
@@ -23,9 +24,13 @@ func NewFakeAdapter() *FakeAdapter {
 }
 
 // Send records the rendered message in memory and returns a mock provider ID.
+// If SendErr is set, Send returns that error without recording the message.
 func (f *FakeAdapter) Send(ctx context.Context, msg ports.RenderedMessage) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.SendErr != nil {
+		return "", f.SendErr
+	}
 	f.Sends = append(f.Sends, msg)
 	return "fake-msg-id-" + msg.Endpoint, nil
 }

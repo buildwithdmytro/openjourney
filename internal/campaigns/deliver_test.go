@@ -39,6 +39,7 @@ type mockStore struct {
 	profileEmails    map[string]string
 	profilePhones    map[string]string
 	deviceTokens     []domain.DeviceToken
+	retiredTokens    []string
 }
 
 func newMockStore() *mockStore {
@@ -241,6 +242,12 @@ func (m *mockStore) RegisterDeviceToken(ctx context.Context, tenantID, workspace
 	return domain.DeviceToken{}, nil
 }
 func (m *mockStore) RetireDeviceToken(ctx context.Context, tenantID, appID, token string) error {
+	m.retiredTokens = append(m.retiredTokens, token)
+	for i, tok := range m.deviceTokens {
+		if tok.Token == token {
+			m.deviceTokens[i].Status = "inactive"
+		}
+	}
 	return nil
 }
 func (m *mockStore) RetireDeviceTokenByID(ctx context.Context, tenantID, id string) error {
@@ -1051,6 +1058,85 @@ func TestDeliverNext_PushCampaign(t *testing.T) {
 	}
 	if msg.Identity.Provider != "fcm" {
 		t.Errorf("expected provider fcm resolved from token, got %q", msg.Identity.Provider)
+	}
+}
+
+func TestDeliverNext_InvalidTokenRetirement_Campaign(t *testing.T) {
+	store := newMockStore()
+
+	campID := "camp-invalid-1"
+	tmplID := "tmpl-invalid-1"
+	profID := "prof-invalid-1"
+	jobID := "job-invalid-1"
+	badToken := "stale-token-999"
+
+	bodyTmpl := "Hello {{name}}"
+	titleTmpl := "Title"
+	store.campaigns[campID] = domain.Campaign{
+		ID:          campID,
+		TenantID:    "tenant-1",
+		WorkspaceID: "workspace-1",
+		TemplateID:  tmplID,
+	}
+	store.templates[tmplID] = domain.Template{
+		ID:            tmplID,
+		Channel:       "push",
+		BodyTemplate:  &bodyTmpl,
+		TitleTemplate: &titleTmpl,
+	}
+	store.profiles[profID] = domain.Profile{
+		ID:         profID,
+		ExternalID: "ext-invalid-1",
+	}
+	store.deviceTokens = []domain.DeviceToken{
+		{ProfileID: profID, Token: badToken, Provider: "fcm", Status: "active"},
+	}
+	store.jobs[jobID] = domain.DeliveryJob{
+		ID:         jobID,
+		CampaignID: campID,
+		TenantID:   "tenant-1",
+		Recipients: []domain.Recipient{
+			{ProfileID: profID, Endpoint: badToken},
+		},
+	}
+
+	// Adapter returns an InvalidToken error
+	adapter := channels.NewFakeAdapter()
+	adapter.SendErr = &channels.DeliveryError{
+		Err:          fmt.Errorf("UNREGISTERED"),
+		Retryable:    false,
+		InvalidToken: true,
+	}
+
+	cfg := Config{FakeAdapter: adapter}
+
+	processed, err := DeliverNext(context.Background(), store, "worker-1", cfg)
+	if err != nil {
+		t.Fatalf("expected no error from caller, got %v", err)
+	}
+	if !processed {
+		t.Fatalf("expected processed=true")
+	}
+
+	// Token should be retired
+	if len(store.retiredTokens) != 1 || store.retiredTokens[0] != badToken {
+		t.Errorf("expected token %q retired, got %v", badToken, store.retiredTokens)
+	}
+
+	// UpdateDeliveryAttempt should have been called with 'failed'
+	foundFailed := false
+	for _, entry := range store.updatedAttempts {
+		if entry == profID+":failed" {
+			foundFailed = true
+		}
+	}
+	if !foundFailed {
+		t.Errorf("expected 'failed' decision in updatedAttempts, got %v", store.updatedAttempts)
+	}
+
+	// Adapter should not have recorded any successful send
+	if len(adapter.GetSends()) != 0 {
+		t.Errorf("expected 0 sends, got %d", len(adapter.GetSends()))
 	}
 }
 

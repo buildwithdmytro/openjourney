@@ -336,7 +336,19 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 			providerMsgID, err = adapter.Send(ctx, msg)
 			if err != nil {
 				slog.Error("failed to send message via adapter", "error", err, "profile_id", rec.ProfileID)
-				if channels.IsRetryableError(err) {
+				if channels.IsInvalidTokenError(err) {
+					appID, errApp := store.GetFirstAppID(ctx, camp.TenantID, camp.WorkspaceID)
+					if errApp != nil {
+						appID = "app-1"
+					}
+					retireErr := store.RetireDeviceToken(ctx, camp.TenantID, appID, rec.Endpoint)
+					if retireErr != nil {
+						slog.Error("failed to retire invalid device token", "error", retireErr, "token", rec.Endpoint)
+					} else {
+						telemetry.PushTokensRetired.Add(ctx, 1)
+					}
+					_ = store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, rec.Endpoint, "failed", fmt.Sprintf("invalid token retired: %v", err), "", nil)
+				} else if channels.IsRetryableError(err) {
 					updateErr := store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, rec.Endpoint, "retryable_failed", fmt.Sprintf("transient send error: %v", err), "", nil)
 					if updateErr != nil {
 						slog.Error("failed to update delivery attempt on transient error", "error", updateErr)

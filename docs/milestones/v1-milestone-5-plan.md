@@ -404,10 +404,10 @@ be registered in the adapter registry (10.0).**
    fake profile with correct per-token dispositions + `message.sent`. — done: updated delivery attempt stores to filter on the token endpoint; implemented push message delivery and provider resolution end-to-end for both campaign and journey pathways; verified via TestDeliverNext_PushCampaign and TestDeliverNext_PushJourney unit tests.
 
 ### Milestone 10.5 — Push receipts + invalid-token retirement
-1. **Invalid-token retirement at send time** (§3.3): when a profile's `IsInvalidToken` is true,
+1. [x] **Invalid-token retirement at send time** (§3.3): when a profile's `IsInvalidToken` is true,
    `RetireDeviceToken` idempotently and record the disposition (`decision='failed'`, not a
    retryable). Telemetry `openjourney_push_tokens_retired_total`. *Done when:* a send returning
-   `UNREGISTERED` retires that token and the next fan-out excludes it.
+   `UNREGISTERED` retires that token and the next fan-out excludes it. — done: added `InvalidToken` field to `DeliveryError` and `IsInvalidToken()`/`IsInvalidTokenError()` helpers; `HTTPProviderAdapter.Send` now populates `InvalidToken` from `ProviderProfile.IsInvalidToken`; campaign and journey delivery paths check `IsInvalidTokenError` first, call `RetireDeviceToken`, emit telemetry counter `openjourney_push_tokens_retired_total`, and record `decision='failed'`; `FakeAdapter` gained `SendErr` injection; verified by `TestDeliverNext_InvalidTokenRetirement_Campaign` and `TestDeliverNext_InvalidTokenRetirement_Journey`.
 2. **Push receipt endpoint** `POST /v1/callbacks/push/{provider}` (Recipe 6.23): delivery
    receipts → `message.delivered`; provider invalid-token feedback → retire token. Signature/auth
    verified. *Done when:* a delivery receipt creates one `engagement_facts` row `channel='push'`;

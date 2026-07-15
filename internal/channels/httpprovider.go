@@ -111,7 +111,19 @@ func (a *HTTPProviderAdapter) Send(ctx context.Context, msg ports.RenderedMessag
 		return "", a.mapNetError(netErr)
 	}
 
-	return a.profile.ParseResponse(resp, body)
+	providerID, err := a.profile.ParseResponse(resp, body)
+	if err != nil {
+		if de, ok := err.(*DeliveryError); ok {
+			de.InvalidToken = a.profile.IsInvalidToken(resp, body)
+		} else {
+			err = &DeliveryError{
+				Err:          err,
+				Retryable:    false,
+				InvalidToken: a.profile.IsInvalidToken(resp, body),
+			}
+		}
+	}
+	return providerID, err
 }
 
 // doRequest executes the HTTP request and returns the response and fully-read body bytes.
