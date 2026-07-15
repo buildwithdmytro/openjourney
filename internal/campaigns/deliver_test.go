@@ -117,7 +117,7 @@ func (m *mockStore) GetSendingIdentity(ctx context.Context, p domain.Principal, 
 
 func (m *mockStore) CreateDeliveryAttempt(ctx context.Context, attempt domain.DeliveryAttempt) (bool, error) {
 	m.createdAttempts = append(m.createdAttempts, attempt)
-	key := attempt.CampaignID + ":" + attempt.ProfileID + ":" + attempt.Channel
+	key := attempt.CampaignID + ":" + attempt.ProfileID + ":" + attempt.Channel + ":" + attempt.Endpoint
 	if _, ok := m.deliveryAttempts[key]; ok {
 		return false, nil
 	}
@@ -137,15 +137,15 @@ func (m *mockStore) GetTenantFatigueQuotas(ctx context.Context, p domain.Princip
 	return 5, 20, nil
 }
 
-func (m *mockStore) DeleteDeliveryAttempt(ctx context.Context, tenantID, campaignID, profileID, channel string) error {
+func (m *mockStore) DeleteDeliveryAttempt(ctx context.Context, tenantID, campaignID, profileID, channel, endpoint string) error {
 	m.deletedAttempts = append(m.deletedAttempts, profileID)
-	key := campaignID + ":" + profileID + ":" + channel
+	key := campaignID + ":" + profileID + ":" + channel + ":" + endpoint
 	delete(m.deliveryAttempts, key)
 	return nil
 }
 
-func (m *mockStore) GetDeliveryAttempt(ctx context.Context, campaignID, profileID, channel string) (domain.DeliveryAttempt, error) {
-	key := campaignID + ":" + profileID + ":" + channel
+func (m *mockStore) GetDeliveryAttempt(ctx context.Context, campaignID, profileID, channel, endpoint string) (domain.DeliveryAttempt, error) {
+	key := campaignID + ":" + profileID + ":" + channel + ":" + endpoint
 	att, ok := m.deliveryAttempts[key]
 	if !ok {
 		return domain.DeliveryAttempt{}, ports.ErrNotFound
@@ -153,9 +153,9 @@ func (m *mockStore) GetDeliveryAttempt(ctx context.Context, campaignID, profileI
 	return att, nil
 }
 
-func (m *mockStore) UpdateDeliveryAttempt(ctx context.Context, campaignID, profileID, channel, decision, reason, providerMsgID string, policySnapshot []byte) error {
+func (m *mockStore) UpdateDeliveryAttempt(ctx context.Context, campaignID, profileID, channel, endpoint, decision, reason, providerMsgID string, policySnapshot []byte) error {
 	m.updatedAttempts = append(m.updatedAttempts, profileID+":"+decision)
-	key := campaignID + ":" + profileID + ":" + channel
+	key := campaignID + ":" + profileID + ":" + channel + ":" + endpoint
 	if att, ok := m.deliveryAttempts[key]; ok {
 		att.Decision = decision
 		att.Reason = reason
@@ -166,13 +166,18 @@ func (m *mockStore) UpdateDeliveryAttempt(ctx context.Context, campaignID, profi
 }
 
 func (m *mockStore) SetDeliveryAttemptExperiment(ctx context.Context, tenantID, campaignID, profileID, channel, experimentID, variant string) error {
-	key := campaignID + ":" + profileID + ":" + channel
-	att, ok := m.deliveryAttempts[key]
-	if !ok {
+	prefix := campaignID + ":" + profileID + ":" + channel + ":"
+	found := false
+	for key, att := range m.deliveryAttempts {
+		if strings.HasPrefix(key, prefix) {
+			att.ExperimentID, att.Variant = &experimentID, variant
+			m.deliveryAttempts[key] = att
+			found = true
+		}
+	}
+	if !found {
 		return ports.ErrNotFound
 	}
-	att.ExperimentID, att.Variant = &experimentID, variant
-	m.deliveryAttempts[key] = att
 	return nil
 }
 
@@ -455,7 +460,7 @@ func TestDeliverNext_RetryableAndReconcile(t *testing.T) {
 	}
 
 	// 1. Simulate a previous run that reached 'provider_sent' state (e.g. sent message to SES, received providerMsgID, but crashed before emitting event)
-	key := campID + ":" + profID + ":email"
+	key := campID + ":" + profID + ":email:" + "test@example.com"
 	store.deliveryAttempts[key] = domain.DeliveryAttempt{
 		CampaignID:        campID,
 		TenantID:          "tenant-1",
@@ -624,7 +629,7 @@ func TestDeliverNext_EffectivelyOnceSkip(t *testing.T) {
 	}
 
 	// Seed the delivery attempts map so CreateDeliveryAttempt returns false (already exists)
-	key := campID + ":" + profID + ":email"
+	key := campID + ":" + profID + ":email:" + "test@example.com"
 	store.deliveryAttempts[key] = domain.DeliveryAttempt{
 		CampaignID: campID,
 		ProfileID:  profID,
@@ -911,7 +916,7 @@ func TestDeliverNext_SMSCampaign(t *testing.T) {
 	}
 
 	// Verify delivery attempt
-	attemptKey := campID + ":" + profID + ":sms"
+	attemptKey := campID + ":" + profID + ":sms:" + "+15555550100"
 	attempt, ok := store.deliveryAttempts[attemptKey]
 	if !ok {
 		t.Fatalf("expected delivery attempt to be created")
@@ -1018,7 +1023,7 @@ func TestDeliverNext_PushCampaign(t *testing.T) {
 	}
 
 	// Verify delivery attempt
-	attemptKey := campID + ":" + profID + ":push"
+	attemptKey := campID + ":" + profID + ":push:" + "token-push-100"
 	attempt, ok := store.deliveryAttempts[attemptKey]
 	if !ok {
 		t.Fatalf("expected delivery attempt to be created")

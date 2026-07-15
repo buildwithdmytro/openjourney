@@ -141,9 +141,9 @@ type Store interface {
 	CompleteDeliveryJob(ctx context.Context, jobID string) error
 	FailDeliveryJob(ctx context.Context, jobID string, errMsg string) error
 	CreateDeliveryAttempt(ctx context.Context, attempt domain.DeliveryAttempt) (bool, error)
-	UpdateDeliveryAttempt(ctx context.Context, campaignID, profileID, channel, decision, reason, providerMsgID string, policySnapshot []byte) error
-	DeleteDeliveryAttempt(ctx context.Context, tenantID, campaignID, profileID, channel string) error
-	GetDeliveryAttempt(ctx context.Context, campaignID, profileID, channel string) (domain.DeliveryAttempt, error)
+	UpdateDeliveryAttempt(ctx context.Context, campaignID, profileID, channel, endpoint, decision, reason, providerMsgID string, policySnapshot []byte) error
+	DeleteDeliveryAttempt(ctx context.Context, tenantID, campaignID, profileID, channel, endpoint string) error
+	GetDeliveryAttempt(ctx context.Context, campaignID, profileID, channel, endpoint string) (domain.DeliveryAttempt, error)
 	CampaignReport(ctx context.Context, p domain.Principal, campaignID string) (domain.CampaignReport, error)
 	JourneyReport(ctx context.Context, p domain.Principal, journeyID string) (domain.JourneyReport, error)
 	ExperimentReport(ctx context.Context, p domain.Principal, experimentID string) (domain.ExperimentReport, error)

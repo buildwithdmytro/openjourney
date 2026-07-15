@@ -139,6 +139,16 @@ func (m *mockStore) GetTemplate(ctx context.Context, p domain.Principal, id stri
 			TextTemplate: &text,
 		}, nil
 	}
+	if strings.Contains(id, "push") {
+		title := "Title {{name}}"
+		body := "Body {{name}}"
+		return domain.Template{
+			ID:            id,
+			Channel:       "push",
+			TitleTemplate: &title,
+			BodyTemplate:  &body,
+		}, nil
+	}
 	subj := "Hello {{name}}"
 	html := "Body {{name}}"
 	return domain.Template{
@@ -479,6 +489,65 @@ func TestDeliverNext_SMSJourney(t *testing.T) {
 	}
 	if msg.Endpoint != "+15555559999" {
 		t.Errorf("expected endpoint +15555559999, got %q", msg.Endpoint)
+	}
+}
+
+func TestDeliverNext_PushJourney(t *testing.T) {
+	store := newMockStore()
+	fakeAdapter := channels.NewFakeAdapter()
+	cfg := Config{
+		FakeAdapter: fakeAdapter,
+	}
+
+	intent := domain.JourneyMessageIntent{
+		ID: "intent-push-1", RunID: "run-push-1", TenantID: "tenant-push-1", WorkspaceID: "workspace-push-1",
+		JourneyID: "journey-push-1", JourneyVersionID: "version-push-1", NodeID: "node-push-1",
+		ProfileID: "profile-push-1", TemplateID: "template-push-1", Channel: "push",
+		Endpoint: "token-push-9999", Status: "pending",
+	}
+	store.intents = append(store.intents, intent)
+
+	store.profile = &domain.Profile{
+		ID:         "profile-push-1",
+		ExternalID: "ext-push-1",
+		Attributes: json.RawMessage(`{"name":"World"}`),
+	}
+
+	// Active device tokens for resolving the provider
+	store.deviceTokens = []domain.DeviceToken{
+		{ProfileID: "profile-push-1", Token: "token-push-9999", Provider: "fcm", Status: "active"},
+	}
+
+	processed, err := DeliverNext(context.Background(), store, "worker-push-1", cfg)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !processed {
+		t.Fatalf("expected processed to be true")
+	}
+
+	updatedIntent := store.intents[0]
+	if updatedIntent.Status != "completed" {
+		t.Errorf("expected status completed, got %s", updatedIntent.Status)
+	}
+	if updatedIntent.Decision == nil || *updatedIntent.Decision != "sent" {
+		t.Errorf("expected decision sent, got %v", updatedIntent.Decision)
+	}
+
+	// Adapter should have sent the message
+	sends := fakeAdapter.GetSends()
+	if len(sends) != 1 {
+		t.Fatalf("expected exactly 1 message sent, got %d", len(sends))
+	}
+	msg := sends[0]
+	if msg.Channel != "push" {
+		t.Errorf("expected channel push, got %q", msg.Channel)
+	}
+	if msg.Endpoint != "token-push-9999" {
+		t.Errorf("expected endpoint token-push-9999, got %q", msg.Endpoint)
+	}
+	if msg.Identity.Provider != "fcm" {
+		t.Errorf("expected provider fcm resolved from token, got %q", msg.Identity.Provider)
 	}
 }
 

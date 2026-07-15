@@ -294,12 +294,12 @@ func (s *Store) CreateDeliveryAttempt(ctx context.Context, attempt domain.Delive
 	return res.RowsAffected() > 0, nil
 }
 
-func (s *Store) UpdateDeliveryAttempt(ctx context.Context, campaignID, profileID, channel, decision, reason, providerMsgID string, policySnapshot []byte) error {
+func (s *Store) UpdateDeliveryAttempt(ctx context.Context, campaignID, profileID, channel, endpoint, decision, reason, providerMsgID string, policySnapshot []byte) error {
 	if len(policySnapshot) == 0 {
 		policySnapshot = []byte("{}")
 	}
-	_, err := s.pool.Exec(ctx, `UPDATE delivery_attempts SET decision=$4, reason=$5, provider_message_id=$6, policy_snapshot=$7 WHERE campaign_id=$1 AND profile_id=$2 AND channel=$3`,
-		campaignID, profileID, channel, decision, reason, providerMsgID, policySnapshot)
+	_, err := s.pool.Exec(ctx, `UPDATE delivery_attempts SET decision=$5, reason=$6, provider_message_id=$7, policy_snapshot=$8 WHERE campaign_id=$1 AND profile_id=$2 AND channel=$3 AND endpoint=$4`,
+		campaignID, profileID, channel, endpoint, decision, reason, providerMsgID, policySnapshot)
 	return err
 }
 
@@ -315,18 +315,18 @@ func (s *Store) SetDeliveryAttemptExperiment(ctx context.Context, tenantID, camp
 	return nil
 }
 
-func (s *Store) DeleteDeliveryAttempt(ctx context.Context, tenantID, campaignID, profileID, channel string) error {
-	_, err := s.pool.Exec(ctx, `DELETE FROM delivery_attempts WHERE tenant_id=$1 AND campaign_id=$2 AND profile_id=$3 AND channel=$4`,
-		tenantID, campaignID, profileID, channel)
+func (s *Store) DeleteDeliveryAttempt(ctx context.Context, tenantID, campaignID, profileID, channel, endpoint string) error {
+	_, err := s.pool.Exec(ctx, `DELETE FROM delivery_attempts WHERE tenant_id=$1 AND campaign_id=$2 AND profile_id=$3 AND channel=$4 AND endpoint=$5`,
+		tenantID, campaignID, profileID, channel, endpoint)
 	return err
 }
 
-func (s *Store) GetDeliveryAttempt(ctx context.Context, campaignID, profileID, channel string) (domain.DeliveryAttempt, error) {
+func (s *Store) GetDeliveryAttempt(ctx context.Context, campaignID, profileID, channel, endpoint string) (domain.DeliveryAttempt, error) {
 	var out domain.DeliveryAttempt
 	var variantVal *string
 	err := s.pool.QueryRow(ctx, `SELECT id, campaign_id, tenant_id, profile_id, channel, endpoint, decision, reason, provider_message_id, policy_snapshot, attempted_at, created_at, experiment_id, variant
-		FROM delivery_attempts WHERE campaign_id=$1 AND profile_id=$2 AND channel=$3`,
-		campaignID, profileID, channel).
+		FROM delivery_attempts WHERE campaign_id=$1 AND profile_id=$2 AND channel=$3 AND endpoint=$4`,
+		campaignID, profileID, channel, endpoint).
 		Scan(&out.ID, &out.CampaignID, &out.TenantID, &out.ProfileID, &out.Channel, &out.Endpoint, &out.Decision, &out.Reason, &out.ProviderMessageID, &out.PolicySnapshot, &out.AttemptedAt, &out.CreatedAt, &out.ExperimentID, &variantVal)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.DeliveryAttempt{}, ErrNotFound

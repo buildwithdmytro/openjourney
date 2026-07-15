@@ -399,9 +399,9 @@ be registered in the adapter registry (10.0).**
    `device_tokens` and enqueue **one send + one disposition row per token** (provider chosen by
    the token's `provider`/`platform`); stamp `channel='push'` + variant. *Done when:* a push
    campaign to a profile with 2 active tokens makes 2 provider calls with 2 disposition rows. — done: implemented database migration 024 widening delivery attempts & journey message intents uniqueness to include the endpoint token; updated campaigns dispatch and journey nodes execution to retrieve and build multiple intents/recipient records for each active device token; verified with unit tests.
-4. **Send push end-to-end** from campaign + journey; `telemetry.MessagesSent{channel=push}`;
+4. [x] **Send push end-to-end** from campaign + journey; `telemetry.MessagesSent{channel=push}`;
    reuse M4 variant stamping. *Done when:* a push campaign and a push journey node send via the
-   fake profile with correct per-token dispositions + `message.sent`.
+   fake profile with correct per-token dispositions + `message.sent`. — done: updated delivery attempt stores to filter on the token endpoint; implemented push message delivery and provider resolution end-to-end for both campaign and journey pathways; verified via TestDeliverNext_PushCampaign and TestDeliverNext_PushJourney unit tests.
 
 ### Milestone 10.5 — Push receipts + invalid-token retirement
 1. **Invalid-token retirement at send time** (§3.3): when a profile's `IsInvalidToken` is true,

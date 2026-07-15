@@ -190,7 +190,7 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 
 		var existing domain.DeliveryAttempt
 		if !inserted {
-			existing, err = store.GetDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel)
+			existing, err = store.GetDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, rec.Endpoint)
 			if err != nil {
 				slog.Error("failed to get existing delivery attempt", "error", err, "campaign_id", camp.ID, "profile_id", rec.ProfileID)
 				continue
@@ -214,7 +214,7 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 				continue
 			}
 			if variant == "holdout" {
-				_ = store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, "holdout", "experiment holdout", "", nil)
+				_ = store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, rec.Endpoint, "holdout", "experiment holdout", "", nil)
 				continue
 			}
 		}
@@ -222,7 +222,7 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 		prof, err := store.GetProfileByID(ctx, camp.TenantID, p.AppID, rec.ProfileID)
 		if err != nil {
 			slog.Error("failed to get profile", "error", err, "profile_id", rec.ProfileID)
-			_ = store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, "failed", fmt.Sprintf("failed to load profile: %v", err), "", nil)
+			_ = store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, rec.Endpoint, "failed", fmt.Sprintf("failed to load profile: %v", err), "", nil)
 			continue
 		}
 
@@ -243,7 +243,7 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 				attribute.String("campaign_id", camp.ID),
 				attribute.String("channel", template.Channel),
 			))
-			err = store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, verdict.Decision, verdict.Reason, "", verdictSnapshotBytes)
+			err = store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, rec.Endpoint, verdict.Decision, verdict.Reason, "", verdictSnapshotBytes)
 			if err != nil {
 				slog.Error("failed to update delivery attempt with policy rejection", "error", err)
 			}
@@ -260,7 +260,7 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 			subject, err = render.Render(*template.SubjectTemplate, vars)
 			if err != nil {
 				slog.Error("failed to render subject template", "error", err)
-				_ = store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, "render_failed", fmt.Sprintf("subject render error: %v", err), "", nil)
+				_ = store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, rec.Endpoint, "render_failed", fmt.Sprintf("subject render error: %v", err), "", nil)
 				continue
 			}
 		}
@@ -270,7 +270,7 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 			htmlBody, err = render.Render(*template.HTMLTemplate, vars)
 			if err != nil {
 				slog.Error("failed to render HTML template", "error", err)
-				_ = store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, "render_failed", fmt.Sprintf("html render error: %v", err), "", nil)
+				_ = store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, rec.Endpoint, "render_failed", fmt.Sprintf("html render error: %v", err), "", nil)
 				continue
 			}
 		}
@@ -280,7 +280,7 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 			textBody, err = render.Render(*template.TextTemplate, vars)
 			if err != nil {
 				slog.Error("failed to render text template", "error", err)
-				_ = store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, "render_failed", fmt.Sprintf("text render error: %v", err), "", nil)
+				_ = store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, rec.Endpoint, "render_failed", fmt.Sprintf("text render error: %v", err), "", nil)
 				continue
 			}
 		}
@@ -290,7 +290,7 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 			bodyPayload, err = render.Render(*template.BodyTemplate, vars)
 			if err != nil {
 				slog.Error("failed to render body template", "error", err)
-				_ = store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, "render_failed", fmt.Sprintf("body render error: %v", err), "", nil)
+				_ = store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, rec.Endpoint, "render_failed", fmt.Sprintf("body render error: %v", err), "", nil)
 				continue
 			}
 		}
@@ -337,19 +337,19 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 			if err != nil {
 				slog.Error("failed to send message via adapter", "error", err, "profile_id", rec.ProfileID)
 				if channels.IsRetryableError(err) {
-					updateErr := store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, "retryable_failed", fmt.Sprintf("transient send error: %v", err), "", nil)
+					updateErr := store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, rec.Endpoint, "retryable_failed", fmt.Sprintf("transient send error: %v", err), "", nil)
 					if updateErr != nil {
 						slog.Error("failed to update delivery attempt on transient error", "error", updateErr)
 					}
 					hasRetryableError = true
 					retryableErrMsg = err.Error()
 				} else {
-					_ = store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, "send_failed", fmt.Sprintf("adapter send error: %v", err), "", nil)
+					_ = store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, rec.Endpoint, "send_failed", fmt.Sprintf("adapter send error: %v", err), "", nil)
 				}
 				continue
 			}
 
-			err = store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, "provider_sent", "eligible", providerMsgID, verdictSnapshotBytes)
+			err = store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, rec.Endpoint, "provider_sent", "eligible", providerMsgID, verdictSnapshotBytes)
 			if err != nil {
 				slog.Error("failed to update delivery attempt status to provider_sent", "error", err)
 			}
@@ -383,7 +383,7 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 			continue
 		}
 
-		err = store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, "sent", "eligible", providerMsgID, verdictSnapshotBytes)
+		err = store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, rec.Endpoint, "sent", "eligible", providerMsgID, verdictSnapshotBytes)
 		if err != nil {
 			slog.Error("failed to update delivery attempt status to sent", "error", err)
 		} else {
