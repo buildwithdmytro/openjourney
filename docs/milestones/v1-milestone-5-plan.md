@@ -377,14 +377,14 @@ be registered in the adapter registry (10.0).**
    `RegisterDeviceToken` (upsert), `RetireDeviceToken`, `ListActiveDeviceTokens`,
    `ListDeviceTokensByProfile`. Tenant+workspace+app scoped. *Done when:* re-register upserts to
    one active row; a live-Postgres test proves two-workspace isolation. — done: implemented RegisterDeviceToken, RetireDeviceToken, RetireDeviceTokenByID, ListActiveDeviceTokens, and ListDeviceTokensByProfile in internal/postgres/device_tokens.go; verified using TestDeviceTokensCRUDIntegration.
-3. **HTTP + SDK sync contract**: `POST /v1/device-tokens` (register/refresh),
+3. [x] **HTTP + SDK sync contract**: `POST /v1/device-tokens` (register/refresh),
    `DELETE /v1/device-tokens/{id}` (deactivate), and an idempotent `POST /v1/device-tokens/sync`
    (client sends its full token set for a profile+app; server reconciles active/retired and
    returns the canonical state). Scope `device_tokens:write`/`read`. *Done when:* register→list
-   round-trips; sync with a shrunk set retires the dropped tokens.
-4. **OpenAPI** entries + a short `docs/sdk/device-tokens.md` describing the client contract
+   round-trips; sync with a shrunk set retires the dropped tokens. — done: implemented POST /v1/device-tokens, DELETE /v1/device-tokens/{id}, and POST /v1/device-tokens/sync HTTP handlers and registered routes; verified with unit tests.
+4. [x] **OpenAPI** entries + a short `docs/sdk/device-tokens.md` describing the client contract
    (register on launch, refresh on rotation, sync on reconnect; idempotent; response schema).
-   *Done when:* redocly lints clean.
+   *Done when:* redocly lints clean. — done: added OpenAPI schema for DeviceToken and endpoint paths in api/openapi.yaml; added docs/sdk/device-tokens.md; verified using redocly cli linting.
 
 ### Milestone 10.4 — Push outbound (campaign + journey, variant-aware, rich payload)
 1. **FCM + APNs profiles** `internal/channels/profiles_push.go` (Recipe 6.21): FCM v1

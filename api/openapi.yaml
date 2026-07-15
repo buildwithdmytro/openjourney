@@ -177,6 +177,85 @@ paths:
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "422": { $ref: "#/components/responses/Error" }
+  /v1/device-tokens:
+    post:
+      operationId: registerDeviceToken
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [profile_id, platform, provider, token]
+              additionalProperties: false
+              properties:
+                profile_id: { type: string, format: uuid }
+                platform: { type: string, enum: [ios, android, web] }
+                provider: { type: string, enum: [fcm, apns, http, fake] }
+                token: { type: string }
+      responses:
+        "201":
+          description: Device token registered.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeviceToken" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "500": { $ref: "#/components/responses/Error" }
+  /v1/device-tokens/{id}:
+    delete:
+      operationId: deactivateDeviceToken
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204":
+          description: Device token retired.
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "500": { $ref: "#/components/responses/Error" }
+  /v1/device-tokens/sync:
+    post:
+      operationId: syncDeviceTokens
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [profile_id, tokens]
+              additionalProperties: false
+              properties:
+                profile_id: { type: string, format: uuid }
+                tokens:
+                  type: array
+                  items:
+                    type: object
+                    required: [token, platform, provider]
+                    additionalProperties: false
+                    properties:
+                      token: { type: string }
+                      platform: { type: string, enum: [ios, android, web] }
+                      provider: { type: string, enum: [fcm, apns, http, fake] }
+      responses:
+        "200":
+          description: Canonical list of active device tokens for the profile.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/DeviceToken" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "500": { $ref: "#/components/responses/Error" }
   /v1/api-keys:
     get:
       operationId: listAPIKeys
@@ -1177,3 +1256,19 @@ components:
           type: object
           additionalProperties: true
         occurred_at: { type: string, format: date-time }
+    DeviceToken:
+      type: object
+      required: [id, tenant_id, workspace_id, app_id, profile_id, platform, provider, token, status, last_seen_at, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        tenant_id: { type: string, format: uuid }
+        workspace_id: { type: string, format: uuid }
+        app_id: { type: string, format: uuid }
+        profile_id: { type: string, format: uuid }
+        platform: { type: string, enum: [ios, android, web] }
+        provider: { type: string, enum: [fcm, apns, http, fake] }
+        token: { type: string }
+        status: { type: string, enum: [active, retired] }
+        last_seen_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
