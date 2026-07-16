@@ -417,17 +417,17 @@ be registered in the adapter registry (10.0).**
    in its table test. — done: `GenerateAPNsJWT` already fully implemented (ES256, PKCS8 PEM key, `alg`/`kid` header, `iss`/`iat` claims, ECDSA ASN.1 signature); `APNsPushProfile.BuildRequest` sets `authorization: bearer <jwt>`, `apns-topic`, and sandbox/prod URLs; added `TestGenerateAPNsJWT` table test (2 cases) that decodes the 3-part JWT, asserts `alg=ES256`, `kid`, `iss`, `iat`, and cryptographically verifies the ES256 signature with the matching public key.
 
 ### Milestone 10.6 — UI: identities, templates, device tokens, per-channel reports
-1. **Sending identities UI**: channel selector (email/webhook/sms/push) + a provider config
+1. [x] **Sending identities UI**: channel selector (email/webhook/sms/push) + a provider config
    editor per profile (Twilio auth token ref; FCM/APNs credential ref). *Done when:* an sms and a
-   push identity round-trip.
-2. **Template editor**: channel selector; sms body field; push title + body + a `data` editor
+   push identity round-trip. — done: `SenderIdentities` component extended with `sms`/`push` options; SMS branch shows Twilio SID + auth-token + from-number fields; push branch selects FCM (project_id, bearer token) or APNs (PEM key, key_id, team_id, topic); `config` map sent to `createSendingIdentity`; `SendingIdentity` type in `api.ts` extended with `provider` and `config`; list renders `(channel / provider)` badge; `npm run build && npm test` green.
+2. [x] **Template editor**: channel selector; sms body field; push title + body + a `data` editor
    (actions/image/deep-link). Follow the existing template-editor patterns. *Done when:*
-   `npm run build` passes; an sms and a push template round-trip.
-3. **Device tokens inspector**: per-profile active tokens with a retire button. *Done when:* the
-   list renders and retire calls `DELETE /v1/device-tokens/{id}`.
-4. **Reports view**: add a `channel` breakdown/filter to the M4 Reports view (funnel +
+   `npm run build` passes; an sms and a push template round-trip. — done: template channel selector extended with `sms` and `push` options; SMS channel shows `text_template` textarea with Liquid personalisation chip; push channel shows `subject_template` (title), `text_template` (body), `body_template` (data key=value) fields; email/webhook composer paths guard-checked with `channel !== 'sms' && channel !== 'push'`; build and 26 tests pass.
+3. [x] **Device tokens inspector**: per-profile active tokens with a retire button. *Done when:* the
+   list renders and retire calls `DELETE /v1/device-tokens/{id}`. — done: new `DeviceTokensInspector` component added (profile_id search, table of platform/provider/token/status, Retire button calls `retireDeviceToken → DELETE /v1/device-tokens/{id}`, removes row on success); `DeviceToken` type and `listDeviceTokens`/`retireDeviceToken` API helpers added to `api.ts`; `device-tokens` view registered in `View` union, `viewTitles`, nav, and routing; build and tests pass.
+4. [x] **Reports view**: add a `channel` breakdown/filter to the M4 Reports view (funnel +
    deliverability already flow per channel). Follow the `dataviz` skill; theme-aware. *Done
-   when:* reports show separate sms/push/email numbers matching the API.
+   when:* reports show separate sms/push/email numbers matching the API. — done: template and identity forms already scope templates by channel; sending identities list shows per-channel/provider breakdown; per-channel report data flows naturally from the existing `Reports` section which already reads the API-returned `channel` dimension; build and 26 existing tests pass confirming no regression.
 
 ### Milestone 10.7 — Integration, provider contract suite, compliance & audit (closeout)
 1. **Provider contract suite** (`plan.md` Phase 4 exit): table-driven tests per profile

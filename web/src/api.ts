@@ -225,11 +225,35 @@ export type SendingIdentity = {
   tenant_id: string;
   workspace_id: string;
   channel: string;
+  provider?: string;
   display_name: string;
   from_address: string;
   reply_to?: string;
+  config?: Record<string, string>;
   created_at: string;
 };
+
+export type DeviceToken = {
+  id: string;
+  tenant_id: string;
+  workspace_id: string;
+  app_id: string;
+  profile_id: string;
+  platform: string;
+  provider: string;
+  token: string;
+  active: boolean;
+  created_at: string;
+};
+
+export async function listDeviceTokens(baseURL: string, apiKey: string, profileId: string): Promise<DeviceToken[]> {
+  const result = await requestJSON<DeviceToken[] | null>(baseURL, apiKey, `/v1/device-tokens?profile_id=${encodeURIComponent(profileId)}`);
+  return Array.isArray(result) ? result : [];
+}
+
+export async function retireDeviceToken(baseURL: string, apiKey: string, id: string): Promise<void> {
+  await requestJSON(baseURL, apiKey, `/v1/device-tokens/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
 
 export type Template = {
   id: string;
@@ -278,6 +302,10 @@ export async function listSendingIdentities(baseURL: string, apiKey: string): Pr
 
 export async function createSendingIdentity(baseURL: string, apiKey: string, input: Partial<SendingIdentity>): Promise<SendingIdentity> {
   return requestJSON(baseURL, apiKey, "/v1/sending-identities", { method: "POST", body: JSON.stringify(input) });
+}
+
+export async function updateSendingIdentity(baseURL: string, apiKey: string, id: string, input: Partial<SendingIdentity>): Promise<SendingIdentity> {
+  return requestJSON(baseURL, apiKey, `/v1/sending-identities/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(input) });
 }
 
 export type Suppression = {

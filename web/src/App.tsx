@@ -7,6 +7,7 @@ import {
   createSegment, listSegments, updateSegment, setSegmentMembers, Segment, SegmentMember,
   listTemplates, getTemplate, createTemplate, updateTemplate, previewTemplate,
   listSendingIdentities, createSendingIdentity, Template, SendingIdentity, TemplatePreview,
+  DeviceToken, listDeviceTokens, retireDeviceToken,
   listSuppressions, createSuppression, deleteSuppression, Suppression,
   listCampaigns, getCampaign, createCampaign, updateCampaign, Campaign,
   listJourneys, createJourney, Journey,
@@ -39,7 +40,7 @@ class UIErrorBoundary extends Component<{ children: ReactNode; resetKey: string 
     return this.props.children;
   }
 }
-type View = "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "suppressions" | "sender-identities";
+type View = "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "suppressions" | "sender-identities" | "device-tokens";
 type CredentialSource = "manual" | "session" | "oidc";
 
 const viewTitles: Record<View, [string, string]> = {
@@ -57,7 +58,8 @@ const viewTitles: Record<View, [string, string]> = {
   experiments: ["Experiments", "Create controlled tests with stable audience assignment."],
   reports: ["Reports", "Compare delivery, conversion, and experiment performance."],
   suppressions: ["Suppressions", "Manage bounces, complaints, and manually suppressed endpoints."],
-  "sender-identities": ["Sender Identities", "Manage verified sender emails and webhook channels."],
+  "sender-identities": ["Sender Identities", "Manage verified sender emails, SMS, and push channels."],
+  "device-tokens": ["Device Tokens", "Inspect and retire push device tokens per profile."],
 };
 
 function currentHashView(): View | null {
@@ -237,7 +239,7 @@ export function App() {
       <aside>
         <div className="brand"><span>O</span> OpenJourney</div>
         <nav aria-label="Primary">
-          {(["profiles", "segments", "templates", "campaigns", "journeys", "experiments", "reports", "suppressions", "sender-identities", "schemas", "api-keys", "privacy", "access", "operations", "audit"] as View[]).map((item) => (
+          {(["profiles", "segments", "templates", "campaigns", "journeys", "experiments", "reports", "suppressions", "sender-identities", "device-tokens", "schemas", "api-keys", "privacy", "access", "operations", "audit"] as View[]).map((item) => (
             <button key={item} className={view === item ? "active" : ""}
               onClick={() => setView(item)}>{viewTitles[item][0]}</button>
           ))}
@@ -271,6 +273,7 @@ export function App() {
         {view === "reports" && <Suspense fallback={<p role="status">Loading reports…</p>}><Reports apiKey={apiKey} baseURL={apiBase} /></Suspense>}
         {view === "suppressions" && <Suppressions apiKey={apiKey} />}
         {view === "sender-identities" && <SenderIdentities apiKey={apiKey} />}
+        {view === "device-tokens" && <DeviceTokensInspector apiKey={apiKey} />}
         {view === "schemas" && <Schemas apiKey={apiKey} />}
         {view === "api-keys" && <APIKeys apiKey={apiKey} />}
         {view === "privacy" && <Privacy apiKey={apiKey} />}
@@ -990,6 +993,8 @@ function Templates({ apiKey }: { apiKey: string }) {
             <select id="template-channel" value={editing.channel ?? "email"}
               onChange={e => { const channel = e.target.value; if (channel === "webhook") setComposerMode("advanced"); schedulePreview({ ...editing, channel }); }}>
               <option value="email">Email</option>
+              <option value="sms">SMS</option>
+              <option value="push">Push</option>
               <option value="webhook">Webhook</option>
             </select>
           </label>
@@ -1004,7 +1009,34 @@ function Templates({ apiKey }: { apiKey: string }) {
               </select>
             </label>
           )}
-          {editing.channel !== "webhook" && <>
+          {editing.channel === "sms" && (
+            <label>SMS body (Liquid)
+              <textarea id="template-sms-body" rows={6} value={editing.text_template ?? ""}
+                placeholder="Hi {{ profile.attributes.first_name | default: 'there' }}, your order is ready!"
+                style={{ fontFamily: "monospace", fontSize: "0.85rem" }}
+                onChange={e => schedulePreview({ ...editing, text_template: e.target.value })} />
+              <button type="button" className="personalization-chip" onClick={() => schedulePreview({ ...editing, text_template: `${editing.text_template || ""} {{ profile.attributes.first_name }}`.trim() })}>+ First name</button>
+            </label>
+          )}
+          {editing.channel === "push" && (<>
+            <label>Push title
+              <input id="template-push-title" value={editing.subject_template ?? ""} placeholder="New message for you"
+                onChange={e => schedulePreview({ ...editing, subject_template: e.target.value })} />
+              <button type="button" className="personalization-chip" onClick={() => schedulePreview({ ...editing, subject_template: `${editing.subject_template || ""} {{ profile.attributes.first_name }}`.trim() })}>+ First name</button>
+            </label>
+            <label>Push body
+              <textarea id="template-push-body" rows={4} value={editing.text_template ?? ""}
+                placeholder="Tap to see what&apos;s new"
+                onChange={e => schedulePreview({ ...editing, text_template: e.target.value })} />
+            </label>
+            <label>Data payload (JSON key=value pairs, one per line)
+              <textarea id="template-push-data" rows={4} value={editing.body_template ?? ""}
+                placeholder={"action=view_order\norder_id=123"}
+                style={{ fontFamily: "monospace", fontSize: "0.85rem" }}
+                onChange={e => schedulePreview({ ...editing, body_template: e.target.value })} />
+            </label>
+          </>)}
+          {editing.channel !== "webhook" && editing.channel !== "sms" && editing.channel !== "push" && <>
             <div className="composer-mode-tabs" role="tablist" aria-label="Template editor mode">
               <button type="button" role="tab" aria-selected={composerMode === "visual"} className={composerMode === "visual" ? "active" : ""} onClick={() => {
                 if (composerMode === "advanced" && !parseComposerHTML(editing.html_template || "") && !window.confirm("Switching to the visual composer will replace the current custom HTML. Continue?")) return;
@@ -1165,9 +1197,22 @@ function SenderIdentities({ apiKey }: { apiKey: string }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [channel, setChannel] = useState("email");
+  const [provider, setProvider] = useState("ses");
   const [fromAddress, setFromAddress] = useState("");
   const [fromName, setFromName] = useState("");
   const [replyTo, setReplyTo] = useState("");
+  // SMS / Twilio
+  const [twilioAccountSid, setTwilioAccountSid] = useState("");
+  const [twilioAuthToken, setTwilioAuthToken] = useState("");
+  const [twilioFromNumber, setTwilioFromNumber] = useState("");
+  // Push / FCM
+  const [fcmProjectId, setFcmProjectId] = useState("");
+  const [fcmToken, setFcmToken] = useState("");
+  // Push / APNs
+  const [apnsPrivateKey, setApnsPrivateKey] = useState("");
+  const [apnsKeyId, setApnsKeyId] = useState("");
+  const [apnsTeamId, setApnsTeamId] = useState("");
+  const [apnsTopic, setApnsTopic] = useState("");
   const [saving, setSaving] = useState(false);
 
   async function load() {
@@ -1183,14 +1228,35 @@ function SenderIdentities({ apiKey }: { apiKey: string }) {
 
   useEffect(() => { if (apiKey) void load(); }, [apiKey]);
 
+  function buildConfig(): Record<string, string> | undefined {
+    if (channel === "sms" && provider === "twilio") {
+      return { account_sid: twilioAccountSid, auth_token: twilioAuthToken, from_number: twilioFromNumber };
+    }
+    if (channel === "push" && provider === "fcm") {
+      return { project_id: fcmProjectId, token: fcmToken };
+    }
+    if (channel === "push" && provider === "apns") {
+      return { private_key: apnsPrivateKey, key_id: apnsKeyId, team_id: apnsTeamId, topic: apnsTopic };
+    }
+    return undefined;
+  }
+
   async function handleCreate(event: FormEvent) {
     event.preventDefault();
     setSaving(true); setError("");
     try {
-      await createSendingIdentity(apiBase, apiKey, { channel, from_address: fromAddress, display_name: fromName, reply_to: replyTo });
-      setFromAddress("");
-      setFromName("");
-      setReplyTo("");
+      await createSendingIdentity(apiBase, apiKey, {
+        channel,
+        provider: channel === "sms" || channel === "push" ? provider : undefined,
+        from_address: fromAddress,
+        display_name: fromName,
+        reply_to: channel === "email" ? replyTo : undefined,
+        config: buildConfig(),
+      });
+      setFromAddress(""); setFromName(""); setReplyTo("");
+      setTwilioAccountSid(""); setTwilioAuthToken(""); setTwilioFromNumber("");
+      setFcmProjectId(""); setFcmToken("");
+      setApnsPrivateKey(""); setApnsKeyId(""); setApnsTeamId(""); setApnsTopic("");
       await load();
     } catch (cause) {
       setError(message(cause));
@@ -1206,23 +1272,87 @@ function SenderIdentities({ apiKey }: { apiKey: string }) {
           <h2>Add sender identity</h2>
           <form onSubmit={handleCreate} className="panel">
             <label>Channel
-              <select value={channel} onChange={e => setChannel(e.target.value)}>
+              <select id="identity-channel" value={channel} onChange={e => { setChannel(e.target.value); setProvider(e.target.value === "sms" ? "twilio" : "fcm"); }}>
                 <option value="email">Email</option>
+                <option value="sms">SMS</option>
+                <option value="push">Push</option>
                 <option value="webhook">Webhook</option>
               </select>
             </label>
-            <label>Sender email address (or webhook URL)
-              <input value={fromAddress} onChange={e => setFromAddress(e.target.value)} required placeholder="no-reply@example.com" />
+
+            {channel === "sms" && (
+              <label>Provider
+                <select id="identity-sms-provider" value={provider} onChange={e => setProvider(e.target.value)}>
+                  <option value="twilio">Twilio</option>
+                </select>
+              </label>
+            )}
+            {channel === "push" && (
+              <label>Provider
+                <select id="identity-push-provider" value={provider} onChange={e => setProvider(e.target.value)}>
+                  <option value="fcm">FCM (Firebase)</option>
+                  <option value="apns">APNs (Apple)</option>
+                </select>
+              </label>
+            )}
+
+            <label>Display name
+              <input id="identity-display-name" value={fromName} onChange={e => setFromName(e.target.value)} placeholder={channel === "sms" ? "SMS channel" : channel === "push" ? "Push channel" : "Marketing Team"} />
             </label>
-            <label>Sender display name (or webhook name)
-              <input value={fromName} onChange={e => setFromName(e.target.value)} placeholder="Marketing Team" />
-            </label>
+
+            {(channel === "email" || channel === "webhook") && (
+              <label>{channel === "email" ? "From address" : "Webhook URL"}
+                <input id="identity-from-address" value={fromAddress} onChange={e => setFromAddress(e.target.value)} required
+                  placeholder={channel === "email" ? "no-reply@example.com" : "https://example.com/hook"} />
+              </label>
+            )}
             {channel === "email" && (
               <label>Reply-to address
                 <input value={replyTo} onChange={e => setReplyTo(e.target.value)} placeholder="support@example.com" />
               </label>
             )}
-            <button type="submit" disabled={saving || !fromAddress.trim()}>{saving ? "Saving…" : "Save identity"}</button>
+
+            {channel === "sms" && provider === "twilio" && (<>
+              <label>Twilio Account SID
+                <input id="identity-twilio-sid" value={twilioAccountSid} onChange={e => setTwilioAccountSid(e.target.value)} required placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" />
+              </label>
+              <label>Twilio Auth Token
+                <input id="identity-twilio-token" type="password" value={twilioAuthToken} onChange={e => setTwilioAuthToken(e.target.value)} required placeholder="••••••••••••••••••••••••••••••••" />
+              </label>
+              <label>From number
+                <input id="identity-twilio-from" value={twilioFromNumber} onChange={e => setTwilioFromNumber(e.target.value)} required placeholder="+15005550006" />
+              </label>
+            </>)}
+
+            {channel === "push" && provider === "fcm" && (<>
+              <label>FCM Project ID
+                <input id="identity-fcm-project" value={fcmProjectId} onChange={e => setFcmProjectId(e.target.value)} required placeholder="my-firebase-project" />
+              </label>
+              <label>FCM Bearer Token
+                <input id="identity-fcm-token" type="password" value={fcmToken} onChange={e => setFcmToken(e.target.value)} required placeholder="ya29.…" />
+              </label>
+            </>)}
+
+            {channel === "push" && provider === "apns" && (<>
+              <label>APNs Private Key (PEM)
+                <textarea id="identity-apns-key" rows={5} value={apnsPrivateKey} onChange={e => setApnsPrivateKey(e.target.value)} required
+                  style={{ fontFamily: "monospace", fontSize: "0.8rem" }}
+                  placeholder="-----BEGIN PRIVATE KEY-----\n…\n-----END PRIVATE KEY-----" />
+              </label>
+              <label>Key ID
+                <input id="identity-apns-kid" value={apnsKeyId} onChange={e => setApnsKeyId(e.target.value)} required placeholder="ABCDE12345" />
+              </label>
+              <label>Team ID
+                <input id="identity-apns-team" value={apnsTeamId} onChange={e => setApnsTeamId(e.target.value)} required placeholder="FGHIJ67890" />
+              </label>
+              <label>Bundle ID (topic)
+                <input id="identity-apns-topic" value={apnsTopic} onChange={e => setApnsTopic(e.target.value)} required placeholder="com.example.app" />
+              </label>
+            </>)}
+
+            <button id="save-identity-btn" type="submit" disabled={saving || (!fromAddress.trim() && channel !== "sms" && channel !== "push")}>
+              {saving ? "Saving…" : "Save identity"}
+            </button>
           </form>
           <ErrorMessage value={error} />
         </div>
@@ -1234,8 +1364,11 @@ function SenderIdentities({ apiKey }: { apiKey: string }) {
             {items.map(item => (
               <li key={item.id} style={{ padding: "0.5rem 0", borderBottom: "1px solid var(--border)" }}>
                 <div>
-                  <strong>{item.display_name || item.from_address}</strong> <span style={{ color: "var(--muted)", fontSize: "0.8rem" }}>({item.channel})</span>
-                  {item.display_name && <div style={{ fontSize: "0.85rem" }}>{item.from_address}</div>}
+                  <strong>{item.display_name || item.from_address || item.id}</strong>
+                  <span style={{ color: "var(--muted)", fontSize: "0.8rem", marginLeft: "0.4rem" }}>
+                    ({item.channel}{item.provider ? ` / ${item.provider}` : ""})
+                  </span>
+                  {item.from_address && <div style={{ fontSize: "0.85rem" }}>{item.from_address}</div>}
                   {item.reply_to && <div style={{ fontSize: "0.8rem", color: "var(--muted)" }}>Reply-to: {item.reply_to}</div>}
                 </div>
               </li>
@@ -1243,6 +1376,91 @@ function SenderIdentities({ apiKey }: { apiKey: string }) {
           </ul>
         </div>
       </div>
+    </section>
+  );
+}
+
+function DeviceTokensInspector({ apiKey }: { apiKey: string }) {
+  const [profileId, setProfileId] = useState("");
+  const [tokens, setTokens] = useState<DeviceToken[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [retiring, setRetiring] = useState<string | null>(null);
+  const [error, setError] = useState("");
+
+  async function handleSearch(event: FormEvent) {
+    event.preventDefault();
+    if (!profileId.trim()) return;
+    setLoading(true); setError(""); setTokens([]);
+    try {
+      setTokens(await listDeviceTokens(apiBase, apiKey, profileId.trim()));
+    } catch (cause) {
+      setError(message(cause));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleRetire(id: string) {
+    if (!window.confirm("Retire this device token? It will no longer receive push notifications.")) return;
+    setRetiring(id); setError("");
+    try {
+      await retireDeviceToken(apiBase, apiKey, id);
+      setTokens(prev => prev.filter(t => t.id !== id));
+    } catch (cause) {
+      setError(message(cause));
+    } finally {
+      setRetiring(null);
+    }
+  }
+
+  return (
+    <section className="card">
+      <h2>Device token inspector</h2>
+      <form onSubmit={handleSearch} style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
+        <input id="device-token-profile-id" value={profileId} onChange={e => setProfileId(e.target.value)}
+          placeholder="Profile external_id" style={{ flex: 1 }} />
+        <button id="device-token-search-btn" type="submit" disabled={loading || !profileId.trim()}>
+          {loading ? "Searching…" : "Search"}
+        </button>
+      </form>
+      <ErrorMessage value={error} />
+      {!loading && tokens.length === 0 && profileId && <p style={{ color: "var(--muted)" }}>No active device tokens found for this profile.</p>}
+      {tokens.length > 0 && (
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+          <thead>
+            <tr style={{ borderBottom: "1px solid var(--border)", textAlign: "left" }}>
+              <th style={{ padding: "0.4rem 0.6rem" }}>Platform</th>
+              <th style={{ padding: "0.4rem 0.6rem" }}>Provider</th>
+              <th style={{ padding: "0.4rem 0.6rem" }}>Token (truncated)</th>
+              <th style={{ padding: "0.4rem 0.6rem" }}>Status</th>
+              <th style={{ padding: "0.4rem 0.6rem" }}>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {tokens.map(tok => (
+              <tr key={tok.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                <td style={{ padding: "0.4rem 0.6rem" }}>{tok.platform}</td>
+                <td style={{ padding: "0.4rem 0.6rem" }}>{tok.provider}</td>
+                <td style={{ padding: "0.4rem 0.6rem", fontFamily: "monospace" }}>{tok.token.slice(0, 24)}…</td>
+                <td style={{ padding: "0.4rem 0.6rem" }}>
+                  <span style={{ color: tok.active ? "var(--accent)" : "var(--muted)" }}>
+                    {tok.active ? "Active" : "Retired"}
+                  </span>
+                </td>
+                <td style={{ padding: "0.4rem 0.6rem" }}>
+                  {tok.active && (
+                    <button id={`retire-token-${tok.id}`} className="secondary small"
+                      disabled={retiring === tok.id}
+                      onClick={() => void handleRetire(tok.id)}>
+                      {retiring === tok.id ? "Retiring…" : "Retire"}
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </section>
   );
 }
