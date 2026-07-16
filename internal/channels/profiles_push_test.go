@@ -6,7 +6,9 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -14,6 +16,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/buildwithdmytro/openjourney/internal/channels"
 	"github.com/buildwithdmytro/openjourney/internal/domain"
@@ -249,3 +252,89 @@ func TestAPNsPushProfile_ParseResponse(t *testing.T) {
 		}
 	})
 }
+
+func TestGenerateAPNsJWT(t *testing.T) {
+	pemStr := generateECDSAKeyPEM(t)
+
+	// Parse the public key for signature verification.
+	block, _ := pem.Decode([]byte(pemStr))
+	if block == nil {
+		t.Fatal("failed to decode PEM")
+	}
+	privRaw, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ecKey := privRaw.(*ecdsa.PrivateKey)
+
+	now := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+
+	cases := []struct {
+		name   string
+		keyID  string
+		teamID string
+	}{
+		{"standard", "KEY123", "TEAM456"},
+		{"different ids", "ABCDE", "FGHIJ"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			token, err := channels.GenerateAPNsJWT(pemStr, tc.keyID, tc.teamID, now)
+			if err != nil {
+				t.Fatalf("GenerateAPNsJWT error: %v", err)
+			}
+
+			parts := strings.Split(token, ".")
+			if len(parts) != 3 {
+				t.Fatalf("expected 3 JWT parts, got %d: %s", len(parts), token)
+			}
+
+			// Decode and check header
+			headerBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
+			if err != nil {
+				t.Fatalf("decode header: %v", err)
+			}
+			var header map[string]string
+			if err := json.Unmarshal(headerBytes, &header); err != nil {
+				t.Fatalf("unmarshal header: %v", err)
+			}
+			if header["alg"] != "ES256" {
+				t.Errorf("alg: got %q, want ES256", header["alg"])
+			}
+			if header["kid"] != tc.keyID {
+				t.Errorf("kid: got %q, want %q", header["kid"], tc.keyID)
+			}
+
+			// Decode and check claims
+			claimsBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
+			if err != nil {
+				t.Fatalf("decode claims: %v", err)
+			}
+			var claims map[string]any
+			if err := json.Unmarshal(claimsBytes, &claims); err != nil {
+				t.Fatalf("unmarshal claims: %v", err)
+			}
+			if claims["iss"] != tc.teamID {
+				t.Errorf("iss: got %v, want %q", claims["iss"], tc.teamID)
+			}
+			if iat, ok := claims["iat"].(float64); !ok || int64(iat) != now.Unix() {
+				t.Errorf("iat: got %v, want %d", claims["iat"], now.Unix())
+			}
+
+			// Verify ES256 signature over header.claims
+			sigBytes, err := base64.RawURLEncoding.DecodeString(parts[2])
+			if err != nil {
+				t.Fatalf("decode sig: %v", err)
+			}
+			signingInput := parts[0] + "." + parts[1]
+			h := sha256.New()
+			h.Write([]byte(signingInput))
+			digest := h.Sum(nil)
+			if !ecdsa.VerifyASN1(&ecKey.PublicKey, digest, sigBytes) {
+				t.Error("ES256 signature verification failed")
+			}
+		})
+	}
+}
+

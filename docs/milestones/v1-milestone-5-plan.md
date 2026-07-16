@@ -412,9 +412,9 @@ be registered in the adapter registry (10.0).**
    receipts → `message.delivered`; provider invalid-token feedback → retire token. Signature/auth
    verified. *Done when:* a delivery receipt creates one `engagement_facts` row `channel='push'`;
    a feedback-invalid token is retired. — done: added `handlePushCallback` to `callbacks.go` supporting `fcm`/`apns` providers; HMAC-SHA256 signature verification via `X-Push-Signature` header using `webhook_secret` from sending identity config; `delivered` events emit `message.delivered` via `AcceptEvents`; `invalid_token` events call `RetireDeviceToken` then emit `message.failed`; route registered as `POST /v1/callbacks/push/{provider}` in `server.go`; verified by `TestHandlePushCallback_Delivered`, `TestHandlePushCallback_InvalidToken_RetiresToken`, `TestHandlePushCallback_BadSignatureRejected`, `TestHandlePushCallback_UnsupportedProvider`.
-3. **(If split) Direct APNs JWT** — implement ES256 JWT minting + HTTP/2 transport for the `apns`
+3. [x] **(If split) Direct APNs JWT** — implement ES256 JWT minting + HTTP/2 transport for the `apns`
    profile if deferred from 10.4.1. *Done when:* the APNs profile builds a valid signed request
-   in its table test.
+   in its table test. — done: `GenerateAPNsJWT` already fully implemented (ES256, PKCS8 PEM key, `alg`/`kid` header, `iss`/`iat` claims, ECDSA ASN.1 signature); `APNsPushProfile.BuildRequest` sets `authorization: bearer <jwt>`, `apns-topic`, and sandbox/prod URLs; added `TestGenerateAPNsJWT` table test (2 cases) that decodes the 3-part JWT, asserts `alg=ES256`, `kid`, `iss`, `iat`, and cryptographically verifies the ES256 signature with the matching public key.
 
 ### Milestone 10.6 — UI: identities, templates, device tokens, per-channel reports
 1. **Sending identities UI**: channel selector (email/webhook/sms/push) + a provider config
