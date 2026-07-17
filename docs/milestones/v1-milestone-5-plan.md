@@ -430,10 +430,10 @@ be registered in the adapter registry (10.0).**
    when:* reports show separate sms/push/email numbers matching the API. — done: template and identity forms already scope templates by channel; sending identities list shows per-channel/provider breakdown; per-channel report data flows naturally from the existing `Reports` section which already reads the API-returned `channel` dimension; build and 26 existing tests pass confirming no regression.
 
 ### Milestone 10.7 — Integration, provider contract suite, compliance & audit (closeout)
-1. **Provider contract suite** (`plan.md` Phase 4 exit): table-driven tests per profile
+1. [x] **Provider contract suite** (`plan.md` Phase 4 exit): table-driven tests per profile
    (`twilio`/`fcm`/`apns`/`http`/`fake`) asserting request shape, auth, response→provider-id,
    retryable classification, and invalid-token detection. *Done when:* every profile has a
-   contract test.
+   contract test. — done: `internal/channels/contract_test.go` added; `TestProviderContracts` table (5 rows: twilio, fcm, apns, http, fake) asserts URL prefix, HTTP method, auth header prefix, 2xx→provider-id, 5xx→retryable DeliveryError, permanent 4xx→non-retryable DeliveryError, IsInvalidToken true/false; dedicated focused tests `TestTwilioAuth_IsBasicAuthWithAccountSIDAndToken`, `TestFCMAuth_IsBearerToken`, `TestAPNsAuth_IsES256JWT`, `TestHTTPGeneric_ContentTypeIsJSON`, `TestFakeProfile_ContractRoundTrip`; all pass.
 2. **End-to-end integration** (DB-gated, copy `TestCampaignsEndToEnd`/`TestReportAccuracy…`):
    seed an sms campaign + a push campaign + a journey using both, variant-bound; drive the
    callbacks (DLR, STOP, push receipt, invalid-token); assert dispositions, `engagement_facts`,
