@@ -463,13 +463,16 @@ func (s *Store) ProjectEvent(ctx context.Context, event domain.AcceptedEvent) er
 		}
 		if endpoint != "" {
 			if body.State == "unsubscribed" {
-				_, err = tx.Exec(ctx, `INSERT INTO suppressions
+				tag, err := tx.Exec(ctx, `INSERT INTO suppressions
 					(tenant_id, channel, endpoint, reason, source_event_id)
 					VALUES($1, $2, $3, $4, $5)
 					ON CONFLICT(tenant_id, channel, endpoint) DO NOTHING`,
 					event.Principal.TenantID, strings.ToLower(body.Channel), strings.ToLower(endpoint), "unsubscribe", event.ID)
 				if err != nil {
 					return err
+				}
+				if err == nil && tag.RowsAffected() > 0 && strings.ToLower(body.Channel) == "sms" {
+					telemetry.SMSOptOuts.Add(ctx, 1)
 				}
 			} else if body.State == "subscribed" {
 				_, err = tx.Exec(ctx, `DELETE FROM suppressions
@@ -685,4 +688,8 @@ func (s *Store) FailProjectionJob(ctx context.Context, eventID string, jobErr er
 		return fmt.Errorf("projection job %s not found", eventID)
 	}
 	return nil
+}
+
+func (s *Store) Pool() *pgxpool.Pool {
+	return s.pool
 }

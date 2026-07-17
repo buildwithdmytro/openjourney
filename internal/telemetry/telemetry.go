@@ -57,6 +57,9 @@ var (
 
 	PushTokensRetired = mustCounter(Meter.Int64Counter("openjourney_push_tokens_retired_total",
 		otelmetric.WithDescription("Total number of push tokens retired due to permanent failure")))
+
+	SMSOptOuts = mustCounter(Meter.Int64Counter("openjourney_sms_opt_outs_total",
+		otelmetric.WithDescription("Total number of SMS opt-outs recorded")))
 )
 
 // RecordExperimentAssignment records one newly-created authoritative assignment. Callers must

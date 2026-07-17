@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
+	"github.com/buildwithdmytro/openjourney/internal/telemetry"
 )
 
 func (s *Store) RegisterDeviceToken(ctx context.Context, tenantID, workspaceID, appID, profileID, platform, provider, token string) (domain.DeviceToken, error) {
@@ -27,20 +28,26 @@ func (s *Store) RegisterDeviceToken(ctx context.Context, tenantID, workspaceID, 
 }
 
 func (s *Store) RetireDeviceToken(ctx context.Context, tenantID, appID, token string) error {
-	_, err := s.pool.Exec(ctx, `
+	tag, err := s.pool.Exec(ctx, `
 		UPDATE device_tokens
 		SET status = 'retired', updated_at = now()
 		WHERE tenant_id = $1 AND app_id = $2 AND token = $3 AND status = 'active'
 	`, tenantID, appID, token)
+	if err == nil && tag.RowsAffected() > 0 {
+		telemetry.PushTokensRetired.Add(ctx, 1)
+	}
 	return err
 }
 
 func (s *Store) RetireDeviceTokenByID(ctx context.Context, tenantID, id string) error {
-	_, err := s.pool.Exec(ctx, `
+	tag, err := s.pool.Exec(ctx, `
 		UPDATE device_tokens
 		SET status = 'retired', updated_at = now()
 		WHERE tenant_id = $1 AND id = $2 AND status = 'active'
 	`, tenantID, id)
+	if err == nil && tag.RowsAffected() > 0 {
+		telemetry.PushTokensRetired.Add(ctx, 1)
+	}
 	return err
 }
 
