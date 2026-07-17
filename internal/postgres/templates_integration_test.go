@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 )
@@ -21,17 +20,7 @@ func TestTemplatesIntegration(t *testing.T) {
 	}
 	defer store.Close()
 
-	tenantID := "tenant-tmpl-test-" + time.Now().Format("20060102-150405")
-	p := domain.Principal{TenantID: tenantID, WorkspaceID: "workspace-1", AppID: "app-1"}
-
-	_, err = store.pool.Exec(ctx, `INSERT INTO tenants(id, name) VALUES($1, 'Test Tenant')`, tenantID)
-	if err != nil {
-		t.Fatalf("insert tenant: %v", err)
-	}
-	_, err = store.pool.Exec(ctx, `INSERT INTO workspaces(id, tenant_id, name) VALUES($1, $2, 'Test Workspace')`, p.WorkspaceID, tenantID)
-	if err != nil {
-		t.Fatalf("insert workspace: %v", err)
-	}
+	p, tenantID := setupTestTenant(t, ctx, store)
 
 	// 1. Test Sending Identities
 	iden, err := store.CreateSendingIdentity(ctx, p, domain.SendingIdentity{

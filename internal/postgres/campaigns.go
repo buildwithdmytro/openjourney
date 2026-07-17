@@ -286,7 +286,7 @@ func (s *Store) CreateDeliveryAttempt(ctx context.Context, attempt domain.Delive
 	}
 	res, err := s.pool.Exec(ctx, `INSERT INTO delivery_attempts (campaign_id, tenant_id, profile_id, channel, endpoint, decision, reason, provider_message_id, policy_snapshot, attempted_at, experiment_id, variant)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-		ON CONFLICT (campaign_id, profile_id, channel) DO NOTHING`,
+		ON CONFLICT (campaign_id, profile_id, channel, endpoint) DO NOTHING`,
 		attempt.CampaignID, attempt.TenantID, attempt.ProfileID, attempt.Channel, attempt.Endpoint, attempt.Decision, attempt.Reason, attempt.ProviderMessageID, policySnapshot, attempt.AttemptedAt, attempt.ExperimentID, attempt.Variant)
 	if err != nil {
 		return false, err

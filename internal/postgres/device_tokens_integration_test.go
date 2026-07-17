@@ -46,6 +46,13 @@ func TestDeviceTokensCRUDIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Create application 2 in workspace 2
+	var app2ID string
+	err = store.pool.QueryRow(ctx, "INSERT INTO applications (tenant_id, workspace_id, name) VALUES ($1, $2, 'App 2') RETURNING id", tenantID, w2ID).Scan(&app2ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Create profile in workspace 1
 	var prof1 string
 	err = store.pool.QueryRow(ctx, `INSERT INTO profiles (tenant_id, workspace_id, app_id, external_id) VALUES ($1, $2, $3, 'user-1') RETURNING id`,
@@ -57,7 +64,7 @@ func TestDeviceTokensCRUDIntegration(t *testing.T) {
 	// Create profile in workspace 2
 	var prof2 string
 	err = store.pool.QueryRow(ctx, `INSERT INTO profiles (tenant_id, workspace_id, app_id, external_id) VALUES ($1, $2, $3, 'user-1') RETURNING id`,
-		tenantID, w2ID, appID).Scan(&prof2)
+		tenantID, w2ID, app2ID).Scan(&prof2)
 	if err != nil {
 		t.Fatal(err)
 	}

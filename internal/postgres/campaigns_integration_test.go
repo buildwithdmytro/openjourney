@@ -27,17 +27,7 @@ func TestCampaignsIntegration(t *testing.T) {
 	}
 	defer store.Close()
 
-	tenantID := "tenant-camp-test-" + time.Now().Format("20060102-150405")
-	p := domain.Principal{TenantID: tenantID, WorkspaceID: "workspace-1", AppID: "app-1"}
-
-	_, err = store.pool.Exec(ctx, `INSERT INTO tenants(id, name) VALUES($1, 'Test Tenant')`, tenantID)
-	if err != nil {
-		t.Fatalf("insert tenant: %v", err)
-	}
-	_, err = store.pool.Exec(ctx, `INSERT INTO workspaces(id, tenant_id, name) VALUES($1, $2, 'Test Workspace')`, p.WorkspaceID, tenantID)
-	if err != nil {
-		t.Fatalf("insert workspace: %v", err)
-	}
+	p, tenantID := setupTestTenant(t, ctx, store)
 
 	// Create dependent segment
 	seg, err := store.CreateSegment(ctx, p, domain.Segment{
@@ -276,21 +266,11 @@ func TestCampaignsEndToEnd(t *testing.T) {
 	}
 	defer store.Close()
 
-	tenantID := "tenant-e2e-" + time.Now().Format("20060102-150405")
-	p := domain.Principal{TenantID: tenantID, WorkspaceID: "workspace-1", AppID: "app-1", Scopes: []string{"*"}}
-
-	_, err = store.pool.Exec(ctx, `INSERT INTO tenants(id, name) VALUES($1, 'E2E Tenant')`, tenantID)
-	if err != nil {
-		t.Fatalf("insert tenant: %v", err)
-	}
+	p, tenantID := setupTestTenant(t, ctx, store)
+	p.Scopes = []string{"*"}
 	defer func() {
 		_, _ = store.pool.Exec(ctx, "DELETE FROM tenants WHERE id=$1", tenantID)
 	}()
-
-	_, err = store.pool.Exec(ctx, `INSERT INTO workspaces(id, tenant_id, name) VALUES($1, $2, 'E2E Workspace')`, p.WorkspaceID, tenantID)
-	if err != nil {
-		t.Fatalf("insert workspace: %v", err)
-	}
 
 	// 1. Create a profile and accept event to project attributes & consent
 	events := []domain.Event{
@@ -473,21 +453,11 @@ func TestCampaignsReproducibility(t *testing.T) {
 	}
 	defer store.Close()
 
-	tenantID := "tenant-rep-" + time.Now().Format("20060102-150405")
-	p := domain.Principal{TenantID: tenantID, WorkspaceID: "workspace-1", AppID: "app-1", Scopes: []string{"*"}}
-
-	_, err = store.pool.Exec(ctx, `INSERT INTO tenants(id, name) VALUES($1, 'Rep Tenant')`, tenantID)
-	if err != nil {
-		t.Fatalf("insert tenant: %v", err)
-	}
+	p, tenantID := setupTestTenant(t, ctx, store)
+	p.Scopes = []string{"*"}
 	defer func() {
 		_, _ = store.pool.Exec(ctx, "DELETE FROM tenants WHERE id=$1", tenantID)
 	}()
-
-	_, err = store.pool.Exec(ctx, `INSERT INTO workspaces(id, tenant_id, name) VALUES($1, $2, 'Rep Workspace')`, p.WorkspaceID, tenantID)
-	if err != nil {
-		t.Fatalf("insert workspace: %v", err)
-	}
 
 	// Create 3 profiles (p1, p2, p3) in segment
 	for _, extID := range []string{"p1", "p2", "p3"} {
@@ -633,21 +603,11 @@ func TestCampaignsExplainability(t *testing.T) {
 	}
 	defer store.Close()
 
-	tenantID := "tenant-exp-" + time.Now().Format("20060102-150405")
-	p := domain.Principal{TenantID: tenantID, WorkspaceID: "workspace-1", AppID: "app-1", Scopes: []string{"*"}}
-
-	_, err = store.pool.Exec(ctx, `INSERT INTO tenants(id, name) VALUES($1, 'Exp Tenant')`, tenantID)
-	if err != nil {
-		t.Fatalf("insert tenant: %v", err)
-	}
+	p, tenantID := setupTestTenant(t, ctx, store)
+	p.Scopes = []string{"*"}
 	defer func() {
 		_, _ = store.pool.Exec(ctx, "DELETE FROM tenants WHERE id=$1", tenantID)
 	}()
-
-	_, err = store.pool.Exec(ctx, `INSERT INTO workspaces(id, tenant_id, name) VALUES($1, $2, 'Exp Workspace')`, p.WorkspaceID, tenantID)
-	if err != nil {
-		t.Fatalf("insert workspace: %v", err)
-	}
 
 	// 1. Create two profiles (p1, p2)
 	for _, extID := range []string{"p1", "p2"} {
@@ -882,8 +842,9 @@ func TestTenantFatigueQuotas(t *testing.T) {
 	}
 	defer store.Close()
 
-	tenantID := "tenant-quota-test-" + time.Now().Format("20060102-150405")
-	p := domain.Principal{TenantID: tenantID, WorkspaceID: "workspace-1", AppID: "app-1"}
+	tenantKey := fmt.Sprintf("%s-%d", t.Name(), time.Now().UnixNano())
+	tenantID := testUUID(tenantKey)
+	p := domain.Principal{TenantID: tenantID, WorkspaceID: testUUID(tenantKey + "-workspace-1"), AppID: testUUID(tenantKey + "-app-1")}
 
 	_, err = store.pool.Exec(ctx, `INSERT INTO tenants(id, name) VALUES($1, 'Test Tenant Quotas')`, tenantID)
 	if err != nil {

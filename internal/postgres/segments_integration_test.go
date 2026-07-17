@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 )
@@ -22,25 +21,14 @@ func TestSegmentsResolution(t *testing.T) {
 	}
 	defer store.Close()
 
-	tenantID := "tenant-seg-test-" + time.Now().Format("20060102-150405")
-	p := domain.Principal{TenantID: tenantID, WorkspaceID: "workspace-1", AppID: "app-1"}
+	p, tenantID := setupTestTenant(t, ctx, store)
 
-	_, err = store.pool.Exec(ctx, `INSERT INTO tenants(id, name) VALUES($1, 'Test Tenant')`, tenantID)
-	if err != nil {
-		t.Fatalf("insert tenant: %v", err)
-	}
-	_, err = store.pool.Exec(ctx, `INSERT INTO workspaces(id, tenant_id, name) VALUES($1, $2, 'Test Workspace')`, p.WorkspaceID, tenantID)
-	if err != nil {
-		t.Fatalf("insert workspace: %v", err)
-	}
-	_, err = store.pool.Exec(ctx, `INSERT INTO applications(id, tenant_id, workspace_id, name) VALUES($1, $2, $3, 'Test App')`, p.AppID, tenantID, p.WorkspaceID)
-	if err != nil {
-		t.Fatalf("insert application: %v", err)
-	}
+	p1ID := testUUID(tenantID + "-p-1")
+	p2ID := testUUID(tenantID + "-p-2")
 
 	_, err = store.pool.Exec(ctx, `INSERT INTO profiles(id, tenant_id, workspace_id, app_id, external_id, attributes)
-		VALUES('p-1', $1, $2, $3, 'ext-1', '{"country":"US","age":25}'),
-		      ('p-2', $1, $2, $3, 'ext-2', '{"country":"CA","age":30}')`, tenantID, p.WorkspaceID, p.AppID)
+		VALUES($4, $1, $2, $3, 'ext-1', '{"country":"US","age":25}'),
+		      ($5, $1, $2, $3, 'ext-2', '{"country":"CA","age":30}')`, tenantID, p.WorkspaceID, p.AppID, p1ID, p2ID)
 	if err != nil {
 		t.Fatalf("insert profiles: %v", err)
 	}
@@ -73,8 +61,8 @@ func TestSegmentsResolution(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve segment: %v", err)
 	}
-	if len(ids) != 1 || ids[0] != "p-1" {
-		t.Errorf("expected ['p-1'], got %v", ids)
+	if len(ids) != 1 || ids[0] != p1ID {
+		t.Errorf("expected [%q], got %v", p1ID, ids)
 	}
 
 	_, _ = store.pool.Exec(ctx, "DELETE FROM tenants WHERE id=$1", tenantID)
