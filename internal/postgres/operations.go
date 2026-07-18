@@ -68,6 +68,11 @@ func (s *Store) FailOperationJob(ctx context.Context, id string, operationErr er
 			RequestID string `json:"request_id"`
 		}
 		if json.Unmarshal(payload, &input) == nil && input.RequestID != "" {
+			if jobType == "profiles.import" {
+				if _, err := tx.Exec(ctx, `UPDATE import_requests SET status='failed',error=$2,completed_at=now() WHERE id=$1`, input.RequestID, message); err != nil {
+					return err
+				}
+			}
 			if jobType == "ai.generate" {
 				if _, err := tx.Exec(ctx, `UPDATE ai_generation_requests SET status='failed',error=$2,
 					completed_at=now() WHERE id=$1`, input.RequestID, message); err != nil {

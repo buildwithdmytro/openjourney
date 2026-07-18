@@ -245,6 +245,64 @@ func (s *Store) GetPrivacyRequest(ctx context.Context, p domain.Principal, id st
 	return item, err
 }
 
+func (s *Store) CreateImportRequest(ctx context.Context, p domain.Principal, kind, sourceKey string, mapping json.RawMessage, appID string) (domain.ImportRequest, error) {
+	if kind != "profiles" && kind != "companies" && kind != "suppressions" {
+		return domain.ImportRequest{}, errors.New("kind must be profiles, companies, or suppressions")
+	}
+	if sourceKey == "" || !json.Valid(mapping) {
+		return domain.ImportRequest{}, errors.New("source blob and valid mapping are required")
+	}
+	if appID == "" {
+		appID = p.AppID
+	}
+	var out domain.ImportRequest
+	err := s.pool.QueryRow(ctx, `INSERT INTO import_requests(tenant_id,workspace_id,app_id,requested_by,kind,source_blob_key,mapping) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id,tenant_id,workspace_id,app_id,requested_by,kind,status,total_rows,imported_rows,failed_rows,created_at`, p.TenantID, p.WorkspaceID, appID, actorID(p), kind, sourceKey, mapping).
+		Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.AppID, &out.RequestedBy, &out.Kind, &out.Status, &out.TotalRows, &out.ImportedRows, &out.FailedRows, &out.CreatedAt)
+	if err != nil {
+		return out, err
+	}
+	payload, _ := json.Marshal(map[string]any{"request_id": out.ID, "tenant_id": p.TenantID, "workspace_id": p.WorkspaceID, "app_id": appID})
+	if _, err = s.pool.Exec(ctx, `INSERT INTO operation_jobs(tenant_id,workspace_id,job_type,payload) VALUES($1,$2,'profiles.import',$3)`, p.TenantID, p.WorkspaceID, payload); err != nil {
+		return domain.ImportRequest{}, err
+	}
+	return out, nil
+}
+
+func (s *Store) GetImportRequest(ctx context.Context, p domain.Principal, id string) (domain.ImportRequest, error) {
+	var out domain.ImportRequest
+	err := s.pool.QueryRow(ctx, `SELECT id,tenant_id,workspace_id,app_id,requested_by,kind,status,total_rows,imported_rows,failed_rows,COALESCE(result_ref,''),COALESCE(error,''),created_at,completed_at FROM import_requests WHERE id=$1 AND tenant_id=$2 AND workspace_id=$3`, id, p.TenantID, p.WorkspaceID).
+		Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.AppID, &out.RequestedBy, &out.Kind, &out.Status, &out.TotalRows, &out.ImportedRows, &out.FailedRows, &out.ResultRef, &out.Error, &out.CreatedAt, &out.CompletedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return out, ErrNotFound
+	}
+	return out, err
+}
+
+func (s *Store) GetImportJob(ctx context.Context, id string) (domain.ImportRequest, string, json.RawMessage, error) {
+	var out domain.ImportRequest
+	var key string
+	var mapping json.RawMessage
+	err := s.pool.QueryRow(ctx, `SELECT id,tenant_id,workspace_id,app_id,requested_by,kind,status,total_rows,imported_rows,failed_rows,source_blob_key,mapping,created_at,completed_at FROM import_requests WHERE id=$1`, id).
+		Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.AppID, &out.RequestedBy, &out.Kind, &out.Status, &out.TotalRows, &out.ImportedRows, &out.FailedRows, &key, &mapping, &out.CreatedAt, &out.CompletedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return out, "", nil, ErrNotFound
+	}
+	return out, key, mapping, err
+}
+
+func (s *Store) MarkImportProcessing(ctx context.Context, id string) error {
+	_, err := s.pool.Exec(ctx, `UPDATE import_requests SET status='processing' WHERE id=$1 AND status='pending'`, id)
+	return err
+}
+func (s *Store) CompleteImport(ctx context.Context, id, resultRef string, total, imported, failed int) error {
+	_, err := s.pool.Exec(ctx, `UPDATE import_requests SET status='complete',result_ref=$2,total_rows=$3,imported_rows=$4,failed_rows=$5,completed_at=now() WHERE id=$1`, id, resultRef, total, imported, failed)
+	return err
+}
+func (s *Store) FailImport(ctx context.Context, id, message string) error {
+	_, err := s.pool.Exec(ctx, `UPDATE import_requests SET status='failed',error=$2,completed_at=now() WHERE id=$1`, id, message)
+	return err
+}
+
 func (s *Store) CreateAIGenerationRequest(ctx context.Context, p domain.Principal, taskType string, input json.RawMessage) (domain.AIGenerationRequest, error) {
 	if strings.TrimSpace(taskType) == "" {
 		return domain.AIGenerationRequest{}, errors.New("task_type is required")

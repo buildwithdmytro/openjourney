@@ -450,6 +450,23 @@ type PrivacyRequest struct {
 	CompletedAt *time.Time `json:"completed_at,omitempty"`
 }
 
+type ImportRequest struct {
+	ID           string     `json:"id"`
+	TenantID     string     `json:"tenant_id,omitempty"`
+	WorkspaceID  string     `json:"workspace_id,omitempty"`
+	AppID        string     `json:"app_id,omitempty"`
+	RequestedBy  string     `json:"requested_by,omitempty"`
+	Kind         string     `json:"kind"`
+	Status       string     `json:"status"`
+	TotalRows    int        `json:"total_rows"`
+	ImportedRows int        `json:"imported_rows"`
+	FailedRows   int        `json:"failed_rows"`
+	ResultRef    string     `json:"result_ref,omitempty"`
+	Error        string     `json:"error,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
+	CompletedAt  *time.Time `json:"completed_at,omitempty"`
+}
+
 type QueueStatus struct {
 	Queue      string `json:"queue"`
 	Pending    int64  `json:"pending"`

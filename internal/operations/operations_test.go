@@ -1,6 +1,7 @@
 package operations
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,6 +10,82 @@ import (
 	"github.com/buildwithdmytro/openjourney/internal/ai"
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 )
+
+type importWorkerStore struct {
+	job       domain.ImportRequest
+	data      map[string][]byte
+	events    []domain.Event
+	completed domain.ImportRequest
+	seen      map[string]bool
+}
+
+func (s *importWorkerStore) GetImportJob(context.Context, string) (domain.ImportRequest, string, json.RawMessage, error) {
+	return s.job, "source.csv", json.RawMessage(`{"email":"email","company":"company"}`), nil
+}
+func (s *importWorkerStore) MarkImportProcessing(context.Context, string) error {
+	s.job.Status = "processing"
+	return nil
+}
+func (s *importWorkerStore) CompleteImport(_ context.Context, _ string, ref string, total, ok, failed int) error {
+	s.completed = s.job
+	s.completed.Status = "complete"
+	s.completed.ResultRef = ref
+	s.completed.TotalRows = total
+	s.completed.ImportedRows = ok
+	s.completed.FailedRows = failed
+	return nil
+}
+func (s *importWorkerStore) FailImport(context.Context, string, string) error { return nil }
+func (s *importWorkerStore) IsSuppressed(context.Context, domain.Principal, string, string) (bool, error) {
+	return false, nil
+}
+func (s *importWorkerStore) AcceptEvents(_ context.Context, _ domain.Principal, events []domain.Event) ([]string, error) {
+	if s.seen == nil {
+		s.seen = map[string]bool{}
+	}
+	for _, e := range events {
+		if s.seen[e.IdempotencyKey] {
+			continue
+		}
+		s.seen[e.IdempotencyKey] = true
+		s.events = append(s.events, e)
+	}
+	return []string{"event"}, nil
+}
+
+type importBlobs struct {
+	data   []byte
+	result []byte
+}
+
+func (b *importBlobs) Put(_ context.Context, key string, data []byte, _ string) error {
+	if key != "source.csv" {
+		b.result = data
+	}
+	return nil
+}
+func (b *importBlobs) Get(context.Context, string) ([]byte, error) { return b.data, nil }
+func (b *importBlobs) Delete(context.Context, string) error        { return nil }
+
+func TestImportWorkerEmitsDeterministicRowEventsAndReport(t *testing.T) {
+	store := &importWorkerStore{job: domain.ImportRequest{ID: "import-1", TenantID: "t", WorkspaceID: "w", AppID: "a", Kind: "profiles"}}
+	blobs := &importBlobs{data: []byte("email,company\na@example.com,Acme\nb@example.com,Globex\n")}
+	if err := executeImport(context.Background(), store, blobs, "import-1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := executeImport(context.Background(), store, blobs, "import-1"); err != nil {
+		t.Fatal(err)
+	}
+	if store.completed.Status != "complete" || store.completed.ImportedRows != 2 || store.completed.FailedRows != 0 || len(store.events) != 2 {
+		t.Fatalf("completion=%+v events=%d", store.completed, len(store.events))
+	}
+	if store.events[0].IdempotencyKey != "profiles.import:source.csv:1" {
+		t.Fatalf("unexpected idempotency key %q", store.events[0].IdempotencyKey)
+	}
+	if !bytes.Contains(blobs.result, []byte(`"imported"`)) {
+		t.Fatalf("missing row report: %s", blobs.result)
+	}
+}
 
 type generationStore struct {
 	job         domain.AIGenerationJob

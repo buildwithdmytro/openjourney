@@ -1,10 +1,15 @@
 package operations
 
 import (
+	"bytes"
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/buildwithdmytro/openjourney/internal/ai"
@@ -22,6 +27,15 @@ type Store interface {
 	CompletePrivacyExport(context.Context, string, string) error
 	DeletePrivacyData(context.Context, string) ([]string, error)
 	EnforceRetention(context.Context, string) (domain.RetentionReport, error)
+}
+
+type ImportStore interface {
+	GetImportJob(context.Context, string) (domain.ImportRequest, string, json.RawMessage, error)
+	MarkImportProcessing(context.Context, string) error
+	CompleteImport(context.Context, string, string, int, int, int) error
+	FailImport(context.Context, string, string) error
+	AcceptEvents(context.Context, domain.Principal, []domain.Event) ([]string, error)
+	IsSuppressed(context.Context, domain.Principal, string, string) (bool, error)
 }
 
 type AIGenerationStore interface {
@@ -125,9 +139,143 @@ func execute(ctx context.Context, store Store, blobs ports.BlobStore, gateway AI
 		return executeAIGeneration(ctx, store, blobs, gateway, input.RequestID, input.TaskType, input.Input, input.Scopes)
 	case "scores.compute":
 		return executeScoring(ctx, store, gateway, input.RequestID, input.Scopes)
+	case "profiles.import":
+		importStore, ok := store.(ImportStore)
+		if !ok {
+			return errors.New("operation store does not support imports")
+		}
+		return executeImport(ctx, importStore, blobs, input.RequestID)
 	default:
 		return fmt.Errorf("unsupported operation type %q", jobType)
 	}
+}
+
+func executeImport(ctx context.Context, base ImportStore, blobs ports.BlobStore, requestID string) error {
+	if requestID == "" {
+		return errors.New("profiles.import payload requires request_id")
+	}
+	store := base
+	job, key, rawMapping, err := store.GetImportJob(ctx, requestID)
+	if err != nil {
+		return err
+	}
+	if err := store.MarkImportProcessing(ctx, requestID); err != nil {
+		return err
+	}
+	data, err := blobs.Get(ctx, key)
+	if err != nil {
+		return err
+	}
+	mapping := map[string]string{}
+	if err := json.Unmarshal(rawMapping, &mapping); err != nil {
+		return fmt.Errorf("mapping: %w", err)
+	}
+	reader := csv.NewReader(bytes.NewReader(data))
+	header, err := reader.Read()
+	if err != nil {
+		return err
+	}
+	indices := map[string]int{}
+	for i, name := range header {
+		indices[name] = i
+	}
+	type result struct {
+		Row    int    `json:"row"`
+		Status string `json:"status"`
+		Error  string `json:"error,omitempty"`
+	}
+	results := []result{}
+	imported, failed, total := 0, 0, 0
+	for {
+		row, readErr := reader.Read()
+		if errors.Is(readErr, io.EOF) {
+			break
+		}
+		total++
+		line := total + 1
+		if readErr != nil {
+			failed++
+			results = append(results, result{line, "failed", readErr.Error()})
+			continue
+		}
+		value := func(column string) string {
+			i, ok := indices[column]
+			if !ok || i >= len(row) {
+				return ""
+			}
+			return strings.TrimSpace(row[i])
+		}
+		externalID := value("external_id")
+		if externalID == "" {
+			for column, target := range mapping {
+				if target == "external_id" {
+					externalID = value(column)
+					break
+				}
+			}
+		}
+		if externalID == "" {
+			externalID = value("email")
+		}
+		if job.Kind == "suppressions" && externalID == "" {
+			externalID = value("endpoint")
+		}
+		if externalID == "" {
+			failed++
+			results = append(results, result{line, "failed", "external_id or email is required"})
+			continue
+		}
+		attrs := map[string]any{}
+		for column, target := range mapping {
+			if target != "" && target != "external_id" {
+				if v := value(column); v != "" {
+					attrs[target] = v
+				}
+			}
+		}
+		if email := value("email"); email != "" {
+			if suppressed, _ := store.IsSuppressed(ctx, domain.Principal{TenantID: job.TenantID, WorkspaceID: job.WorkspaceID, AppID: job.AppID}, "email", email); suppressed {
+				failed++
+				results = append(results, result{line, "skipped", "endpoint is suppressed"})
+				continue
+			}
+		}
+		payload, _ := json.Marshal(map[string]any{"attributes": attrs})
+		event := domain.Event{Type: "profile.updated", SchemaVersion: 1, ExternalID: externalID, IdempotencyKey: "profiles.import:" + key + ":" + strconv.Itoa(total), OccurredAt: time.Now().UTC(), Source: "profiles.import", Payload: payload}
+		if job.Kind == "companies" {
+			name := value("name")
+			if name == "" {
+				name = externalID
+			}
+			cp, _ := json.Marshal(map[string]any{"company": map[string]any{"external_id": externalID, "name": name, "attributes": attrs}, "members": []any{}})
+			event = domain.Event{Type: "company.updated", SchemaVersion: 1, ExternalID: externalID, IdempotencyKey: "companies.import:" + key + ":" + strconv.Itoa(total), OccurredAt: time.Now().UTC(), Source: "profiles.import", Payload: cp}
+		}
+		if job.Kind == "suppressions" {
+			channel := value("channel")
+			endpoint := value("endpoint")
+			if channel == "" || endpoint == "" {
+				failed++
+				results = append(results, result{line, "failed", "channel and endpoint are required"})
+				continue
+			}
+			cp, _ := json.Marshal(map[string]any{"channel": channel, "state": "unsubscribed", "evidence": map[string]any{"source": "profiles.import", "row": line}})
+			event = domain.Event{Type: "consent.changed", SchemaVersion: 1, ExternalID: externalID, IdempotencyKey: "suppressions.import:" + key + ":" + strconv.Itoa(total), OccurredAt: time.Now().UTC(), Source: "profiles.import", Payload: cp}
+		}
+		_, err = store.AcceptEvents(ctx, domain.Principal{TenantID: job.TenantID, WorkspaceID: job.WorkspaceID, AppID: job.AppID, ActorType: "import"}, []domain.Event{event})
+		if err != nil {
+			failed++
+			results = append(results, result{line, "failed", err.Error()})
+		} else {
+			imported++
+			results = append(results, result{line, "imported", ""})
+		}
+	}
+	content, _ := json.Marshal(results)
+	resultKey := fmt.Sprintf("imports/%s/results.json", requestID)
+	if err := blobs.Put(ctx, resultKey, content, "application/json"); err != nil {
+		return err
+	}
+	return store.CompleteImport(ctx, requestID, resultKey, total, imported, failed)
 }
 
 func executeAIGeneration(ctx context.Context, store Store, blobs ports.BlobStore, gateway AIGateway, requestID, taskType string, rawInput json.RawMessage, scopes []string) error {

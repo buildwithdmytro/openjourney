@@ -483,10 +483,13 @@ Each task ends with a **Done when**. Do them in order; compile + `go vet` betwee
 ### Milestone 13.8 — Imports (CSV)
 1. [x] **Migration** `038_imports.sql` + scopes `imports:*` + the `profiles.import` job type. *Done when:*
    exists. — done: migration 040 adds import_requests with constrained kinds/statuses, imports scopes, and profiles.import job type; applied cleanly and verified accepted/rejected job types.
-2. **Import job** (Recipe 6.39): `POST /v1/imports` (upload CSV to blob + enqueue, 202 + status
+2. [x] **Import job** (Recipe 6.39): `POST /v1/imports` (upload CSV to blob + enqueue, 202 + status
    resource) + a worker `case "profiles.import"` that streams rows, maps columns, emits events via
    `AcceptEvents`, and writes per-row results. *Done when:* re-importing the same CSV yields one
-   profile/company per row (idempotent) with a per-row result report; status reaches `complete`.
+   profile/company per row (idempotent) with a per-row result report; status reaches `complete`. — done:
+   content-addressed CSV upload/status API and leased worker emit deterministic row-idempotent profile,
+   company, and suppression events, skip suppressed endpoints, and write results; worker test reruns
+   the CSV and proves two rows/one event each; full Go build/vet/test passes.
 
 ### Milestone 13.9 — UI
 1. **Form + page builders**: typed-field form builder (with consent + honeypot), landing-page editor
