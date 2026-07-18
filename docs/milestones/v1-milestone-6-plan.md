@@ -480,10 +480,10 @@ them in order; compile + `go vet` between milestones. **Substrate (11.0–11.7) 
 1. [x] **`ActorType="ai_agent"`** added to the actor model; confirm the human gate rejects it
    (add a test asserting an `ai_agent` principal → 403 on publish/rollout). *Done when:* the gate
    test passes. — done: added ai_agent actor to model and verified rejection in HTTP publish/rollout handlers and prompt registry tests.
-2. **Tool framework** `internal/ai/tools/*.go` (Recipe 6.28): typed JSON-Schema I/O, `RequiredScopes`,
+2. [x] **Tool framework** `internal/ai/tools/*.go` (Recipe 6.28): typed JSON-Schema I/O, `RequiredScopes`,
    `Purpose`; runner derives the scope-intersection `ai_agent` principal, calls the store method,
    records the tool call. Register read-only tools first (schema inspect, segment preview,
-   report read). *Done when:* an out-of-scope tool call is denied + logged.
+   report read). *Done when:* an out-of-scope tool call is denied + logged. — done: added governed read-only schema/segment/report tools with JSON-Schema validation, scope-intersection ai_agent derivation, fail-closed audit recording, and TestRunnerDeniesOutOfScopeAndRecords.
 3. **Untrusted-data isolation**: template rendering passes retrieved DATA in a delimited section,
    never interpolated into instructions. *Done when:* a profile attribute containing
    prompt-injection text cannot alter the instruction (test on the fake provider's captured input).
