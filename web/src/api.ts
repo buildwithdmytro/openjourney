@@ -214,6 +214,56 @@ export type ProfileScore = {
   model_version: number; computed_at: string;
 };
 
+export type FormField = {
+  key: string; type: "text" | "email" | "number" | "integer" | "boolean";
+  required?: boolean; validation?: Record<string, unknown>; consent?: boolean; maps_to?: string;
+};
+export type Form = {
+  id: string; tenant_id: string; workspace_id: string; name: string; status: "draft" | "published" | "archived";
+  draft: { fields: FormField[]; submit_actions?: Record<string, unknown> }; latest_version: number;
+  current_version_id?: string; created_at: string; updated_at: string;
+};
+export type LandingPage = {
+  id: string; tenant_id: string; workspace_id: string; slug: string; name: string;
+  status: "draft" | "published" | "archived"; draft: { template: string; form_id?: string; form_version?: number; meta?: Record<string, unknown> };
+  latest_version: number; current_version_id?: string; created_at: string; updated_at: string;
+};
+export type Asset = { id: string; filename: string; content_type: string; blob_key: string; size_bytes: number; created_at: string };
+
+export async function listForms(baseURL: string, apiKey: string): Promise<Form[]> {
+  return (await requestJSON<{ forms: Form[] | null }>(baseURL, apiKey, "/v1/forms")).forms ?? [];
+}
+export async function createForm(baseURL: string, apiKey: string, input: { name: string; draft: Form["draft"] }): Promise<Form> {
+  return requestJSON(baseURL, apiKey, "/v1/forms", { method: "POST", body: JSON.stringify(input) });
+}
+export async function updateForm(baseURL: string, apiKey: string, id: string, input: { name: string; draft: Form["draft"] }): Promise<Form> {
+  return requestJSON(baseURL, apiKey, `/v1/forms/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(input) });
+}
+export async function publishForm(baseURL: string, apiKey: string, id: string): Promise<unknown> {
+  return requestJSON(baseURL, apiKey, `/v1/forms/${encodeURIComponent(id)}/publish`, { method: "POST" });
+}
+export async function listLandingPages(baseURL: string, apiKey: string): Promise<LandingPage[]> {
+  return (await requestJSON<{ pages: LandingPage[] | null }>(baseURL, apiKey, "/v1/pages")).pages ?? [];
+}
+export async function createLandingPage(baseURL: string, apiKey: string, input: { name: string; slug: string; draft: LandingPage["draft"] }): Promise<LandingPage> {
+  return requestJSON(baseURL, apiKey, "/v1/pages", { method: "POST", body: JSON.stringify(input) });
+}
+export async function updateLandingPage(baseURL: string, apiKey: string, id: string, input: { name: string; slug: string; draft: LandingPage["draft"] }): Promise<LandingPage> {
+  return requestJSON(baseURL, apiKey, `/v1/pages/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(input) });
+}
+export async function publishLandingPage(baseURL: string, apiKey: string, id: string): Promise<unknown> {
+  return requestJSON(baseURL, apiKey, `/v1/pages/${encodeURIComponent(id)}/publish`, { method: "POST" });
+}
+export async function listAssets(baseURL: string, apiKey: string): Promise<Asset[]> {
+  return (await requestJSON<{ assets: Asset[] | null }>(baseURL, apiKey, "/v1/assets")).assets ?? [];
+}
+export async function uploadAsset(baseURL: string, apiKey: string, file: File): Promise<Asset> {
+  const body = new FormData(); body.append("file", file);
+  const response = await fetch(`${baseURL}/v1/assets`, { method: "POST", headers: { Authorization: `Bearer ${apiKey}` }, body });
+  if (!response.ok) throw new Error(`Request failed (${response.status})`);
+  return response.json() as Promise<Asset>;
+}
+
 export async function listScoringModels(baseURL: string, apiKey: string): Promise<ScoringModel[]> {
   return (await requestJSON<{ models: ScoringModel[] | null }>(baseURL, apiKey, "/v1/scoring/models")).models ?? [];
 }

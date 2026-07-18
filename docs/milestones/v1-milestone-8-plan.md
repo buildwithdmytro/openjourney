@@ -492,9 +492,11 @@ Each task ends with a **Done when**. Do them in order; compile + `go vet` betwee
    the CSV and proves two rows/one event each; full Go build/vet/test passes.
 
 ### Milestone 13.9 — UI
-1. **Form + page builders**: typed-field form builder (with consent + honeypot), landing-page editor
+1. [x] **Form + page builders**: typed-field form builder (with consent + honeypot), landing-page editor
    (embed a form, upload assets, publish). *Done when:* `npm run build` passes; a form and a page
-   round-trip and publish.
+   round-trip and publish. — done: Acquisition UI adds typed form fields, consent/honeypot controls,
+   page templates/form embedding, asset upload, and immutable publish actions; `Acquisition.test.tsx`
+   proves form and page draft round-trips/publishes; web typecheck/build and 32 tests pass.
 2. **Acquisition surfaces**: short-links/UTM, lead-scoring rules, lifecycle stages, companies, and an
    import wizard (upload + column mapping + results). *Done when:* each round-trips; the import wizard
    shows per-row results.
