@@ -420,6 +420,18 @@ export type AIProviderConfig = {
 };
 export type AIBudget = { usage: { period: string; cost_cents: number; input_tokens: number; output_tokens: number }; monthly_budget_cents: number };
 export type AIActivity = { id: string; action: string; provider: string; model: string; policy_decision: string; cost_cents: number; input_tokens: number; output_tokens: number; created_at: string };
+export type Extension = { id: string; name: string; publisher: string; latest_version: number; status: "installed" | "enabled" | "disabled"; current_version_id?: string };
+export type ExtensionConfig = { extension_id: string; config: Record<string, unknown>; endpoint_allowlist: string[]; timeout_ms: number; max_memory_mb: number; monthly_budget_cents: number; rate_per_min: number; status: "active" | "disabled" };
+export type ExtensionGrant = { extension_id: string; scope: string; granted_by: string; granted_at: string };
+export type ExtensionActivity = { id: string; extension_id: string; extension_version: number; kind: string; invocation: string; derived_scopes: string[]; policy_decision: string; latency_ms: number; created_at: string };
+export async function listExtensions(baseURL: string, apiKey: string): Promise<Extension[]> { return (await requestJSON<{ extensions: Extension[] }>(baseURL, apiKey, "/v1/extensions")).extensions ?? []; }
+export async function installExtension(baseURL: string, apiKey: string, input: Record<string, unknown>): Promise<Extension> { return (await requestJSON<{ extension: Extension }>(baseURL, apiKey, "/v1/extensions/install", { method: "POST", body: JSON.stringify(input) })).extension; }
+export async function updateExtension(baseURL: string, apiKey: string, id: string, status: Extension["status"]): Promise<Extension> { return requestJSON(baseURL, apiKey, `/v1/extensions/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify({ status }) }); }
+export async function getExtensionConfig(baseURL: string, apiKey: string, id: string): Promise<ExtensionConfig> { return requestJSON(baseURL, apiKey, `/v1/extensions/${encodeURIComponent(id)}/config`); }
+export async function saveExtensionConfig(baseURL: string, apiKey: string, id: string, input: Partial<ExtensionConfig>): Promise<ExtensionConfig> { return requestJSON(baseURL, apiKey, `/v1/extensions/${encodeURIComponent(id)}/config`, { method: "PUT", body: JSON.stringify(input) }); }
+export async function listExtensionGrants(baseURL: string, apiKey: string, id: string): Promise<ExtensionGrant[]> { return (await requestJSON<{ grants: ExtensionGrant[] }>(baseURL, apiKey, `/v1/extensions/${encodeURIComponent(id)}/grants`)).grants ?? []; }
+export async function grantExtensionScope(baseURL: string, apiKey: string, id: string, scope: string): Promise<ExtensionGrant> { return requestJSON(baseURL, apiKey, `/v1/extensions/${encodeURIComponent(id)}/grants`, { method: "POST", body: JSON.stringify({ scope }) }); }
+export async function listExtensionActivity(baseURL: string, apiKey: string, id: string): Promise<{ activities: ExtensionActivity[]; health: { state: string; consecutive_failures: number } }> { return requestJSON(baseURL, apiKey, `/v1/extensions/${encodeURIComponent(id)}/activity?limit=100`); }
 export type FieldClassification = { id: string; entity_type: "profile" | "event"; field_path: string; classification: "public" | "internal" | "confidential" | "restricted"; send_to_model: "allow" | "redact" | "tokenize" | "deny"; created_at: string };
 
 export async function listAIProviders(baseURL: string, apiKey: string): Promise<AIProviderConfig[]> {

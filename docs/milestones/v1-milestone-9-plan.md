@@ -431,10 +431,11 @@ keep tests reproducible; one consolidated security/integration pass in 14.10. Ea
    extensions:read authorization, disabled kill-switch transport short-circuit, and existing breaker tests.
 
 ### Milestone 14.9 — UI
-1. **Extension registry UI**: install (upload signed manifest), review requested scopes + grant a
+1. [x] **Extension registry UI**: install (upload signed manifest), review requested scopes + grant a
    subset, configure (config + secret refs + allowlist + limits), enable/disable, and an
    activity/health panel. *Done when:* `npm run build` passes; an extension installs, grants a scope
-   subset, enables, and shows activity.
+   subset, enables, and shows activity. — done: added signed install, config/grant/activity APIs and
+   theme-aware Extensions registry/editor UI; `npm run typecheck`, `npm run build`, and 32 Vitest tests pass.
 
 ### Milestone 14.10 — Integration, security & audit closeout
 1. **Security E2E**: an unsigned/tampered manifest is rejected; an extension call beyond its granted

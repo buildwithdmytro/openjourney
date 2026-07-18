@@ -18,7 +18,7 @@ export default function Acquisition({ apiKey, baseURL }: { apiKey: string; baseU
   const [score, setScore] = useState<LeadScoreInput>({ name: "", score_name: "", expression: "", output_max: 100 });
   const [company, setCompany] = useState({ name: "", external_id: "", attributes: "{}", profile_id: "" });
   const [stage, setStage] = useState({ stage: "lead", segment_id: "", priority: 0 });
-  async function refresh() { try { const [nextForms, nextPages, nextAssets, nextLinks, nextCompanies, nextStages] = await Promise.all([listForms(baseURL, apiKey), listLandingPages(baseURL, apiKey), listAssets(baseURL, apiKey), listShortLinks(baseURL, apiKey), listCompanies(baseURL, apiKey), listStageRules(baseURL, apiKey)]); setForms(nextForms); setPages(nextPages); setAssets(nextAssets); setLinks(nextLinks); setCompanies(nextCompanies); setStages(nextStages); setError(""); } catch (e) { setError(errorMessage(e)); } }
+  async function refresh() { try { const [nextForms, nextPages, nextAssets, nextLinks, nextCompanies, nextStages] = await Promise.all([listForms(baseURL, apiKey), listLandingPages(baseURL, apiKey), listAssets(baseURL, apiKey), listShortLinks(baseURL, apiKey).catch(() => []), listCompanies(baseURL, apiKey).catch(() => []), listStageRules(baseURL, apiKey).catch(() => [])]); setForms(nextForms); setPages(nextPages); setAssets(nextAssets); setLinks(nextLinks); setCompanies(nextCompanies); setStages(nextStages); setError(""); } catch (e) { setError(errorMessage(e)); } }
   useEffect(() => { if (apiKey) void refresh(); }, [apiKey, baseURL]);
   function selectForm(item: Form) { setTab("forms"); setForm(item); setNotice(""); }
   function selectPage(item: LandingPage) { setTab("pages"); setPage(item); setNotice(""); }

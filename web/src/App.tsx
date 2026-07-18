@@ -19,6 +19,7 @@ const Experiments = lazy(() => import("./sections/Experiments"));
 const Reports = lazy(() => import("./sections/Reports"));
 const Copilots = lazy(() => import("./sections/Copilots"));
 const Governance = lazy(() => import("./sections/Governance"));
+const Extensions = lazy(() => import("./sections/Extensions"));
 const Scoring = lazy(() => import("./sections/Scoring"));
 const Acquisition = lazy(() => import("./sections/Acquisition"));
 
@@ -44,7 +45,7 @@ class UIErrorBoundary extends Component<{ children: ReactNode; resetKey: string 
     return this.props.children;
   }
 }
-type View = "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "copilots" | "governance" | "suppressions" | "sender-identities" | "device-tokens" | "acquisition";
+type View = "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "copilots" | "governance" | "extensions" | "suppressions" | "sender-identities" | "device-tokens" | "acquisition";
 type CredentialSource = "manual" | "session" | "oidc";
 
 const viewTitles: Record<View, [string, string]> = {
@@ -64,6 +65,7 @@ const viewTitles: Record<View, [string, string]> = {
   reports: ["Reports", "Compare delivery, conversion, and experiment performance."],
   copilots: ["AI Copilots", "Create governed drafts for review and human approval."],
   governance: ["AI Governance", "Manage providers, budgets, redaction, and AI activity."],
+  extensions: ["Extensions", "Install signed providers, configure grants, and review extension health."],
   suppressions: ["Suppressions", "Manage bounces, complaints, and manually suppressed endpoints."],
   "sender-identities": ["Sender Identities", "Manage verified sender emails, SMS, and push channels."],
   "device-tokens": ["Device Tokens", "Inspect and retire push device tokens per profile."],
@@ -247,7 +249,7 @@ export function App() {
       <aside>
         <div className="brand"><span>O</span> OpenJourney</div>
         <nav aria-label="Primary">
-          {(["profiles", "segments", "scoring", "acquisition", "templates", "campaigns", "journeys", "experiments", "reports", "copilots", "governance", "suppressions", "sender-identities", "device-tokens", "schemas", "api-keys", "privacy", "access", "operations", "audit"] as View[]).map((item) => (
+          {(["profiles", "segments", "scoring", "acquisition", "templates", "campaigns", "journeys", "experiments", "reports", "copilots", "governance", "extensions", "suppressions", "sender-identities", "device-tokens", "schemas", "api-keys", "privacy", "access", "operations", "audit"] as View[]).map((item) => (
             <button key={item} className={view === item ? "active" : ""}
               onClick={() => setView(item)}>{viewTitles[item][0]}</button>
           ))}
@@ -283,6 +285,7 @@ export function App() {
         {view === "reports" && <Suspense fallback={<p role="status">Loading reports…</p>}><Reports apiKey={apiKey} baseURL={apiBase} /></Suspense>}
         {view === "copilots" && <Suspense fallback={<p role="status">Loading AI copilots…</p>}><Copilots apiKey={apiKey} baseURL={apiBase} /></Suspense>}
         {view === "governance" && <Suspense fallback={<p role="status">Loading AI governance…</p>}><Governance apiKey={apiKey} baseURL={apiBase} /></Suspense>}
+        {view === "extensions" && <Suspense fallback={<p role="status">Loading extensions…</p>}><Extensions apiKey={apiKey} baseURL={apiBase} /></Suspense>}
         {view === "suppressions" && <Suppressions apiKey={apiKey} />}
         {view === "sender-identities" && <SenderIdentities apiKey={apiKey} />}
         {view === "device-tokens" && <DeviceTokensInspector apiKey={apiKey} />}
