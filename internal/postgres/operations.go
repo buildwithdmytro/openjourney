@@ -54,11 +54,12 @@ func (s *Store) FailOperationJob(ctx context.Context, id string, operationErr er
 	defer tx.Rollback(ctx)
 	var status string
 	var payload json.RawMessage
+	var jobType string
 	err = tx.QueryRow(ctx, `UPDATE operation_jobs SET
 		status=CASE WHEN attempts >= 10 THEN 'dead' ELSE 'pending' END,
 		available_at=now()+(LEAST(attempts,10)*interval '30 seconds'),
-		locked_until=NULL,last_error=$2 WHERE id=$1 RETURNING status,payload`, id, message).
-		Scan(&status, &payload)
+		locked_until=NULL,last_error=$2 WHERE id=$1 RETURNING status,job_type,payload`, id, message).
+		Scan(&status, &jobType, &payload)
 	if err != nil {
 		return err
 	}
@@ -67,6 +68,12 @@ func (s *Store) FailOperationJob(ctx context.Context, id string, operationErr er
 			RequestID string `json:"request_id"`
 		}
 		if json.Unmarshal(payload, &input) == nil && input.RequestID != "" {
+			if jobType == "ai.generate" {
+				if _, err := tx.Exec(ctx, `UPDATE ai_generation_requests SET status='failed',error=$2,
+					completed_at=now() WHERE id=$1`, input.RequestID, message); err != nil {
+					return err
+				}
+			}
 			if _, err := tx.Exec(ctx, `UPDATE privacy_requests SET status='failed',error=$2,
 				completed_at=now() WHERE id=$1`, input.RequestID, message); err != nil {
 				return err

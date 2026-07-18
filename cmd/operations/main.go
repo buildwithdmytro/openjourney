@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/buildwithdmytro/openjourney/internal/ai"
 	"github.com/buildwithdmytro/openjourney/internal/blob"
 	"github.com/buildwithdmytro/openjourney/internal/config"
 	"github.com/buildwithdmytro/openjourney/internal/operations"
@@ -43,7 +44,7 @@ func main() {
 		slog.Error("open object store", "error", err)
 		os.Exit(1)
 	}
-	processed, err := operations.Drain(ctx, store, blobs, maxItems, watch)
+	processed, err := operations.DrainWithGateway(ctx, store, blobs, ai.NewGateway(store), maxItems, watch)
 	if err != nil {
 		slog.Error("operations worker failed", "processed", processed, "error", err)
 		os.Exit(1)

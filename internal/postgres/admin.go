@@ -276,7 +276,8 @@ func (s *Store) CreateAIGenerationRequest(ctx context.Context, p domain.Principa
 		RequestID string          `json:"request_id"`
 		TaskType  string          `json:"task_type"`
 		Input     json.RawMessage `json:"input"`
-	}{request.ID, taskType, input})
+		Scopes    []string        `json:"scopes"`
+	}{request.ID, taskType, input, p.Scopes})
 	if err != nil {
 		return domain.AIGenerationRequest{}, err
 	}
@@ -288,6 +289,38 @@ func (s *Store) CreateAIGenerationRequest(ctx context.Context, p domain.Principa
 		return domain.AIGenerationRequest{}, err
 	}
 	return request, nil
+}
+
+func (s *Store) GetAIGenerationJob(ctx context.Context, id string) (domain.AIGenerationJob, error) {
+	var job domain.AIGenerationJob
+	err := s.pool.QueryRow(ctx, `SELECT id,tenant_id,workspace_id,requested_by
+		FROM ai_generation_requests WHERE id=$1`, id).
+		Scan(&job.ID, &job.TenantID, &job.WorkspaceID, &job.RequestedBy)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.AIGenerationJob{}, ErrNotFound
+	}
+	return job, err
+}
+
+func (s *Store) MarkAIGenerationProcessing(ctx context.Context, id string) error {
+	_, err := s.pool.Exec(ctx, `UPDATE ai_generation_requests SET status='processing'
+		WHERE id=$1 AND status='pending'`, id)
+	return err
+}
+
+func (s *Store) CompleteAIGeneration(ctx context.Context, id, resultRef string) error {
+	_, err := s.pool.Exec(ctx, `UPDATE ai_generation_requests SET status='complete',result_ref=$2,
+		completed_at=now() WHERE id=$1`, id, resultRef)
+	return err
+}
+
+func (s *Store) FailAIGeneration(ctx context.Context, id, message string) error {
+	if len(message) > 1000 {
+		message = message[:1000]
+	}
+	_, err := s.pool.Exec(ctx, `UPDATE ai_generation_requests SET status='failed',error=$2,
+		completed_at=now() WHERE id=$1`, id, message)
+	return err
 }
 
 func (s *Store) GetAIGenerationRequest(ctx context.Context, p domain.Principal, id string) (domain.AIGenerationRequest, error) {

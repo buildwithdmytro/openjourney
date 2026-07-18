@@ -391,6 +391,14 @@ type AIGenerationRequest struct {
 	CompletedAt *time.Time `json:"completed_at,omitempty"`
 }
 
+// AIGenerationJob contains the caller context needed by the asynchronous worker.
+type AIGenerationJob struct {
+	ID          string
+	TenantID    string
+	WorkspaceID string
+	RequestedBy string
+}
+
 type PrivacyData struct {
 	RequestID  string          `json:"request_id"`
 	TenantID   string          `json:"tenant_id"`

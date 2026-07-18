@@ -514,10 +514,12 @@ them in order; compile + `go vet` between milestones. **Substrate (11.0–11.7) 
    **Enqueue path**: a `POST` that inserts the status row + an `operation_jobs` `ai.generate` in
    one tx and returns `202` + the status resource (copy `CreatePrivacyRequest`/`createPrivacyRequest`).
    *Done when:* the endpoint returns 202 + an id; `GET /v1/ai/generations/{id}` shows status. — done: added transactional generation enqueue and tenant-scoped status endpoints with `ai:invoke` authorization; HTTP tests verify 202/id, pending status, and scope denial.
-2. **Worker case** in `internal/operations`: `case "ai.generate"` runs `gateway.Invoke`, writes
+2. [x] **Worker case** in `internal/operations`: `case "ai.generate"` runs `gateway.Invoke`, writes
    the draft, sets the status row terminal; reuse the dead-letter/backoff. *Done when:* a queued
    generation completes to `complete` with a `result_ref`; a failing one dead-letters and marks
-   `failed`.
+   `failed`. — done: added gateway-backed worker execution with pinned active+passed prompt checks,
+   AI-agent principal, result blob/status completion, and dead-letter failure marking; deterministic
+   worker tests cover completion and unevaluated-prompt rejection.
 
 ### Milestone 11.8 — Copilot: content drafting + localization + QA
 1. **Content-draft prompt version** (seeded `prompts`/`prompt_versions`, output_schema = template
