@@ -565,8 +565,8 @@ them in order; compile + `go vet` between milestones. **Substrate (11.0–11.7) 
 1. [x] **Copilot panels**: content/audience/journey/performance — each shows the AI draft with an
    explicit **"review & approve"** step (approval reuses the human publish flow). *Done when:*
    `npm run build` passes; a content draft round-trips to a saved draft template. — done: added the governed AI Copilots panel with four draft flows, human-editor review links, typed API helpers, and Copilots.test.tsx content draft round-trip coverage.
-2. **AI governance views**: provider/budget settings, `ai_activity` audit view, field-classification
-   editor. *Done when:* activity + budget render; a config edit round-trips (secret never shown).
+2. [x] **AI governance views**: provider/budget settings, `ai_activity` audit view, field-classification
+   editor. *Done when:* activity + budget render; a config edit round-trips (secret never shown). — done: added authenticated provider/budget/activity/classification APIs and theme-aware governance view; Governance.test.tsx proves rendering, safe provider PUT round-trip, and secret absence.
 
 ### Milestone 11.14 — Integration, governance & audit closeout
 1. **Governance E2E** (fake provider, DB-gated): prove (a) an unauthorized field is never

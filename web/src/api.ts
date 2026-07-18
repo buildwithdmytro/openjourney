@@ -295,6 +295,34 @@ export type CopilotResponse = {
   [key: string]: unknown;
 };
 
+export type AIProviderConfig = {
+  id: string; provider: "fake" | "anthropic" | "openai"; is_default: boolean;
+  config: Record<string, unknown>; endpoint_allowlist: string[]; fallback_provider?: string;
+  monthly_budget_cents: number; status: "active" | "disabled"; created_at: string; updated_at: string;
+};
+export type AIBudget = { usage: { period: string; cost_cents: number; input_tokens: number; output_tokens: number }; monthly_budget_cents: number };
+export type AIActivity = { id: string; action: string; provider: string; model: string; policy_decision: string; cost_cents: number; input_tokens: number; output_tokens: number; created_at: string };
+export type FieldClassification = { id: string; entity_type: "profile" | "event"; field_path: string; classification: "public" | "internal" | "confidential" | "restricted"; send_to_model: "allow" | "redact" | "tokenize" | "deny"; created_at: string };
+
+export async function listAIProviders(baseURL: string, apiKey: string): Promise<AIProviderConfig[]> {
+  return (await requestJSON<{ providers: AIProviderConfig[] | null }>(baseURL, apiKey, "/v1/ai/providers")).providers ?? [];
+}
+export async function saveAIProvider(baseURL: string, apiKey: string, input: Partial<AIProviderConfig>): Promise<AIProviderConfig> {
+  const path = input.id ? `/v1/ai/providers/${encodeURIComponent(input.id)}` : "/v1/ai/providers";
+  return requestJSON(baseURL, apiKey, path, { method: input.id ? "PUT" : "POST", body: JSON.stringify(input) });
+}
+export async function getAIBudget(baseURL: string, apiKey: string): Promise<AIBudget> { return requestJSON(baseURL, apiKey, "/v1/ai/budget"); }
+export async function listAIActivity(baseURL: string, apiKey: string): Promise<AIActivity[]> {
+  return (await requestJSON<{ activities: AIActivity[] | null }>(baseURL, apiKey, "/v1/ai/activity?limit=100")).activities ?? [];
+}
+export async function listFieldClassifications(baseURL: string, apiKey: string): Promise<FieldClassification[]> {
+  return (await requestJSON<{ classifications: FieldClassification[] | null }>(baseURL, apiKey, "/v1/ai/field-classifications")).classifications ?? [];
+}
+export async function saveFieldClassification(baseURL: string, apiKey: string, input: Partial<FieldClassification>): Promise<FieldClassification> {
+  const path = input.id ? `/v1/ai/field-classifications/${encodeURIComponent(input.id)}` : "/v1/ai/field-classifications";
+  return requestJSON(baseURL, apiKey, path, { method: input.id ? "PUT" : "POST", body: JSON.stringify(input) });
+}
+
 async function invokeCopilot(baseURL: string, apiKey: string, path: string, input?: Record<string, unknown>): Promise<CopilotResponse> {
   return requestJSON<CopilotResponse>(baseURL, apiKey, path, {
     method: "POST",

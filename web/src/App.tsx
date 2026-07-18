@@ -18,6 +18,7 @@ const Journeys = lazy(() => import("./sections/Journeys"));
 const Experiments = lazy(() => import("./sections/Experiments"));
 const Reports = lazy(() => import("./sections/Reports"));
 const Copilots = lazy(() => import("./sections/Copilots"));
+const Governance = lazy(() => import("./sections/Governance"));
 
 const apiBase = import.meta.env.VITE_API_BASE_URL || "/api";
 
@@ -41,7 +42,7 @@ class UIErrorBoundary extends Component<{ children: ReactNode; resetKey: string 
     return this.props.children;
   }
 }
-type View = "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "copilots" | "suppressions" | "sender-identities" | "device-tokens";
+type View = "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "copilots" | "governance" | "suppressions" | "sender-identities" | "device-tokens";
 type CredentialSource = "manual" | "session" | "oidc";
 
 const viewTitles: Record<View, [string, string]> = {
@@ -59,6 +60,7 @@ const viewTitles: Record<View, [string, string]> = {
   experiments: ["Experiments", "Create controlled tests with stable audience assignment."],
   reports: ["Reports", "Compare delivery, conversion, and experiment performance."],
   copilots: ["AI Copilots", "Create governed drafts for review and human approval."],
+  governance: ["AI Governance", "Manage providers, budgets, redaction, and AI activity."],
   suppressions: ["Suppressions", "Manage bounces, complaints, and manually suppressed endpoints."],
   "sender-identities": ["Sender Identities", "Manage verified sender emails, SMS, and push channels."],
   "device-tokens": ["Device Tokens", "Inspect and retire push device tokens per profile."],
@@ -241,7 +243,7 @@ export function App() {
       <aside>
         <div className="brand"><span>O</span> OpenJourney</div>
         <nav aria-label="Primary">
-          {(["profiles", "segments", "templates", "campaigns", "journeys", "experiments", "reports", "copilots", "suppressions", "sender-identities", "device-tokens", "schemas", "api-keys", "privacy", "access", "operations", "audit"] as View[]).map((item) => (
+          {(["profiles", "segments", "templates", "campaigns", "journeys", "experiments", "reports", "copilots", "governance", "suppressions", "sender-identities", "device-tokens", "schemas", "api-keys", "privacy", "access", "operations", "audit"] as View[]).map((item) => (
             <button key={item} className={view === item ? "active" : ""}
               onClick={() => setView(item)}>{viewTitles[item][0]}</button>
           ))}
@@ -274,6 +276,7 @@ export function App() {
         {view === "experiments" && <Suspense fallback={<p role="status">Loading experiments…</p>}><Experiments apiKey={apiKey} baseURL={apiBase} /></Suspense>}
         {view === "reports" && <Suspense fallback={<p role="status">Loading reports…</p>}><Reports apiKey={apiKey} baseURL={apiBase} /></Suspense>}
         {view === "copilots" && <Suspense fallback={<p role="status">Loading AI copilots…</p>}><Copilots apiKey={apiKey} baseURL={apiBase} /></Suspense>}
+        {view === "governance" && <Suspense fallback={<p role="status">Loading AI governance…</p>}><Governance apiKey={apiKey} baseURL={apiBase} /></Suspense>}
         {view === "suppressions" && <Suppressions apiKey={apiKey} />}
         {view === "sender-identities" && <SenderIdentities apiKey={apiKey} />}
         {view === "device-tokens" && <DeviceTokensInspector apiKey={apiKey} />}
