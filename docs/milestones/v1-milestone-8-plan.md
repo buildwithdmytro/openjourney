@@ -444,9 +444,10 @@ Each task ends with a **Done when**. Do them in order; compile + `go vet` betwee
 2. [x] **Pages + assets store/CRUD/publish** + asset upload (`POST /v1/assets` → `BlobStore.Put`,
    content-addressed). *Done when:* a page publishes an immutable version; an asset uploads + lists.
    — done: landing-page CRUD/publish and tenant-scoped content-addressed asset APIs added; focused freeze/upload tests plus full Go build/vet/test pass.
-3. **Public page serving** `GET /p/{slug}` (§3.2): render the pinned version, inject a signed form
+3. [x] **Public page serving** `GET /p/{slug}` (§3.2): render the pinned version, inject a signed form
    token for the embedded form. *Done when:* the page serves HTML, embeds a working form, and a
-   submission from it succeeds end-to-end.
+   submission from it succeeds end-to-end. — done: `pages_assets_test.go` proves draft isolation,
+   signed-token rendering, and token-backed form submission with event emission; full Go build/vet/test passes.
 
 ### Milestone 13.4 — Link / UTM tracking
 1. **Migration** `037_tracking_companies_stages.sql` (this task: `short_links`) + scopes `links:*`.

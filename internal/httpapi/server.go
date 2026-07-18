@@ -164,6 +164,7 @@ func (s *Server) buildMux() http.Handler {
 	mux.HandleFunc("GET /r/{token}", s.redirectLink)
 	mux.HandleFunc("GET /o/{token}", s.openPixel)
 	mux.HandleFunc("GET /a/{blobKey}", s.serveAsset)
+	mux.HandleFunc("GET /p/{slug}", s.serveLandingPage)
 	mux.HandleFunc("POST /f/{formId}", s.submitPublicForm)
 	mux.HandleFunc("POST /v1/callbacks/ses", s.handleSESCallback)
 	mux.HandleFunc("POST /v1/callbacks/sms/{provider}", s.handleSMSCallback)

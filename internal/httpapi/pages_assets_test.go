@@ -7,7 +7,9 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 	"github.com/buildwithdmytro/openjourney/internal/ports"
@@ -15,9 +17,12 @@ import (
 
 type pageAssetStore struct {
 	ports.Store
-	page    domain.LandingPage
-	version domain.PageVersion
-	asset   domain.Asset
+	page        domain.LandingPage
+	version     domain.PageVersion
+	asset       domain.Asset
+	form        domain.Form
+	formVersion domain.FormVersion
+	events      []domain.Event
 }
 
 func (s *pageAssetStore) CreateLandingPage(context.Context, domain.Principal, domain.LandingPage) (domain.LandingPage, error) {
@@ -34,6 +39,22 @@ func (s *pageAssetStore) CreateAsset(_ context.Context, _ domain.Principal, asse
 	asset.ID = "asset-1"
 	s.asset = asset
 	return asset, nil
+}
+func (s *pageAssetStore) GetPublishedLandingPage(context.Context, string) (domain.LandingPage, domain.PageVersion, error) {
+	return s.page, s.version, nil
+}
+func (s *pageAssetStore) GetPublishedForm(context.Context, string) (domain.Form, domain.FormVersion, error) {
+	return s.form, s.formVersion, nil
+}
+func (s *pageAssetStore) GetFirstAppID(context.Context, string, string) (string, error) {
+	return "app-1", nil
+}
+func (s *pageAssetStore) AcceptEvents(_ context.Context, _ domain.Principal, events []domain.Event) ([]string, error) {
+	s.events = append(s.events, events...)
+	return []string{"event-1"}, nil
+}
+func (s *pageAssetStore) RecordFormSubmission(context.Context, domain.Principal, string, int, json.RawMessage, json.RawMessage, string) error {
+	return nil
 }
 
 func withPrincipal(r *http.Request, p domain.Principal) *http.Request {
@@ -81,5 +102,44 @@ func TestUploadAssetStoresContentAddressedBlobAndRecordsAsset(t *testing.T) {
 	}
 	if store.asset.BlobKey == "" || string(blobs.objects[store.asset.BlobKey]) != "<svg></svg>" {
 		t.Fatalf("asset was not content-addressed and stored: %+v", store.asset)
+	}
+}
+
+func TestServeLandingPageRendersPinnedVersionAndSignsEmbeddedForm(t *testing.T) {
+	store := &pageAssetStore{
+		page:        domain.LandingPage{ID: "page-1", TenantID: "tenant-1", WorkspaceID: "workspace-1", Draft: json.RawMessage(`{"template":"DRAFT"}`)},
+		version:     domain.PageVersion{ID: "version-1", PageID: "page-1", Version: 1, Definition: json.RawMessage(`{"template":"<h1>{{ page_version }}</h1><input value=\"{{ form_token }}\"><span>{{ form_id }}</span>","form_id":"form-1"}`)},
+		form:        domain.Form{ID: "form-1", TenantID: "tenant-1", WorkspaceID: "workspace-1", Status: "published"},
+		formVersion: domain.FormVersion{FormID: "form-1", Version: 1, Definition: json.RawMessage(`{"fields":[{"key":"email","type":"email","maps_to":"email"}],"schema":{"type":"object","properties":{"email":{"type":"string","format":"email"}},"required":["email"],"additionalProperties":false}}`)},
+	}
+	s := &Server{store: store, trackingSecretKey: []byte("test-secret"), publicLimiter: NewIPRateLimiter(100, 10), captchaVerifier: NoopCaptchaVerifier{}}
+	req := httptest.NewRequest(http.MethodGet, "/p/home", nil)
+	req.SetPathValue("slug", "home")
+	rec := httptest.NewRecorder()
+	s.serveLandingPage(rec, req)
+	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "text/html; charset=utf-8" {
+		t.Fatalf("serve status/content type = %d/%q, body=%s", rec.Code, rec.Header().Get("Content-Type"), rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "DRAFT") || !strings.Contains(rec.Body.String(), "<h1>1</h1>") {
+		t.Fatalf("served draft or wrong pinned version: %s", rec.Body.String())
+	}
+	start := strings.Index(rec.Body.String(), `value="`) + len(`value="`)
+	end := strings.Index(rec.Body.String()[start:], `"`)
+	if start < len(`value="`) || end < 1 {
+		t.Fatalf("signed form token missing: %s", rec.Body.String())
+	}
+	token := rec.Body.String()[start : start+end]
+	if _, err := VerifyFormToken(token, "form-1", 1, []byte("test-secret"), time.Now()); err != nil {
+		t.Fatalf("page token did not verify: %v", err)
+	}
+
+	body := `{"form_token":"` + token + `","values":{"email":"person@example.com"}}`
+	submitReq := httptest.NewRequest(http.MethodPost, "/f/form-1", strings.NewReader(body))
+	submitReq.SetPathValue("formId", "form-1")
+	submitReq.RemoteAddr = "198.51.100.40:1234"
+	submitRec := httptest.NewRecorder()
+	s.submitPublicForm(submitRec, submitReq)
+	if submitRec.Code != http.StatusAccepted || len(store.events) != 2 {
+		t.Fatalf("embedded form submission status/events = %d/%d, body=%s", submitRec.Code, len(store.events), submitRec.Body.String())
 	}
 }

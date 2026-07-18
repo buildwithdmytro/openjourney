@@ -10,8 +10,10 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
+	"github.com/buildwithdmytro/openjourney/internal/ports"
 	"github.com/buildwithdmytro/openjourney/internal/postgres"
 	"github.com/buildwithdmytro/openjourney/internal/publishing"
 )
@@ -173,4 +175,63 @@ func (s *Server) listAssets(w http.ResponseWriter, r *http.Request) {
 		out = []domain.Asset{}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"assets": out})
+}
+
+// serveLandingPage renders only the immutable page version selected by the
+// public lookup. The draft is deliberately not passed to the renderer.
+func (s *Server) serveLandingPage(w http.ResponseWriter, r *http.Request) {
+	page, version, err := s.store.GetPublishedLandingPage(r.Context(), r.PathValue("slug"))
+	if errors.Is(err, postgres.ErrNotFound) || errors.Is(err, ports.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "page_not_found", "published page not found")
+		return
+	}
+	if err != nil {
+		internalError(w, err, "serve page", domain.Principal{})
+		return
+	}
+
+	var definition struct {
+		Template    string `json:"template"`
+		FormID      string `json:"form_id"`
+		FormIDCamel string `json:"formId"`
+		FormVersion int    `json:"form_version"`
+	}
+	if err := json.Unmarshal(version.Definition, &definition); err != nil {
+		writeError(w, http.StatusInternalServerError, "invalid_page_definition", "published page definition is invalid")
+		return
+	}
+	formID := strings.TrimSpace(definition.FormID)
+	if formID == "" {
+		formID = strings.TrimSpace(definition.FormIDCamel)
+	}
+	vars := map[string]any{
+		"page":         page,
+		"page_version": version.Version,
+		"form_id":      formID,
+	}
+	if formID != "" {
+		form, formVersion, err := s.publicForm(r, formID)
+		if errors.Is(err, postgres.ErrNotFound) || errors.Is(err, ports.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "form_not_found", "embedded form is not published")
+			return
+		}
+		if err != nil {
+			internalError(w, err, "serve embedded form", domain.Principal{})
+			return
+		}
+		pinnedVersion := definition.FormVersion
+		if pinnedVersion < 1 {
+			pinnedVersion = formVersion.Version
+		}
+		token, err := SignFormToken(form.ID, pinnedVersion, time.Now().Add(15*time.Minute), s.trackingSecretKey)
+		if err != nil {
+			internalError(w, err, "sign embedded form token", domain.Principal{})
+			return
+		}
+		vars["form_token"] = token
+		vars["form_version"] = pinnedVersion
+	}
+	if err := RenderHTML(w, definition.Template, vars); err != nil {
+		writeError(w, http.StatusInternalServerError, "render_page", err.Error())
+	}
 }
