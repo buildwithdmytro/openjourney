@@ -401,7 +401,7 @@ task ends with a **Done when**. Do them in order; compile + `go vet` between mil
    never dead-letters on repeated model failure. *Done when:* asserted. — done: runtime test verifies repeated slow fake-provider decisions deterministically complete on fallback at retry-limit attempts and each records one audit activity.
 
 ### Milestone 12.8 — Online-optimization controller
-1. **Migration** `032_online_optimization.sql` per §2.3. *Done when:* table exists.
+1. [x] **Migration** `032_online_optimization.sql` per §2.3. *Done when:* table exists. — done: added `033_online_optimization.sql` as the next available migration after existing `032_scoring_requests.sql`; transactional apply verified table and index creation.
 2. **Proposal generation** (Recipe 6.34): a controller reads `ExperimentReport`
    (`CompareProportions` + guardrail regression gate) and writes an `optimization_proposals` row
    when a variant is significant with no guardrail regression; **no** change to live assignment.
