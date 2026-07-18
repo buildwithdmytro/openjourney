@@ -437,8 +437,8 @@ task ends with a **Done when**. Do them in order; compile + `go vet` between mil
    *Done when:* all asserted. — done: TestGovernanceCloseout_12_11_3 plus TestOptimizationProposalUsesReportGateAndDoesNotReassign_12_8_2, TestExperimentOptimizationApprovalRequiresHumanActor, TestAIActivityHardening_12_0_2, and holdout delivery tests assert the approval gate, immutable seed/holdout, no holdout sends, and append-only audit.
 4. [x] **Run the suite**: `go build/vet/test ./...`, `go mod tidy`, `cd web && npm run typecheck &&
    npm run build && npm test`, `npm audit`. *Done when:* green. — done: Go build/vet/tests, go mod tidy, web typecheck/build/30 tests, and npm audit (0 vulnerabilities) all pass.
-5. **Audit doc** `docs/milestones/v1-milestone-7-audit.md` in the M2–M6 table format, one row per
-   requirement (12.0–12.11) with direct evidence. *Done when:* every row cites a named file/test.
+5. [x] **Audit doc** `docs/milestones/v1-milestone-7-audit.md` in the M2–M6 table format, one row per
+   requirement (12.0–12.11) with direct evidence. *Done when:* every row cites a named file/test. — done: added the M2–M6-format audit with direct implementation and test evidence for every 12.0–12.11 requirement.
 
 ---
 
