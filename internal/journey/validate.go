@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+const maxAIDecisionTimeout = 5 * time.Second
+
 func Validate(graph *Graph) error {
 	if graph == nil {
 		return errors.New("graph is required")
@@ -98,6 +100,25 @@ func validateDurations(node Node) error {
 		}
 		cfg := cfgAny.(WaitConfig)
 		return validateDuration(node.ID, "timeout", cfg.Timeout)
+	case NodeTypeAIDecision:
+		cfgAny, err := DecodeConfig(node)
+		if err != nil {
+			return err
+		}
+		cfg := cfgAny.(AIDecisionConfig)
+		if cfg.PromptVersionID == "" {
+			return fmt.Errorf("ai_decision node %s requires prompt_version_id", node.ID)
+		}
+		if cfg.TimeoutMS <= 0 {
+			return fmt.Errorf("ai_decision node %s requires a positive timeout_ms", node.ID)
+		}
+		if time.Duration(cfg.TimeoutMS)*time.Millisecond > maxAIDecisionTimeout {
+			return fmt.Errorf("ai_decision node %s timeout_ms exceeds maximum of %d", node.ID, maxAIDecisionTimeout/time.Millisecond)
+		}
+		if cfg.MaxCostCents <= 0 {
+			return fmt.Errorf("ai_decision node %s requires a positive max_cost_cents", node.ID)
+		}
+		return nil
 	default:
 		return nil
 	}
@@ -138,6 +159,27 @@ func validateOutgoing(node Node, edges []Edge) error {
 		return validateExactBranches(node, edges, labels)
 	case NodeTypeWaitEvent:
 		return validateExactBranches(node, edges, []string{"success", "timeout"})
+	case NodeTypeAIDecision:
+		cfgAny, err := DecodeConfig(node)
+		if err != nil {
+			return err
+		}
+		cfg := cfgAny.(AIDecisionConfig)
+		if cfg.Fallback == "" {
+			return fmt.Errorf("ai_decision node %s requires fallback", node.ID)
+		}
+		labels := append([]string(nil), cfg.Branches...)
+		fallbackDeclared := false
+		for _, label := range labels {
+			if label == cfg.Fallback {
+				fallbackDeclared = true
+				break
+			}
+		}
+		if !fallbackDeclared {
+			return fmt.Errorf("ai_decision node %s fallback branch %q is not declared", node.ID, cfg.Fallback)
+		}
+		return validateExactBranches(node, edges, labels)
 	case NodeTypeExit:
 		if len(edges) != 0 {
 			return fmt.Errorf("exit node %s must not have outgoing edges", node.ID)

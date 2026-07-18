@@ -392,10 +392,11 @@ task ends with a **Done when**. Do them in order; compile + `go vet` between mil
    / over-budget / schema-reject → deterministic fallback branch; record `ai_activity` + stamp the
    transition. Remove `ai_decision` from the rejected set (`nodes.go:132`). *Done when:* a slow fake
    provider still advances the run to the fallback branch; a valid output takes the model's branch. — done: added governed node execution and worker gateway wiring; TestAIDecisionTimeoutUsesFallbackAndValidOutputUsesBranch proves timeout fallback and valid branch selection.
-2. **Publish-time validation**: `validateOutgoing` case (branch labels = config branches + the
+2. [x] **Publish-time validation**: `validateOutgoing` case (branch labels = config branches + the
    fallback must be among them) + `validateDurations` (bounded timeout); require a pinned
    `prompt_version_id`. *Done when:* a graph with an `ai_decision` missing its fallback branch or a
-   pinned prompt fails `Validate`.
+   pinned prompt fails `Validate`. — done: Validate enforces pinned prompts, positive cost caps, a
+   five-second timeout ceiling, declared fallback branches, and exact outgoing labels with tests.
 3. **Determinism test**: same inputs + timed-out model → same fallback branch across runs; the run
    never dead-letters on repeated model failure. *Done when:* asserted.
 

@@ -129,6 +129,61 @@ func TestValidateSplitBranchesMatchConfig(t *testing.T) {
 	}
 }
 
+func TestValidateAIDecisionRequiresPinnedPromptBoundedCallAndFallback(t *testing.T) {
+	base := func(config string) Graph {
+		return Graph{
+			EntryNodeID: "entry",
+			Nodes: []Node{
+				{ID: "entry", Type: NodeTypeEntry, Config: raw(`{"trigger":"event","event_type":"signup.completed"}`)},
+				{ID: "decision", Type: NodeTypeAIDecision, Config: raw(config)},
+				{ID: "yes", Type: NodeTypeExit, Config: raw(`{"reason":"yes"}`)},
+				{ID: "no", Type: NodeTypeExit, Config: raw(`{"reason":"no"}`)},
+			},
+			Edges: []Edge{
+				{From: "entry", To: "decision"},
+				{From: "decision", To: "yes", Branch: "yes"},
+				{From: "decision", To: "no", Branch: "no"},
+			},
+		}
+	}
+
+	tests := []struct {
+		name    string
+		config  string
+		wantErr string
+	}{
+		{
+			name:    "missing prompt version",
+			config:  `{"timeout_ms":100,"max_cost_cents":10,"branches":["yes","no"],"fallback":"no"}`,
+			wantErr: "requires prompt_version_id",
+		},
+		{
+			name:    "timeout too large",
+			config:  `{"prompt_version_id":"pv-1","timeout_ms":5001,"max_cost_cents":10,"branches":["yes","no"],"fallback":"no"}`,
+			wantErr: "exceeds maximum",
+		},
+		{
+			name:    "missing fallback branch",
+			config:  `{"prompt_version_id":"pv-1","timeout_ms":100,"max_cost_cents":10,"branches":["yes","no"],"fallback":"other"}`,
+			wantErr: "fallback branch",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			graph := base(tc.config)
+			if err := Validate(&graph); err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("Validate error = %v, want %q", err, tc.wantErr)
+			}
+		})
+	}
+
+	valid := base(`{"prompt_version_id":"pv-1","timeout_ms":5000,"max_cost_cents":10,"branches":["yes","no"],"fallback":"no"}`)
+	if err := Validate(&valid); err != nil {
+		t.Fatalf("bounded ai_decision should validate: %v", err)
+	}
+}
+
 func canonicalGraph() Graph {
 	return Graph{
 		EntryNodeID: "n1",
