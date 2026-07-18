@@ -484,9 +484,9 @@ them in order; compile + `go vet` between milestones. **Substrate (11.0–11.7) 
    `Purpose`; runner derives the scope-intersection `ai_agent` principal, calls the store method,
    records the tool call. Register read-only tools first (schema inspect, segment preview,
    report read). *Done when:* an out-of-scope tool call is denied + logged. — done: added governed read-only schema/segment/report tools with JSON-Schema validation, scope-intersection ai_agent derivation, fail-closed audit recording, and TestRunnerDeniesOutOfScopeAndRecords.
-3. **Untrusted-data isolation**: template rendering passes retrieved DATA in a delimited section,
+3. [x] **Untrusted-data isolation**: template rendering passes retrieved DATA in a delimited section,
    never interpolated into instructions. *Done when:* a profile attribute containing
-   prompt-injection text cannot alter the instruction (test on the fake provider's captured input).
+   prompt-injection text cannot alter the instruction (test on the fake provider's captured input). — done: GovernedPrompt JSON-delimits retrieved data and TestGovernedPromptIsolatesUntrustedDataOnFakeProvider verifies the captured request.
 
 ### Milestone 11.5 — Field sensitivity + retrieval + PII redaction
 1. **Migration** `028_field_sensitivity.sql` per §2.4 + `field_classifications` CRUD (scope
