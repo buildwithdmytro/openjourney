@@ -514,8 +514,9 @@ Each task ends with a **Done when**. Do them in order; compile + `go vet` betwee
    pipeline (no direct profile write). *Done when:* asserted. — done: DB-gated capture replay and
    profile/company import replay tests assert one projected row and one idempotent event each; publish
    handlers reject api_key actors and imports use stable event timestamps; full Go build/vet/test pass.
-4. **Run the suite**: `go build/vet/test ./...`, `go mod tidy`, `cd web && npm run typecheck &&
-   npm run build && npm test`, `npm audit`. *Done when:* green.
+4. [x] **Run the suite**: `go build/vet/test ./...`, `go mod tidy`, `cd web && npm run typecheck &&
+   npm run build && npm test`, `npm audit`. *Done when:* green. — done: Go build/vet/test, go mod tidy,
+   web typecheck/build/32 tests, and npm audit (0 vulnerabilities) all pass.
 5. **Audit doc** `docs/milestones/v1-milestone-8-audit.md` in the M2–M7 table format, one row per
    requirement (13.0–13.10) with direct evidence. *Done when:* every row cites a named file/test.
 
