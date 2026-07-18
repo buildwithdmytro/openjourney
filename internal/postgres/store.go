@@ -39,6 +39,8 @@ type Store struct {
 	schemaCache      map[string]*schemas.Validator
 	schemaCacheKnown map[string]bool
 	chConn           clickhouse.Conn
+	trustedKeysMu    sync.RWMutex
+	trustedKeys      map[string]any
 }
 
 func Open(ctx context.Context, databaseURL string) (*Store, error) {
@@ -53,7 +55,14 @@ func Open(ctx context.Context, databaseURL string) (*Store, error) {
 	return &Store{
 		pool: pool, schemaCache: map[string]*schemas.Validator{},
 		schemaCacheKnown: map[string]bool{},
+		trustedKeys:      map[string]any{},
 	}, nil
+}
+
+func (s *Store) SetTrustedPublisherKeys(keys map[string]any) {
+	s.trustedKeysMu.Lock()
+	defer s.trustedKeysMu.Unlock()
+	s.trustedKeys = keys
 }
 
 func (s *Store) Close() { s.pool.Close() }

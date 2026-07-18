@@ -1110,3 +1110,58 @@ type ScoringJob struct {
 	ScoringModelID string
 	SegmentID      string
 }
+
+type Extension struct {
+	ID               string    `json:"id"`
+	TenantID         string    `json:"tenant_id"`
+	WorkspaceID      string    `json:"workspace_id"`
+	Name             string    `json:"name"`
+	Publisher        string    `json:"publisher"`
+	CurrentVersionID *string   `json:"current_version_id,omitempty"`
+	LatestVersion    int       `json:"latest_version"`
+	Status           string    `json:"status"` // installed, enabled, disabled
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+}
+
+type ExtensionVersion struct {
+	ID              string          `json:"id"`
+	ExtensionID     string          `json:"extension_id"`
+	TenantID        string          `json:"tenant_id"`
+	Version         int             `json:"version"`
+	Kind            string          `json:"kind"`      // channel_provider, journey_action, etc.
+	Transport       string          `json:"transport"` // remote_http, wasm
+	Manifest        json.RawMessage `json:"manifest"`
+	RequestedScopes []string        `json:"requested_scopes"`
+	Signature       string          `json:"signature"`
+	SigningKeyID    string          `json:"signing_key_id"`
+	WasmBlobKey     *string         `json:"wasm_blob_key,omitempty"`
+	ManifestKey     string          `json:"manifest_key"`
+	Status          string          `json:"status"` // draft, active, archived
+	InstalledBy     *string         `json:"installed_by,omitempty"`
+	InstalledAt     *time.Time      `json:"installed_at,omitempty"`
+	CreatedAt       time.Time       `json:"created_at"`
+}
+
+type ExtensionConfig struct {
+	ExtensionID        string          `json:"extension_id"`
+	TenantID           string          `json:"tenant_id"`
+	WorkspaceID        string          `json:"workspace_id"`
+	Config             json.RawMessage `json:"config"`
+	EndpointAllowlist  []string        `json:"endpoint_allowlist"`
+	TimeoutMs          int             `json:"timeout_ms"`
+	MaxMemoryMb        int             `json:"max_memory_mb"`
+	MonthlyBudgetCents int64           `json:"monthly_budget_cents"`
+	RatePerMin         int             `json:"rate_per_min"`
+	Status             string          `json:"status"` // active, disabled
+	UpdatedAt          time.Time       `json:"updated_at"`
+}
+
+type ExtensionGrant struct {
+	ExtensionID string    `json:"extension_id"`
+	TenantID    string    `json:"tenant_id"`
+	Scope       string    `json:"scope"`
+	GrantedBy   string    `json:"granted_by"`
+	GrantedAt   time.Time `json:"granted_at"`
+}
+

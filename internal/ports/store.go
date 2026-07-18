@@ -244,6 +244,20 @@ type Store interface {
 	CreateEvalRun(ctx context.Context, p domain.Principal, run domain.EvalRun) (domain.EvalRun, error)
 	GetEvalRun(ctx context.Context, p domain.Principal, id string) (domain.EvalRun, error)
 	ListEvalRuns(ctx context.Context, p domain.Principal, datasetID string) ([]domain.EvalRun, error)
+
+	// Extensions registry
+	CreateExtension(ctx context.Context, p domain.Principal, ext domain.Extension) (domain.Extension, error)
+	GetExtension(ctx context.Context, p domain.Principal, id string) (domain.Extension, error)
+	GetExtensionByName(ctx context.Context, p domain.Principal, name string) (domain.Extension, error)
+	ListExtensions(ctx context.Context, p domain.Principal) ([]domain.Extension, error)
+	UpdateExtension(ctx context.Context, p domain.Principal, ext domain.Extension) (domain.Extension, error)
+	DeleteExtension(ctx context.Context, p domain.Principal, id string) (domain.Extension, error)
+
+	CreateExtensionVersion(ctx context.Context, p domain.Principal, ev domain.ExtensionVersion) (domain.ExtensionVersion, error)
+	GetExtensionVersion(ctx context.Context, p domain.Principal, id string) (domain.ExtensionVersion, error)
+	GetExtensionVersionByNumber(ctx context.Context, p domain.Principal, extensionID string, version int) (domain.ExtensionVersion, error)
+	ListExtensionVersions(ctx context.Context, p domain.Principal, extensionID string) ([]domain.ExtensionVersion, error)
+	PublishExtensionVersion(ctx context.Context, p domain.Principal, extensionID string, version int, approverUserID string, manifestKey string) (domain.ExtensionVersion, error)
 }
 
 // AIActivityRecorder is implemented by stores that persist the immutable AI
