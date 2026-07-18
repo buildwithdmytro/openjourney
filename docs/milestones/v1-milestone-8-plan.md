@@ -466,11 +466,13 @@ Each task ends with a **Done when**. Do them in order; compile + `go vet` betwee
    in the full Go suite.
 
 ### Milestone 13.6 — Lifecycle stages
-1. **`stage_rules`** (migration §2.3 stage_rules portion) + a `stages.apply` pass (reuse the
+1. [x] **`stage_rules`** (migration §2.3 stage_rules portion) + a `stages.apply` pass (reuse the
    scheduled/enroll cron shape) that sets `attributes.stage` via a `stage.changed`→`profile.updated`
    event when a profile matches a rule's segment (highest priority wins). Add `stage.changed` to
    `isBuiltInEvent`. *Done when:* a profile entering a rule's segment gets the stage, and a
-   stage-targeted segment (ProfileAttribute on `attributes.stage`) resolves it.
+   stage-targeted segment (ProfileAttribute on `attributes.stage`) resolves it. — done: added
+   migration 038, deterministic event-backed `stages.ApplyAll` worker pass, stage event validation,
+   and priority/idempotency tests; full Go build/vet/test passes.
 
 ### Milestone 13.7 — Company / account profiles
 1. **Migration** `companies` + `company_members` (§2.3) + scopes `companies:*`. *Done when:* exist.

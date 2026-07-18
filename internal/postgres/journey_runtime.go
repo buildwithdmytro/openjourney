@@ -652,6 +652,41 @@ func (s *Store) UpdateProfileAttributes(ctx context.Context, p domain.Principal,
 	return err
 }
 
+func (s *Store) ListStageRules(ctx context.Context, tenantID, workspaceID string) ([]domain.StageRule, error) {
+	rows, err := s.pool.Query(ctx, `SELECT id,tenant_id,workspace_id,stage,COALESCE(segment_id::text,''),priority,enabled,created_at
+		FROM stage_rules WHERE tenant_id=$1 AND workspace_id=$2 AND enabled=true ORDER BY priority DESC,id`, tenantID, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.StageRule
+	for rows.Next() {
+		var rule domain.StageRule
+		if err := rows.Scan(&rule.ID, &rule.TenantID, &rule.WorkspaceID, &rule.Stage, &rule.SegmentID, &rule.Priority, &rule.Enabled, &rule.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, rule)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) ListStageRuleScopes(ctx context.Context) ([][2]string, error) {
+	rows, err := s.pool.Query(ctx, `SELECT DISTINCT tenant_id,workspace_id FROM stage_rules WHERE enabled=true ORDER BY tenant_id,workspace_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out [][2]string
+	for rows.Next() {
+		var tenantID, workspaceID string
+		if err := rows.Scan(&tenantID, &workspaceID); err != nil {
+			return nil, err
+		}
+		out = append(out, [2]string{tenantID, workspaceID})
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) ListActiveScheduledJourneyVersions(ctx context.Context) ([]domain.JourneyVersion, error) {
 	rows, err := s.pool.Query(ctx, `SELECT id, journey_id, tenant_id, workspace_id, version, graph, manifest_key,
 			entry_kind, entry_event_type, entry_segment_id, entry_schedule,

@@ -79,6 +79,13 @@ func (e Event) Validate(now time.Time) error {
 		return errors.New("payload must be a JSON object")
 	}
 	switch e.Type {
+	case "stage.changed":
+		var body struct {
+			Stage string `json:"stage"`
+		}
+		if err := json.Unmarshal(e.Payload, &body); err != nil || strings.TrimSpace(body.Stage) == "" {
+			return errors.New("stage.changed payload requires stage")
+		}
 	case "form.submitted":
 		var body struct {
 			FormID string `json:"form_id"`
@@ -354,6 +361,17 @@ type SegmentMember struct {
 	TenantID   string    `json:"tenant_id"`
 	Membership string    `json:"membership"` // include, exclude
 	CreatedAt  time.Time `json:"created_at"`
+}
+
+type StageRule struct {
+	ID          string    `json:"id"`
+	TenantID    string    `json:"tenant_id"`
+	WorkspaceID string    `json:"workspace_id"`
+	Stage       string    `json:"stage"`
+	SegmentID   string    `json:"segment_id"`
+	Priority    int       `json:"priority"`
+	Enabled     bool      `json:"enabled"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 type SendingIdentity struct {
