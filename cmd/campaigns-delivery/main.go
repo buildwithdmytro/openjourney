@@ -16,6 +16,7 @@ import (
 	"github.com/buildwithdmytro/openjourney/internal/config"
 	"github.com/buildwithdmytro/openjourney/internal/ports"
 	"github.com/buildwithdmytro/openjourney/internal/postgres"
+	"github.com/buildwithdmytro/openjourney/internal/extension"
 	"github.com/buildwithdmytro/openjourney/internal/telemetry"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -89,6 +90,11 @@ func main() {
 	// Build the adapter registry once for this process.
 	reg := channels.DefaultRegistry()
 	reg.Register("ses", sesAdapter)
+
+	extHost := extension.NewHost(store)
+	if err := extension.RegisterChannelProviders(ctx, store, extHost, reg); err != nil {
+		slog.Error("failed to register extension channel providers", "error", err)
+	}
 
 	deliveryCfg := campaigns.Config{
 		TrackingSecretKey: []byte(cfg.TrackingSecretKey),

@@ -49,6 +49,30 @@ func (m *mockStore) GetExtension(ctx context.Context, p domain.Principal, id str
 	return ext, nil
 }
 
+func (m *mockStore) GetExtensionByName(ctx context.Context, p domain.Principal, name string) (domain.Extension, error) {
+	for _, ext := range m.extensions {
+		if ext.Name == name {
+			return ext, nil
+		}
+	}
+	return domain.Extension{}, errors.New("not found")
+}
+
+func (m *mockStore) ListActiveChannelProvidersSystem(ctx context.Context) ([]domain.Extension, error) {
+	var out []domain.Extension
+	for _, ext := range m.extensions {
+		if ext.Status == "enabled" {
+			if ext.CurrentVersionID != nil {
+				ver, ok := m.versions[*ext.CurrentVersionID]
+				if ok && ver.Kind == "channel_provider" && ver.Status == "active" {
+					out = append(out, ext)
+				}
+			}
+		}
+	}
+	return out, nil
+}
+
 func (m *mockStore) GetExtensionVersion(ctx context.Context, p domain.Principal, id string) (domain.ExtensionVersion, error) {
 	for _, ev := range m.versions {
 		if ev.ID == id {

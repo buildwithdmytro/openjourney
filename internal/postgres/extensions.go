@@ -695,5 +695,28 @@ func (s *Store) GetExtensionInvocationCountLastMin(ctx context.Context, tenantID
 	return count, err
 }
 
+func (s *Store) ListActiveChannelProvidersSystem(ctx context.Context) ([]domain.Extension, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT e.id, e.tenant_id, e.workspace_id, e.name, e.publisher, e.current_version_id, e.latest_version, e.status, e.created_at, e.updated_at
+		FROM extensions e
+		JOIN extension_versions ev ON e.current_version_id = ev.id
+		WHERE e.status = 'enabled' AND ev.kind = 'channel_provider' AND ev.status = 'active'
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.Extension
+	for rows.Next() {
+		var item domain.Extension
+		err := rows.Scan(&item.ID, &item.TenantID, &item.WorkspaceID, &item.Name, &item.Publisher, &item.CurrentVersionID, &item.LatestVersion, &item.Status, &item.CreatedAt, &item.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	return out, rows.Err()
+}
+
 
 

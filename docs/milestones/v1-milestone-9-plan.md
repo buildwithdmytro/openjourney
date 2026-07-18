@@ -382,10 +382,10 @@ keep tests reproducible; one consolidated security/integration pass in 14.10. Ea
 
 
 ### Milestone 14.2 — Remote channel-provider extension
-1. **Extension channel adapter** (Recipe 6.42): a `ChannelAdapter` whose `Send` calls `host.Invoke`;
+1. [x] **Extension channel adapter** (Recipe 6.42): a `ChannelAdapter` whose `Send` calls `host.Invoke`;
    register enabled `channel_provider` extensions into `channels.Registry` at worker startup
    (`registry.Register`). *Done when:* a campaign/journey send via an extension provider delivers
-   through the host (bounded + audited), and a provider failure surfaces as a normal `DeliveryError`.
+   through the host (bounded + audited), and a provider failure surfaces as a normal `DeliveryError`. — done: implemented ExtensionChannelAdapter and RegisterChannelProviders, wired to worker/delivery startup, and verified via TestExtensionChannelAdapter and TestRegisterChannelProviders.
 
 ### Milestone 14.3 — Remote journey action/condition node
 1. **`extension_action` + `extension_condition` nodes** (§3.2): remove them from the rejected set

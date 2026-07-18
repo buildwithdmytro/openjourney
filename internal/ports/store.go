@@ -250,6 +250,7 @@ type Store interface {
 	GetExtension(ctx context.Context, p domain.Principal, id string) (domain.Extension, error)
 	GetExtensionByName(ctx context.Context, p domain.Principal, name string) (domain.Extension, error)
 	ListExtensions(ctx context.Context, p domain.Principal) ([]domain.Extension, error)
+	ListActiveChannelProvidersSystem(ctx context.Context) ([]domain.Extension, error)
 	UpdateExtension(ctx context.Context, p domain.Principal, ext domain.Extension) (domain.Extension, error)
 	DeleteExtension(ctx context.Context, p domain.Principal, id string) (domain.Extension, error)
 
