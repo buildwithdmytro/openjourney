@@ -576,8 +576,8 @@ them in order; compile + `go vet` between milestones. **Substrate (11.0–11.7) 
    row. *Done when:* all six are asserted. — done: added DB-gated TestGovernanceE2E_11_14_1 covering retrieval, fake-provider redaction, human approval, schema repair, budget denial, and exact-once activity logging.
 2. [x] **Copilot correctness**: each copilot's output passes its domain validator and creates only a
    draft. *Done when:* four copilot tests pass. — done: fake-provider tests assert render, audience parse/compile, journey validation, and performance report citation with draft-only resource creation.
-3. **Eval gate**: an unevaluated/failed prompt_version cannot be invoked or published. *Done when:*
-   asserted.
+3. [x] **Eval gate**: an unevaluated/failed prompt_version cannot be invoked or published. *Done when:*
+   asserted. — done: gateway rejects pending/failed prompt versions before provider egress with denied-policy activity; publish gate coverage remains in TestPromptsRegistry.
 4. **Run the suite**: `go build/vet/test ./...`, `go mod tidy`, `cd web && npm run typecheck &&
    npm run build && npm test`, `npm audit`. *Done when:* green.
 5. **Audit doc** `docs/milestones/v1-milestone-6-audit.md` in the M2–M5 table format, one row per

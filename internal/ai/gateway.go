@@ -17,7 +17,8 @@ import (
 )
 
 var (
-	ErrBudgetExceeded = errors.New("monthly AI budget exceeded")
+	ErrBudgetExceeded         = errors.New("monthly AI budget exceeded")
+	ErrPromptVersionNotUsable = errors.New("prompt version is not active and evaluated")
 )
 
 type Gateway struct {
@@ -135,6 +136,21 @@ func (g *Gateway) Generate(ctx context.Context, principal domain.Principal, req 
 	}
 	if req.Action == "" {
 		req.Action = "ai.generate"
+	}
+	if req.PromptVersionID != "" {
+		version, err := g.store.GetPromptVersion(ctx, principal, req.PromptVersionID)
+		if err != nil {
+			if activityErr := record("unknown", req.Model, "denied_policy", Usage{}, 0, ""); activityErr != nil {
+				return nil, fmt.Errorf("%w; activity recording failed: %v", err, activityErr)
+			}
+			return nil, fmt.Errorf("load prompt version: %w", err)
+		}
+		if version.Status != "active" || version.EvalStatus != "passed" {
+			if activityErr := record(version.Provider, version.Model, "denied_policy", Usage{}, 0, ""); activityErr != nil {
+				return nil, fmt.Errorf("%w; activity recording failed: %v", ErrPromptVersionNotUsable, activityErr)
+			}
+			return nil, fmt.Errorf("%w: status=%s eval_status=%s", ErrPromptVersionNotUsable, version.Status, version.EvalStatus)
+		}
 	}
 	if req.RetrievedData != nil {
 		redacted, err := Redact(req.RetrievedData, req.Classifications, req.Purpose)

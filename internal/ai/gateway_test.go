@@ -13,14 +13,22 @@ import (
 
 type mockStore struct {
 	ports.Store
-	getConfigFunc      func(ctx context.Context, p domain.Principal) (domain.AIProviderConfig, error)
-	getUsageFunc       func(ctx context.Context, tenantID, workspaceID string, period string) (domain.AIBudgetUsage, error)
-	incrementUsageFunc func(ctx context.Context, tenantID, workspaceID string, period string, costCents, inputTokens, outputTokens int64) error
-	recordActivityFunc func(context.Context, domain.Principal, domain.AIActivity) (domain.AIActivity, error)
+	getConfigFunc        func(ctx context.Context, p domain.Principal) (domain.AIProviderConfig, error)
+	getPromptVersionFunc func(ctx context.Context, p domain.Principal, id string) (domain.PromptVersion, error)
+	getUsageFunc         func(ctx context.Context, tenantID, workspaceID string, period string) (domain.AIBudgetUsage, error)
+	incrementUsageFunc   func(ctx context.Context, tenantID, workspaceID string, period string, costCents, inputTokens, outputTokens int64) error
+	recordActivityFunc   func(context.Context, domain.Principal, domain.AIActivity) (domain.AIActivity, error)
 }
 
 func (m *mockStore) GetDefaultAIProviderConfig(ctx context.Context, p domain.Principal) (domain.AIProviderConfig, error) {
 	return m.getConfigFunc(ctx, p)
+}
+
+func (m *mockStore) GetPromptVersion(ctx context.Context, p domain.Principal, id string) (domain.PromptVersion, error) {
+	if m.getPromptVersionFunc != nil {
+		return m.getPromptVersionFunc(ctx, p, id)
+	}
+	return domain.PromptVersion{ID: id, Status: "active", EvalStatus: "passed", Provider: "fake", Model: "fake-model"}, nil
 }
 
 func (m *mockStore) GetAIBudgetUsage(ctx context.Context, tenantID, workspaceID string, period string) (domain.AIBudgetUsage, error) {
@@ -81,6 +89,44 @@ func TestGatewayRecordsExactlyOneActivityPerInvoke(t *testing.T) {
 	}
 	if len(activities) != 2 || activities[1].PolicyDecision != "denied_budget" {
 		t.Fatalf("expected one denied_budget activity, got %#v", activities)
+	}
+}
+
+func TestGatewayEvalGateRejectsUnevaluatedPromptVersions(t *testing.T) {
+	principal := domain.Principal{TenantID: "tenant-1", WorkspaceID: "workspace-1", UserID: "user-1", ActorType: "user"}
+	var activities []domain.AIActivity
+	status := "pending"
+	store := &mockStore{
+		getPromptVersionFunc: func(context.Context, domain.Principal, string) (domain.PromptVersion, error) {
+			return domain.PromptVersion{ID: "version-1", Status: "active", EvalStatus: status, Provider: "fake", Model: "fake-model"}, nil
+		},
+		recordActivityFunc: func(_ context.Context, _ domain.Principal, activity domain.AIActivity) (domain.AIActivity, error) {
+			activities = append(activities, activity)
+			return activity, nil
+		},
+	}
+	g := NewGateway(store)
+	providerCalled := false
+	g.newProvider = func(ProviderProfile) ModelProvider {
+		return &mockModelProvider{generateFunc: func(context.Context, GenerateRequest) (*GenerateResponse, error) {
+			providerCalled = true
+			return &GenerateResponse{Content: `{"ok":true}`}, nil
+		}}
+	}
+
+	for _, evalStatus := range []string{"pending", "failed"} {
+		status = evalStatus
+		_, err := g.Generate(context.Background(), principal, GenerateRequest{PromptVersionID: "version-1", Action: "ai.eval_gate"})
+		if !errors.Is(err, ErrPromptVersionNotUsable) {
+			t.Fatalf("eval_status=%q: expected unusable prompt rejection, got %v", evalStatus, err)
+		}
+		if len(activities) != 1 || activities[len(activities)-1].PolicyDecision != "denied_policy" {
+			t.Fatalf("eval_status=%q: expected one denied activity, got %#v", evalStatus, activities)
+		}
+		activities = activities[:0]
+	}
+	if providerCalled {
+		t.Fatal("provider was called for an unevaluated prompt version")
 	}
 }
 
