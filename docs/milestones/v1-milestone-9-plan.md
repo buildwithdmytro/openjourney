@@ -408,9 +408,11 @@ keep tests reproducible; one consolidated security/integration pass in 14.10. Ea
    added the schema-to-accept hook with enrichment-only payload validation and deterministic reject/passthrough tests in TestIngestionTransform.
 
 ### Milestone 14.6 — Template-function extension
-1. **Custom Liquid functions**: register `template_function` extensions as Liquid filters/tags
+1. [x] **Custom Liquid functions**: register `template_function` extensions as Liquid filters/tags
    (`render.RegisterFilter/Tag`, `render.go:11-15`) — evaluated via the wasm sandbox (deterministic).
-   *Done when:* a template using an extension filter renders; the filter is sandboxed + bounded.
+   *Done when:* a template using an extension filter renders; the filter is sandboxed + bounded. — done:
+   added manifest-driven Wasm Liquid filter/tag registration with audited Host.Invoke calls and verified
+   rendering plus discovery in TestTemplateFunctionFilterUsesWasmAndAudits and TestTemplateFunctionDiscoveryRegistersTag.
 
 ### Milestone 14.7 — Outbound connector extension
 1. **Connector job** (`connector.run`): subscribe (`extension_subscriptions`) to `events.accepted.v1`
