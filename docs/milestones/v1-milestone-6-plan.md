@@ -522,8 +522,8 @@ them in order; compile + `go vet` between milestones. **Substrate (11.0–11.7) 
    worker tests cover completion and unevaluated-prompt rejection.
 
 ### Milestone 11.8 — Copilot: content drafting + localization + QA
-1. **Content-draft prompt version** (seeded `prompts`/`prompt_versions`, output_schema = template
-   fields incl. M5 `title`/`push_data`). *Done when:* a seeded version is `active`+`passed`.
+1. [x] **Content-draft prompt version** (seeded `prompts`/`prompt_versions`, output_schema = template
+   fields incl. M5 `title`/`push_data`). *Done when:* a seeded version is `active`+`passed`. — done: development bootstrap seeds an idempotent fake content-draft prompt with active/passed version and subject/body/title/push_data schema; TestSeededContentDraftPrompt passes against disposable Postgres.
 2. **Endpoint** `POST /v1/ai/copilots/content` (Recipe 6.30): draft subject/body variants +
    localization + a QA pass (brand/compliance policy check) → **creates a DRAFT template**
    (never publishes). Scope `ai:invoke`. *Done when:* the response is a schema-valid draft

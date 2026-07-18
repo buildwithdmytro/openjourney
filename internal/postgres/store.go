@@ -149,7 +149,10 @@ func (s *Store) EnsureDevelopmentTenant(ctx context.Context, rawKey string) erro
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	return s.seedDevelopmentRole(ctx, tenantID)
+	if err := s.seedDevelopmentRole(ctx, tenantID); err != nil {
+		return err
+	}
+	return s.seedDevelopmentAIPrompts(ctx, tenantID, workspaceID)
 }
 
 func (s *Store) Authenticate(ctx context.Context, rawKey string) (domain.Principal, error) {

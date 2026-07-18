@@ -90,8 +90,8 @@ func TestPromptsRegistry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to list prompts: %v", err)
 	}
-	if len(allPrompts) != 1 {
-		t.Fatalf("expected 1 prompt, got %d", len(allPrompts))
+	if len(allPrompts) != 2 {
+		t.Fatalf("expected seeded and test prompts, got %d", len(allPrompts))
 	}
 
 	// Test UpdatePrompt
@@ -360,5 +360,51 @@ func TestPromptsRegistry(t *testing.T) {
 	_, err = store.GetPrompt(ctx, pUser, createdPrompt.ID)
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expected ErrNotFound for deleted prompt, got %v", err)
+	}
+}
+
+func TestSeededContentDraftPrompt(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.pool.Exec(ctx, "TRUNCATE tenants CASCADE"); err != nil {
+		t.Fatal(err)
+	}
+	const key = "seeded-content-prompt"
+	if err := store.EnsureDevelopmentTenant(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	p, err := store.Authenticate(ctx, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed, err := store.GetPromptByName(ctx, p, contentDraftPromptName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seed.CurrentVersionID == nil || seed.LatestVersion != 1 || seed.TaskType != "content_draft" {
+		t.Fatalf("seeded prompt metadata = %+v", seed)
+	}
+	version, err := store.GetPromptVersion(ctx, p, *seed.CurrentVersionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if version.Status != "active" || version.EvalStatus != "passed" || version.Provider != "fake" {
+		t.Fatalf("seeded version is not usable: %+v", version)
+	}
+	for _, field := range []string{"subject", "body", "title", "push_data"} {
+		if !strings.Contains(string(version.OutputSchema), `"`+field+`"`) {
+			t.Errorf("seeded output schema omits %s: %s", field, version.OutputSchema)
+		}
 	}
 }
