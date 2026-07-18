@@ -525,3 +525,40 @@ func TestGatewayValidationAndRepair(t *testing.T) {
 		}
 	})
 }
+
+func TestGatewayBudgetIncrementFailureDoesNotBlockAllowedActivity(t *testing.T) {
+	principal := domain.Principal{TenantID: "tenant-1", WorkspaceID: "workspace-1", UserID: "user-1", ActorType: "user"}
+	var activities []domain.AIActivity
+	store := &mockStore{
+		getConfigFunc: func(context.Context, domain.Principal) (domain.AIProviderConfig, error) {
+			return domain.AIProviderConfig{Provider: "fake", Status: "active", Config: json.RawMessage(`{}`)}, nil
+		},
+		getUsageFunc: func(context.Context, string, string, string) (domain.AIBudgetUsage, error) {
+			return domain.AIBudgetUsage{}, nil
+		},
+		incrementUsageFunc: func(context.Context, string, string, string, int64, int64, int64) error {
+			return errors.New("database increment error")
+		},
+		recordActivityFunc: func(_ context.Context, _ domain.Principal, activity domain.AIActivity) (domain.AIActivity, error) {
+			activities = append(activities, activity)
+			return activity, nil
+		},
+	}
+	g := NewGateway(store)
+	g.newProvider = func(ProviderProfile) ModelProvider {
+		return &mockModelProvider{generateFunc: func(context.Context, GenerateRequest) (*GenerateResponse, error) {
+			return &GenerateResponse{Content: "ok", Usage: Usage{InputTokens: 2, OutputTokens: 3, CostCents: 4}}, nil
+		}}
+	}
+	resp, err := g.Generate(context.Background(), principal, GenerateRequest{PromptVersionID: "prompt-version-1", Action: "ai.content_draft"})
+	if err != nil {
+		t.Fatalf("expected success even if budget increment fails, got: %v", err)
+	}
+	if len(activities) != 1 || activities[0].PolicyDecision != "allowed" {
+		t.Fatalf("expected exactly one allowed activity, got %#v", activities)
+	}
+	if resp.ActivityID != activities[0].ID {
+		t.Errorf("expected activity ID to be populated in response")
+	}
+}
+

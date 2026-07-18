@@ -207,14 +207,21 @@ func (g *Gateway) Generate(ctx context.Context, principal domain.Principal, req 
 	}
 	duration := time.Since(start).Milliseconds()
 
-	if err := g.recordMetricsAndIncrementBudget(ctx, principal, cfg, period, resp.Usage, duration, req.Model); err != nil {
-		return nil, err
-	}
-
 	// Validate output against output_schema and domain validator
 	var valErr error
 	if len(req.OutputSchema) > 0 || req.DomainValidator != nil {
 		valErr = ValidateOutput([]byte(resp.Content), req.OutputSchema, req.DomainValidator)
+	}
+
+	if valErr == nil {
+		activity, activityErr := g.recordActivityID(ctx, principal, req.Action, cfg.Provider, req.Model, "allowed", resp.Usage, duration,
+			req.PromptVersionID, req.RetrievalRefs, req.ToolCalls, req.Classification, "")
+		if activityErr != nil {
+			return nil, fmt.Errorf("AI activity recording failed: %w", activityErr)
+		}
+		resp.ActivityID = activity
+		_ = g.recordMetricsAndIncrementBudget(ctx, principal, cfg, period, resp.Usage, duration, req.Model)
+		return resp, nil
 	}
 
 	if valErr != nil {
@@ -223,6 +230,9 @@ func (g *Gateway) Generate(ctx context.Context, principal domain.Principal, req 
 			attribute.String("tenant_id", principal.TenantID),
 			attribute.String("workspace_id", principal.WorkspaceID),
 		))
+
+		// Best-effort increment budget for the first (failed) call
+		_ = g.recordMetricsAndIncrementBudget(ctx, principal, cfg, period, resp.Usage, duration, req.Model)
 
 		// Check budget again before attempting the repair call
 		if err := g.checkBudget(ctx, principal, cfg, period); err != nil {
@@ -250,9 +260,8 @@ func (g *Gateway) Generate(ctx context.Context, principal domain.Principal, req 
 		}
 		durationRepair := time.Since(startRepair).Milliseconds()
 
-		if err := g.recordMetricsAndIncrementBudget(ctx, principal, cfg, period, repairResp.Usage, durationRepair, req.Model); err != nil {
-			return nil, err
-		}
+		// Best-effort budget increment for the repair call
+		_ = g.recordMetricsAndIncrementBudget(ctx, principal, cfg, period, repairResp.Usage, durationRepair, req.Model)
 
 		// Validate repaired output
 		if repairValErr := ValidateOutput([]byte(repairResp.Content), req.OutputSchema, req.DomainValidator); repairValErr != nil {
@@ -267,7 +276,9 @@ func (g *Gateway) Generate(ctx context.Context, principal domain.Principal, req 
 		}
 
 		resp = repairResp
+		duration = duration + durationRepair
 	}
+
 	activity, err := g.recordActivityID(ctx, principal, req.Action, cfg.Provider, req.Model, "allowed", resp.Usage, duration,
 		req.PromptVersionID, req.RetrievalRefs, req.ToolCalls, req.Classification, "")
 	if err != nil {

@@ -333,10 +333,10 @@ everything reproducible; one consolidated integration/governance/determinism pas
 task ends with a **Done when**. Do them in order; compile + `go vet` between milestones.
 
 ### Milestone 12.0 — Fold-in hardening (M6 review fix) — DO FIRST
-1. **Audit-on-egress ordering.** Fix `internal/ai/gateway.go:210-212,253-255` so a successful
+1. [x] **Audit-on-egress ordering.** Fix `internal/ai/gateway.go:210-212,253-255` so a successful
    provider call **always** records its `allowed` `ai_activity` row even if the budget-increment
    write errors (record activity, then best-effort increment; never return before logging). *Done
-   when:* a unit test with a failing budget-increment still writes exactly one `allowed` activity row.
+   when:* a unit test with a failing budget-increment still writes exactly one `allowed` activity row. — done: recorded activity before calling best-effort budget increments, and added TestGatewayBudgetIncrementFailureDoesNotBlockAllowedActivity.
 2. **DB-level append-only audit** + decision CHECK — migration `030_ai_activity_hardening.sql` per
    §2.1 (trigger blocks UPDATE/DELETE; `policy_decision` CHECK enumerates all written values). *Done
    when:* an `UPDATE ai_activity` raises; every `policy_decision` the code writes passes the CHECK.
