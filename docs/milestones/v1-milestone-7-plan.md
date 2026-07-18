@@ -337,9 +337,9 @@ task ends with a **Done when**. Do them in order; compile + `go vet` between mil
    provider call **always** records its `allowed` `ai_activity` row even if the budget-increment
    write errors (record activity, then best-effort increment; never return before logging). *Done
    when:* a unit test with a failing budget-increment still writes exactly one `allowed` activity row. — done: recorded activity before calling best-effort budget increments, and added TestGatewayBudgetIncrementFailureDoesNotBlockAllowedActivity.
-2. **DB-level append-only audit** + decision CHECK — migration `030_ai_activity_hardening.sql` per
+2. [x] **DB-level append-only audit** + decision CHECK — migration `030_ai_activity_hardening.sql` per
    §2.1 (trigger blocks UPDATE/DELETE; `policy_decision` CHECK enumerates all written values). *Done
-   when:* an `UPDATE ai_activity` raises; every `policy_decision` the code writes passes the CHECK.
+   when:* an `UPDATE ai_activity` raises; every `policy_decision` the code writes passes the CHECK. — done: added migration 030_ai_activity_hardening.sql and TestAIActivityHardening_12_0_2 to verify constraint & append-only trigger.
 3. **Correct the M6 audit doc** (`v1-milestone-6-audit.md`): state that `ai_activity` immutability
    is now DB-enforced and the egress-audit ordering is fixed. *Done when:* the audit matches the code.
 

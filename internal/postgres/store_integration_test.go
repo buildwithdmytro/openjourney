@@ -981,6 +981,65 @@ func TestListAIActivityTenantWorkspaceScope_11_6_3(t *testing.T) {
 	}
 }
 
+func TestAIActivityHardening_12_0_2(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	p, tenantID := setupTestTenant(t, ctx, store)
+
+	// 1. Verify invalid policy_decision is rejected
+	_, err = store.pool.Exec(ctx, `INSERT INTO ai_activity
+		(tenant_id, workspace_id, action, provider, model, policy_decision)
+		VALUES($1, $2, 'ai.generate', 'fake', 'fake-model', 'invalid_decision')`,
+		tenantID, p.WorkspaceID)
+	if err == nil {
+		t.Fatal("expected insert with invalid policy_decision to fail CHECK constraint")
+	}
+
+	// 2. Verify all valid policy_decision values are accepted
+	validDecisions := []string{
+		"allowed", "denied_policy", "denied_budget", "denied_scope",
+		"denied_input", "schema_reject", "execution_error",
+	}
+	for _, decision := range validDecisions {
+		var activityID string
+		err = store.pool.QueryRow(ctx, `INSERT INTO ai_activity
+			(tenant_id, workspace_id, action, provider, model, policy_decision)
+			VALUES($1, $2, 'ai.generate', 'fake', 'fake-model', $3) RETURNING id`,
+			tenantID, p.WorkspaceID, decision).Scan(&activityID)
+		if err != nil {
+			t.Fatalf("expected policy_decision %q to be accepted, but got err: %v", decision, err)
+		}
+
+		// 3. Try to UPDATE and expect it to fail due to trigger
+		_, err = store.pool.Exec(ctx, `UPDATE ai_activity SET action = 'ai.modified' WHERE id = $1`, activityID)
+		if err == nil {
+			t.Fatal("expected UPDATE on ai_activity to fail due to trigger")
+		} else if !strings.Contains(err.Error(), "ai_activity is append-only") {
+			t.Fatalf("expected 'ai_activity is append-only' error on UPDATE, got: %v", err)
+		}
+
+		// 4. Try to DELETE and expect it to fail due to trigger
+		_, err = store.pool.Exec(ctx, `DELETE FROM ai_activity WHERE id = $1`, activityID)
+		if err == nil {
+			t.Fatal("expected DELETE on ai_activity to fail due to trigger")
+		} else if !strings.Contains(err.Error(), "ai_activity is append-only") {
+			t.Fatalf("expected 'ai_activity is append-only' error on DELETE, got: %v", err)
+		}
+	}
+}
+
 func TestAIProviderConfigCRUD_11_1_3(t *testing.T) {
 	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
 	if databaseURL == "" {
