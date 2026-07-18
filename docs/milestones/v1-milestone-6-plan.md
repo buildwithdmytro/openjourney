@@ -491,9 +491,10 @@ them in order; compile + `go vet` between milestones. **Substrate (11.0–11.7) 
 ### Milestone 11.5 — Field sensitivity + retrieval + PII redaction
 1. [x] **Migration** `028_field_sensitivity.sql` per §2.4 + `field_classifications` CRUD (scope
    `schemas:write`). *Done when:* classifications round-trip. — done: added migration, tenant/workspace-scoped CRUD, and verified create/get/update/list/delete round-trip in TestFieldClassificationCRUD_11_5_1.
-2. **Permission-aware retrieval** `internal/ai/retrieval.go`: fetch only fields the derived
+2. [x] **Permission-aware retrieval** `internal/ai/retrieval.go`: fetch only fields the derived
    principal may read; attach retrieval refs (ids). *Done when:* an unauthorized field is never
-   returned.
+   returned. — done: added fail-closed, scope-checked profile retrieval with classification
+   filtering, stable retrieval refs, and TestRetrieveProfileOmitsUnauthorizedFields.
 3. **Redaction pass** (Recipe 6.29): `restricted`→deny, `confidential`→tokenize, email/phone→redact
    before egress; documented default posture when unclassified. *Done when:* a restricted field
    fails closed and a redacted email never reaches the provider request.
