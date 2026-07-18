@@ -531,11 +531,11 @@ them in order; compile + `go vet` between milestones. **Substrate (11.0–11.7) 
 
 ### Milestone 11.9 — Copilot: NL → audience DSL (preview + explainability)
 1. [x] **Audience-DSL prompt version**; output_schema = the audience AST. *Done when:* seeded/`passed`. — done: development bootstrap seeds an idempotent fake audience-dsl prompt with an audience AST schema and active/passed version; TestSeededAudienceDSLPrompt verifies it (DB integration skipped when OPENJOURNEY_TEST_DATABASE_URL is unset).
-2. **Endpoint** `POST /v1/ai/copilots/audience`: NL → JSON-AST that **must pass `audience.Parse`**
+2. [x] **Endpoint** `POST /v1/ai/copilots/audience`: NL → JSON-AST that **must pass `audience.Parse`**
    (`parse.go`); return the DSL + a **plan preview** via `PreviewSegment` (count + per-leg) + an
    explanation that **never exposes unauthorized fields**; create a **DRAFT segment**. *Done when:*
    the emitted DSL parses + compiles, the preview count matches a direct `PreviewSegment`, and the
-   explanation contains no redacted field values.
+   explanation contains no redacted field values. — done: added the governed audience copilot endpoint with pinned prompt/schema and `audience.Parse` validation, draft-only segment creation, preview response, field-neutral explanation, and fake-provider integration coverage.
 
 ### Milestone 11.10 — Copilot: journey drafting + deterministic validation
 1. **Journey-draft prompt version**; output_schema = the journey graph AST. *Done when:* seeded/`passed`.
