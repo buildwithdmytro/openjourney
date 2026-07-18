@@ -477,9 +477,9 @@ them in order; compile + `go vet` between milestones. **Substrate (11.0–11.7) 
    repaired-or-failed, never used. — done: implemented output validation and repair retry; verified via TestGatewayValidationAndRepair.
 
 ### Milestone 11.4 — AI actor + governed typed-tool surface
-1. **`ActorType="ai_agent"`** added to the actor model; confirm the human gate rejects it
+1. [x] **`ActorType="ai_agent"`** added to the actor model; confirm the human gate rejects it
    (add a test asserting an `ai_agent` principal → 403 on publish/rollout). *Done when:* the gate
-   test passes.
+   test passes. — done: added ai_agent actor to model and verified rejection in HTTP publish/rollout handlers and prompt registry tests.
 2. **Tool framework** `internal/ai/tools/*.go` (Recipe 6.28): typed JSON-Schema I/O, `RequiredScopes`,
    `Purpose`; runner derives the scope-intersection `ai_agent` principal, calls the store method,
    records the tool call. Register read-only tools first (schema inspect, segment preview,

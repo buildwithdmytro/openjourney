@@ -48,6 +48,9 @@ func TestPromptsRegistry(t *testing.T) {
 	pAPIKey := pUser
 	pAPIKey.ActorType = "api_key"
 
+	pAIAgent := pUser
+	pAIAgent.ActorType = "ai_agent"
+
 	// 1. Create a prompt
 	promptDraft := domain.Prompt{
 		Name:     "test-prompt",
@@ -161,6 +164,10 @@ func TestPromptsRegistry(t *testing.T) {
 	_, err = store.PublishPromptVersion(ctx, pAPIKey, createdPrompt.ID, 1, approverID, "manifest-1")
 	if !errors.Is(err, ErrUnauthorized) {
 		t.Fatalf("expected ErrUnauthorized for non-human (api_key) publisher, got: %v", err)
+	}
+	_, err = store.PublishPromptVersion(ctx, pAIAgent, createdPrompt.ID, 1, approverID, "manifest-1")
+	if !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("expected ErrUnauthorized for non-human (ai_agent) publisher, got: %v", err)
 	}
 
 	// Check eval_status gate (must refuse pending eval)

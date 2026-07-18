@@ -75,7 +75,7 @@ func stringPtr(value string) *string {
 
 func (f *fakeStore) Ready(context.Context) error { return nil }
 func (f *fakeStore) Authenticate(_ context.Context, key string) (domain.Principal, error) {
-	if key != "test-key" && key != "api-key-actor" {
+	if key != "test-key" && key != "api-key-actor" && key != "ai-agent-actor" {
 		return domain.Principal{}, errors.New("unauthorized")
 	}
 	scopes := f.scopes
@@ -89,6 +89,9 @@ func (f *fakeStore) Authenticate(_ context.Context, key string) (domain.Principa
 	if key == "api-key-actor" {
 		principal.UserID = ""
 		principal.ActorType = "api_key"
+	} else if key == "ai-agent-actor" {
+		principal.UserID = ""
+		principal.ActorType = "ai_agent"
 	}
 	return principal, nil
 }
@@ -1043,16 +1046,19 @@ func TestJourneyPublishAndBackfillRequireHumanActor(t *testing.T) {
 	server := NewWithSessionTTL(store, 75, nil, "http://localhost:3000", 12*time.Hour)
 
 	for _, tc := range []struct {
-		name string
-		path string
-		body string
+		name  string
+		token string
+		path  string
+		body  string
 	}{
-		{name: "publish", path: "/v1/journeys/journey-1/publish", body: `{}`},
-		{name: "backfill", path: "/v1/journeys/journey-1/backfill", body: `{"segment_id":"segment-1"}`},
+		{name: "publish api_key", token: "api-key-actor", path: "/v1/journeys/journey-1/publish", body: `{}`},
+		{name: "publish ai_agent", token: "ai-agent-actor", path: "/v1/journeys/journey-1/publish", body: `{}`},
+		{name: "backfill api_key", token: "api-key-actor", path: "/v1/journeys/journey-1/backfill", body: `{"segment_id":"segment-1"}`},
+		{name: "backfill ai_agent", token: "ai-agent-actor", path: "/v1/journeys/journey-1/backfill", body: `{"segment_id":"segment-1"}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			request := httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body))
-			request.Header.Set("Authorization", "Bearer api-key-actor")
+			request.Header.Set("Authorization", "Bearer "+tc.token)
 			response := httptest.NewRecorder()
 
 			server.ServeHTTP(response, request)
@@ -1087,6 +1093,17 @@ func TestExperimentRolloutRequiresHumanActorAndReturnsNewVersion(t *testing.T) {
 	}
 	if !strings.Contains(apiKeyResponse.Body.String(), `"code":"human_approval_required"`) || store.rollouts != 0 {
 		t.Fatalf("non-user bypassed rollout gate: calls=%d body=%s", store.rollouts, apiKeyResponse.Body.String())
+	}
+
+	aiAgentRequest := httptest.NewRequest(http.MethodPost, "/v1/experiments/experiment-1/rollout", nil)
+	aiAgentRequest.Header.Set("Authorization", "Bearer ai-agent-actor")
+	aiAgentResponse := httptest.NewRecorder()
+	server.ServeHTTP(aiAgentResponse, aiAgentRequest)
+	if aiAgentResponse.Code != http.StatusForbidden {
+		t.Fatalf("non-user status=%d body=%s", aiAgentResponse.Code, aiAgentResponse.Body.String())
+	}
+	if !strings.Contains(aiAgentResponse.Body.String(), `"code":"human_approval_required"`) || store.rollouts != 0 {
+		t.Fatalf("non-user bypassed rollout gate: calls=%d body=%s", store.rollouts, aiAgentResponse.Body.String())
 	}
 
 	userRequest := httptest.NewRequest(http.MethodPost, "/v1/experiments/experiment-1/rollout", nil)
