@@ -502,8 +502,11 @@ Each task ends with a **Done when**. Do them in order; compile + `go vet` betwee
    shows per-row results. — done: added acquisition tabs and API flows for UTM links, M7 expression lead scores, event-backed stage rules, companies, and CSV upload/status/result polling; web typecheck/build/tests and full Go build/vet/test pass.
 
 ### Milestone 13.10 — Integration, anti-abuse, governance & audit closeout
-1. **Capture E2E** (DB-gated): serve a page → submit its form → assert one profile created with
-   consent evidence + UTM, and a `form.submitted` event. *Done when:* asserted.
+1. [x] **Capture E2E** (DB-gated): serve a page → submit its form → assert one profile created with
+   consent evidence + UTM, and a `form.submitted` event. *Done when:* asserted. — done:
+   `acquisition_e2e_integration_test.go` serves a pinned page, submits its signed form, drains the
+   event projector, and asserts one profile, consent ledger evidence, UTM attribution, and one
+   `form.submitted`/`form_submissions` row; full Go build/vet/test passes.
 2. **Anti-abuse**: honeypot silent-drop, expired/tampered token → 403, per-IP burst → 429, bad values
    → 422 — each proven by a test. *Done when:* asserted.
 3. **Idempotency & governance**: re-submitting / re-importing the same input creates no duplicate
