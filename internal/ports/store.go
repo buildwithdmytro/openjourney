@@ -21,6 +21,11 @@ type Store interface {
 	GetProfile(context.Context, domain.Principal, string) (domain.Profile, []domain.Consent, error)
 	GetProfileByID(ctx context.Context, tenantID, appID, profileID string) (domain.Profile, error)
 	GetProfileByIDSystem(ctx context.Context, tenantID, workspaceID, profileID string) (domain.Profile, error)
+	CreateForm(context.Context, domain.Principal, domain.Form) (domain.Form, error)
+	GetForm(context.Context, domain.Principal, string) (domain.Form, error)
+	UpdateForm(context.Context, domain.Principal, domain.Form) (domain.Form, error)
+	ListForms(context.Context, domain.Principal) ([]domain.Form, error)
+	PublishForm(context.Context, domain.Principal, string, string, string, json.RawMessage) (domain.FormVersion, error)
 	ClaimProjectionJob(context.Context) (domain.AcceptedEvent, bool, error)
 	ProjectEvent(context.Context, domain.AcceptedEvent) error
 	FailProjectionJob(context.Context, string, error) error

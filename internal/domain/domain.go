@@ -224,6 +224,30 @@ type Profile struct {
 	UpdatedAt   time.Time       `json:"updated_at"`
 }
 
+type Form struct {
+	ID               string          `json:"id"`
+	TenantID         string          `json:"tenant_id"`
+	WorkspaceID      string          `json:"workspace_id"`
+	Name             string          `json:"name"`
+	Status           string          `json:"status"`
+	Draft            json.RawMessage `json:"draft"`
+	CurrentVersionID *string         `json:"current_version_id,omitempty"`
+	LatestVersion    int             `json:"latest_version"`
+	CreatedAt        time.Time       `json:"created_at"`
+	UpdatedAt        time.Time       `json:"updated_at"`
+}
+
+type FormVersion struct {
+	ID          string          `json:"id"`
+	FormID      string          `json:"form_id"`
+	TenantID    string          `json:"tenant_id"`
+	Version     int             `json:"version"`
+	Definition  json.RawMessage `json:"definition"`
+	ManifestKey string          `json:"manifest_key"`
+	PublishedBy string          `json:"published_by"`
+	PublishedAt time.Time       `json:"published_at"`
+}
+
 type Consent struct {
 	ProfileID  string    `json:"profile_id"`
 	Channel    string    `json:"channel"`

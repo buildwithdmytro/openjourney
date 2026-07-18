@@ -426,9 +426,9 @@ Each task ends with a **Done when**. Do them in order; compile + `go vet` betwee
    acquisition scopes) in `rbac.go` allowlist + the `api_keys` default array. *Done when:* tables +
    scopes exist. — done: `035_forms.sql` creates the form/version/submission tables and acquisition
    scopes; RBAC allowlist updated; migration and full Go suite pass.
-2. **Form store + CRUD + publish** `internal/postgres/forms.go` + `ports.Store` (Recipes 6.35): draft
+2. [x] **Form store + CRUD + publish** `internal/postgres/forms.go` + `ports.Store` (Recipes 6.35): draft
    CRUD; publish freezes a `form_versions` row with a compiled JSON Schema. HTTP `/v1/forms`. *Done
-   when:* a form round-trips and publishes an immutable version; the schema compiles.
+   when:* a form round-trips and publishes an immutable version; the schema compiles. — done: typed form schema compilation/validation test, tenant-scoped CRUD, idempotent blob-frozen publish, and authenticated `/v1/forms` routes; full Go build/vet/test passes.
 
 ### Milestone 13.2 — Public form submission (capture core)
 1. **Public submit** `POST /f/{formId}` (Recipe 6.36) using the 13.0 guard: validate vs the pinned
