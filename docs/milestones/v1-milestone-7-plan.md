@@ -435,8 +435,8 @@ task ends with a **Done when**. Do them in order; compile + `go vet` between mil
 3. [x] **Governance**: online-optimization approval requires a human actor (api_key → 403); seed
    immutable across reallocation; holdout never sent to; append-only `ai_activity` (UPDATE raises).
    *Done when:* all asserted. — done: TestGovernanceCloseout_12_11_3 plus TestOptimizationProposalUsesReportGateAndDoesNotReassign_12_8_2, TestExperimentOptimizationApprovalRequiresHumanActor, TestAIActivityHardening_12_0_2, and holdout delivery tests assert the approval gate, immutable seed/holdout, no holdout sends, and append-only audit.
-4. **Run the suite**: `go build/vet/test ./...`, `go mod tidy`, `cd web && npm run typecheck &&
-   npm run build && npm test`, `npm audit`. *Done when:* green.
+4. [x] **Run the suite**: `go build/vet/test ./...`, `go mod tidy`, `cd web && npm run typecheck &&
+   npm run build && npm test`, `npm audit`. *Done when:* green. — done: Go build/vet/tests, go mod tidy, web typecheck/build/30 tests, and npm audit (0 vulnerabilities) all pass.
 5. **Audit doc** `docs/milestones/v1-milestone-7-audit.md` in the M2–M6 table format, one row per
    requirement (12.0–12.11) with direct evidence. *Done when:* every row cites a named file/test.
 
