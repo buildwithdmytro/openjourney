@@ -500,7 +500,7 @@ them in order; compile + `go vet` between milestones. **Substrate (11.0–11.7) 
    fails closed and a redacted email never reaches the provider request. — done: added fail-closed recursive redaction/tokenization and gateway egress wiring; TestRedactRestrictedFieldFailsClosed and TestGatewayRedactsBeforeFakeProviderEgress pass.
 
 ### Milestone 11.6 — Immutable AI-activity audit + budget rollup
-1. **Migration** `027_ai_activity.sql` per §2.3. *Done when:* tables exist.
+1. [x] **Migration** `027_ai_activity.sql` per §2.3. *Done when:* tables exist. — done: added immutable `ai_activity`, budget rollup, and generation status tables; migration runner verified all tables in a disposable Postgres database.
 2. **Activity recording**: gateway writes an append-only `ai_activity` row for **every** invoke
    (allowed or denied), increments `ai_budget_usage`, and emits an `ai.action` domain event
    (register the event type / add to the built-in allow-list, `admin.go:128`). *Done when:* every
