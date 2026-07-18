@@ -539,10 +539,11 @@ them in order; compile + `go vet` between milestones. **Substrate (11.0–11.7) 
 
 ### Milestone 11.10 — Copilot: journey drafting + deterministic validation
 1. [x] **Journey-draft prompt version**; output_schema = the journey graph AST. *Done when:* seeded/`passed`. — done: development bootstrap seeds an idempotent fake journey-draft prompt with entry/nodes/edges graph schema and active/passed version; TestSeededJourneyDraftPrompt verifies it.
-2. **Endpoint** `POST /v1/ai/copilots/journey`: NL → journey graph that **must pass
+2. [x] **Endpoint** `POST /v1/ai/copilots/journey`: NL → journey graph that **must pass
    `internal/journey/validate`** (graph/reach/consent/provider-readiness) → **DRAFT journey
    version** (not published). *Done when:* the drafted graph validates and is stored as a draft;
-   publish still requires a human.
+   publish still requires a human. — done: added governed journey copilot with pinned prompt/schema,
+   deterministic graph validation, fake-provider coverage, and draft-only journey creation.
 
 ### Milestone 11.11 — Copilot: performance summary + suggested next version
 1. **Performance-summary prompt version**; input = M4 report reads (read-only tools). *Done when:*
