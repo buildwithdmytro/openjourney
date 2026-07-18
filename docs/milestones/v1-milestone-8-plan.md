@@ -497,9 +497,9 @@ Each task ends with a **Done when**. Do them in order; compile + `go vet` betwee
    round-trip and publish. — done: Acquisition UI adds typed form fields, consent/honeypot controls,
    page templates/form embedding, asset upload, and immutable publish actions; `Acquisition.test.tsx`
    proves form and page draft round-trips/publishes; web typecheck/build and 32 tests pass.
-2. **Acquisition surfaces**: short-links/UTM, lead-scoring rules, lifecycle stages, companies, and an
+2. [x] **Acquisition surfaces**: short-links/UTM, lead-scoring rules, lifecycle stages, companies, and an
    import wizard (upload + column mapping + results). *Done when:* each round-trips; the import wizard
-   shows per-row results.
+   shows per-row results. — done: added acquisition tabs and API flows for UTM links, M7 expression lead scores, event-backed stage rules, companies, and CSV upload/status/result polling; web typecheck/build/tests and full Go build/vet/test pass.
 
 ### Milestone 13.10 — Integration, anti-abuse, governance & audit closeout
 1. **Capture E2E** (DB-gated): serve a page → submit its form → assert one profile created with

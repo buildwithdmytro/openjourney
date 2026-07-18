@@ -257,6 +257,44 @@ export async function publishLandingPage(baseURL: string, apiKey: string, id: st
 export async function listAssets(baseURL: string, apiKey: string): Promise<Asset[]> {
   return (await requestJSON<{ assets: Asset[] | null }>(baseURL, apiKey, "/v1/assets")).assets ?? [];
 }
+
+export type ShortLink = { id: string; slug: string; destination_url: string; utm?: Record<string, string>; created_at: string };
+export async function listShortLinks(baseURL: string, apiKey: string): Promise<ShortLink[]> {
+  return (await requestJSON<{ links: ShortLink[] | null }>(baseURL, apiKey, "/v1/links")).links ?? [];
+}
+export async function createShortLink(baseURL: string, apiKey: string, input: { slug: string; destination_url: string; utm: Record<string, string> }): Promise<ShortLink> {
+  return requestJSON(baseURL, apiKey, "/v1/links", { method: "POST", body: JSON.stringify(input) });
+}
+
+export type Company = { id: string; name: string; external_id?: string; attributes: Record<string, unknown>; members?: { profile_id: string; role?: string }[] };
+export async function listCompanies(baseURL: string, apiKey: string): Promise<Company[]> {
+  return (await requestJSON<{ companies: Company[] | null }>(baseURL, apiKey, "/v1/companies")).companies ?? [];
+}
+export async function createCompany(baseURL: string, apiKey: string, input: { name: string; external_id?: string; attributes: Record<string, unknown>; members: { profile_id: string; role?: string }[] }): Promise<Company> {
+  return requestJSON(baseURL, apiKey, "/v1/companies", { method: "POST", body: JSON.stringify(input) });
+}
+
+export type ImportRequest = { id: string; kind: string; status: string; total_rows: number; imported_rows: number; failed_rows: number; result_ref?: string; error?: string };
+export async function uploadImport(baseURL: string, apiKey: string, file: File, kind: string, mapping: Record<string, string>): Promise<ImportRequest> {
+  const body = new FormData(); body.append("file", file); body.append("kind", kind); body.append("mapping", JSON.stringify(mapping));
+  const response = await fetch(`${baseURL}/v1/imports`, { method: "POST", headers: { Authorization: `Bearer ${apiKey}` }, body });
+  if (!response.ok) throw new Error(`Request failed (${response.status})`);
+  return response.json() as Promise<ImportRequest>;
+}
+export function getImport(baseURL: string, apiKey: string, id: string): Promise<ImportRequest> {
+  return requestJSON(baseURL, apiKey, `/v1/imports/${encodeURIComponent(id)}`);
+}
+export type StageRule = { id: string; stage: string; segment_id: string; priority: number; enabled: boolean };
+export async function listStageRules(baseURL: string, apiKey: string): Promise<StageRule[]> {
+  return (await requestJSON<{ stages: StageRule[] | null }>(baseURL, apiKey, "/v1/stages")).stages ?? [];
+}
+export async function createStageRule(baseURL: string, apiKey: string, input: { stage: string; segment_id: string; priority: number }): Promise<StageRule> {
+  return requestJSON(baseURL, apiKey, "/v1/stages", { method: "POST", body: JSON.stringify(input) });
+}
+export type LeadScoreInput = { name: string; score_name: string; expression: string; output_max: number };
+export async function createLeadScore(baseURL: string, apiKey: string, input: LeadScoreInput): Promise<unknown> {
+  return requestJSON(baseURL, apiKey, "/v1/scoring/lead-models", { method: "POST", body: JSON.stringify(input) });
+}
 export async function uploadAsset(baseURL: string, apiKey: string, file: File): Promise<Asset> {
   const body = new FormData(); body.append("file", file);
   const response = await fetch(`${baseURL}/v1/assets`, { method: "POST", headers: { Authorization: `Bearer ${apiKey}` }, body });
