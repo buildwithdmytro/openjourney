@@ -555,11 +555,11 @@ them in order; compile + `go vet` between milestones. **Substrate (11.0–11.7) 
 
 ### Milestone 11.12 — Offline eval harness + gate
 1. [x] **Migration** `029_ai_eval.sql` + eval store CRUD. *Done when:* tables exist. — done: added migration 029 with eval datasets/cases/runs, tenant/workspace-scoped CRUD, and DB-gated TestAIEvalStoreCRUD_11_12_1.
-2. **Eval runner** `internal/ai/eval`: run a prompt_version against a dataset via the **fake**
+2. [x] **Eval runner** `internal/ai/eval`: run a prompt_version against a dataset via the **fake**
    provider, apply validators (schema pass, forbidden-field/unauthorized-retrieval, latency, cost,
    basic hallucination checks), write `eval_runs`, and set `prompt_versions.eval_status`. A version
    can't be published/invoked unless `passed`. *Done when:* a version failing a validator is
-   `failed` and cannot be published; a clean one is `passed`.
+   `failed` and cannot be published; a clean one is `passed`. — done: added deterministic fake-provider eval runner with schema, policy, latency/cost, and validator gates; tests persist passed/failed eval runs and statuses.
 
 ### Milestone 11.13 — UI: copilot surfaces + governance settings
 1. **Copilot panels**: content/audience/journey/performance — each shows the AI draft with an
