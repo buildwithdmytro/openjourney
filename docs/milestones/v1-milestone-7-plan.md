@@ -402,11 +402,11 @@ task ends with a **Done when**. Do them in order; compile + `go vet` between mil
 
 ### Milestone 12.8 — Online-optimization controller
 1. [x] **Migration** `032_online_optimization.sql` per §2.3. *Done when:* table exists. — done: added `033_online_optimization.sql` as the next available migration after existing `032_scoring_requests.sql`; transactional apply verified table and index creation.
-2. **Proposal generation** (Recipe 6.34): a controller reads `ExperimentReport`
+2. [x] **Proposal generation** (Recipe 6.34): a controller reads `ExperimentReport`
    (`CompareProportions` + guardrail regression gate) and writes an `optimization_proposals` row
    when a variant is significant with no guardrail regression; **no** change to live assignment.
    *Done when:* a seeded significant experiment yields a `proposed` row; a guardrail-regressing one
-   yields none.
+   yields none. — done: added report-gated, idempotent proposal creation and POST controller; TestOptimizationProposalUsesReportGateAndDoesNotReassign_12_8_2 covers winner snapshots, no assignments, repeat calls, and guardrail blocking.
 
 ### Milestone 12.9 — Human-approved reallocation / rollout
 1. **Approve endpoint** `POST /v1/experiments/{id}/optimize/{proposalId}/approve` (human-actor

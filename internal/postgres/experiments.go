@@ -15,6 +15,53 @@ import (
 const experimentColumns = `id, tenant_id, workspace_id, name, description, subject_type, status, method, seed, holdout_pct, primary_goal, guardrail_goals, winner_variant, created_at, updated_at`
 
 var ErrExperimentWinnerRequired = errors.New("experiment has no recommended winner")
+var ErrOptimizationUnavailable = errors.New("experiment has no eligible optimization")
+
+const optimizationProposalColumns = `id, tenant_id, workspace_id, experiment_id, kind, report_snapshot,
+	proposed_weights, winner_variant, rationale, status, approved_by, approved_at, created_at`
+
+func scanOptimizationProposal(row pgx.Row) (domain.OptimizationProposal, error) {
+	var out domain.OptimizationProposal
+	err := row.Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.ExperimentID, &out.Kind,
+		&out.ReportSnapshot, &out.ProposedWeights, &out.WinnerVariant, &out.Rationale,
+		&out.Status, &out.ApprovedBy, &out.ApprovedAt, &out.CreatedAt)
+	return out, err
+}
+
+// ProposeExperimentOptimization snapshots the current report and records only
+// an advisory winner. It deliberately does not alter variants or assignments.
+func (s *Store) ProposeExperimentOptimization(ctx context.Context, p domain.Principal, experimentID string) (domain.OptimizationProposal, error) {
+	report, err := s.ExperimentReport(ctx, p, experimentID)
+	if err != nil {
+		return domain.OptimizationProposal{}, err
+	}
+	if report.WinnerVariant == nil || *report.WinnerVariant == "" {
+		return domain.OptimizationProposal{}, ErrOptimizationUnavailable
+	}
+	snapshot, err := json.Marshal(report)
+	if err != nil {
+		return domain.OptimizationProposal{}, err
+	}
+	// Repeated controller runs are idempotent while a proposal is awaiting review.
+	var existing domain.OptimizationProposal
+	existing, err = scanOptimizationProposal(s.pool.QueryRow(ctx, `SELECT `+optimizationProposalColumns+`
+		FROM optimization_proposals
+		WHERE tenant_id=$1 AND workspace_id=$2 AND experiment_id=$3 AND status='proposed'
+			AND winner_variant=$4
+		ORDER BY created_at DESC LIMIT 1`, p.TenantID, p.WorkspaceID, experimentID, *report.WinnerVariant))
+	if err == nil {
+		return existing, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return domain.OptimizationProposal{}, err
+	}
+	rationale := fmt.Sprintf("Variant %q is a statistically significant positive winner with no guardrail regression.", *report.WinnerVariant)
+	return scanOptimizationProposal(s.pool.QueryRow(ctx, `INSERT INTO optimization_proposals
+		(tenant_id, workspace_id, experiment_id, kind, report_snapshot, winner_variant, rationale)
+		VALUES ($1,$2,$3,'winner',$4,$5,$6)
+		RETURNING `+optimizationProposalColumns,
+		p.TenantID, p.WorkspaceID, experimentID, snapshot, *report.WinnerVariant, rationale))
+}
 
 func normalizeExperiment(e domain.Experiment) (domain.Experiment, error) {
 	if e.Name == "" || e.SubjectType == "" || e.Seed == "" {

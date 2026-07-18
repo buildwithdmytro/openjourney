@@ -527,6 +527,24 @@ type ExperimentVariant struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
+// OptimizationProposal is an advisory recommendation derived from a live
+// experiment report. It never changes experiment assignment by itself.
+type OptimizationProposal struct {
+	ID              string          `json:"id"`
+	TenantID        string          `json:"tenant_id"`
+	WorkspaceID     string          `json:"workspace_id"`
+	ExperimentID    string          `json:"experiment_id"`
+	Kind            string          `json:"kind"`
+	ReportSnapshot  json.RawMessage `json:"report_snapshot"`
+	ProposedWeights json.RawMessage `json:"proposed_weights,omitempty"`
+	WinnerVariant   *string         `json:"winner_variant,omitempty"`
+	Rationale       string          `json:"rationale"`
+	Status          string          `json:"status"`
+	ApprovedBy      *string         `json:"approved_by,omitempty"`
+	ApprovedAt      *time.Time      `json:"approved_at,omitempty"`
+	CreatedAt       time.Time       `json:"created_at"`
+}
+
 type ExperimentAssignment struct {
 	ExperimentID string    `json:"experiment_id"`
 	TenantID     string    `json:"tenant_id"`
@@ -943,5 +961,3 @@ type ScoringJob struct {
 	ScoringModelID string
 	SegmentID      string
 }
-
-

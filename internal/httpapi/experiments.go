@@ -88,3 +88,21 @@ func (s *Server) rolloutExperiment(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusCreated, out)
 }
+
+func (s *Server) proposeExperimentOptimization(w http.ResponseWriter, r *http.Request) {
+	p := principalFrom(r)
+	out, err := s.store.ProposeExperimentOptimization(r.Context(), p, r.PathValue("id"))
+	if errors.Is(err, postgres.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "experiment not found")
+		return
+	}
+	if errors.Is(err, postgres.ErrOptimizationUnavailable) {
+		writeError(w, http.StatusConflict, "optimization_unavailable", "experiment has no eligible winner")
+		return
+	}
+	if err != nil {
+		internalError(w, err, "propose experiment optimization", p)
+		return
+	}
+	writeJSON(w, http.StatusCreated, out)
+}

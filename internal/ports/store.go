@@ -149,6 +149,7 @@ type Store interface {
 	CampaignReport(ctx context.Context, p domain.Principal, campaignID string) (domain.CampaignReport, error)
 	JourneyReport(ctx context.Context, p domain.Principal, journeyID string) (domain.JourneyReport, error)
 	ExperimentReport(ctx context.Context, p domain.Principal, experimentID string) (domain.ExperimentReport, error)
+	ProposeExperimentOptimization(ctx context.Context, p domain.Principal, experimentID string) (domain.OptimizationProposal, error)
 	RolloutExperiment(ctx context.Context, p domain.Principal, experimentID string) (domain.ExperimentRollout, error)
 
 	CreateAIProviderConfig(ctx context.Context, p domain.Principal, cfg domain.AIProviderConfig) (domain.AIProviderConfig, error)
@@ -198,7 +199,6 @@ type Store interface {
 	FailScoring(ctx context.Context, id string, message string) error
 	UpsertProfileScores(ctx context.Context, scores []domain.ProfileScore) error
 	GetEventCount(ctx context.Context, tenantID, workspaceID, externalID, anonymousID, eventType string, days int) (int64, error)
-
 
 	CreateFieldClassification(ctx context.Context, p domain.Principal, classification domain.FieldClassification) (domain.FieldClassification, error)
 	GetFieldClassification(ctx context.Context, p domain.Principal, id string) (domain.FieldClassification, error)
