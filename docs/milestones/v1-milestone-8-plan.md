@@ -509,9 +509,11 @@ Each task ends with a **Done when**. Do them in order; compile + `go vet` betwee
    `form.submitted`/`form_submissions` row; full Go build/vet/test passes.
 2. [x] **Anti-abuse**: honeypot silent-drop, expired/tampered token → 403, per-IP burst → 429, bad values
    → 422 — each proven by a test. *Done when:* asserted. — done: `form_submit_test.go` asserts all required status codes and no event side effects for rejected submissions; full Go build/vet/test passes.
-3. **Idempotency & governance**: re-submitting / re-importing the same input creates no duplicate
+3. [x] **Idempotency & governance**: re-submitting / re-importing the same input creates no duplicate
    profile; form/page publish requires a human actor (api_key → 403); every capture rides the event
-   pipeline (no direct profile write). *Done when:* asserted.
+   pipeline (no direct profile write). *Done when:* asserted. — done: DB-gated capture replay and
+   profile/company import replay tests assert one projected row and one idempotent event each; publish
+   handlers reject api_key actors and imports use stable event timestamps; full Go build/vet/test pass.
 4. **Run the suite**: `go build/vet/test ./...`, `go mod tidy`, `cd web && npm run typecheck &&
    npm run build && npm test`, `npm audit`. *Done when:* green.
 5. **Audit doc** `docs/milestones/v1-milestone-8-audit.md` in the M2–M7 table format, one row per

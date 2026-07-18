@@ -140,6 +140,20 @@ func TestCapturePageSubmitCreatesProfileWithConsentAndUTM(t *testing.T) {
 	if submitResponse.StatusCode != http.StatusAccepted {
 		t.Fatalf("submit status = %d", submitResponse.StatusCode)
 	}
+	duplicateRequest, err := http.NewRequest(http.MethodPost, server.URL+"/f/"+form.ID, strings.NewReader(submission))
+	if err != nil {
+		t.Fatal(err)
+	}
+	duplicateRequest.Header.Set("Content-Type", "application/json")
+	duplicateRequest.RemoteAddr = "198.51.100.25:1234"
+	duplicateResponse, err := server.Client().Do(duplicateRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	duplicateResponse.Body.Close()
+	if duplicateResponse.StatusCode != http.StatusAccepted {
+		t.Fatalf("duplicate submit status = %d", duplicateResponse.StatusCode)
+	}
 
 	if _, err := projector.Drain(ctx, store, 3, false); err != nil {
 		t.Fatal(err)
@@ -165,7 +179,11 @@ func TestCapturePageSubmitCreatesProfileWithConsentAndUTM(t *testing.T) {
 	if err := store.Pool().QueryRow(ctx, `SELECT count(*) FROM form_submissions WHERE tenant_id=$1 AND form_id=$2`, principal.TenantID, form.ID).Scan(&submissions); err != nil {
 		t.Fatal(err)
 	}
-	if submitted != 1 || submissions != 1 {
-		t.Fatalf("capture records: form.submitted=%d form_submissions=%d", submitted, submissions)
+	var profiles int
+	if err := store.Pool().QueryRow(ctx, `SELECT count(*) FROM profiles WHERE tenant_id=$1 AND external_id=$2`, principal.TenantID, "e2e@example.com").Scan(&profiles); err != nil {
+		t.Fatal(err)
+	}
+	if submitted != 1 || submissions != 1 || profiles != 1 {
+		t.Fatalf("capture records: form.submitted=%d form_submissions=%d profiles=%d", submitted, submissions, profiles)
 	}
 }

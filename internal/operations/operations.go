@@ -162,6 +162,10 @@ func executeImport(ctx context.Context, base ImportStore, blobs ports.BlobStore,
 	if err := store.MarkImportProcessing(ctx, requestID); err != nil {
 		return err
 	}
+	eventTime := job.CreatedAt.UTC()
+	if eventTime.IsZero() {
+		eventTime = time.Now().UTC().Truncate(time.Microsecond)
+	}
 	data, err := blobs.Get(ctx, key)
 	if err != nil {
 		return err
@@ -241,14 +245,14 @@ func executeImport(ctx context.Context, base ImportStore, blobs ports.BlobStore,
 			}
 		}
 		payload, _ := json.Marshal(map[string]any{"attributes": attrs})
-		event := domain.Event{Type: "profile.updated", SchemaVersion: 1, ExternalID: externalID, IdempotencyKey: "profiles.import:" + key + ":" + strconv.Itoa(total), OccurredAt: time.Now().UTC(), Source: "profiles.import", Payload: payload}
+		event := domain.Event{Type: "profile.updated", SchemaVersion: 1, ExternalID: externalID, IdempotencyKey: "profiles.import:" + key + ":" + strconv.Itoa(total), OccurredAt: eventTime, Source: "profiles.import", Payload: payload}
 		if job.Kind == "companies" {
 			name := value("name")
 			if name == "" {
 				name = externalID
 			}
 			cp, _ := json.Marshal(map[string]any{"company": map[string]any{"external_id": externalID, "name": name, "attributes": attrs}, "members": []any{}})
-			event = domain.Event{Type: "company.updated", SchemaVersion: 1, ExternalID: externalID, IdempotencyKey: "companies.import:" + key + ":" + strconv.Itoa(total), OccurredAt: time.Now().UTC(), Source: "profiles.import", Payload: cp}
+			event = domain.Event{Type: "company.updated", SchemaVersion: 1, ExternalID: externalID, IdempotencyKey: "companies.import:" + key + ":" + strconv.Itoa(total), OccurredAt: eventTime, Source: "profiles.import", Payload: cp}
 		}
 		if job.Kind == "suppressions" {
 			channel := value("channel")
@@ -259,7 +263,7 @@ func executeImport(ctx context.Context, base ImportStore, blobs ports.BlobStore,
 				continue
 			}
 			cp, _ := json.Marshal(map[string]any{"channel": channel, "state": "unsubscribed", "evidence": map[string]any{"source": "profiles.import", "row": line}})
-			event = domain.Event{Type: "consent.changed", SchemaVersion: 1, ExternalID: externalID, IdempotencyKey: "suppressions.import:" + key + ":" + strconv.Itoa(total), OccurredAt: time.Now().UTC(), Source: "profiles.import", Payload: cp}
+			event = domain.Event{Type: "consent.changed", SchemaVersion: 1, ExternalID: externalID, IdempotencyKey: "suppressions.import:" + key + ":" + strconv.Itoa(total), OccurredAt: eventTime, Source: "profiles.import", Payload: cp}
 		}
 		_, err = store.AcceptEvents(ctx, domain.Principal{TenantID: job.TenantID, WorkspaceID: job.WorkspaceID, AppID: job.AppID, ActorType: "import"}, []domain.Event{event})
 		if err != nil {

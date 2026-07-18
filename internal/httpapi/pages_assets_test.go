@@ -81,6 +81,30 @@ func TestPublishLandingPageFreezesImmutableDefinition(t *testing.T) {
 	}
 }
 
+func TestVersionedCapturePublishRejectsAPIKey(t *testing.T) {
+	store := &pageAssetStore{page: domain.LandingPage{ID: "page-1", Draft: json.RawMessage(`{"template":"<h1>hello</h1>"}`)}}
+	s := &Server{store: store, blobStore: &fakeBlobStore{}}
+	apiKey := domain.Principal{TenantID: "tenant-1", ActorType: "api_key", KeyID: "key-1"}
+	for _, tc := range []struct {
+		name string
+		h    http.HandlerFunc
+		path string
+	}{
+		{name: "form", h: s.publishForm, path: "form-1"},
+		{name: "page", h: s.publishLandingPage, path: "page-1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := withPrincipal(httptest.NewRequest(http.MethodPost, "/publish", nil), apiKey)
+			req.SetPathValue("id", tc.path)
+			rec := httptest.NewRecorder()
+			tc.h(rec, req)
+			if rec.Code != http.StatusForbidden {
+				t.Fatalf("publish status = %d, body=%s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
 func TestUploadAssetStoresContentAddressedBlobAndRecordsAsset(t *testing.T) {
 	store := &pageAssetStore{}
 	blobs := &fakeBlobStore{}
