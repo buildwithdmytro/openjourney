@@ -87,6 +87,9 @@ var (
 
 	AIBudgetExceeded = mustCounter(Meter.Int64Counter("openjourney_ai_budget_exceeded_total",
 		otelmetric.WithDescription("Total number of times AI request budget was exceeded")))
+
+	ScoresComputed = mustCounter(Meter.Int64Counter("openjourney_scores_computed_total",
+		otelmetric.WithDescription("Total number of profiles scored")))
 )
 
 // RecordExperimentAssignment records one newly-created authoritative assignment. Callers must

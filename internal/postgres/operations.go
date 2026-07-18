@@ -74,6 +74,12 @@ func (s *Store) FailOperationJob(ctx context.Context, id string, operationErr er
 					return err
 				}
 			}
+			if jobType == "scores.compute" {
+				if _, err := tx.Exec(ctx, `UPDATE scoring_requests SET status='failed',error=$2,
+					completed_at=now() WHERE id=$1`, input.RequestID, message); err != nil {
+					return err
+				}
+			}
 			if _, err := tx.Exec(ctx, `UPDATE privacy_requests SET status='failed',error=$2,
 				completed_at=now() WHERE id=$1`, input.RequestID, message); err != nil {
 				return err

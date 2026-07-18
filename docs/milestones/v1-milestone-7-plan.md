@@ -374,11 +374,11 @@ task ends with a **Done when**. Do them in order; compile + `go vet` between mil
    provider; an unevaluated one is refused. — done: implemented EvaluateLLMModel and EvaluateLLM with AI gateway & fake provider integration in unit tests.
 
 ### Milestone 12.5 — profile_scores + batch scoring job
-1. **Batch scoring job**: `scores.compute` enqueue (operation id + status resource, copy
+1. [x] **Batch scoring job**: `scores.compute` enqueue (operation id + status resource, copy
    `ai_generation_requests`) + a worker `case "scores.compute"` in `internal/operations` that
    resolves a segment and writes `profile_scores` idempotently (upsert on the PK). Telemetry
    `openjourney_scores_computed_total`. *Done when:* scoring a segment twice yields one row per
-   (profile, model, score_name) with the latest value; the status resource reaches `complete`.
+   (profile, model, score_name) with the latest value; the status resource reaches `complete`. — done: added scoring_requests table/CRUD, implemented batch scoring worker case, registered compute routes, and verified idempotency via TestBatchScoringJob_12_5_1.
 
 ### Milestone 12.6 — Score condition in the audience DSL
 1. **Score leaf** (Recipe 6.32): `Score` AST node + `parse` case + `compile_pg` parameterized

@@ -1,6 +1,7 @@
 package scoring
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,6 +9,9 @@ import (
 	"go/parser"
 	"go/token"
 	"strconv"
+
+	"github.com/buildwithdmytro/openjourney/internal/domain"
+	"github.com/buildwithdmytro/openjourney/internal/ports"
 )
 
 // Evaluate evaluates a Go-like expression over an environment containing profile attributes and event aggregates.
@@ -293,3 +297,91 @@ func toFloat(val any) (float64, bool) {
 	}
 	return 0, false
 }
+
+// ExtractEventAggregates parses the Go-like expression and returns a map of event types to their required day intervals (e.g. {"click": [30], "purchase": [90]})
+func ExtractEventAggregates(exprStr string) (map[string][]int, error) {
+	if exprStr == "" {
+		return nil, nil
+	}
+	node, err := parser.ParseExpr(exprStr)
+	if err != nil {
+		return nil, err
+	}
+	res := make(map[string][]int)
+	ast.Inspect(node, func(n ast.Node) bool {
+		sel, ok := n.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		// We are looking for something like events.click.count_30d
+		// sel.X is events.click (which is also a SelectorExpr), sel.Sel is count_30d
+		innerSel, ok := sel.X.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		ident, ok := innerSel.X.(*ast.Ident)
+		if !ok || ident.Name != "events" {
+			return true
+		}
+		eventType := innerSel.Sel.Name
+		aggName := sel.Sel.Name
+
+		// Parse count_<days>d
+		var days int
+		if _, err := fmt.Sscanf(aggName, "count_%dd", &days); err == nil {
+			// Avoid duplicates in the list of days
+			found := false
+			for _, d := range res[eventType] {
+				if d == days {
+					found = true
+					break
+				}
+			}
+			if !found {
+				res[eventType] = append(res[eventType], days)
+			}
+		}
+		return true
+	})
+	return res, nil
+}
+
+// BuildExpressionEnv prepares the evaluation environment for a profile
+func BuildExpressionEnv(ctx context.Context, store ports.Store, tenantID, workspaceID string, profile domain.Profile, exprStr string) (map[string]any, error) {
+	var profileAttrs map[string]any
+	if len(profile.Attributes) > 0 {
+		_ = json.Unmarshal(profile.Attributes, &profileAttrs)
+	}
+	if profileAttrs == nil {
+		profileAttrs = make(map[string]any)
+	}
+
+	env := map[string]any{
+		"profile": profileAttrs,
+	}
+
+	// Extract event aggregates from expression
+	aggregates, err := ExtractEventAggregates(exprStr)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(aggregates) > 0 {
+		eventsEnv := make(map[string]any)
+		for eventType, daysList := range aggregates {
+			eventMap := make(map[string]any)
+			for _, days := range daysList {
+				count, err := store.GetEventCount(ctx, tenantID, workspaceID, profile.ExternalID, profile.AnonymousID, eventType, days)
+				if err != nil {
+					return nil, err
+				}
+				eventMap[fmt.Sprintf("count_%dd", days)] = float64(count)
+			}
+			eventsEnv[eventType] = eventMap
+		}
+		env["events"] = eventsEnv
+	}
+
+	return env, nil
+}
+

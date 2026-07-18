@@ -190,6 +190,16 @@ type Store interface {
 	PublishScoringModelVersion(ctx context.Context, p domain.Principal, modelID string, version int, approverUserID string, manifestKey string) (domain.ScoringModelVersion, error)
 	SetScoringModelVersionEvalStatus(ctx context.Context, p domain.Principal, id string, evalStatus string) error
 
+	CreateScoringRequest(ctx context.Context, p domain.Principal, scoringModelID string, segmentID string) (domain.ScoringRequest, error)
+	GetScoringRequest(ctx context.Context, p domain.Principal, id string) (domain.ScoringRequest, error)
+	GetScoringJob(ctx context.Context, id string) (domain.ScoringJob, error)
+	MarkScoringProcessing(ctx context.Context, id string) error
+	CompleteScoring(ctx context.Context, id string) error
+	FailScoring(ctx context.Context, id string, message string) error
+	UpsertProfileScores(ctx context.Context, scores []domain.ProfileScore) error
+	GetEventCount(ctx context.Context, tenantID, workspaceID, externalID, anonymousID, eventType string, days int) (int64, error)
+
+
 	CreateFieldClassification(ctx context.Context, p domain.Principal, classification domain.FieldClassification) (domain.FieldClassification, error)
 	GetFieldClassification(ctx context.Context, p domain.Principal, id string) (domain.FieldClassification, error)
 	ListFieldClassifications(ctx context.Context, p domain.Principal, entityType string) ([]domain.FieldClassification, error)

@@ -171,6 +171,8 @@ func (s *Server) buildMux() http.Handler {
 	mux.Handle("DELETE /v1/ai/field-classifications/{id}", s.authenticate("schemas:write", http.HandlerFunc(s.deleteFieldClassification)))
 	mux.Handle("POST /v1/ai/generations", s.authenticate("ai:invoke", http.HandlerFunc(s.createAIGeneration)))
 	mux.Handle("GET /v1/ai/generations/{id}", s.authenticate("ai:invoke", http.HandlerFunc(s.getAIGeneration)))
+	mux.Handle("POST /v1/scoring/requests", s.authenticate("scoring:compute", http.HandlerFunc(s.createScoringRequest)))
+	mux.Handle("GET /v1/scoring/requests/{id}", s.authenticate("scoring:compute", http.HandlerFunc(s.getScoringRequest)))
 	mux.Handle("POST /v1/ai/copilots/content", s.authenticate("ai:invoke", http.HandlerFunc(s.createContentCopilot)))
 	mux.Handle("POST /v1/ai/copilots/audience", s.authenticate("ai:invoke", http.HandlerFunc(s.createAudienceCopilot)))
 	mux.Handle("POST /v1/ai/copilots/journey", s.authenticate("ai:invoke", http.HandlerFunc(s.createJourneyCopilot)))

@@ -326,3 +326,150 @@ func (s *Store) SetScoringModelVersionEvalStatus(ctx context.Context, p domain.P
 	}
 	return nil
 }
+
+func (s *Store) CreateScoringRequest(ctx context.Context, p domain.Principal, scoringModelID string, segmentID string) (domain.ScoringRequest, error) {
+	if scoringModelID == "" {
+		return domain.ScoringRequest{}, errors.New("scoring_model_id is required")
+	}
+	if segmentID == "" {
+		return domain.ScoringRequest{}, errors.New("segment_id is required")
+	}
+	requestedBy := actorID(p)
+	if requestedBy == "" {
+		return domain.ScoringRequest{}, errors.New("a requesting user or API key is required")
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.ScoringRequest{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	// Verify scoring model and segment exist
+	var exists bool
+	err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM scoring_models WHERE tenant_id=$1 AND id=$2)`, p.TenantID, scoringModelID).Scan(&exists)
+	if err != nil || !exists {
+		return domain.ScoringRequest{}, fmt.Errorf("scoring model not found")
+	}
+
+	err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM segments WHERE tenant_id=$1 AND id=$2)`, p.TenantID, segmentID).Scan(&exists)
+	if err != nil || !exists {
+		return domain.ScoringRequest{}, fmt.Errorf("segment not found")
+	}
+
+	var request domain.ScoringRequest
+	err = tx.QueryRow(ctx, `INSERT INTO scoring_requests
+		(tenant_id,workspace_id,requested_by,scoring_model_id,segment_id,status)
+		VALUES($1,$2,$3,$4,$5,'pending')
+		RETURNING id,tenant_id,workspace_id,requested_by,scoring_model_id,segment_id,status,created_at`,
+		p.TenantID, p.WorkspaceID, requestedBy, scoringModelID, segmentID).
+		Scan(&request.ID, &request.TenantID, &request.WorkspaceID, &request.RequestedBy,
+			&request.ScoringModelID, &request.SegmentID, &request.Status, &request.CreatedAt)
+	if err != nil {
+		return domain.ScoringRequest{}, err
+	}
+
+	payload, err := json.Marshal(struct {
+		RequestID string   `json:"request_id"`
+		Scopes    []string `json:"scopes"`
+	}{request.ID, p.Scopes})
+	if err != nil {
+		return domain.ScoringRequest{}, err
+	}
+
+	if _, err := tx.Exec(ctx, `INSERT INTO operation_jobs(tenant_id,workspace_id,job_type,payload)
+		VALUES($1,$2,'scores.compute',$3)`, p.TenantID, p.WorkspaceID, payload); err != nil {
+		return domain.ScoringRequest{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return domain.ScoringRequest{}, err
+	}
+	return request, nil
+}
+
+func (s *Store) GetScoringRequest(ctx context.Context, p domain.Principal, id string) (domain.ScoringRequest, error) {
+	var request domain.ScoringRequest
+	err := s.pool.QueryRow(ctx, `SELECT id,tenant_id,workspace_id,requested_by,scoring_model_id,segment_id,status,
+		COALESCE(error,''),created_at,completed_at
+		FROM scoring_requests WHERE id=$1 AND tenant_id=$2 AND workspace_id=$3`,
+		id, p.TenantID, p.WorkspaceID).Scan(&request.ID, &request.TenantID, &request.WorkspaceID,
+		&request.RequestedBy, &request.ScoringModelID, &request.SegmentID, &request.Status, &request.Error,
+		&request.CreatedAt, &request.CompletedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.ScoringRequest{}, ErrNotFound
+	}
+	return request, err
+}
+
+func (s *Store) GetScoringJob(ctx context.Context, id string) (domain.ScoringJob, error) {
+	var job domain.ScoringJob
+	err := s.pool.QueryRow(ctx, `SELECT id,tenant_id,workspace_id,requested_by,scoring_model_id,segment_id
+		FROM scoring_requests WHERE id=$1`, id).
+		Scan(&job.ID, &job.TenantID, &job.WorkspaceID, &job.RequestedBy, &job.ScoringModelID, &job.SegmentID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.ScoringJob{}, ErrNotFound
+	}
+	return job, err
+}
+
+func (s *Store) MarkScoringProcessing(ctx context.Context, id string) error {
+	_, err := s.pool.Exec(ctx, `UPDATE scoring_requests SET status='processing'
+		WHERE id=$1 AND status='pending'`, id)
+	return err
+}
+
+func (s *Store) CompleteScoring(ctx context.Context, id string) error {
+	_, err := s.pool.Exec(ctx, `UPDATE scoring_requests SET status='complete',
+		completed_at=now() WHERE id=$1`, id)
+	return err
+}
+
+func (s *Store) FailScoring(ctx context.Context, id, message string) error {
+	if len(message) > 1000 {
+		message = message[:1000]
+	}
+	_, err := s.pool.Exec(ctx, `UPDATE scoring_requests SET status='failed',error=$2,
+		completed_at=now() WHERE id=$1`, id, message)
+	return err
+}
+
+func (s *Store) UpsertProfileScores(ctx context.Context, scores []domain.ProfileScore) error {
+	if len(scores) == 0 {
+		return nil
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	for _, score := range scores {
+		_, err = tx.Exec(ctx, `
+			INSERT INTO profile_scores (tenant_id, workspace_id, app_id, profile_id, scoring_model_id, score_name, value, model_version, computed_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
+			ON CONFLICT (tenant_id, profile_id, scoring_model_id, score_name)
+			DO UPDATE SET value = EXCLUDED.value, model_version = EXCLUDED.model_version, computed_at = now()
+		`, score.TenantID, score.WorkspaceID, score.AppID, score.ProfileID, score.ScoringModelID, score.ScoreName, score.Value, score.ModelVersion)
+		if err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
+}
+
+func (s *Store) GetEventCount(ctx context.Context, tenantID, workspaceID, externalID, anonymousID, eventType string, days int) (int64, error) {
+	if externalID == "" && anonymousID == "" {
+		return 0, nil
+	}
+	var count int64
+	err := s.pool.QueryRow(ctx, `
+		SELECT count(*) FROM accepted_events
+		WHERE tenant_id = $1 AND workspace_id = $2
+		  AND (($3 <> '' AND external_id = $3) OR ($4 <> '' AND anonymous_id = $4))
+		  AND event_type = $5
+		  AND occurred_at >= now() - ($6 * INTERVAL '1 day')
+	`, tenantID, workspaceID, externalID, anonymousID, eventType, days).Scan(&count)
+	return count, err
+}
+

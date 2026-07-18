@@ -10,6 +10,8 @@ import (
 	"github.com/buildwithdmytro/openjourney/internal/ai"
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 	"github.com/buildwithdmytro/openjourney/internal/ports"
+	"github.com/buildwithdmytro/openjourney/internal/scoring"
+	"github.com/buildwithdmytro/openjourney/internal/telemetry"
 )
 
 type Store interface {
@@ -121,6 +123,8 @@ func execute(ctx context.Context, store Store, blobs ports.BlobStore, gateway AI
 		return err
 	case "ai.generate":
 		return executeAIGeneration(ctx, store, blobs, gateway, input.RequestID, input.TaskType, input.Input, input.Scopes)
+	case "scores.compute":
+		return executeScoring(ctx, store, gateway, input.RequestID, input.Scopes)
 	default:
 		return fmt.Errorf("unsupported operation type %q", jobType)
 	}
@@ -200,4 +204,140 @@ func executeAIGeneration(ctx context.Context, store Store, blobs ports.BlobStore
 		return err
 	}
 	return jobStore.CompleteAIGeneration(ctx, requestID, key)
+}
+
+type ScoringStore interface {
+	ports.Store
+	GetScoringJob(context.Context, string) (domain.ScoringJob, error)
+	GetScoringModel(context.Context, domain.Principal, string) (domain.ScoringModel, error)
+	GetScoringModelVersion(context.Context, domain.Principal, string) (domain.ScoringModelVersion, error)
+	GetScoringModelVersionByNumber(context.Context, domain.Principal, string, int) (domain.ScoringModelVersion, error)
+	MarkScoringProcessing(context.Context, string) error
+	CompleteScoring(context.Context, string) error
+	FailScoring(context.Context, string, string) error
+	ResolveSegment(context.Context, domain.Principal, string) ([]string, error)
+	GetProfileByIDSystem(context.Context, string, string, string) (domain.Profile, error)
+	GetFirstAppID(context.Context, string, string) (string, error)
+	UpsertProfileScores(context.Context, []domain.ProfileScore) error
+	GetEventCount(ctx context.Context, tenantID, workspaceID, externalID, anonymousID, eventType string, days int) (int64, error)
+}
+
+func executeScoring(ctx context.Context, store Store, gateway AIGateway, requestID string, scopes []string) error {
+	if requestID == "" {
+		return errors.New("scores.compute payload requires request_id")
+	}
+	scoringStore, ok := store.(ScoringStore)
+	if !ok {
+		return errors.New("operation store does not support scoring compute")
+	}
+	job, err := scoringStore.GetScoringJob(ctx, requestID)
+	if err != nil {
+		return err
+	}
+
+	principal := domain.Principal{
+		TenantID: job.TenantID, WorkspaceID: job.WorkspaceID, UserID: job.RequestedBy,
+		ActorType: "ai_agent", Scopes: append([]string(nil), scopes...),
+	}
+
+	model, err := scoringStore.GetScoringModel(ctx, principal, job.ScoringModelID)
+	if err != nil {
+		return err
+	}
+	if model.CurrentVersionID == nil || *model.CurrentVersionID == "" {
+		return fmt.Errorf("scoring model %q has no active version", job.ScoringModelID)
+	}
+
+	sv, err := scoringStore.GetScoringModelVersion(ctx, principal, *model.CurrentVersionID)
+	if err != nil {
+		return err
+	}
+	if sv.Status != "active" || sv.EvalStatus != "passed" {
+		return fmt.Errorf("scoring model version %q is not active or passed", sv.ID)
+	}
+
+	if err := scoringStore.MarkScoringProcessing(ctx, requestID); err != nil {
+		return err
+	}
+
+	profileIDs, err := scoringStore.ResolveSegment(ctx, principal, job.SegmentID)
+	if err != nil {
+		return err
+	}
+
+	appID, err := scoringStore.GetFirstAppID(ctx, job.TenantID, job.WorkspaceID)
+	if err != nil {
+		return err
+	}
+
+	var scores []domain.ProfileScore
+	for _, profileID := range profileIDs {
+		profile, err := scoringStore.GetProfileByIDSystem(ctx, job.TenantID, job.WorkspaceID, profileID)
+		if err != nil {
+			return err
+		}
+
+		var profileAttrs map[string]any
+		if len(profile.Attributes) > 0 {
+			_ = json.Unmarshal(profile.Attributes, &profileAttrs)
+		}
+		if profileAttrs == nil {
+			profileAttrs = make(map[string]any)
+		}
+
+		var scoreVal float64
+		if model.Kind == "expression" {
+			var def struct {
+				Expr string `json:"expr"`
+			}
+			if err := json.Unmarshal(sv.Definition, &def); err != nil {
+				return err
+			}
+			env, err := scoring.BuildExpressionEnv(ctx, scoringStore, job.TenantID, job.WorkspaceID, profile, def.Expr)
+			if err != nil {
+				return err
+			}
+			scoreVal, err = scoring.Evaluate(def.Expr, env, sv.OutputMin, sv.OutputMax)
+			if err != nil {
+				return err
+			}
+		} else if model.Kind == "llm" {
+			if gateway == nil {
+				return errors.New("scores.compute for llm kind requires an AI gateway")
+			}
+			aiGateway, ok := gateway.(*ai.Gateway)
+			if !ok {
+				return errors.New("ai gateway is not of type *ai.Gateway")
+			}
+			env := map[string]any{
+				"profile": profileAttrs,
+			}
+			scoreVal, err = scoring.EvaluateLLM(ctx, scoringStore, aiGateway, principal, sv, env)
+			if err != nil {
+				return err
+			}
+		} else {
+			return fmt.Errorf("unsupported scoring model kind: %s", model.Kind)
+		}
+
+		scores = append(scores, domain.ProfileScore{
+			TenantID:       job.TenantID,
+			WorkspaceID:    job.WorkspaceID,
+			AppID:          appID,
+			ProfileID:      profileID,
+			ScoringModelID: job.ScoringModelID,
+			ScoreName:      sv.ScoreName,
+			Value:          scoreVal,
+			ModelVersion:   sv.Version,
+		})
+	}
+
+	if len(scores) > 0 {
+		if err := scoringStore.UpsertProfileScores(ctx, scores); err != nil {
+			return err
+		}
+		telemetry.ScoresComputed.Add(ctx, int64(len(scores)))
+	}
+
+	return scoringStore.CompleteScoring(ctx, requestID)
 }

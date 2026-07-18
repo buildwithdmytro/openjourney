@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
+	"github.com/buildwithdmytro/openjourney/internal/operations"
 	"github.com/buildwithdmytro/openjourney/internal/scoring"
 )
 
@@ -354,3 +355,176 @@ func TestScoringRegistry(t *testing.T) {
 		t.Fatalf("expected ErrNotFound for deleted model, got %v", err)
 	}
 }
+
+func TestBatchScoringJob_12_5_1(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer store.Close()
+
+	p, tenantID := setupTestTenant(t, ctx, store)
+	pUser := p
+	pUser.ActorType = "user"
+	pUser.UserID = "00000000-0000-0000-0000-000000000001"
+
+	p1ID := testUUID(tenantID + "-p-1")
+	p2ID := testUUID(tenantID + "-p-2")
+
+	_, err = store.pool.Exec(ctx, `INSERT INTO profiles(id, tenant_id, workspace_id, app_id, external_id, attributes)
+		VALUES($4, $1, $2, $3, 'ext-1', '{"country":"US","age":25}'),
+		      ($5, $1, $2, $3, 'ext-2', '{"country":"CA","age":30}')`, tenantID, p.WorkspaceID, p.AppID, p1ID, p2ID)
+	if err != nil {
+		t.Fatalf("insert profiles: %v", err)
+	}
+
+	// Insert some events to test event aggregate counting in expression env
+	// Events for profile 1: 3 clicks within 30 days
+	_, err = store.pool.Exec(ctx, `INSERT INTO accepted_events (tenant_id, workspace_id, app_id, event_type, schema_version, external_id, idempotency_key, occurred_at, payload)
+		VALUES ($1, $2, $3, 'click', 1, 'ext-1', 'click-1', now(), '{}'),
+		       ($1, $2, $3, 'click', 1, 'ext-1', 'click-2', now() - interval '10 days', '{}'),
+		       ($1, $2, $3, 'click', 1, 'ext-1', 'click-3', now() - interval '40 days', '{}')`, tenantID, p.WorkspaceID, p.AppID)
+	if err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+
+	// Create a segment of all profiles
+	seg, err := store.CreateSegment(ctx, p, domain.Segment{
+		Name: "All Users",
+		DSL: json.RawMessage(`{
+			"type": "profile_attribute",
+			"field": "country",
+			"operator": "equals",
+			"value": "US"
+		}`),
+	})
+	if err != nil {
+		t.Fatalf("create segment: %v", err)
+	}
+
+	// Create expression scoring model
+	model, err := store.CreateScoringModel(ctx, pUser, domain.ScoringModel{
+		Name: "propensity-model",
+		Kind: "expression",
+	})
+	if err != nil {
+		t.Fatalf("create model: %v", err)
+	}
+
+	// Create and Publish scoring model version
+	svDraft := domain.ScoringModelVersion{
+		ScoringModelID: model.ID,
+		ScoreName:      "propensity_score",
+		Definition:     json.RawMessage(`{"expr":"profile.age * 2.0 + events.click.count_30d"}`),
+		OutputMin:      0.0,
+		OutputMax:      100.0,
+		ManifestKey:    "dummy-manifest-key",
+	}
+
+	v1, err := store.CreateScoringModelVersion(ctx, pUser, svDraft)
+	if err != nil {
+		t.Fatalf("create version: %v", err)
+	}
+
+	err = store.SetScoringModelVersionEvalStatus(ctx, pUser, v1.ID, "passed")
+	if err != nil {
+		t.Fatalf("set eval passed: %v", err)
+	}
+
+	blobs := &memoryBlobs{objects: make(map[string][]byte)}
+	_, err = scoring.Publish(ctx, store, blobs, pUser, model.ID, 1, "00000000-0000-0000-0000-000000000002")
+	if err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+
+	// 1. Enqueue scores.compute job
+	req, err := store.CreateScoringRequest(ctx, pUser, model.ID, seg.ID)
+	if err != nil {
+		t.Fatalf("create scoring request: %v", err)
+	}
+	if req.Status != "pending" {
+		t.Fatalf("expected pending scoring request status, got %q", req.Status)
+	}
+
+	// Verify job is enqueued in operation_jobs
+	var jobCount int
+	err = store.pool.QueryRow(ctx, "SELECT count(*) FROM operation_jobs WHERE tenant_id=$1 AND job_type='scores.compute'", tenantID).Scan(&jobCount)
+	if err != nil || jobCount != 1 {
+		t.Fatalf("expected 1 enqueued job, got %d (err: %v)", jobCount, err)
+	}
+
+	// 2. Run operations Drain to execute the scoring job
+	processed, err := operations.DrainWithGateway(ctx, store, blobs, nil, 10, false)
+	if err != nil {
+		t.Fatalf("operations.Drain: %v", err)
+	}
+	if processed != 1 {
+		t.Fatalf("expected 1 job processed, got %d", processed)
+	}
+
+	// Verify request is completed
+	reqCompleted, err := store.GetScoringRequest(ctx, pUser, req.ID)
+	if err != nil {
+		t.Fatalf("GetScoringRequest: %v", err)
+	}
+	if reqCompleted.Status != "complete" {
+		t.Fatalf("expected status complete, got %q (err: %s)", reqCompleted.Status, reqCompleted.Error)
+	}
+
+	// Verify profile_scores has been updated
+	// For profile 1 (US, age 25, clicks in 30d = 2): 25*2 + 2 = 52
+	var val float64
+	var modelVer int
+	err = store.pool.QueryRow(ctx, "SELECT value, model_version FROM profile_scores WHERE tenant_id=$1 AND profile_id=$2 AND scoring_model_id=$3 AND score_name=$4",
+		tenantID, p1ID, model.ID, "propensity_score").Scan(&val, &modelVer)
+	if err != nil {
+		t.Fatalf("query profile score: %v", err)
+	}
+	if val != 52.0 {
+		t.Fatalf("expected score 52.0, got %f", val)
+	}
+	if modelVer != 1 {
+		t.Fatalf("expected model version 1, got %d", modelVer)
+	}
+
+	// 3. Score twice to verify idempotency (upsert on PK)
+	req2, err := store.CreateScoringRequest(ctx, pUser, model.ID, seg.ID)
+	if err != nil {
+		t.Fatalf("create scoring request 2: %v", err)
+	}
+
+	processed2, err := operations.DrainWithGateway(ctx, store, blobs, nil, 10, false)
+	if err != nil {
+		t.Fatalf("operations.Drain 2: %v", err)
+	}
+	if processed2 != 1 {
+		t.Fatalf("expected 1 job processed in second run, got %d", processed2)
+	}
+
+	req2Completed, err := store.GetScoringRequest(ctx, pUser, req2.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req2Completed.Status != "complete" {
+		t.Fatalf("expected status complete for second run, got %q", req2Completed.Status)
+	}
+
+	// Count how many rows exist for this profile and model in profile_scores
+	var scoreRowsCount int
+	err = store.pool.QueryRow(ctx, "SELECT count(*) FROM profile_scores WHERE tenant_id=$1 AND profile_id=$2 AND scoring_model_id=$3 AND score_name=$4",
+		tenantID, p1ID, model.ID, "propensity_score").Scan(&scoreRowsCount)
+	if err != nil {
+		t.Fatalf("count profile score rows: %v", err)
+	}
+	if scoreRowsCount != 1 {
+		t.Fatalf("expected exactly 1 row (idempotency check failed), got %d", scoreRowsCount)
+	}
+
+	_, _ = store.pool.Exec(ctx, "DELETE FROM tenants WHERE id=$1", tenantID)
+}
+

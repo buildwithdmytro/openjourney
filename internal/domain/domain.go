@@ -910,3 +910,38 @@ type ScoringModelVersion struct {
 	CreatedAt      time.Time       `json:"created_at"`
 }
 
+type ProfileScore struct {
+	TenantID       string    `json:"tenant_id"`
+	WorkspaceID    string    `json:"workspace_id"`
+	AppID          string    `json:"app_id"`
+	ProfileID      string    `json:"profile_id"`
+	ScoringModelID string    `json:"scoring_model_id"`
+	ScoreName      string    `json:"score_name"`
+	Value          float64   `json:"value"`
+	ModelVersion   int       `json:"model_version"`
+	ComputedAt     time.Time `json:"computed_at"`
+}
+
+type ScoringRequest struct {
+	ID             string     `json:"id"`
+	TenantID       string     `json:"tenant_id,omitempty"`
+	WorkspaceID    string     `json:"workspace_id,omitempty"`
+	RequestedBy    string     `json:"requested_by,omitempty"`
+	ScoringModelID string     `json:"scoring_model_id"`
+	SegmentID      string     `json:"segment_id"`
+	Status         string     `json:"status"`
+	Error          string     `json:"error,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+	CompletedAt    *time.Time `json:"completed_at,omitempty"`
+}
+
+type ScoringJob struct {
+	ID             string
+	TenantID       string
+	WorkspaceID    string
+	RequestedBy    string
+	ScoringModelID string
+	SegmentID      string
+}
+
+
