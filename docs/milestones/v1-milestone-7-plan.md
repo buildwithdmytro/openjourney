@@ -368,10 +368,10 @@ task ends with a **Done when**. Do them in order; compile + `go vet` between mil
    `eval_status='passed'`. *Done when:* an expression version can't be computed until eval passes. — done: implemented EvaluateExpressionModel and verified that it runs eval_cases and updates eval_status, gating usable versions in GetUsableScoringModelVersion.
 
 ### Milestone 12.4 — LLM scorer (reuse M6 gateway + eval)
-1. **LLM scorer** `internal/scoring/llm.go`: for a `kind='llm'` model, call `Gateway.Generate` with
+1. [x] **LLM scorer** `internal/scoring/llm.go`: for a `kind='llm'` model, call `Gateway.Generate` with
    the pinned scoring `prompt_version` (output_schema = numeric score), reuse the M6 eval gate.
    *Done when:* an eval-passed LLM scoring version produces a schema-valid numeric score via the fake
-   provider; an unevaluated one is refused.
+   provider; an unevaluated one is refused. — done: implemented EvaluateLLMModel and EvaluateLLM with AI gateway & fake provider integration in unit tests.
 
 ### Milestone 12.5 — profile_scores + batch scoring job
 1. **Batch scoring job**: `scores.compute` enqueue (operation id + status resource, copy
