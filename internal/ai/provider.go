@@ -50,8 +50,9 @@ type GenerateRequest struct {
 
 // GenerateResponse represents the result of a model completion.
 type GenerateResponse struct {
-	Content string `json:"content"`
-	Usage   Usage  `json:"usage"`
+	Content    string `json:"content"`
+	Usage      Usage  `json:"usage"`
+	ActivityID string `json:"activity_id,omitempty"`
 }
 
 // EmbedRequest represents inputs for generating text embeddings.

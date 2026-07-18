@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/buildwithdmytro/openjourney/internal/ai"
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 	"github.com/buildwithdmytro/openjourney/internal/ports"
 	"github.com/buildwithdmytro/openjourney/internal/postgres"
@@ -33,6 +34,7 @@ type Server struct {
 	trackingBaseURL   string
 	snsVerifier       snsSignatureVerifier
 	allowedTopicARNs  []string
+	aiGateway         *ai.Gateway
 }
 
 func New(store ports.Store, maxBatchSize int) http.Handler {
@@ -50,11 +52,18 @@ func NewWithSessionTTL(store ports.Store, maxBatchSize int, verifier ports.Token
 		trackingSecretKey: []byte("change-me-in-production"),
 		trackingBaseURL:   "http://localhost:8080",
 		snsVerifier:       realSNSSignatureVerifier{},
+		aiGateway:         ai.NewGateway(store),
 	}
 	for _, opt := range opts {
 		opt(s)
 	}
 	return s.buildMux()
+}
+
+// WithAIGateway injects a configured gateway for governed AI endpoint tests
+// and deployments that select a custom provider implementation.
+func WithAIGateway(gateway *ai.Gateway) func(*Server) {
+	return func(s *Server) { s.aiGateway = gateway }
 }
 
 // SetTracking sets the HMAC secret key and tracking base URL used by link redirect and open pixel handlers.
@@ -153,6 +162,7 @@ func (s *Server) buildMux() http.Handler {
 	mux.Handle("GET /v1/ai/activity", s.authenticate("ai:read", http.HandlerFunc(s.listAIActivity)))
 	mux.Handle("POST /v1/ai/generations", s.authenticate("ai:invoke", http.HandlerFunc(s.createAIGeneration)))
 	mux.Handle("GET /v1/ai/generations/{id}", s.authenticate("ai:invoke", http.HandlerFunc(s.getAIGeneration)))
+	mux.Handle("POST /v1/ai/copilots/content", s.authenticate("ai:invoke", http.HandlerFunc(s.createContentCopilot)))
 	return otelhttp.NewHandler(requestLog(s.cors(mux)), "openjourney-api")
 }
 

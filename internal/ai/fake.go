@@ -8,6 +8,21 @@ import (
 	"net/http"
 )
 
+// DeterministicFakeProvider is the provider used by local governed flows and
+// tests. It never makes network calls and returns a stable content-draft
+// envelope that exercises the gateway's schema gate.
+type DeterministicFakeProvider struct{}
+
+func (DeterministicFakeProvider) Generate(context.Context, GenerateRequest) (*GenerateResponse, error) {
+	return &GenerateResponse{Content: `{"subject":"A thoughtful next step","body":"Discover what is next for you.","title":"A thoughtful next step","push_data":{},"localizations":{},"qa":{"passed":true,"issues":[]}}`, Usage: Usage{InputTokens: 32, OutputTokens: 28, CostCents: 1}}, nil
+}
+func (DeterministicFakeProvider) Embed(context.Context, EmbedRequest) (*EmbedResponse, error) {
+	return &EmbedResponse{Embeddings: [][]float32{{0.1, 0.2, 0.3}}, Usage: Usage{InputTokens: 1}}, nil
+}
+func (DeterministicFakeProvider) Moderate(context.Context, ModerateRequest) (*ModerateResponse, error) {
+	return &ModerateResponse{Usage: Usage{InputTokens: 1}}, nil
+}
+
 // FakeProfile implements ProviderProfile for tests.
 type FakeProfile struct {
 	Requests []*http.Request

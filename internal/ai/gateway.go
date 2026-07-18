@@ -83,6 +83,12 @@ func (g *Gateway) getProvider(ctx context.Context, principal domain.Principal) (
 	return cfg, jsonCfg, prov, nil
 }
 
+// SetProviderFactory overrides profile construction, primarily for the
+// deterministic fake provider in endpoint and integration tests.
+func (g *Gateway) SetProviderFactory(factory func(ProviderProfile) ModelProvider) {
+	g.newProvider = factory
+}
+
 func (g *Gateway) checkBudget(ctx context.Context, principal domain.Principal, cfg domain.AIProviderConfig, period string) error {
 	if cfg.MonthlyBudgetCents > 0 {
 		usage, err := g.store.GetAIBudgetUsage(ctx, principal.TenantID, principal.WorkspaceID, period)
@@ -246,9 +252,12 @@ func (g *Gateway) Generate(ctx context.Context, principal domain.Principal, req 
 
 		resp = repairResp
 	}
-	if err := record(cfg.Provider, req.Model, "allowed", resp.Usage, duration, ""); err != nil {
+	activity, err := g.recordActivityID(ctx, principal, req.Action, cfg.Provider, req.Model, "allowed", resp.Usage, duration,
+		req.PromptVersionID, req.RetrievalRefs, req.ToolCalls, req.Classification, "")
+	if err != nil {
 		return nil, fmt.Errorf("AI activity recording failed: %w", err)
 	}
+	resp.ActivityID = activity
 
 	return resp, nil
 }
@@ -261,9 +270,14 @@ func stringPtrOrNil(value string) *string {
 }
 
 func (g *Gateway) recordActivity(ctx context.Context, principal domain.Principal, action, provider, model, decision string, usage Usage, latencyMs int64, promptVersionID string, retrievalRefs, toolCalls json.RawMessage, classification, outputRef string) error {
+	_, err := g.recordActivityID(ctx, principal, action, provider, model, decision, usage, latencyMs, promptVersionID, retrievalRefs, toolCalls, classification, outputRef)
+	return err
+}
+
+func (g *Gateway) recordActivityID(ctx context.Context, principal domain.Principal, action, provider, model, decision string, usage Usage, latencyMs int64, promptVersionID string, retrievalRefs, toolCalls json.RawMessage, classification, outputRef string) (string, error) {
 	recorder, ok := g.store.(ports.AIActivityRecorder)
 	if !ok {
-		return nil
+		return "", nil
 	}
 	activity := domain.AIActivity{
 		TenantID: principal.TenantID, WorkspaceID: principal.WorkspaceID,
@@ -274,8 +288,8 @@ func (g *Gateway) recordActivity(ctx context.Context, principal domain.Principal
 		CostCents: usage.CostCents, LatencyMs: int(latencyMs), PolicyDecision: decision,
 		OutputRef: stringPtrOrNil(outputRef), ActorUserID: stringPtrOrNil(principal.UserID),
 	}
-	_, err := recorder.RecordAIActivity(ctx, principal, activity)
-	return err
+	stored, err := recorder.RecordAIActivity(ctx, principal, activity)
+	return stored.ID, err
 }
 
 func (g *Gateway) Embed(ctx context.Context, principal domain.Principal, req EmbedRequest) (*EmbedResponse, error) {
