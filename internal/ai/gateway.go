@@ -133,7 +133,13 @@ func (g *Gateway) recordMetricsAndIncrementBudget(ctx context.Context, principal
 
 func (g *Gateway) Generate(ctx context.Context, principal domain.Principal, req GenerateRequest) (*GenerateResponse, error) {
 	record := func(provider, model, decision string, usage Usage, latencyMs int64, outputRef string) error {
-		return g.recordActivity(ctx, principal, req.Action, provider, model, decision, usage, latencyMs,
+		// A timed-out provider call cancels ctx, but the audit write must still be
+		// attempted so realtime decisions cannot disappear from the append-only log.
+		activityCtx := ctx
+		if ctx.Err() != nil {
+			activityCtx = context.WithoutCancel(ctx)
+		}
+		return g.recordActivity(activityCtx, principal, req.Action, provider, model, decision, usage, latencyMs,
 			req.PromptVersionID, req.RetrievalRefs, req.ToolCalls, req.Classification, outputRef)
 	}
 	if req.Action == "" {

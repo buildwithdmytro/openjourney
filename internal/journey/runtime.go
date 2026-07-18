@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/buildwithdmytro/openjourney/internal/ai"
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 	"github.com/buildwithdmytro/openjourney/internal/ports"
 	"github.com/buildwithdmytro/openjourney/internal/telemetry"
@@ -17,6 +18,7 @@ import (
 type Deps struct {
 	Clock         Clock
 	LateThreshold time.Duration
+	AIGateway     *ai.Gateway
 }
 
 func TickNext(ctx context.Context, store ports.Store, deps Deps) (bool, error) {
@@ -155,7 +157,7 @@ func TickNext(ctx context.Context, store ports.Store, deps Deps) (bool, error) {
 		}
 	}
 
-	res, err := node.Execute(ctx, store, &run, graph, now, step.Kind)
+	res, err := node.ExecuteWithGateway(ctx, store, &run, graph, now, step.Kind, deps.AIGateway)
 	if err != nil {
 		slog.Error("failed to execute node", "error", err, "node_id", node.ID, "run_id", step.RunID)
 		failStep(ctx, store, step, fmt.Sprintf("execute node: %v", err))

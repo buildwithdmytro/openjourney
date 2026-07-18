@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/buildwithdmytro/openjourney/internal/ai"
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 	"github.com/buildwithdmytro/openjourney/internal/experiment"
 )
@@ -118,7 +119,7 @@ func TestDecodeConfigSupportedNodes(t *testing.T) {
 }
 
 func TestDecodeConfigRejectsUnsupportedNodes(t *testing.T) {
-	for _, nodeType := range []string{"ai_decision", "feature_flag", "nested_journey", "webhook_action", "integration_action", "experiment", "holdout"} {
+	for _, nodeType := range []string{"feature_flag", "nested_journey", "webhook_action", "integration_action", "experiment", "holdout"} {
 		t.Run(nodeType, func(t *testing.T) {
 			_, err := DecodeConfig(Node{Type: nodeType, Config: []byte(`{}`)})
 			if err == nil {
@@ -153,15 +154,75 @@ func TestParseGraphRejectsUnsupportedNode(t *testing.T) {
 		"entry_node_id": "n1",
 		"nodes": [
 			{"id":"n1","type":"entry","config":{"trigger":"event","event_type":"signup.completed"}},
-			{"id":"n2","type":"ai_decision","config":{}}
+			{"id":"n2","type":"feature_flag","config":{}}
 		],
 		"edges": [{"from":"n1","to":"n2"}]
 	}`))
 	if err == nil {
 		t.Fatalf("expected unsupported node type error")
 	}
-	if !strings.Contains(err.Error(), "unsupported node type: ai_decision") {
+	if !strings.Contains(err.Error(), "unsupported node type: feature_flag") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+type decisionTestProvider struct {
+	generate func(context.Context, ai.GenerateRequest) (*ai.GenerateResponse, error)
+}
+
+func (p decisionTestProvider) Generate(ctx context.Context, req ai.GenerateRequest) (*ai.GenerateResponse, error) {
+	return p.generate(ctx, req)
+}
+func (decisionTestProvider) Embed(context.Context, ai.EmbedRequest) (*ai.EmbedResponse, error) {
+	return &ai.EmbedResponse{}, nil
+}
+func (decisionTestProvider) Moderate(context.Context, ai.ModerateRequest) (*ai.ModerateResponse, error) {
+	return &ai.ModerateResponse{}, nil
+}
+
+func (m *mockStore) GetDefaultAIProviderConfig(context.Context, domain.Principal) (domain.AIProviderConfig, error) {
+	return domain.AIProviderConfig{Provider: "fake", Status: "active", Config: json.RawMessage(`{}`)}, nil
+}
+func (m *mockStore) GetPromptVersion(context.Context, domain.Principal, string) (domain.PromptVersion, error) {
+	return domain.PromptVersion{Status: "active", EvalStatus: "passed", Provider: "fake", Model: "fake-model"}, nil
+}
+func (m *mockStore) GetAIBudgetUsage(context.Context, string, string, string) (domain.AIBudgetUsage, error) {
+	return domain.AIBudgetUsage{}, nil
+}
+func (m *mockStore) IncrementAIBudgetUsage(context.Context, string, string, string, int64, int64, int64) error {
+	return nil
+}
+func (m *mockStore) RecordAIActivity(_ context.Context, _ domain.Principal, activity domain.AIActivity) (domain.AIActivity, error) {
+	activity.ID = "activity-1"
+	return activity, nil
+}
+
+func TestAIDecisionTimeoutUsesFallbackAndValidOutputUsesBranch(t *testing.T) {
+	newGateway := func(provider ai.ModelProvider) *ai.Gateway {
+		store := newMockStore()
+		g := ai.NewGateway(store)
+		g.SetProviderFactory(func(ai.ProviderProfile) ai.ModelProvider { return provider })
+		return g
+	}
+	graph := &Graph{
+		Nodes: []Node{{ID: "decision", Type: NodeTypeAIDecision, Config: json.RawMessage(`{"prompt_version_id":"pv-1","prompt":"choose","timeout_ms":10,"max_cost_cents":10,"branches":["yes","no"],"fallback":"no"}`)}, {ID: "yes", Type: NodeTypeExit, Config: json.RawMessage(`{"reason":"yes"}`)}, {ID: "no", Type: NodeTypeExit, Config: json.RawMessage(`{"reason":"no"}`)}},
+		Edges: []Edge{{From: "decision", To: "yes", Branch: "yes"}, {From: "decision", To: "no", Branch: "no"}},
+	}
+	run := &domain.JourneyRun{ID: "run-1", TenantID: "tenant-1", WorkspaceID: "workspace-1", ProfileID: "profile-1", Status: "active"}
+	slow := decisionTestProvider{generate: func(ctx context.Context, _ ai.GenerateRequest) (*ai.GenerateResponse, error) {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}}
+	res, err := graph.Nodes[0].ExecuteWithGateway(context.Background(), newMockStore(), run, graph, time.Now(), "advance", newGateway(slow))
+	if err != nil || res.NextNodeID != "no" || res.Transition.Outcome != "branch:no" {
+		t.Fatalf("timeout did not use fallback: result=%+v err=%v", res, err)
+	}
+	valid := decisionTestProvider{generate: func(context.Context, ai.GenerateRequest) (*ai.GenerateResponse, error) {
+		return &ai.GenerateResponse{Content: `{"branch":"yes"}`, Usage: ai.Usage{CostCents: 1}}, nil
+	}}
+	res, err = graph.Nodes[0].ExecuteWithGateway(context.Background(), newMockStore(), run, graph, time.Now(), "advance", newGateway(valid))
+	if err != nil || res.NextNodeID != "yes" || res.Transition.Outcome != "branch:yes" {
+		t.Fatalf("valid output did not use model branch: result=%+v err=%v", res, err)
 	}
 }
 

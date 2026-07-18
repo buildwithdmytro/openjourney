@@ -6,21 +6,23 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/buildwithdmytro/openjourney/internal/ai"
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 	"github.com/buildwithdmytro/openjourney/internal/experiment"
 	"github.com/buildwithdmytro/openjourney/internal/ports"
 )
 
 const (
-	NodeTypeEntry     = "entry"
-	NodeTypeDelay     = "delay"
-	NodeTypeCondition = "condition"
-	NodeTypeSplit     = "split"
-	NodeTypeMessage   = "message"
-	NodeTypeWaitEvent = "wait_event"
-	NodeTypeAction    = "action"
-	NodeTypeGoal      = "goal"
-	NodeTypeExit      = "exit"
+	NodeTypeEntry      = "entry"
+	NodeTypeDelay      = "delay"
+	NodeTypeCondition  = "condition"
+	NodeTypeSplit      = "split"
+	NodeTypeMessage    = "message"
+	NodeTypeWaitEvent  = "wait_event"
+	NodeTypeAction     = "action"
+	NodeTypeGoal       = "goal"
+	NodeTypeExit       = "exit"
+	NodeTypeAIDecision = "ai_decision"
 )
 
 type EntryConfig struct {
@@ -82,6 +84,15 @@ type ExitConfig struct {
 	Reason string `json:"reason"`
 }
 
+type AIDecisionConfig struct {
+	PromptVersionID string   `json:"prompt_version_id"`
+	Prompt          string   `json:"prompt,omitempty"`
+	TimeoutMS       int      `json:"timeout_ms"`
+	MaxCostCents    int64    `json:"max_cost_cents"`
+	Branches        []string `json:"branches"`
+	Fallback        string   `json:"fallback"`
+}
+
 func ParseGraph(data []byte) (*Graph, error) {
 	var graph Graph
 	if err := json.Unmarshal(data, &graph); err != nil {
@@ -129,7 +140,10 @@ func DecodeConfig(node Node) (any, error) {
 	case NodeTypeExit:
 		var cfg ExitConfig
 		return cfg, decodeNodeConfig(node, &cfg)
-	case "ai_decision", "feature_flag", "nested_journey", "webhook_action", "integration_action", "experiment", "holdout":
+	case NodeTypeAIDecision:
+		var cfg AIDecisionConfig
+		return cfg, decodeNodeConfig(node, &cfg)
+	case "feature_flag", "nested_journey", "webhook_action", "integration_action", "experiment", "holdout":
 		return nil, fmt.Errorf("unsupported node type: %s", node.Type)
 	default:
 		return nil, fmt.Errorf("unknown node type: %s", node.Type)
@@ -147,19 +161,30 @@ func decodeNodeConfig(node Node, dest any) error {
 }
 
 type ExecutionResult struct {
-	NextNodeID    string
-	NextStep      *domain.JourneyStep
-	Transition    domain.JourneyTransition
-	NextStatus    string
-	CompletedAt   *time.Time
-	GoalReached   bool
-	WaitEventType *string
-	WaitUntil     *time.Time
-	State         json.RawMessage
+	NextNodeID     string
+	NextStep       *domain.JourneyStep
+	Transition     domain.JourneyTransition
+	NextStatus     string
+	CompletedAt    *time.Time
+	GoalReached    bool
+	WaitEventType  *string
+	WaitUntil      *time.Time
+	State          json.RawMessage
 	MessageIntents []domain.JourneyMessageIntent
 }
 
 func (n *Node) Execute(ctx context.Context, store ports.Store, run *domain.JourneyRun, graph *Graph, now time.Time, stepKind string) (ExecutionResult, error) {
+	return n.execute(ctx, store, run, graph, now, stepKind, nil)
+}
+
+// ExecuteWithGateway runs a realtime AI decision with the supplied governed gateway.
+// Execute remains available for non-AI callers and treats an unconfigured gateway as
+// a deterministic fallback, so a provider failure can never enter the step retry path.
+func (n *Node) ExecuteWithGateway(ctx context.Context, store ports.Store, run *domain.JourneyRun, graph *Graph, now time.Time, stepKind string, gateway *ai.Gateway) (ExecutionResult, error) {
+	return n.execute(ctx, store, run, graph, now, stepKind, gateway)
+}
+
+func (n *Node) execute(ctx context.Context, store ports.Store, run *domain.JourneyRun, graph *Graph, now time.Time, stepKind string, gateway *ai.Gateway) (ExecutionResult, error) {
 	var nextNodeID string
 	var nextStep *domain.JourneyStep
 	var trans domain.JourneyTransition
@@ -265,6 +290,54 @@ func (n *Node) Execute(ctx context.Context, store ports.Store, run *domain.Journ
 			Outcome:  "branch:" + branch,
 			Detail:   json.RawMessage("{}"),
 		}
+
+	case NodeTypeAIDecision:
+		var cfg AIDecisionConfig
+		if err := decodeNodeConfig(*n, &cfg); err != nil {
+			return ExecutionResult{}, err
+		}
+		branch := cfg.Fallback
+		activityID := ""
+		if gateway != nil && cfg.PromptVersionID != "" && cfg.TimeoutMS > 0 {
+			branches := append([]string(nil), cfg.Branches...)
+			schema, _ := json.Marshal(map[string]any{
+				"type": "object", "required": []string{"branch"}, "additionalProperties": false,
+				"properties": map[string]any{"branch": map[string]any{"type": "string", "enum": branches}},
+			})
+			decisionCtx, cancel := context.WithTimeout(ctx, time.Duration(cfg.TimeoutMS)*time.Millisecond)
+			response, err := gateway.Generate(decisionCtx, domain.Principal{TenantID: run.TenantID, WorkspaceID: run.WorkspaceID}, ai.GenerateRequest{
+				PromptVersionID: cfg.PromptVersionID,
+				Prompt:          cfg.Prompt,
+				OutputSchema:    schema,
+				Timeout:         time.Duration(cfg.TimeoutMS) * time.Millisecond,
+				MaxCostCents:    cfg.MaxCostCents,
+				Action:          "ai.journey_decision",
+				Purpose:         "journey_decision",
+			})
+			cancel()
+			if err == nil && response != nil {
+				var output struct {
+					Branch string `json:"branch"`
+				}
+				if json.Unmarshal([]byte(response.Content), &output) == nil {
+					for _, declared := range branches {
+						if output.Branch == declared {
+							branch = output.Branch
+							break
+						}
+					}
+				}
+				activityID = response.ActivityID
+			}
+		}
+		nxt, err := findNextNode(graph, n.ID, branch)
+		if err != nil {
+			return ExecutionResult{}, fmt.Errorf("find successor branch %q: %w", branch, err)
+		}
+		nextNodeID = nxt
+		nextStep = &domain.JourneyStep{RunID: run.ID, TenantID: run.TenantID, NodeID: nextNodeID, Kind: "advance", Status: "pending", AvailableAt: now}
+		detail, _ := json.Marshal(map[string]string{"ai_activity_id": activityID})
+		trans = domain.JourneyTransition{RunID: run.ID, TenantID: run.TenantID, FromNode: &n.ID, ToNode: &nextNodeID, NodeType: NodeTypeAIDecision, Outcome: "branch:" + branch, Detail: detail}
 
 	case NodeTypeSplit:
 		var cfg SplitConfig
@@ -649,15 +722,15 @@ func (n *Node) Execute(ctx context.Context, store ports.Store, run *domain.Journ
 	}
 
 	return ExecutionResult{
-		NextNodeID:    nextNodeID,
-		NextStep:      nextStep,
-		Transition:    trans,
-		NextStatus:    nextStatus,
-		CompletedAt:   completedAt,
-		GoalReached:   goalReached,
-		WaitEventType: waitEventType,
-		WaitUntil:     waitUntil,
-		State:         nextState,
+		NextNodeID:     nextNodeID,
+		NextStep:       nextStep,
+		Transition:     trans,
+		NextStatus:     nextStatus,
+		CompletedAt:    completedAt,
+		GoalReached:    goalReached,
+		WaitEventType:  waitEventType,
+		WaitUntil:      waitUntil,
+		State:          nextState,
 		MessageIntents: messageIntents,
 	}, nil
 }

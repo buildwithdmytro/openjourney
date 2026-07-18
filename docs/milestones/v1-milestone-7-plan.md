@@ -387,11 +387,11 @@ task ends with a **Done when**. Do them in order; compile + `go vet` between mil
    a score-triggered scheduled journey enrolls them with no new enrollment code. — done: added score AST parsing, parameterized tenant/workspace-scoped compilation, single-profile evaluation, segment resolution, and scheduled-enrollment integration coverage.
 
 ### Milestone 12.7 — Bounded realtime AI decision node
-1. **`ai_decision` node** (Recipe 6.33): config struct + executor calling `Gateway.Generate` inline
+1. [x] **`ai_decision` node** (Recipe 6.33): config struct + executor calling `Gateway.Generate` inline
    under `context.WithTimeout` + `MaxCostCents`; validated output → declared branch; timeout / error
    / over-budget / schema-reject → deterministic fallback branch; record `ai_activity` + stamp the
    transition. Remove `ai_decision` from the rejected set (`nodes.go:132`). *Done when:* a slow fake
-   provider still advances the run to the fallback branch; a valid output takes the model's branch.
+   provider still advances the run to the fallback branch; a valid output takes the model's branch. — done: added governed node execution and worker gateway wiring; TestAIDecisionTimeoutUsesFallbackAndValidOutputUsesBranch proves timeout fallback and valid branch selection.
 2. **Publish-time validation**: `validateOutgoing` case (branch labels = config branches + the
    fallback must be among them) + `validateDurations` (bounded timeout); require a pinned
    `prompt_version_id`. *Done when:* a graph with an `ai_decision` missing its fallback branch or a

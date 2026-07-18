@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/buildwithdmytro/openjourney/internal/ai"
 	"github.com/buildwithdmytro/openjourney/internal/channels"
 	"github.com/buildwithdmytro/openjourney/internal/config"
 	"github.com/buildwithdmytro/openjourney/internal/journey"
@@ -91,6 +92,7 @@ func main() {
 	reg.Register("ses", sesAdapter)
 
 	clk := journey.RealClock{}
+	aiGateway := ai.NewGateway(store)
 	deliveryCfg := journey.Config{
 		TrackingSecretKey: []byte(cfg.TrackingSecretKey),
 		TrackingBaseURL:   cfg.TrackingBaseURL,
@@ -105,7 +107,7 @@ func main() {
 			slog.Error("scheduled enrollment error", "error", err)
 		}
 
-		ticked, err := journey.TickNext(ctx, store, journey.Deps{Clock: clk})
+		ticked, err := journey.TickNext(ctx, store, journey.Deps{Clock: clk, AIGateway: aiGateway})
 		if err != nil {
 			slog.Error("tick error", "error", err)
 		}
