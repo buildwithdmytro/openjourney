@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
@@ -239,6 +240,68 @@ func (s *Store) GetPrivacyRequest(ctx context.Context, p domain.Principal, id st
 		return domain.PrivacyRequest{}, ErrNotFound
 	}
 	return item, err
+}
+
+func (s *Store) CreateAIGenerationRequest(ctx context.Context, p domain.Principal, taskType string, input json.RawMessage) (domain.AIGenerationRequest, error) {
+	if strings.TrimSpace(taskType) == "" {
+		return domain.AIGenerationRequest{}, errors.New("task_type is required")
+	}
+	if len(input) == 0 {
+		input = json.RawMessage(`{}`)
+	}
+	if !json.Valid(input) {
+		return domain.AIGenerationRequest{}, errors.New("input must be valid JSON")
+	}
+	requestedBy := actorID(p)
+	if requestedBy == "" {
+		return domain.AIGenerationRequest{}, errors.New("a requesting user or API key is required")
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.AIGenerationRequest{}, err
+	}
+	defer tx.Rollback(ctx)
+	var request domain.AIGenerationRequest
+	err = tx.QueryRow(ctx, `INSERT INTO ai_generation_requests
+		(tenant_id,workspace_id,requested_by,task_type)
+		VALUES($1,$2,$3,$4)
+		RETURNING id,tenant_id,workspace_id,requested_by,task_type,status,created_at`,
+		p.TenantID, p.WorkspaceID, requestedBy, taskType).
+		Scan(&request.ID, &request.TenantID, &request.WorkspaceID, &request.RequestedBy,
+			&request.TaskType, &request.Status, &request.CreatedAt)
+	if err != nil {
+		return domain.AIGenerationRequest{}, err
+	}
+	payload, err := json.Marshal(struct {
+		RequestID string          `json:"request_id"`
+		TaskType  string          `json:"task_type"`
+		Input     json.RawMessage `json:"input"`
+	}{request.ID, taskType, input})
+	if err != nil {
+		return domain.AIGenerationRequest{}, err
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO operation_jobs(tenant_id,workspace_id,job_type,payload)
+		VALUES($1,$2,'ai.generate',$3)`, p.TenantID, p.WorkspaceID, payload); err != nil {
+		return domain.AIGenerationRequest{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.AIGenerationRequest{}, err
+	}
+	return request, nil
+}
+
+func (s *Store) GetAIGenerationRequest(ctx context.Context, p domain.Principal, id string) (domain.AIGenerationRequest, error) {
+	var request domain.AIGenerationRequest
+	err := s.pool.QueryRow(ctx, `SELECT id,tenant_id,workspace_id,requested_by,task_type,status,
+		COALESCE(result_ref,''),COALESCE(error,''),created_at,completed_at
+		FROM ai_generation_requests WHERE id=$1 AND tenant_id=$2 AND workspace_id=$3`,
+		id, p.TenantID, p.WorkspaceID).Scan(&request.ID, &request.TenantID, &request.WorkspaceID,
+		&request.RequestedBy, &request.TaskType, &request.Status, &request.ResultRef, &request.Error,
+		&request.CreatedAt, &request.CompletedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.AIGenerationRequest{}, ErrNotFound
+	}
+	return request, err
 }
 
 func (s *Store) QueueStatus(ctx context.Context, p domain.Principal) ([]domain.QueueStatus, error) {

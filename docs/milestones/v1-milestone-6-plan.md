@@ -510,10 +510,10 @@ them in order; compile + `go vet` between milestones. **Substrate (11.0–11.7) 
    *Done when:* the endpoint returns the tenant's activity, never another tenant's. — done: added tenant/workspace-scoped query store method and `ai:read` endpoint; HTTP and DB-gated isolation tests pass.
 
 ### Milestone 11.7 — Async generation (operation id + status)
-1. **Migration** already has `ai.generate` job type (11.1) + `ai_generation_requests` (11.6).
+1. [x] **Migration** already has `ai.generate` job type (11.1) + `ai_generation_requests` (11.6).
    **Enqueue path**: a `POST` that inserts the status row + an `operation_jobs` `ai.generate` in
    one tx and returns `202` + the status resource (copy `CreatePrivacyRequest`/`createPrivacyRequest`).
-   *Done when:* the endpoint returns 202 + an id; `GET /v1/ai/generations/{id}` shows status.
+   *Done when:* the endpoint returns 202 + an id; `GET /v1/ai/generations/{id}` shows status. — done: added transactional generation enqueue and tenant-scoped status endpoints with `ai:invoke` authorization; HTTP tests verify 202/id, pending status, and scope denial.
 2. **Worker case** in `internal/operations`: `case "ai.generate"` runs `gateway.Invoke`, writes
    the draft, sets the status row terminal; reuse the dead-letter/backoff. *Done when:* a queued
    generation completes to `complete` with a `result_ref`; a failing one dead-letters and marks

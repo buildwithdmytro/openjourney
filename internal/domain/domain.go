@@ -378,6 +378,19 @@ type OperationJob struct {
 	Payload     json.RawMessage
 }
 
+type AIGenerationRequest struct {
+	ID          string     `json:"id"`
+	TenantID    string     `json:"tenant_id,omitempty"`
+	WorkspaceID string     `json:"workspace_id,omitempty"`
+	RequestedBy string     `json:"requested_by,omitempty"`
+	TaskType    string     `json:"task_type"`
+	Status      string     `json:"status"`
+	ResultRef   string     `json:"result_ref,omitempty"`
+	Error       string     `json:"error,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
+}
+
 type PrivacyData struct {
 	RequestID  string          `json:"request_id"`
 	TenantID   string          `json:"tenant_id"`

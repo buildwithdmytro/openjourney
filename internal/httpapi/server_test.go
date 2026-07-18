@@ -154,6 +154,12 @@ func (f *fakeStore) CreatePrivacyRequest(_ context.Context, _ domain.Principal, 
 func (f *fakeStore) GetPrivacyRequest(context.Context, domain.Principal, string) (domain.PrivacyRequest, error) {
 	return domain.PrivacyRequest{ID: "privacy-1"}, nil
 }
+func (f *fakeStore) CreateAIGenerationRequest(_ context.Context, _ domain.Principal, taskType string, _ json.RawMessage) (domain.AIGenerationRequest, error) {
+	return domain.AIGenerationRequest{ID: "generation-1", TaskType: taskType, Status: "pending"}, nil
+}
+func (f *fakeStore) GetAIGenerationRequest(context.Context, domain.Principal, string) (domain.AIGenerationRequest, error) {
+	return domain.AIGenerationRequest{ID: "generation-1", TaskType: "content_draft", Status: "pending"}, nil
+}
 func (f *fakeStore) QueueStatus(context.Context, domain.Principal) ([]domain.QueueStatus, error) {
 	return nil, nil
 }
@@ -648,6 +654,41 @@ func TestListAIActivityRequiresScopeAndIsTenantScoped(t *testing.T) {
 	server.ServeHTTP(response, request)
 	if response.Code != http.StatusForbidden {
 		t.Fatalf("without ai:read status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestAIGenerationEnqueueReturnsAcceptedAndStatus(t *testing.T) {
+	server := New(&fakeStore{scopes: []string{"ai:invoke"}}, 75)
+	request := httptest.NewRequest(http.MethodPost, "/v1/ai/generations", strings.NewReader(`{"task_type":"content_draft","input":{"brief":"win back"}}`))
+	request.Header.Set("Authorization", "Bearer test-key")
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("enqueue status=%d body=%s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), `"id":"generation-1"`) {
+		t.Fatalf("enqueue response=%s", response.Body.String())
+	}
+
+	request = httptest.NewRequest(http.MethodGet, "/v1/ai/generations/generation-1", nil)
+	request.Header.Set("Authorization", "Bearer test-key")
+	response = httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"status":"pending"`) {
+		t.Fatalf("status code=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestAIGenerationEndpointsRequireInvokeScope(t *testing.T) {
+	server := New(&fakeStore{scopes: []string{"ai:read"}}, 75)
+	request := httptest.NewRequest(http.MethodPost, "/v1/ai/generations", strings.NewReader(`{"task_type":"content_draft"}`))
+	request.Header.Set("Authorization", "Bearer test-key")
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("without ai:invoke status=%d body=%s", response.Code, response.Body.String())
 	}
 }
 
