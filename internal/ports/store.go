@@ -278,6 +278,7 @@ type Store interface {
 	ListExtensionSubscriptions(ctx context.Context, p domain.Principal, extensionID string) ([]string, error)
 	GetExtensionBudgetUsage(ctx context.Context, tenantID, workspaceID, extensionID, period string) (int64, error)
 	GetExtensionInvocationCountLastMin(ctx context.Context, tenantID, workspaceID, extensionID string) (int, error)
+	ListActiveIngestionTransforms(ctx context.Context, p domain.Principal, eventType string) ([]domain.Extension, error)
 }
 
 // AIActivityRecorder is implemented by stores that persist the immutable AI

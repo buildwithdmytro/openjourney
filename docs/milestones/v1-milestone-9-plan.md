@@ -401,10 +401,11 @@ keep tests reproducible; one consolidated security/integration pass in 14.10. Ea
    socket/file access is possible; `go mod tidy` clean. — done: implemented wazero WASI sandbox in wasm.go with memory limits/close on context done, verified via TestWasm_* unit tests.
 
 ### Milestone 14.5 — Ingestion-transform extension
-1. **Pre-accept transform hook** (§3.3): between `ValidateEventSchema` and `AcceptEvents`
+1. [x] **Pre-accept transform hook** (§3.3): between `ValidateEventSchema` and `AcceptEvents`
    (`server.go:329-336`), run subscribed `ingestion_transform` wasm extensions (enrich/annotate only)
    with `on_error: reject|passthrough`. *Done when:* a transform enriches an event deterministically;
-   a failing transform rejects-or-passes per policy; it cannot forge identity or bypass consent.
+   a failing transform rejects-or-passes per policy; it cannot forge identity or bypass consent. — done:
+   added the schema-to-accept hook with enrichment-only payload validation and deterministic reject/passthrough tests in TestIngestionTransform.
 
 ### Milestone 14.6 — Template-function extension
 1. **Custom Liquid functions**: register `template_function` extensions as Liquid filters/tags

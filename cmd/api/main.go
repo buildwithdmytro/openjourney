@@ -14,6 +14,7 @@ import (
 	"github.com/buildwithdmytro/openjourney/internal/auth"
 	"github.com/buildwithdmytro/openjourney/internal/blob"
 	"github.com/buildwithdmytro/openjourney/internal/config"
+	"github.com/buildwithdmytro/openjourney/internal/extension"
 	"github.com/buildwithdmytro/openjourney/internal/httpapi"
 	"github.com/buildwithdmytro/openjourney/internal/ports"
 	"github.com/buildwithdmytro/openjourney/internal/postgres"
@@ -84,6 +85,7 @@ func main() {
 	server := &http.Server{
 		Addr: cfg.HTTPAddress,
 		Handler: httpapi.NewWithSessionTTL(store, cfg.MaxBatchSize, tokenVerifier, cfg.CORSAllowedOrigin, sessionTTL,
+			httpapi.WithExtensionHost(extension.NewHost(store)),
 			func(s *httpapi.Server) {
 				s.SetTracking([]byte(cfg.TrackingSecretKey), cfg.TrackingBaseURL)
 				s.SetBlobStore(blobs)

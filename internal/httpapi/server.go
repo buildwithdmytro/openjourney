@@ -13,6 +13,7 @@ import (
 
 	"github.com/buildwithdmytro/openjourney/internal/ai"
 	"github.com/buildwithdmytro/openjourney/internal/domain"
+	"github.com/buildwithdmytro/openjourney/internal/extension"
 	"github.com/buildwithdmytro/openjourney/internal/ports"
 	"github.com/buildwithdmytro/openjourney/internal/postgres"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -35,6 +36,7 @@ type Server struct {
 	snsVerifier       snsSignatureVerifier
 	allowedTopicARNs  []string
 	aiGateway         *ai.Gateway
+	extensionInvoker  extensionInvoker
 	publicLimiter     *IPRateLimiter
 	captchaVerifier   CaptchaVerifier
 	trustedProxy      bool
@@ -71,6 +73,11 @@ func WithAIGateway(gateway *ai.Gateway) func(*Server) {
 	return func(s *Server) { s.aiGateway = gateway }
 }
 
+// WithExtensionHost enables the governed extension seams for event ingestion.
+func WithExtensionHost(host *extension.Host) func(*Server) {
+	return func(s *Server) { s.extensionInvoker = host }
+}
+
 func WithPublicGuard(limiter *IPRateLimiter, captcha CaptchaVerifier, trustedProxy bool) func(*Server) {
 	return func(s *Server) {
 		s.publicLimiter = limiter
@@ -94,6 +101,9 @@ func (s *Server) SetAllowedTopicARNs(arns []string) {
 
 func (s *Server) SetBlobStore(blobs ports.BlobStore) {
 	s.blobStore = blobs
+	if host, ok := s.extensionInvoker.(*extension.Host); ok {
+		host.SetBlobStore(blobs)
+	}
 }
 
 func (s *Server) buildMux() http.Handler {
@@ -333,6 +343,12 @@ func (s *Server) acceptEvents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	principal := r.Context().Value(principalKey{}).(domain.Principal)
+	if s.extensionInvoker != nil {
+		if err := s.applyIngestionTransforms(r.Context(), principal, request.Events); err != nil {
+			writeError(w, http.StatusUnprocessableEntity, "transform_failed", err.Error())
+			return
+		}
+	}
 	ids, err := s.store.AcceptEvents(r.Context(), principal, request.Events)
 	if errors.Is(err, postgres.ErrQuotaExceeded) {
 		writeError(w, http.StatusTooManyRequests, "quota_exceeded", err.Error())

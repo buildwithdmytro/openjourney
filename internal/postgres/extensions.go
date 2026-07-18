@@ -718,5 +718,27 @@ func (s *Store) ListActiveChannelProvidersSystem(ctx context.Context) ([]domain.
 	return out, rows.Err()
 }
 
-
-
+func (s *Store) ListActiveIngestionTransforms(ctx context.Context, p domain.Principal, eventType string) ([]domain.Extension, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT e.id, e.tenant_id, e.workspace_id, e.name, e.publisher, e.current_version_id, e.latest_version, e.status, e.created_at, e.updated_at
+		FROM extensions e
+		JOIN extension_versions ev ON e.current_version_id = ev.id
+		JOIN extension_subscriptions es ON e.id = es.extension_id
+		WHERE e.tenant_id = $1 AND e.workspace_id = $2 AND e.status = 'enabled' AND ev.kind = 'ingestion_transform' AND ev.status = 'active' AND es.event_type = $3
+		ORDER BY e.name
+	`, p.TenantID, p.WorkspaceID, eventType)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.Extension
+	for rows.Next() {
+		var item domain.Extension
+		err := rows.Scan(&item.ID, &item.TenantID, &item.WorkspaceID, &item.Name, &item.Publisher, &item.CurrentVersionID, &item.LatestVersion, &item.Status, &item.CreatedAt, &item.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	return out, rows.Err()
+}
