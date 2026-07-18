@@ -255,6 +255,16 @@ type FormVersion struct {
 	PublishedAt time.Time       `json:"published_at"`
 }
 
+type ShortLink struct {
+	ID             string          `json:"id"`
+	TenantID       string          `json:"tenant_id"`
+	WorkspaceID    string          `json:"workspace_id"`
+	Slug           string          `json:"slug"`
+	DestinationURL string          `json:"destination_url"`
+	UTM            json.RawMessage `json:"utm,omitempty"`
+	CreatedAt      time.Time       `json:"created_at"`
+}
+
 type LandingPage struct {
 	ID               string          `json:"id"`
 	TenantID         string          `json:"tenant_id"`

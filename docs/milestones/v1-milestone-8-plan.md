@@ -452,8 +452,9 @@ Each task ends with a **Done when**. Do them in order; compile + `go vet` betwee
 ### Milestone 13.4 — Link / UTM tracking
 1. [x] **Migration** `037_tracking_companies_stages.sql` (this task: `short_links`) + scopes `links:*`.
    *Done when:* exists. — done: added tenant/workspace-scoped `short_links` with destination and UTM JSONB; links scopes were already wired in RBAC and migration 035; full Go build/vet/test passes.
-2. **Short-link redirect** `GET /s/{slug}` (Recipe 6.37): append UTM, emit `link.clicked`, redirect;
+2. [x] **Short-link redirect** `GET /s/{slug}` (Recipe 6.37): append UTM, emit `link.clicked`, redirect;
    capture UTM onto form submissions/profile. *Done when:* a redirect records a UTM click and lands.
+   — done: `short_links_test.go` proves UTM-preserving redirect and `link.clicked` capture; full Go build/vet/test passes.
 
 ### Milestone 13.5 — Rules-based lead scoring (reuse M7)
 1. **Lead-scoring authoring**: a friendly surface that creates a `kind='expression'` scoring model

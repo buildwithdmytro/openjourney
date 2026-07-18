@@ -89,6 +89,9 @@ type Store interface {
 	UpdateTemplate(context.Context, domain.Principal, domain.Template) (domain.Template, error)
 	ListTemplates(context.Context, domain.Principal) ([]domain.Template, error)
 	UpsertTrackedLink(ctx context.Context, tenantID string, templateID string, originalURL string) (string, error)
+	CreateShortLink(context.Context, domain.Principal, domain.ShortLink) (domain.ShortLink, error)
+	ListShortLinks(context.Context, domain.Principal) ([]domain.ShortLink, error)
+	GetShortLinkBySlug(context.Context, string) (domain.ShortLink, error)
 
 	IsSuppressed(ctx context.Context, p domain.Principal, channel, endpoint string) (bool, error)
 	SuppressEndpoint(ctx context.Context, p domain.Principal, channel, endpoint, reason string) error

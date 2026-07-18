@@ -117,6 +117,8 @@ func (s *Server) buildMux() http.Handler {
 	mux.Handle("POST /v1/pages/{id}/publish", s.authenticate("pages:publish", http.HandlerFunc(s.publishLandingPage)))
 	mux.Handle("POST /v1/assets", s.authenticate("assets:write", http.HandlerFunc(s.uploadAsset)))
 	mux.Handle("GET /v1/assets", s.authenticate("assets:read", http.HandlerFunc(s.listAssets)))
+	mux.Handle("POST /v1/links", s.authenticate("links:write", http.HandlerFunc(s.createShortLink)))
+	mux.Handle("GET /v1/links", s.authenticate("links:read", http.HandlerFunc(s.listShortLinks)))
 	mux.Handle("GET /v1/schemas", s.authenticate("schemas:read", http.HandlerFunc(s.listSchemas)))
 	mux.Handle("POST /v1/schemas", s.authenticate("schemas:write", http.HandlerFunc(s.createSchema)))
 	mux.Handle("POST /v1/segments", s.authenticate("segments:write", http.HandlerFunc(s.createSegment)))
@@ -162,6 +164,7 @@ func (s *Server) buildMux() http.Handler {
 	mux.Handle("GET /v1/journeys/{id}/runs/{runID}/transitions", s.authenticate("journeys:read", http.HandlerFunc(s.listJourneyRunTransitions)))
 
 	mux.HandleFunc("GET /r/{token}", s.redirectLink)
+	mux.HandleFunc("GET /s/{slug}", s.redirectShortLink)
 	mux.HandleFunc("GET /o/{token}", s.openPixel)
 	mux.HandleFunc("GET /a/{blobKey}", s.serveAsset)
 	mux.HandleFunc("GET /p/{slug}", s.serveLandingPage)
