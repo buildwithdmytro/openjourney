@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 	"github.com/buildwithdmytro/openjourney/internal/ports"
@@ -560,5 +561,128 @@ func TestGatewayBudgetIncrementFailureDoesNotBlockAllowedActivity(t *testing.T) 
 	if resp.ActivityID != activities[0].ID {
 		t.Errorf("expected activity ID to be populated in response")
 	}
+}
+
+func TestGatewayPerCallBounds(t *testing.T) {
+	principal := domain.Principal{TenantID: "tenant-1", WorkspaceID: "workspace-1", UserID: "user-1", ActorType: "user"}
+	
+	t.Run("SlowFakeProviderTripsErrCallTimeout", func(t *testing.T) {
+		var activities []domain.AIActivity
+		store := &mockStore{
+			getConfigFunc: func(context.Context, domain.Principal) (domain.AIProviderConfig, error) {
+				return domain.AIProviderConfig{Provider: "fake", Status: "active", Config: json.RawMessage(`{}`)}, nil
+			},
+			getUsageFunc: func(context.Context, string, string, string) (domain.AIBudgetUsage, error) {
+				return domain.AIBudgetUsage{}, nil
+			},
+			incrementUsageFunc: func(context.Context, string, string, string, int64, int64, int64) error { return nil },
+			recordActivityFunc: func(_ context.Context, _ domain.Principal, activity domain.AIActivity) (domain.AIActivity, error) {
+				activities = append(activities, activity)
+				return activity, nil
+			},
+		}
+		g := NewGateway(store)
+		g.newProvider = func(ProviderProfile) ModelProvider {
+			return &mockModelProvider{generateFunc: func(ctx context.Context, req GenerateRequest) (*GenerateResponse, error) {
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-time.After(100 * time.Millisecond):
+					return &GenerateResponse{Content: "ok", Usage: Usage{InputTokens: 2, OutputTokens: 3, CostCents: 4}}, nil
+				}
+			}}
+		}
+		
+		_, err := g.Generate(context.Background(), principal, GenerateRequest{
+			Action:  "ai.decision",
+			Timeout: 10 * time.Millisecond,
+		})
+		if !errors.Is(err, ErrCallTimeout) {
+			t.Fatalf("expected ErrCallTimeout, got: %v", err)
+		}
+		
+		if len(activities) != 1 {
+			t.Fatalf("expected 1 logged activity, got: %d", len(activities))
+		}
+		if activities[0].PolicyDecision != "execution_error" {
+			t.Fatalf("expected execution_error decision, got: %s", activities[0].PolicyDecision)
+		}
+	})
+
+	t.Run("OverCapCallTripsErrCallBudgetExceeded_PreCall", func(t *testing.T) {
+		var activities []domain.AIActivity
+		store := &mockStore{
+			getConfigFunc: func(context.Context, domain.Principal) (domain.AIProviderConfig, error) {
+				return domain.AIProviderConfig{Provider: "fake", Status: "active", Config: json.RawMessage(`{}`)}, nil
+			},
+			getUsageFunc: func(context.Context, string, string, string) (domain.AIBudgetUsage, error) {
+				return domain.AIBudgetUsage{}, nil
+			},
+			incrementUsageFunc: func(context.Context, string, string, string, int64, int64, int64) error { return nil },
+			recordActivityFunc: func(_ context.Context, _ domain.Principal, activity domain.AIActivity) (domain.AIActivity, error) {
+				activities = append(activities, activity)
+				return activity, nil
+			},
+		}
+		g := NewGateway(store)
+		g.newProvider = func(ProviderProfile) ModelProvider {
+			return &mockModelProvider{generateFunc: func(ctx context.Context, req GenerateRequest) (*GenerateResponse, error) {
+				return &GenerateResponse{Content: "ok", Usage: Usage{InputTokens: 2, OutputTokens: 3, CostCents: 4}}, nil
+			}}
+		}
+		
+		_, err := g.Generate(context.Background(), principal, GenerateRequest{
+			Prompt:       "some expensive prompt",
+			MaxCostCents: 10,
+		})
+		if !errors.Is(err, ErrCallBudgetExceeded) {
+			t.Fatalf("expected ErrCallBudgetExceeded, got: %v", err)
+		}
+		
+		if len(activities) != 1 {
+			t.Fatalf("expected 1 logged activity, got: %d", len(activities))
+		}
+		if activities[0].PolicyDecision != "denied_budget" {
+			t.Fatalf("expected denied_budget decision, got: %s", activities[0].PolicyDecision)
+		}
+	})
+
+	t.Run("OverCapCallTripsErrCallBudgetExceeded_PostCall", func(t *testing.T) {
+		var activities []domain.AIActivity
+		store := &mockStore{
+			getConfigFunc: func(context.Context, domain.Principal) (domain.AIProviderConfig, error) {
+				return domain.AIProviderConfig{Provider: "fake", Status: "active", Config: json.RawMessage(`{}`)}, nil
+			},
+			getUsageFunc: func(context.Context, string, string, string) (domain.AIBudgetUsage, error) {
+				return domain.AIBudgetUsage{}, nil
+			},
+			incrementUsageFunc: func(context.Context, string, string, string, int64, int64, int64) error { return nil },
+			recordActivityFunc: func(_ context.Context, _ domain.Principal, activity domain.AIActivity) (domain.AIActivity, error) {
+				activities = append(activities, activity)
+				return activity, nil
+			},
+		}
+		g := NewGateway(store)
+		g.newProvider = func(ProviderProfile) ModelProvider {
+			return &mockModelProvider{generateFunc: func(ctx context.Context, req GenerateRequest) (*GenerateResponse, error) {
+				return &GenerateResponse{Content: "ok", Usage: Usage{InputTokens: 200, OutputTokens: 300, CostCents: 100}}, nil
+			}}
+		}
+		
+		_, err := g.Generate(context.Background(), principal, GenerateRequest{
+			Prompt:       "normal prompt",
+			MaxCostCents: 10,
+		})
+		if !errors.Is(err, ErrCallBudgetExceeded) {
+			t.Fatalf("expected ErrCallBudgetExceeded, got: %v", err)
+		}
+		
+		if len(activities) != 1 {
+			t.Fatalf("expected 1 logged activity, got: %d", len(activities))
+		}
+		if activities[0].PolicyDecision != "denied_budget" {
+			t.Fatalf("expected denied_budget decision, got: %s", activities[0].PolicyDecision)
+		}
+	})
 }
 

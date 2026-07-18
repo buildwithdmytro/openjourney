@@ -19,6 +19,8 @@ import (
 var (
 	ErrBudgetExceeded         = errors.New("monthly AI budget exceeded")
 	ErrPromptVersionNotUsable = errors.New("prompt version is not active and evaluated")
+	ErrCallTimeout            = errors.New("AI call timeout")
+	ErrCallBudgetExceeded     = errors.New("AI call budget exceeded")
 )
 
 type Gateway struct {
@@ -197,15 +199,47 @@ func (g *Gateway) Generate(ctx context.Context, principal domain.Principal, req 
 	}
 	ctx = WithEndpointAllowlist(ctx, cfg.EndpointAllowlist)
 
+	if req.MaxCostCents > 0 {
+		estimatedCost := g.EstimateCost(cfg.Provider, req.Model, req)
+		if estimatedCost > req.MaxCostCents {
+			if activityErr := record(cfg.Provider, req.Model, "denied_budget", Usage{}, 0, ""); activityErr != nil {
+				return nil, fmt.Errorf("%w; activity recording failed: %v", ErrCallBudgetExceeded, activityErr)
+			}
+			return nil, ErrCallBudgetExceeded
+		}
+	}
+
+	var cancel context.CancelFunc
+	if req.Timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, req.Timeout)
+		defer cancel()
+	}
+
 	start := time.Now()
 	resp, err := prov.Generate(ctx, req)
 	if err != nil {
-		if record(cfg.Provider, req.Model, "denied_policy", Usage{}, time.Since(start).Milliseconds(), "") != nil {
+		duration := time.Since(start).Milliseconds()
+		decision := "execution_error"
+		if ctx.Err() == context.DeadlineExceeded || errors.Is(err, context.DeadlineExceeded) || strings.Contains(err.Error(), "deadline exceeded") || strings.Contains(err.Error(), "timeout") {
+			if record(cfg.Provider, req.Model, decision, Usage{}, duration, "") != nil {
+				return nil, fmt.Errorf("%w; activity recording failed", ErrCallTimeout)
+			}
+			return nil, ErrCallTimeout
+		}
+		if record(cfg.Provider, req.Model, decision, Usage{}, duration, "") != nil {
 			return nil, fmt.Errorf("%w; activity recording failed", err)
 		}
 		return nil, err
 	}
 	duration := time.Since(start).Milliseconds()
+
+	if req.MaxCostCents > 0 && resp.Usage.CostCents > req.MaxCostCents {
+		_ = g.recordMetricsAndIncrementBudget(ctx, principal, cfg, period, resp.Usage, duration, req.Model)
+		if record(cfg.Provider, req.Model, "denied_budget", resp.Usage, duration, "") != nil {
+			return nil, fmt.Errorf("%w; activity recording failed", ErrCallBudgetExceeded)
+		}
+		return nil, ErrCallBudgetExceeded
+	}
 
 	// Validate output against output_schema and domain validator
 	var valErr error
@@ -252,13 +286,32 @@ func (g *Gateway) Generate(ctx context.Context, principal domain.Principal, req 
 
 		startRepair := time.Now()
 		repairResp, repairErr := prov.Generate(ctx, repairReq)
+		durationRepair := time.Since(startRepair).Milliseconds()
 		if repairErr != nil {
+			if ctx.Err() == context.DeadlineExceeded || errors.Is(repairErr, context.DeadlineExceeded) || strings.Contains(repairErr.Error(), "deadline exceeded") || strings.Contains(repairErr.Error(), "timeout") {
+				if activityErr := record(cfg.Provider, req.Model, "execution_error", resp.Usage, duration+durationRepair, ""); activityErr != nil {
+					return nil, fmt.Errorf("model output failed validation: %v; activity recording failed: %w", valErr, activityErr)
+				}
+				return nil, ErrCallTimeout
+			}
 			if activityErr := record(cfg.Provider, req.Model, "schema_reject", resp.Usage, duration, ""); activityErr != nil {
 				return nil, fmt.Errorf("model output failed validation: %v; activity recording failed: %w", valErr, activityErr)
 			}
 			return nil, fmt.Errorf("model output failed validation: %v; repair retry failed: %w", valErr, repairErr)
 		}
-		durationRepair := time.Since(startRepair).Milliseconds()
+
+		totalUsage := resp.Usage
+		totalUsage.InputTokens += repairResp.Usage.InputTokens
+		totalUsage.OutputTokens += repairResp.Usage.OutputTokens
+		totalUsage.CostCents += repairResp.Usage.CostCents
+
+		if req.MaxCostCents > 0 && totalUsage.CostCents > req.MaxCostCents {
+			_ = g.recordMetricsAndIncrementBudget(ctx, principal, cfg, period, repairResp.Usage, durationRepair, req.Model)
+			if activityErr := record(cfg.Provider, req.Model, "denied_budget", totalUsage, duration+durationRepair, ""); activityErr != nil {
+				return nil, fmt.Errorf("%w; activity recording failed: %v", ErrCallBudgetExceeded, activityErr)
+			}
+			return nil, ErrCallBudgetExceeded
+		}
 
 		// Best-effort budget increment for the repair call
 		_ = g.recordMetricsAndIncrementBudget(ctx, principal, cfg, period, repairResp.Usage, durationRepair, req.Model)
@@ -276,6 +329,7 @@ func (g *Gateway) Generate(ctx context.Context, principal domain.Principal, req 
 		}
 
 		resp = repairResp
+		resp.Usage = totalUsage
 		duration = duration + durationRepair
 	}
 
@@ -436,4 +490,28 @@ func resolveSecret(ref string) (string, error) {
 		return strings.TrimSpace(string(content)), nil
 	}
 	return val, nil
+}
+
+func (g *Gateway) EstimateCost(provider string, model string, req GenerateRequest) int64 {
+	inputTokens := (len(req.Prompt) + len(req.SystemPrompt)) / 4
+	if inputTokens < 1 {
+		inputTokens = 1
+	}
+	outputTokens := req.MaxTokens
+	if outputTokens <= 0 {
+		outputTokens = 100
+	}
+	switch provider {
+	case "openai":
+		return estimateOpenAICost(model, inputTokens, outputTokens)
+	case "anthropic":
+		return estimateAnthropicCost(model, inputTokens, outputTokens)
+	case "fake":
+		if strings.Contains(req.Prompt, "expensive") {
+			return 100
+		}
+		return 5
+	default:
+		return 0
+	}
 }

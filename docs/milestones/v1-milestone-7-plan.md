@@ -344,12 +344,12 @@ task ends with a **Done when**. Do them in order; compile + `go vet` between mil
    is now DB-enforced and the egress-audit ordering is fixed. *Done when:* the audit matches the code. — done: updated v1-milestone-6-audit.md to document DB-enforced append-only audit and ordering fix.
 
 ### Milestone 12.1 — Gateway per-call timeout + budget
-1. **Per-call bounds.** Add `Timeout time.Duration` + `MaxCostCents int64` to
+1. [x] **Per-call bounds.** Add `Timeout time.Duration` + `MaxCostCents int64` to
    `ai.GenerateRequest`; the gateway wraps the provider call in `context.WithTimeout` and denies
    pre-call if the estimated/actual cost would exceed `MaxCostCents`, returning typed errors
    (`ErrCallTimeout`, `ErrCallBudgetExceeded`) plus the recorded `ai_activity`. *Done when:* a slow
    fake provider trips `ErrCallTimeout`; an over-cap call trips `ErrCallBudgetExceeded`; both log
-   activity.
+   activity. — done: implemented pre-call and post-call budget/timeout checks in Gateway.Generate and verified with TestGatewayPerCallBounds.
 
 ### Milestone 12.2 — Scoring-model registry (versioned artifact)
 1. **Migration** `031_scoring.sql` (scoring tables + `scores.compute` job type + scopes

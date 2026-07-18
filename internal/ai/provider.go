@@ -46,6 +46,8 @@ type GenerateRequest struct {
 	RetrievalRefs   json.RawMessage              `json:"-"`
 	ToolCalls       json.RawMessage              `json:"-"`
 	Classification  string                       `json:"-"`
+	Timeout         time.Duration                `json:"-"`
+	MaxCostCents    int64                        `json:"-"`
 }
 
 // GenerateResponse represents the result of a model completion.
