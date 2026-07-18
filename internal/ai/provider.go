@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/buildwithdmytro/openjourney/internal/channels"
+	"github.com/buildwithdmytro/openjourney/internal/domain"
 )
 
 var (
@@ -28,15 +29,18 @@ type Usage struct {
 
 // GenerateRequest represents the inputs to a structured model completion.
 type GenerateRequest struct {
-	Model           string          `json:"model"`
-	SystemPrompt    string          `json:"system_prompt,omitempty"`
-	Prompt          string          `json:"prompt"`
-	OutputSchema    json.RawMessage `json:"output_schema,omitempty"`
-	Temperature     float64         `json:"temperature,omitempty"`
-	MaxTokens       int             `json:"max_tokens,omitempty"`
-	APIKey          string          `json:"-"`
-	BaseURL         string          `json:"-"`
-	DomainValidator func([]byte) error `json:"-"`
+	Model           string                       `json:"model"`
+	SystemPrompt    string                       `json:"system_prompt,omitempty"`
+	Prompt          string                       `json:"prompt"`
+	OutputSchema    json.RawMessage              `json:"output_schema,omitempty"`
+	Temperature     float64                      `json:"temperature,omitempty"`
+	MaxTokens       int                          `json:"max_tokens,omitempty"`
+	APIKey          string                       `json:"-"`
+	BaseURL         string                       `json:"-"`
+	DomainValidator func([]byte) error           `json:"-"`
+	RetrievedData   any                          `json:"-"`
+	Classifications []domain.FieldClassification `json:"-"`
+	Purpose         string                       `json:"-"`
 }
 
 // GenerateResponse represents the result of a model completion.

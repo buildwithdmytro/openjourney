@@ -123,6 +123,17 @@ func (g *Gateway) recordMetricsAndIncrementBudget(ctx context.Context, principal
 }
 
 func (g *Gateway) Generate(ctx context.Context, principal domain.Principal, req GenerateRequest) (*GenerateResponse, error) {
+	if req.RetrievedData != nil {
+		redacted, err := Redact(req.RetrievedData, req.Classifications, req.Purpose)
+		if err != nil {
+			return nil, err
+		}
+		prompt, err := GovernedPrompt(req.Prompt, redacted)
+		if err != nil {
+			return nil, err
+		}
+		req.Prompt = prompt
+	}
 	cfg, jsonCfg, prov, err := g.getProvider(ctx, principal)
 	if err != nil {
 		return nil, err

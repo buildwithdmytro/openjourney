@@ -495,9 +495,9 @@ them in order; compile + `go vet` between milestones. **Substrate (11.0–11.7) 
    principal may read; attach retrieval refs (ids). *Done when:* an unauthorized field is never
    returned. — done: added fail-closed, scope-checked profile retrieval with classification
    filtering, stable retrieval refs, and TestRetrieveProfileOmitsUnauthorizedFields.
-3. **Redaction pass** (Recipe 6.29): `restricted`→deny, `confidential`→tokenize, email/phone→redact
+3. [x] **Redaction pass** (Recipe 6.29): `restricted`→deny, `confidential`→tokenize, email/phone→redact
    before egress; documented default posture when unclassified. *Done when:* a restricted field
-   fails closed and a redacted email never reaches the provider request.
+   fails closed and a redacted email never reaches the provider request. — done: added fail-closed recursive redaction/tokenization and gateway egress wiring; TestRedactRestrictedFieldFailsClosed and TestGatewayRedactsBeforeFakeProviderEgress pass.
 
 ### Milestone 11.6 — Immutable AI-activity audit + budget rollup
 1. **Migration** `027_ai_activity.sql` per §2.3. *Done when:* tables exist.
