@@ -569,11 +569,11 @@ them in order; compile + `go vet` between milestones. **Substrate (11.0–11.7) 
    editor. *Done when:* activity + budget render; a config edit round-trips (secret never shown). — done: added authenticated provider/budget/activity/classification APIs and theme-aware governance view; Governance.test.tsx proves rendering, safe provider PUT round-trip, and secret absence.
 
 ### Milestone 11.14 — Integration, governance & audit closeout
-1. **Governance E2E** (fake provider, DB-gated): prove (a) an unauthorized field is never
+1. [x] **Governance E2E** (fake provider, DB-gated): prove (a) an unauthorized field is never
    retrieved, (b) a redacted/`restricted` field never reaches the provider request, (c) an
    `ai_agent` principal cannot publish (403), (d) a schema-reject repairs-or-fails and never
    mutates, (e) an over-budget invoke is denied, (f) every invoke wrote exactly one `ai_activity`
-   row. *Done when:* all six are asserted.
+   row. *Done when:* all six are asserted. — done: added DB-gated TestGovernanceE2E_11_14_1 covering retrieval, fake-provider redaction, human approval, schema repair, budget denial, and exact-once activity logging.
 2. **Copilot correctness**: each copilot's output passes its domain validator and creates only a
    draft. *Done when:* four copilot tests pass.
 3. **Eval gate**: an unevaluated/failed prompt_version cannot be invoked or published. *Done when:*
