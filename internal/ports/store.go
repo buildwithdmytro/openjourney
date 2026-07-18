@@ -258,6 +258,15 @@ type Store interface {
 	GetExtensionVersionByNumber(ctx context.Context, p domain.Principal, extensionID string, version int) (domain.ExtensionVersion, error)
 	ListExtensionVersions(ctx context.Context, p domain.Principal, extensionID string) ([]domain.ExtensionVersion, error)
 	PublishExtensionVersion(ctx context.Context, p domain.Principal, extensionID string, version int, approverUserID string, manifestKey string) (domain.ExtensionVersion, error)
+
+	// Extension Configs & Grants CRUD
+	UpsertExtensionConfig(ctx context.Context, p domain.Principal, cfg domain.ExtensionConfig) (domain.ExtensionConfig, error)
+	GetExtensionConfig(ctx context.Context, p domain.Principal, extensionID string) (domain.ExtensionConfig, error)
+	DeleteExtensionConfig(ctx context.Context, p domain.Principal, extensionID string) error
+
+	CreateExtensionGrant(ctx context.Context, p domain.Principal, grant domain.ExtensionGrant) (domain.ExtensionGrant, error)
+	ListExtensionGrants(ctx context.Context, p domain.Principal, extensionID string) ([]domain.ExtensionGrant, error)
+	DeleteExtensionGrant(ctx context.Context, p domain.Principal, extensionID string, scope string) error
 }
 
 // AIActivityRecorder is implemented by stores that persist the immutable AI

@@ -369,9 +369,9 @@ keep tests reproducible; one consolidated security/integration pass in 14.10. Ea
    manifest CRUD; install verifies the publisher JWS (`go-jose`) against a configured trusted key and
    freezes an immutable `extension_versions` row (blob); install/enable behind the human-actor gate.
    *Done when:* unsigned/wrong-key → rejected; valid → immutable version; api_key → 403. — done: created extensions.go and registry.go, verified signed JWS and human gate via TestExtensionsIntegration.
-3. **Config + grants** (Recipe 6.44): `extension_configs` (config + `*_ref` + allowlist + limits) and
+3. [x] **Config + grants** (Recipe 6.44): `extension_configs` (config + `*_ref` + allowlist + limits) and
    `extension_grants` CRUD; a resolver that yields the granted∩requested scope set. *Done when:* a
-   grant of a subset yields exactly that intersection; secrets resolve via `_ref`/`_FILE`.
+   grant of a subset yields exactly that intersection; secrets resolve via `_ref`/`_FILE`. — done: implemented config & grants CRUD + ResolveScopes & ResolveConfigMap helpers, verified via TestExtensionConfigAndGrants_14_0_3.
 
 ### Milestone 14.1 — Bounded remote-invocation host
 1. **Host + remote transport** `internal/extension/{host,remote}.go` (Recipe 6.41): derive the

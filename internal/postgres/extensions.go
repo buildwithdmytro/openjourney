@@ -349,3 +349,181 @@ func (s *Store) PublishExtensionVersion(ctx context.Context, p domain.Principal,
 	_ = s.audit(ctx, p, "extension_version.publish", "extension_version", out.ID, map[string]any{"version": out.Version})
 	return out, nil
 }
+
+func (s *Store) UpsertExtensionConfig(ctx context.Context, p domain.Principal, cfg domain.ExtensionConfig) (domain.ExtensionConfig, error) {
+	if cfg.ExtensionID == "" {
+		return domain.ExtensionConfig{}, errors.New("extension ID is required")
+	}
+
+	// Ensure the parent extension exists and belongs to the workspace/tenant
+	var extExists bool
+	err := s.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM extensions WHERE tenant_id = $1 AND workspace_id = $2 AND id = $3)",
+		p.TenantID, p.WorkspaceID, cfg.ExtensionID).Scan(&extExists)
+	if err != nil {
+		return domain.ExtensionConfig{}, err
+	}
+	if !extExists {
+		return domain.ExtensionConfig{}, fmt.Errorf("extension not found: %s", cfg.ExtensionID)
+	}
+
+	var out domain.ExtensionConfig
+	var outConfig []byte
+	var outAllowlist []string
+
+	err = s.pool.QueryRow(ctx, `
+		INSERT INTO extension_configs (
+			extension_id, tenant_id, workspace_id, config, endpoint_allowlist, 
+			timeout_ms, max_memory_mb, monthly_budget_cents, rate_per_min, status, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE(NULLIF($10, ''), 'active'), now())
+		ON CONFLICT (extension_id) DO UPDATE SET
+			config = EXCLUDED.config,
+			endpoint_allowlist = EXCLUDED.endpoint_allowlist,
+			timeout_ms = EXCLUDED.timeout_ms,
+			max_memory_mb = EXCLUDED.max_memory_mb,
+			monthly_budget_cents = EXCLUDED.monthly_budget_cents,
+			rate_per_min = EXCLUDED.rate_per_min,
+			status = COALESCE(NULLIF(EXCLUDED.status, ''), extension_configs.status),
+			updated_at = now()
+		RETURNING extension_id, tenant_id, workspace_id, config, endpoint_allowlist, timeout_ms, max_memory_mb, monthly_budget_cents, rate_per_min, status, updated_at`,
+		cfg.ExtensionID, p.TenantID, p.WorkspaceID, cfg.Config, cfg.EndpointAllowlist,
+		cfg.TimeoutMs, cfg.MaxMemoryMb, cfg.MonthlyBudgetCents, cfg.RatePerMin, cfg.Status).
+		Scan(&out.ExtensionID, &out.TenantID, &out.WorkspaceID, &outConfig, &outAllowlist,
+			&out.TimeoutMs, &out.MaxMemoryMb, &out.MonthlyBudgetCents, &out.RatePerMin, &out.Status, &out.UpdatedAt)
+	if err != nil {
+		return domain.ExtensionConfig{}, err
+	}
+	out.Config = json.RawMessage(outConfig)
+	out.EndpointAllowlist = outAllowlist
+
+	_ = s.audit(ctx, p, "extension_config.upsert", "extension_config", out.ExtensionID, nil)
+	return out, nil
+}
+
+func (s *Store) GetExtensionConfig(ctx context.Context, p domain.Principal, extensionID string) (domain.ExtensionConfig, error) {
+	var out domain.ExtensionConfig
+	var outConfig []byte
+	var outAllowlist []string
+
+	err := s.pool.QueryRow(ctx, `
+		SELECT extension_id, tenant_id, workspace_id, config, endpoint_allowlist, timeout_ms, max_memory_mb, monthly_budget_cents, rate_per_min, status, updated_at
+		FROM extension_configs
+		WHERE tenant_id = $1 AND workspace_id = $2 AND extension_id = $3`,
+		p.TenantID, p.WorkspaceID, extensionID).
+		Scan(&out.ExtensionID, &out.TenantID, &out.WorkspaceID, &outConfig, &outAllowlist,
+			&out.TimeoutMs, &out.MaxMemoryMb, &out.MonthlyBudgetCents, &out.RatePerMin, &out.Status, &out.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.ExtensionConfig{}, ErrNotFound
+	}
+	if err != nil {
+		return domain.ExtensionConfig{}, err
+	}
+	out.Config = json.RawMessage(outConfig)
+	out.EndpointAllowlist = outAllowlist
+	return out, nil
+}
+
+func (s *Store) DeleteExtensionConfig(ctx context.Context, p domain.Principal, extensionID string) error {
+	tag, err := s.pool.Exec(ctx, `
+		DELETE FROM extension_configs
+		WHERE tenant_id = $1 AND workspace_id = $2 AND extension_id = $3`,
+		p.TenantID, p.WorkspaceID, extensionID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	_ = s.audit(ctx, p, "extension_config.delete", "extension_config", extensionID, nil)
+	return nil
+}
+
+func (s *Store) CreateExtensionGrant(ctx context.Context, p domain.Principal, grant domain.ExtensionGrant) (domain.ExtensionGrant, error) {
+	if grant.ExtensionID == "" {
+		return domain.ExtensionGrant{}, errors.New("extension ID is required")
+	}
+	if grant.Scope == "" {
+		return domain.ExtensionGrant{}, errors.New("scope is required")
+	}
+	if grant.GrantedBy == "" {
+		return domain.ExtensionGrant{}, errors.New("granted_by user ID is required")
+	}
+
+	// Ensure parent extension exists and belongs to the tenant
+	var extExists bool
+	err := s.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM extensions WHERE tenant_id = $1 AND id = $2)",
+		p.TenantID, grant.ExtensionID).Scan(&extExists)
+	if err != nil {
+		return domain.ExtensionGrant{}, err
+	}
+	if !extExists {
+		return domain.ExtensionGrant{}, fmt.Errorf("extension not found: %s", grant.ExtensionID)
+	}
+
+	var out domain.ExtensionGrant
+	err = s.pool.QueryRow(ctx, `
+		INSERT INTO extension_grants (extension_id, tenant_id, scope, granted_by, granted_at)
+		VALUES ($1, $2, $3, $4, now())
+		ON CONFLICT (extension_id, scope) DO UPDATE SET
+			granted_by = EXCLUDED.granted_by,
+			granted_at = now()
+		RETURNING extension_id, tenant_id, scope, granted_by, granted_at`,
+		grant.ExtensionID, p.TenantID, grant.Scope, grant.GrantedBy).
+		Scan(&out.ExtensionID, &out.TenantID, &out.Scope, &out.GrantedBy, &out.GrantedAt)
+	if err != nil {
+		return domain.ExtensionGrant{}, err
+	}
+
+	_ = s.audit(ctx, p, "extension_grant.create", "extension_grant", out.ExtensionID, map[string]any{"scope": out.Scope})
+	return out, nil
+}
+
+func (s *Store) ListExtensionGrants(ctx context.Context, p domain.Principal, extensionID string) ([]domain.ExtensionGrant, error) {
+	// Ensure parent extension exists and belongs to the tenant
+	var extExists bool
+	err := s.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM extensions WHERE tenant_id = $1 AND id = $2)",
+		p.TenantID, extensionID).Scan(&extExists)
+	if err != nil {
+		return nil, err
+	}
+	if !extExists {
+		return nil, fmt.Errorf("extension not found: %s", extensionID)
+	}
+
+	rows, err := s.pool.Query(ctx, `
+		SELECT extension_id, tenant_id, scope, granted_by, granted_at
+		FROM extension_grants
+		WHERE tenant_id = $1 AND extension_id = $2
+		ORDER BY scope`,
+		p.TenantID, extensionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []domain.ExtensionGrant
+	for rows.Next() {
+		var item domain.ExtensionGrant
+		err := rows.Scan(&item.ExtensionID, &item.TenantID, &item.Scope, &item.GrantedBy, &item.GrantedAt)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) DeleteExtensionGrant(ctx context.Context, p domain.Principal, extensionID string, scope string) error {
+	tag, err := s.pool.Exec(ctx, `
+		DELETE FROM extension_grants
+		WHERE tenant_id = $1 AND extension_id = $2 AND scope = $3`,
+		p.TenantID, extensionID, scope)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	_ = s.audit(ctx, p, "extension_grant.delete", "extension_grant", extensionID, map[string]any{"scope": scope})
+	return nil
+}
+
