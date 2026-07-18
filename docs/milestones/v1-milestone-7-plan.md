@@ -340,8 +340,8 @@ task ends with a **Done when**. Do them in order; compile + `go vet` between mil
 2. [x] **DB-level append-only audit** + decision CHECK — migration `030_ai_activity_hardening.sql` per
    §2.1 (trigger blocks UPDATE/DELETE; `policy_decision` CHECK enumerates all written values). *Done
    when:* an `UPDATE ai_activity` raises; every `policy_decision` the code writes passes the CHECK. — done: added migration 030_ai_activity_hardening.sql and TestAIActivityHardening_12_0_2 to verify constraint & append-only trigger.
-3. **Correct the M6 audit doc** (`v1-milestone-6-audit.md`): state that `ai_activity` immutability
-   is now DB-enforced and the egress-audit ordering is fixed. *Done when:* the audit matches the code.
+3. [x] **Correct the M6 audit doc** (`v1-milestone-6-audit.md`): state that `ai_activity` immutability
+   is now DB-enforced and the egress-audit ordering is fixed. *Done when:* the audit matches the code. — done: updated v1-milestone-6-audit.md to document DB-enforced append-only audit and ordering fix.
 
 ### Milestone 12.1 — Gateway per-call timeout + budget
 1. **Per-call bounds.** Add `Timeout time.Duration` + `MaxCostCents int64` to
