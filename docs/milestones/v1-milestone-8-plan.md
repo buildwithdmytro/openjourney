@@ -481,8 +481,8 @@ Each task ends with a **Done when**. Do them in order; compile + `go vet` betwee
    a company + members round-trip and a company-attribute segment resolves to its members. — done: event-backed company CRUD/membership, tenant-scoped parameterized Company DSL leaf, and DB-gated round-trip/resolution test; full Go build/vet/test passes.
 
 ### Milestone 13.8 — Imports (CSV)
-1. **Migration** `038_imports.sql` + scopes `imports:*` + the `profiles.import` job type. *Done when:*
-   exists.
+1. [x] **Migration** `038_imports.sql` + scopes `imports:*` + the `profiles.import` job type. *Done when:*
+   exists. — done: migration 040 adds import_requests with constrained kinds/statuses, imports scopes, and profiles.import job type; applied cleanly and verified accepted/rejected job types.
 2. **Import job** (Recipe 6.39): `POST /v1/imports` (upload CSV to blob + enqueue, 202 + status
    resource) + a worker `case "profiles.import"` that streams rows, maps columns, emits events via
    `AcceptEvents`, and writes per-row results. *Done when:* re-importing the same CSV yields one
