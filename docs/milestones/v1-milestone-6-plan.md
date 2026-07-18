@@ -449,10 +449,10 @@ them in order; compile + `go vet` between milestones. **Substrate (11.0–11.7) 
 1. [x] **Migration** `025_ai_gateway.sql` per §2.1 + scopes `ai:read/configure/invoke`,
    `prompts:read/write` in `rbac.go` allowlist and the `api_keys` default array. *Done when:*
    tables exist; a fresh key carries the scopes. — done: created migration 025_ai_gateway.sql, added scopes to rbac.go, and added integration test TestAIGatewaySchema_11_1_1.
-2. **`internal/ai` package**: `ModelProvider` interface + `fake`/`anthropic`/`openai` profiles
+2. [x] **`internal/ai` package**: `ModelProvider` interface + `fake`/`anthropic`/`openai` profiles
    (Recipe 6.26) reusing the M5 egress client. Anthropic default model **Opus 4.8**, cheap model
    **Haiku 4.5**. *Done when:* the fake provider round-trips a structured response in a contract
-   test; anthropic/openai profiles build correct requests (table test).
+   test; anthropic/openai profiles build correct requests (table test). — done: implemented ModelProvider interface, fake/anthropic/openai profiles, and verified via TestFakeProviderRoundTrip and TestHTTPModelProvider_SSRFGuard.
 3. **Provider config store** `internal/postgres/ai.go` + `ports.Store`: CRUD `ai_provider_configs`
    (tenant+workspace scoped; secret via `_FILE` ref, never returned in reads). *Done when:*
    `go build ./...` passes; a config round-trips without leaking the secret.
