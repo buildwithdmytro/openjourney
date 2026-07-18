@@ -60,6 +60,33 @@ var (
 
 	SMSOptOuts = mustCounter(Meter.Int64Counter("openjourney_sms_opt_outs_total",
 		otelmetric.WithDescription("Total number of SMS opt-outs recorded")))
+
+	AILatency = mustHistogram(Meter.Int64Histogram("openjourney_ai_latency_ms",
+		otelmetric.WithDescription("AI request latency in milliseconds")))
+
+	AICost = mustHistogram(Meter.Int64Histogram("openjourney_ai_cost_cents",
+		otelmetric.WithDescription("AI request cost in cents")))
+
+	AIInputTokens = mustCounter(Meter.Int64Counter("openjourney_ai_input_tokens_total",
+		otelmetric.WithDescription("Total number of AI input tokens")))
+
+	AIOutputTokens = mustCounter(Meter.Int64Counter("openjourney_ai_output_tokens_total",
+		otelmetric.WithDescription("Total number of AI output tokens")))
+
+	AICostTotal = mustCounter(Meter.Int64Counter("openjourney_ai_cost_cents_total",
+		otelmetric.WithDescription("Total AI cost in cents")))
+
+	AILatencyTotal = mustCounter(Meter.Int64Counter("openjourney_ai_latency_ms_total",
+		otelmetric.WithDescription("Total AI latency in milliseconds")))
+
+	AISchemaRejections = mustCounter(Meter.Int64Counter("openjourney_ai_schema_rejections_total",
+		otelmetric.WithDescription("Total number of AI schema rejections")))
+
+	AISafetyRejections = mustCounter(Meter.Int64Counter("openjourney_ai_safety_rejections_total",
+		otelmetric.WithDescription("Total number of AI safety rejections")))
+
+	AIBudgetExceeded = mustCounter(Meter.Int64Counter("openjourney_ai_budget_exceeded_total",
+		otelmetric.WithDescription("Total number of times AI request budget was exceeded")))
 )
 
 // RecordExperimentAssignment records one newly-created authoritative assignment. Callers must
@@ -82,6 +109,13 @@ func mustCounter(c otelmetric.Int64Counter, err error) otelmetric.Int64Counter {
 		panic(err)
 	}
 	return c
+}
+
+func mustHistogram(h otelmetric.Int64Histogram, err error) otelmetric.Int64Histogram {
+	if err != nil {
+		panic(err)
+	}
+	return h
 }
 
 type Shutdown func(context.Context) error

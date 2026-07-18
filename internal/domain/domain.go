@@ -757,3 +757,14 @@ type AIProviderConfig struct {
 	UpdatedAt          time.Time       `json:"updated_at"`
 }
 
+type AIBudgetUsage struct {
+	TenantID     string    `json:"tenant_id"`
+	WorkspaceID  string    `json:"workspace_id"`
+	Period       string    `json:"period"` // YYYY-MM
+	CostCents    int64     `json:"cost_cents"`
+	InputTokens  int64     `json:"input_tokens"`
+	OutputTokens int64     `json:"output_tokens"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+

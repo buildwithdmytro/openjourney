@@ -1103,6 +1103,78 @@ func TestAIProviderConfigCRUD_11_1_3(t *testing.T) {
 	}
 }
 
+func TestAIBudgetUsage_11_1_4(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	// Insert dummy tenant and workspace to satisfy foreign key constraints if needed, but wait:
+	// ai_budget_usage table does NOT have foreign key constraints to tenants/workspaces!
+	// Let's verify by looking at the schema in docs:
+	// CREATE TABLE IF NOT EXISTS ai_budget_usage (
+	//     tenant_id uuid NOT NULL,
+	//     workspace_id uuid NOT NULL,
+	// ...
+	// Since tenant_id and workspace_id are uuid but do not REFERENCES tenants/workspaces in the migration:
+	// Wait! Let's insert a real tenant and workspace just to be safe and avoid type/constraint issues.
+	var tID, wID string
+	err = store.pool.QueryRow(ctx, "INSERT INTO tenants(name) VALUES('AI Budget Tenant') RETURNING id").Scan(&tID)
+	if err != nil {
+		t.Fatalf("failed to insert tenant: %v", err)
+	}
+	err = store.pool.QueryRow(ctx, "INSERT INTO workspaces(tenant_id, name) VALUES($1, 'AI Budget Workspace') RETURNING id", tID).Scan(&wID)
+	if err != nil {
+		t.Fatalf("failed to insert workspace: %v", err)
+	}
+
+	period := "2026-07"
+
+	// 1. Get budget usage - should return zeroed usage
+	usage, err := store.GetAIBudgetUsage(ctx, tID, wID, period)
+	if err != nil {
+		t.Fatalf("failed to GetAIBudgetUsage: %v", err)
+	}
+	if usage.CostCents != 0 || usage.InputTokens != 0 || usage.OutputTokens != 0 {
+		t.Errorf("expected zeroed budget usage, got %+v", usage)
+	}
+
+	// 2. Increment budget usage
+	err = store.IncrementAIBudgetUsage(ctx, tID, wID, period, 50, 1000, 2000)
+	if err != nil {
+		t.Fatalf("failed to IncrementAIBudgetUsage: %v", err)
+	}
+
+	usage, err = store.GetAIBudgetUsage(ctx, tID, wID, period)
+	if err != nil {
+		t.Fatalf("failed to GetAIBudgetUsage after increment: %v", err)
+	}
+	if usage.CostCents != 50 || usage.InputTokens != 1000 || usage.OutputTokens != 2000 {
+		t.Errorf("unexpected usage values: %+v", usage)
+	}
+
+	// 3. Increment again
+	err = store.IncrementAIBudgetUsage(ctx, tID, wID, period, 25, 500, 500)
+	if err != nil {
+		t.Fatalf("failed to IncrementAIBudgetUsage second time: %v", err)
+	}
+
+	usage, err = store.GetAIBudgetUsage(ctx, tID, wID, period)
+	if err != nil {
+		t.Fatalf("failed to GetAIBudgetUsage after second increment: %v", err)
+	}
+	if usage.CostCents != 75 || usage.InputTokens != 1500 || usage.OutputTokens != 2500 {
+		t.Errorf("unexpected accumulated usage values: %+v", usage)
+	}
+}
+
+
 
 func TestMain(m *testing.M) {
 	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")

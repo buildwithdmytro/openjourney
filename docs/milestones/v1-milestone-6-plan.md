@@ -456,10 +456,10 @@ them in order; compile + `go vet` between milestones. **Substrate (11.0–11.7) 
 3. [x] **Provider config store** `internal/postgres/ai.go` + `ports.Store`: CRUD `ai_provider_configs`
    (tenant+workspace scoped; secret via `_FILE` ref, never returned in reads). *Done when:*
    `go build ./...` passes; a config round-trips without leaking the secret. — done: implemented CRUD in internal/postgres/ai.go and verified via TestAIProviderConfigCRUD_11_1_3.
-4. **Budget enforcement + telemetry**: gateway checks `ai_budget_usage` vs `monthly_budget_cents`
+4. [x] **Budget enforcement + telemetry**: gateway checks `ai_budget_usage` vs `monthly_budget_cents`
    and denies over-budget; add `Int64Histogram` helper to `telemetry.go` + counters for
    tokens/cost/latency/schema-rejection/safety. *Done when:* an over-budget invoke is denied and
-   counted; usage increments on success.
+   counted; usage increments on success. — done: implemented Gateway budget check and telemetry helpers, verified via TestGatewayBudgetEnforcement.
 
 ### Milestone 11.2 — Egress allowlist (hosted + local)
 1. **AI egress guard** `internal/ai/egress.go`: hosted providers must match a known-provider

@@ -195,3 +195,35 @@ func (s *Store) DeleteAIProviderConfig(ctx context.Context, p domain.Principal, 
 	_ = s.audit(ctx, p, "ai_provider_config.delete", "ai_provider_config", id, nil)
 	return nil
 }
+
+func (s *Store) GetAIBudgetUsage(ctx context.Context, tenantID, workspaceID string, period string) (domain.AIBudgetUsage, error) {
+	var out domain.AIBudgetUsage
+	err := s.pool.QueryRow(ctx, `SELECT tenant_id, workspace_id, period, cost_cents, input_tokens, output_tokens, updated_at
+		FROM ai_budget_usage WHERE tenant_id=$1 AND workspace_id=$2 AND period=$3`,
+		tenantID, workspaceID, period).
+		Scan(&out.TenantID, &out.WorkspaceID, &out.Period, &out.CostCents, &out.InputTokens, &out.OutputTokens, &out.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.AIBudgetUsage{
+			TenantID:    tenantID,
+			WorkspaceID: workspaceID,
+			Period:      period,
+		}, nil
+	}
+	if err != nil {
+		return domain.AIBudgetUsage{}, err
+	}
+	return out, nil
+}
+
+func (s *Store) IncrementAIBudgetUsage(ctx context.Context, tenantID, workspaceID string, period string, costCents, inputTokens, outputTokens int64) error {
+	_, err := s.pool.Exec(ctx, `INSERT INTO ai_budget_usage (tenant_id, workspace_id, period, cost_cents, input_tokens, output_tokens, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, now())
+		ON CONFLICT (tenant_id, workspace_id, period) DO UPDATE SET
+			cost_cents = ai_budget_usage.cost_cents + EXCLUDED.cost_cents,
+			input_tokens = ai_budget_usage.input_tokens + EXCLUDED.input_tokens,
+			output_tokens = ai_budget_usage.output_tokens + EXCLUDED.output_tokens,
+			updated_at = now()`,
+		tenantID, workspaceID, period, costCents, inputTokens, outputTokens)
+	return err
+}
+

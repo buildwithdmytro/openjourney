@@ -155,6 +155,9 @@ type Store interface {
 	UpdateAIProviderConfig(ctx context.Context, p domain.Principal, cfg domain.AIProviderConfig) (domain.AIProviderConfig, error)
 	ListAIProviderConfigs(ctx context.Context, p domain.Principal) ([]domain.AIProviderConfig, error)
 	DeleteAIProviderConfig(ctx context.Context, p domain.Principal, id string) error
+
+	GetAIBudgetUsage(ctx context.Context, tenantID, workspaceID string, period string) (domain.AIBudgetUsage, error)
+	IncrementAIBudgetUsage(ctx context.Context, tenantID, workspaceID string, period string, costCents, inputTokens, outputTokens int64) error
 }
 
 type TokenVerifier interface {
