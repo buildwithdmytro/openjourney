@@ -12,6 +12,7 @@ import (
 	"github.com/buildwithdmytro/openjourney/internal/ai"
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 	"github.com/buildwithdmytro/openjourney/internal/ports"
+	"github.com/buildwithdmytro/openjourney/internal/render"
 )
 
 type contentCopilotStore struct {
@@ -68,8 +69,8 @@ func TestContentCopilotCreatesRenderableDraftWithoutMutation(t *testing.T) {
 	if store.draft.ID != "draft-template-1" || store.draft.Channel != "email" || store.draft.HTMLTemplate == nil {
 		t.Fatalf("expected a new email draft, got %#v", store.draft)
 	}
-	if _, err := json.Marshal(store.draft); err != nil {
-		t.Fatal(err)
+	if _, err := render.Render(*store.draft.HTMLTemplate, map[string]any{}); err != nil {
+		t.Fatalf("draft template failed deterministic render validation: %v", err)
 	}
 	var response map[string]any
 	if err := json.Unmarshal(res.Body.Bytes(), &response); err != nil {

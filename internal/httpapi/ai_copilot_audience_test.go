@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/buildwithdmytro/openjourney/internal/ai"
+	"github.com/buildwithdmytro/openjourney/internal/audience"
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 	"github.com/buildwithdmytro/openjourney/internal/ports"
 )
@@ -83,6 +84,13 @@ func TestAudienceCopilotCreatesValidatedDraftAndPreview(t *testing.T) {
 	}
 	if store.draft.Status != "draft" || string(store.draft.DSL) != `{"type":"profile_attribute","field":"country","operator":"equals","value":"US"}` {
 		t.Fatalf("unexpected draft: %+v", store.draft)
+	}
+	node, err := audience.Parse(store.draft.DSL)
+	if err != nil {
+		t.Fatalf("draft audience failed deterministic parse validation: %v", err)
+	}
+	if _, _, err := audience.CompileProfile(node); err != nil {
+		t.Fatalf("draft audience failed deterministic compile validation: %v", err)
 	}
 	var body map[string]any
 	if err := json.Unmarshal(res.Body.Bytes(), &body); err != nil {

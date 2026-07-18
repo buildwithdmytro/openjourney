@@ -89,6 +89,9 @@ func TestPerformanceCopilotCitesReportAndCreatesDraft(t *testing.T) {
 	if store.draft.SegmentID != store.original.SegmentID || store.draft.TemplateID != store.original.TemplateID {
 		t.Fatalf("proposal did not preserve immutable campaign inputs: %+v", store.draft)
 	}
+	if store.original.Status != "scheduled" || store.original.ID != "campaign-1" {
+		t.Fatalf("live campaign was mutated by the proposal: %+v", store.original)
+	}
 	if !strings.Contains(res.Body.String(), `"activity_id":"activity-1"`) || !strings.Contains(res.Body.String(), `"value":42`) {
 		t.Fatalf("response did not include audited real report metric: %s", res.Body.String())
 	}

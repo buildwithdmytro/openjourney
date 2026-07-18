@@ -574,8 +574,8 @@ them in order; compile + `go vet` between milestones. **Substrate (11.0–11.7) 
    `ai_agent` principal cannot publish (403), (d) a schema-reject repairs-or-fails and never
    mutates, (e) an over-budget invoke is denied, (f) every invoke wrote exactly one `ai_activity`
    row. *Done when:* all six are asserted. — done: added DB-gated TestGovernanceE2E_11_14_1 covering retrieval, fake-provider redaction, human approval, schema repair, budget denial, and exact-once activity logging.
-2. **Copilot correctness**: each copilot's output passes its domain validator and creates only a
-   draft. *Done when:* four copilot tests pass.
+2. [x] **Copilot correctness**: each copilot's output passes its domain validator and creates only a
+   draft. *Done when:* four copilot tests pass. — done: fake-provider tests assert render, audience parse/compile, journey validation, and performance report citation with draft-only resource creation.
 3. **Eval gate**: an unevaluated/failed prompt_version cannot be invoked or published. *Done when:*
    asserted.
 4. **Run the suite**: `go build/vet/test ./...`, `go mod tidy`, `cd web && npm run typecheck &&

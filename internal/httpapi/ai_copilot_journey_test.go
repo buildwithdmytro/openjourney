@@ -11,6 +11,7 @@ import (
 
 	"github.com/buildwithdmytro/openjourney/internal/ai"
 	"github.com/buildwithdmytro/openjourney/internal/domain"
+	journeygraph "github.com/buildwithdmytro/openjourney/internal/journey"
 	"github.com/buildwithdmytro/openjourney/internal/ports"
 )
 
@@ -80,6 +81,13 @@ func TestJourneyCopilotCreatesValidatedDraftWithoutPublishing(t *testing.T) {
 	}
 	if store.draft.CurrentVersionID != nil || store.draft.LatestVersion != 0 {
 		t.Fatalf("copilot unexpectedly published or versioned journey: %#v", store.draft)
+	}
+	graph, err := journeygraph.ParseGraph(store.draft.Graph)
+	if err != nil {
+		t.Fatalf("draft journey failed deterministic graph parsing: %v", err)
+	}
+	if err := journeygraph.Validate(graph); err != nil {
+		t.Fatalf("draft journey failed deterministic validation: %v", err)
 	}
 	var response map[string]any
 	if err := json.Unmarshal(res.Body.Bytes(), &response); err != nil {
