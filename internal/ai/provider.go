@@ -41,6 +41,11 @@ type GenerateRequest struct {
 	RetrievedData   any                          `json:"-"`
 	Classifications []domain.FieldClassification `json:"-"`
 	Purpose         string                       `json:"-"`
+	Action          string                       `json:"-"`
+	PromptVersionID string                       `json:"-"`
+	RetrievalRefs   json.RawMessage              `json:"-"`
+	ToolCalls       json.RawMessage              `json:"-"`
+	Classification  string                       `json:"-"`
 }
 
 // GenerateResponse represents the result of a model completion.

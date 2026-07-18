@@ -263,7 +263,7 @@ type Segment struct {
 	WorkspaceID string          `json:"workspace_id"`
 	Name        string          `json:"name"`
 	Description string          `json:"description,omitempty"`
-	Type        string          `json:"type"` // static, dynamic, snapshot
+	Type        string          `json:"type"`   // static, dynamic, snapshot
 	Status      string          `json:"status"` // draft, active, archived
 	DSL         json.RawMessage `json:"dsl"`
 	Version     int             `json:"version"`
@@ -767,6 +767,28 @@ type AIBudgetUsage struct {
 	UpdatedAt    time.Time `json:"updated_at"`
 }
 
+type AIActivity struct {
+	ID              string          `json:"id"`
+	TenantID        string          `json:"tenant_id"`
+	WorkspaceID     string          `json:"workspace_id"`
+	ActorUserID     *string         `json:"actor_user_id,omitempty"`
+	Action          string          `json:"action"`
+	Provider        string          `json:"provider"`
+	Model           string          `json:"model"`
+	PromptVersionID *string         `json:"prompt_version_id,omitempty"`
+	RetrievalRefs   json.RawMessage `json:"retrieval_refs"`
+	ToolCalls       json.RawMessage `json:"tool_calls"`
+	Classification  *string         `json:"classification,omitempty"`
+	InputTokens     int             `json:"input_tokens"`
+	OutputTokens    int             `json:"output_tokens"`
+	CostCents       int64           `json:"cost_cents"`
+	LatencyMs       int             `json:"latency_ms"`
+	PolicyDecision  string          `json:"policy_decision"`
+	ApproverUserID  *string         `json:"approver_user_id,omitempty"`
+	OutputRef       *string         `json:"output_ref,omitempty"`
+	CreatedAt       time.Time       `json:"created_at"`
+}
+
 type Prompt struct {
 	ID               string    `json:"id"`
 	TenantID         string    `json:"tenant_id"`
@@ -792,7 +814,7 @@ type PromptVersion struct {
 	Params       json.RawMessage `json:"params"`
 	SafetyPolicy json.RawMessage `json:"safety_policy"`
 	ManifestKey  string          `json:"manifest_key"`
-	Status       string          `json:"status"` // draft, active, archived
+	Status       string          `json:"status"`      // draft, active, archived
 	EvalStatus   string          `json:"eval_status"` // pending, passed, failed
 	PublishedBy  *string         `json:"published_by,omitempty"`
 	PublishedAt  *time.Time      `json:"published_at,omitempty"`

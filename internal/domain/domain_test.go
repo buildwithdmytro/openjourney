@@ -84,4 +84,13 @@ func TestEventValidate(t *testing.T) {
 			t.Fatal("expected message.sent without campaign_id or journey_id to be invalid")
 		}
 	})
+
+	t.Run("ai.action is a built-in event", func(t *testing.T) {
+		e := valid
+		e.Type = "ai.action"
+		e.Payload = json.RawMessage(`{"activity_id":"activity-1","policy_decision":"allowed"}`)
+		if err := e.Validate(now); err != nil {
+			t.Fatalf("expected ai.action to be valid, got %v", err)
+		}
+	})
 }

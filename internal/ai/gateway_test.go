@@ -13,9 +13,10 @@ import (
 
 type mockStore struct {
 	ports.Store
-	getConfigFunc     func(ctx context.Context, p domain.Principal) (domain.AIProviderConfig, error)
-	getUsageFunc      func(ctx context.Context, tenantID, workspaceID string, period string) (domain.AIBudgetUsage, error)
+	getConfigFunc      func(ctx context.Context, p domain.Principal) (domain.AIProviderConfig, error)
+	getUsageFunc       func(ctx context.Context, tenantID, workspaceID string, period string) (domain.AIBudgetUsage, error)
 	incrementUsageFunc func(ctx context.Context, tenantID, workspaceID string, period string, costCents, inputTokens, outputTokens int64) error
+	recordActivityFunc func(context.Context, domain.Principal, domain.AIActivity) (domain.AIActivity, error)
 }
 
 func (m *mockStore) GetDefaultAIProviderConfig(ctx context.Context, p domain.Principal) (domain.AIProviderConfig, error) {
@@ -28,6 +29,59 @@ func (m *mockStore) GetAIBudgetUsage(ctx context.Context, tenantID, workspaceID 
 
 func (m *mockStore) IncrementAIBudgetUsage(ctx context.Context, tenantID, workspaceID string, period string, costCents, inputTokens, outputTokens int64) error {
 	return m.incrementUsageFunc(ctx, tenantID, workspaceID, period, costCents, inputTokens, outputTokens)
+}
+
+func (m *mockStore) RecordAIActivity(ctx context.Context, p domain.Principal, activity domain.AIActivity) (domain.AIActivity, error) {
+	if m.recordActivityFunc == nil {
+		return activity, nil
+	}
+	return m.recordActivityFunc(ctx, p, activity)
+}
+
+func TestGatewayRecordsExactlyOneActivityPerInvoke(t *testing.T) {
+	principal := domain.Principal{TenantID: "tenant-1", WorkspaceID: "workspace-1", UserID: "user-1", ActorType: "user"}
+	var activities []domain.AIActivity
+	store := &mockStore{
+		getConfigFunc: func(context.Context, domain.Principal) (domain.AIProviderConfig, error) {
+			return domain.AIProviderConfig{Provider: "fake", Status: "active", Config: json.RawMessage(`{}`)}, nil
+		},
+		getUsageFunc: func(context.Context, string, string, string) (domain.AIBudgetUsage, error) {
+			return domain.AIBudgetUsage{}, nil
+		},
+		incrementUsageFunc: func(context.Context, string, string, string, int64, int64, int64) error { return nil },
+		recordActivityFunc: func(_ context.Context, _ domain.Principal, activity domain.AIActivity) (domain.AIActivity, error) {
+			activities = append(activities, activity)
+			return activity, nil
+		},
+	}
+	g := NewGateway(store)
+	g.newProvider = func(ProviderProfile) ModelProvider {
+		return &mockModelProvider{generateFunc: func(context.Context, GenerateRequest) (*GenerateResponse, error) {
+			return &GenerateResponse{Content: "ok", Usage: Usage{InputTokens: 2, OutputTokens: 3, CostCents: 4}}, nil
+		}}
+	}
+	if _, err := g.Generate(context.Background(), principal, GenerateRequest{PromptVersionID: "prompt-version-1", Action: "ai.content_draft"}); err != nil {
+		t.Fatalf("allowed invoke: %v", err)
+	}
+	if len(activities) != 1 || activities[0].PolicyDecision != "allowed" {
+		t.Fatalf("expected one allowed activity, got %#v", activities)
+	}
+	if activities[0].InputTokens != 2 || activities[0].OutputTokens != 3 || activities[0].CostCents != 4 {
+		t.Fatalf("usage was not recorded: %#v", activities[0])
+	}
+
+	store.getConfigFunc = func(context.Context, domain.Principal) (domain.AIProviderConfig, error) {
+		return domain.AIProviderConfig{Provider: "fake", Status: "active", MonthlyBudgetCents: 1, Config: json.RawMessage(`{}`)}, nil
+	}
+	store.getUsageFunc = func(context.Context, string, string, string) (domain.AIBudgetUsage, error) {
+		return domain.AIBudgetUsage{CostCents: 1}, nil
+	}
+	if _, err := g.Generate(context.Background(), principal, GenerateRequest{Action: "ai.content_draft"}); !errors.Is(err, ErrBudgetExceeded) {
+		t.Fatalf("expected budget denial, got %v", err)
+	}
+	if len(activities) != 2 || activities[1].PolicyDecision != "denied_budget" {
+		t.Fatalf("expected one denied_budget activity, got %#v", activities)
+	}
 }
 
 type mockModelProvider struct {

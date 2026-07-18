@@ -130,7 +130,8 @@ func isBuiltInEvent(eventType string) bool {
 		eventType == "identity.alias" || eventType == "identity.merge" ||
 		eventType == "email.sent" || eventType == "email.opened" || eventType == "link.clicked" ||
 		eventType == "message.sent" || eventType == "message.delivered" ||
-		eventType == "message.bounced" || eventType == "message.complained"
+		eventType == "message.bounced" || eventType == "message.complained" ||
+		eventType == "ai.action"
 }
 
 func (s *Store) ListAPIKeys(ctx context.Context, p domain.Principal) ([]domain.APIKey, error) {

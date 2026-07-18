@@ -180,6 +180,12 @@ type Store interface {
 	DeleteFieldClassification(ctx context.Context, p domain.Principal, id string) error
 }
 
+// AIActivityRecorder is implemented by stores that persist the immutable AI
+// activity record and its corresponding ai.action audit event.
+type AIActivityRecorder interface {
+	RecordAIActivity(context.Context, domain.Principal, domain.AIActivity) (domain.AIActivity, error)
+}
+
 type TokenVerifier interface {
 	Verify(context.Context, string) (domain.OIDCClaims, error)
 }

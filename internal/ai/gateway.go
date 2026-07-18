@@ -123,24 +123,43 @@ func (g *Gateway) recordMetricsAndIncrementBudget(ctx context.Context, principal
 }
 
 func (g *Gateway) Generate(ctx context.Context, principal domain.Principal, req GenerateRequest) (*GenerateResponse, error) {
+	record := func(provider, model, decision string, usage Usage, latencyMs int64, outputRef string) error {
+		return g.recordActivity(ctx, principal, req.Action, provider, model, decision, usage, latencyMs,
+			req.PromptVersionID, req.RetrievalRefs, req.ToolCalls, req.Classification, outputRef)
+	}
+	if req.Action == "" {
+		req.Action = "ai.generate"
+	}
 	if req.RetrievedData != nil {
 		redacted, err := Redact(req.RetrievedData, req.Classifications, req.Purpose)
 		if err != nil {
+			if record("unknown", req.Model, "denied_policy", Usage{}, 0, "") != nil {
+				return nil, fmt.Errorf("%w; activity recording failed", err)
+			}
 			return nil, err
 		}
 		prompt, err := GovernedPrompt(req.Prompt, redacted)
 		if err != nil {
+			if activityErr := record("unknown", req.Model, "denied_policy", Usage{}, 0, ""); activityErr != nil {
+				return nil, fmt.Errorf("%w; activity recording failed: %v", err, activityErr)
+			}
 			return nil, err
 		}
 		req.Prompt = prompt
 	}
 	cfg, jsonCfg, prov, err := g.getProvider(ctx, principal)
 	if err != nil {
+		if activityErr := record("unknown", req.Model, "denied_policy", Usage{}, 0, ""); activityErr != nil {
+			return nil, fmt.Errorf("%w; activity recording failed: %v", err, activityErr)
+		}
 		return nil, err
 	}
 
 	period := time.Now().UTC().Format("2006-01")
 	if err := g.checkBudget(ctx, principal, cfg, period); err != nil {
+		if record(cfg.Provider, req.Model, "denied_budget", Usage{}, 0, "") != nil {
+			return nil, fmt.Errorf("%w; activity recording failed", err)
+		}
 		return nil, err
 	}
 
@@ -159,6 +178,9 @@ func (g *Gateway) Generate(ctx context.Context, principal domain.Principal, req 
 	start := time.Now()
 	resp, err := prov.Generate(ctx, req)
 	if err != nil {
+		if record(cfg.Provider, req.Model, "denied_policy", Usage{}, time.Since(start).Milliseconds(), "") != nil {
+			return nil, fmt.Errorf("%w; activity recording failed", err)
+		}
 		return nil, err
 	}
 	duration := time.Since(start).Milliseconds()
@@ -182,6 +204,9 @@ func (g *Gateway) Generate(ctx context.Context, principal domain.Principal, req 
 
 		// Check budget again before attempting the repair call
 		if err := g.checkBudget(ctx, principal, cfg, period); err != nil {
+			if activityErr := record(cfg.Provider, req.Model, "schema_reject", resp.Usage, duration, ""); activityErr != nil {
+				return nil, fmt.Errorf("model output failed validation: %v; activity recording failed: %w", valErr, activityErr)
+			}
 			return nil, fmt.Errorf("model output failed validation: %v; repair retry blocked: %w", valErr, err)
 		}
 
@@ -196,6 +221,9 @@ func (g *Gateway) Generate(ctx context.Context, principal domain.Principal, req 
 		startRepair := time.Now()
 		repairResp, repairErr := prov.Generate(ctx, repairReq)
 		if repairErr != nil {
+			if activityErr := record(cfg.Provider, req.Model, "schema_reject", resp.Usage, duration, ""); activityErr != nil {
+				return nil, fmt.Errorf("model output failed validation: %v; activity recording failed: %w", valErr, activityErr)
+			}
 			return nil, fmt.Errorf("model output failed validation: %v; repair retry failed: %w", valErr, repairErr)
 		}
 		durationRepair := time.Since(startRepair).Milliseconds()
@@ -210,23 +238,59 @@ func (g *Gateway) Generate(ctx context.Context, principal domain.Principal, req 
 				attribute.String("tenant_id", principal.TenantID),
 				attribute.String("workspace_id", principal.WorkspaceID),
 			))
+			if activityErr := record(cfg.Provider, req.Model, "schema_reject", repairResp.Usage, duration+durationRepair, ""); activityErr != nil {
+				return nil, fmt.Errorf("model output failed validation: %v; activity recording failed: %w", valErr, activityErr)
+			}
 			return nil, fmt.Errorf("model output failed validation: %v; repaired output also failed validation: %w", valErr, repairValErr)
 		}
 
 		resp = repairResp
 	}
+	if err := record(cfg.Provider, req.Model, "allowed", resp.Usage, duration, ""); err != nil {
+		return nil, fmt.Errorf("AI activity recording failed: %w", err)
+	}
 
 	return resp, nil
 }
 
+func stringPtrOrNil(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
+func (g *Gateway) recordActivity(ctx context.Context, principal domain.Principal, action, provider, model, decision string, usage Usage, latencyMs int64, promptVersionID string, retrievalRefs, toolCalls json.RawMessage, classification, outputRef string) error {
+	recorder, ok := g.store.(ports.AIActivityRecorder)
+	if !ok {
+		return nil
+	}
+	activity := domain.AIActivity{
+		TenantID: principal.TenantID, WorkspaceID: principal.WorkspaceID,
+		Action: action, Provider: provider, Model: model,
+		PromptVersionID: stringPtrOrNil(promptVersionID), RetrievalRefs: retrievalRefs,
+		ToolCalls: toolCalls, Classification: stringPtrOrNil(classification),
+		InputTokens: usage.InputTokens, OutputTokens: usage.OutputTokens,
+		CostCents: usage.CostCents, LatencyMs: int(latencyMs), PolicyDecision: decision,
+		OutputRef: stringPtrOrNil(outputRef), ActorUserID: stringPtrOrNil(principal.UserID),
+	}
+	_, err := recorder.RecordAIActivity(ctx, principal, activity)
+	return err
+}
+
 func (g *Gateway) Embed(ctx context.Context, principal domain.Principal, req EmbedRequest) (*EmbedResponse, error) {
+	activity := func(provider, decision string, usage Usage, latencyMs int64) error {
+		return g.recordActivity(ctx, principal, "ai.embed", provider, req.Model, decision, usage, latencyMs, "", nil, nil, "", "")
+	}
 	cfg, jsonCfg, prov, err := g.getProvider(ctx, principal)
 	if err != nil {
+		_ = activity("unknown", "denied_policy", Usage{}, 0)
 		return nil, err
 	}
 
 	period := time.Now().UTC().Format("2006-01")
 	if err := g.checkBudget(ctx, principal, cfg, period); err != nil {
+		_ = activity(cfg.Provider, "denied_budget", Usage{}, 0)
 		return nil, err
 	}
 
@@ -245,6 +309,7 @@ func (g *Gateway) Embed(ctx context.Context, principal domain.Principal, req Emb
 	start := time.Now()
 	resp, err := prov.Embed(ctx, req)
 	if err != nil {
+		_ = activity(cfg.Provider, "denied_policy", Usage{}, time.Since(start).Milliseconds())
 		return nil, err
 	}
 	duration := time.Since(start).Milliseconds()
@@ -252,18 +317,26 @@ func (g *Gateway) Embed(ctx context.Context, principal domain.Principal, req Emb
 	if err := g.recordMetricsAndIncrementBudget(ctx, principal, cfg, period, resp.Usage, duration, req.Model); err != nil {
 		return nil, err
 	}
+	if err := activity(cfg.Provider, "allowed", resp.Usage, duration); err != nil {
+		return nil, fmt.Errorf("AI activity recording failed: %w", err)
+	}
 
 	return resp, nil
 }
 
 func (g *Gateway) Moderate(ctx context.Context, principal domain.Principal, req ModerateRequest) (*ModerateResponse, error) {
+	activity := func(provider, decision string, usage Usage, latencyMs int64) error {
+		return g.recordActivity(ctx, principal, "ai.moderate", provider, req.Model, decision, usage, latencyMs, "", nil, nil, "", "")
+	}
 	cfg, jsonCfg, prov, err := g.getProvider(ctx, principal)
 	if err != nil {
+		_ = activity("unknown", "denied_policy", Usage{}, 0)
 		return nil, err
 	}
 
 	period := time.Now().UTC().Format("2006-01")
 	if err := g.checkBudget(ctx, principal, cfg, period); err != nil {
+		_ = activity(cfg.Provider, "denied_budget", Usage{}, 0)
 		return nil, err
 	}
 
@@ -282,6 +355,7 @@ func (g *Gateway) Moderate(ctx context.Context, principal domain.Principal, req 
 	start := time.Now()
 	resp, err := prov.Moderate(ctx, req)
 	if err != nil {
+		_ = activity(cfg.Provider, "denied_policy", Usage{}, time.Since(start).Milliseconds())
 		return nil, err
 	}
 	duration := time.Since(start).Milliseconds()
@@ -296,6 +370,9 @@ func (g *Gateway) Moderate(ctx context.Context, principal domain.Principal, req 
 
 	if err := g.recordMetricsAndIncrementBudget(ctx, principal, cfg, period, resp.Usage, duration, req.Model); err != nil {
 		return nil, err
+	}
+	if err := activity(cfg.Provider, "allowed", resp.Usage, duration); err != nil {
+		return nil, fmt.Errorf("AI activity recording failed: %w", err)
 	}
 
 	return resp, nil
