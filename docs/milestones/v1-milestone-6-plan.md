@@ -548,10 +548,10 @@ them in order; compile + `go vet` between milestones. **Substrate (11.0–11.7) 
 ### Milestone 11.11 — Copilot: performance summary + suggested next version
 1. [x] **Performance-summary prompt version**; input = M4 report reads (read-only tools). *Done when:*
    seeded/`passed`. — done: development bootstrap seeds an idempotent fake performance-summary prompt with campaign/experiment report input and summary/proposed-version output schemas; TestSeededPerformanceSummaryPrompt verifies active/passed metadata.
-2. **Endpoint** `POST /v1/ai/copilots/performance/{campaignId}`: summarize the campaign/experiment
+2. [x] **Endpoint** `POST /v1/ai/copilots/performance/{campaignId}`: summarize the campaign/experiment
    report (reusing M4 `CampaignReport`/`ExperimentReport`) and **propose a new immutable version**
    (draft) — never auto-rolls-out (rollout stays behind the human gate + experiment rollout path).
-   *Done when:* the summary cites real report numbers and the proposed version is a draft.
+   *Done when:* the summary cites real report numbers and the proposed version is a draft. — done: added the pinned governed performance endpoint with report-number validation and draft-only campaign proposal; TestPerformanceCopilotCitesReportAndCreatesDraft passes.
 
 ### Milestone 11.12 — Offline eval harness + gate
 1. **Migration** `029_ai_eval.sql` + eval store CRUD. *Done when:* tables exist.
