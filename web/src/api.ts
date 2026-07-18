@@ -200,6 +200,36 @@ export type SegmentMember = {
   created_at: string;
 };
 
+export type ScoringModel = {
+  id: string; name: string; kind: "expression" | "llm"; latest_version: number;
+  current_version_id?: string; created_at: string; updated_at: string;
+};
+export type ScoringModelVersion = {
+  id: string; scoring_model_id: string; version: number; score_name: string;
+  definition: Record<string, unknown>; output_min: number; output_max: number;
+  manifest_key: string; status: string; eval_status: string; published_at?: string;
+};
+export type ProfileScore = {
+  profile_id: string; scoring_model_id: string; score_name: string; value: number;
+  model_version: number; computed_at: string;
+};
+
+export async function listScoringModels(baseURL: string, apiKey: string): Promise<ScoringModel[]> {
+  return (await requestJSON<{ models: ScoringModel[] | null }>(baseURL, apiKey, "/v1/scoring/models")).models ?? [];
+}
+export async function createScoringModel(baseURL: string, apiKey: string, input: { name: string; kind: ScoringModel["kind"] }): Promise<ScoringModel> {
+  return requestJSON(baseURL, apiKey, "/v1/scoring/models", { method: "POST", body: JSON.stringify(input) });
+}
+export async function createScoringModelVersion(baseURL: string, apiKey: string, id: string, input: Partial<ScoringModelVersion>): Promise<ScoringModelVersion> {
+  return requestJSON(baseURL, apiKey, `/v1/scoring/models/${encodeURIComponent(id)}/versions`, { method: "POST", body: JSON.stringify(input) });
+}
+export async function publishScoringModelVersion(baseURL: string, apiKey: string, id: string, version: number, manifestKey: string): Promise<ScoringModelVersion> {
+  return requestJSON(baseURL, apiKey, `/v1/scoring/models/${encodeURIComponent(id)}/publish`, { method: "POST", body: JSON.stringify({ version, manifest_key: manifestKey }) });
+}
+export async function listProfileScores(baseURL: string, apiKey: string, profileID: string): Promise<ProfileScore[]> {
+  return (await requestJSON<{ scores: ProfileScore[] | null }>(baseURL, apiKey, `/v1/scoring/profiles/${encodeURIComponent(profileID)}`)).scores ?? [];
+}
+
 export async function listSegments(baseURL: string, apiKey: string): Promise<Segment[]> {
   return (await requestJSON<{ segments: Segment[] | null }>(baseURL, apiKey, "/v1/segments")).segments ?? [];
 }

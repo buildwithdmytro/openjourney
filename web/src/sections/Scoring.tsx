@@ -1,0 +1,28 @@
+import { FormEvent, useEffect, useState } from "react";
+import { createScoringModel, createScoringModelVersion, listProfileScores, listScoringModels, ProfileScore, publishScoringModelVersion, ScoringModel } from "../api";
+
+function message(error: unknown) { return error instanceof Error ? error.message : "Request failed"; }
+
+export default function Scoring({ apiKey, baseURL }: { apiKey: string; baseURL: string }) {
+  const [models, setModels] = useState<ScoringModel[]>([]); const [name, setName] = useState("");
+  const [kind, setKind] = useState<ScoringModel["kind"]>("expression"); const [scoreName, setScoreName] = useState("purchase_propensity");
+  const [definition, setDefinition] = useState('{"expr":"0.5","inputs":[]}'); const [manifestKey, setManifestKey] = useState("scoring-manifest");
+  const [profileID, setProfileID] = useState(""); const [scores, setScores] = useState<ProfileScore[]>([]); const [error, setError] = useState("");
+  async function refresh() { try { setModels(await listScoringModels(baseURL, apiKey)); setError(""); } catch (e) { setError(message(e)); } }
+  useEffect(() => { if (apiKey) void refresh(); }, [apiKey, baseURL]);
+  async function create(event: FormEvent) { event.preventDefault(); try {
+    const model = await createScoringModel(baseURL, apiKey, { name, kind });
+    await createScoringModelVersion(baseURL, apiKey, model.id, { score_name: scoreName, definition: JSON.parse(definition), manifest_key: manifestKey, output_min: 0, output_max: 1 });
+    setName(""); await refresh();
+  } catch (e) { setError(message(e)); } }
+  async function publish(model: ScoringModel) { try { if (!model.latest_version) throw new Error("Create a version first"); await publishScoringModelVersion(baseURL, apiKey, model.id, model.latest_version, manifestKey); await refresh(); } catch (e) { setError(message(e)); } }
+  async function inspect(event: FormEvent) { event.preventDefault(); try { setScores(await listProfileScores(baseURL, apiKey, profileID)); setError(""); } catch (e) { setError(message(e)); } }
+  return <section className="stack scoring-view">
+    <article className="card"><div className="eyebrow">Versioned artifacts</div><h2>Scoring model editor</h2>
+      <form className="scoring-form" onSubmit={create}><label>Name<input aria-label="Scoring model name" value={name} onChange={e => setName(e.target.value)} required placeholder="Purchase propensity" /></label><label>Kind<select value={kind} onChange={e => setKind(e.target.value as ScoringModel["kind"])}><option value="expression">Expression</option><option value="llm">LLM</option></select></label><label>Score name<input value={scoreName} onChange={e => setScoreName(e.target.value)} required /></label><label>Manifest key<input value={manifestKey} onChange={e => setManifestKey(e.target.value)} required /></label><label className="scoring-wide">Definition JSON<textarea value={definition} onChange={e => setDefinition(e.target.value)} rows={4} /></label><button disabled={!apiKey}>Create draft version</button></form><ErrorMessage value={error} /></article>
+    <article className="card"><div className="section-title"><div><div className="eyebrow">Registry</div><h2>Scoring models</h2></div><button onClick={() => void refresh()}>Refresh</button></div><table><thead><tr><th>Name</th><th>Kind</th><th>Latest</th><th>Action</th></tr></thead><tbody>{models.map(model => <tr key={model.id}><td>{model.name}</td><td>{model.kind}</td><td>v{model.latest_version}</td><td><button onClick={() => void publish(model)} disabled={!model.latest_version}>Publish latest</button></td></tr>)}{models.length === 0 && <tr><td colSpan={4} className="muted">No scoring models configured.</td></tr>}</tbody></table></article>
+    <article className="card"><div className="eyebrow">Profile inspector</div><h2>Computed scores</h2><form className="single-action" onSubmit={inspect}><label>Profile ID<input value={profileID} onChange={e => setProfileID(e.target.value)} required placeholder="profile-uuid" /></label><button>Inspect scores</button></form>{scores.length > 0 && <table><thead><tr><th>Score</th><th>Value</th><th>Model version</th><th>Computed</th></tr></thead><tbody>{scores.map(score => <tr key={`${score.scoring_model_id}:${score.score_name}`}><td>{score.score_name}</td><td>{score.value}</td><td>v{score.model_version}</td><td>{new Date(score.computed_at).toLocaleString()}</td></tr>)}</tbody></table>}{scores.length === 0 && profileID && <p className="muted">No computed scores for this profile.</p>}</article>
+  </section>;
+}
+
+function ErrorMessage({ value }: { value: string }) { return value ? <p className="error" role="alert">{value}</p> : null; }

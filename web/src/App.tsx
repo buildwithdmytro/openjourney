@@ -10,7 +10,7 @@ import {
   DeviceToken, listDeviceTokens, retireDeviceToken,
   listSuppressions, createSuppression, deleteSuppression, Suppression,
   listCampaigns, getCampaign, createCampaign, updateCampaign, Campaign,
-  listJourneys, createJourney, Journey,
+  listJourneys, createJourney, Journey, listScoringModels, ScoringModel,
 } from "./api";
 import { oidcConfigured, restoreOIDCSession, signIn, signOut } from "./auth";
 
@@ -19,6 +19,7 @@ const Experiments = lazy(() => import("./sections/Experiments"));
 const Reports = lazy(() => import("./sections/Reports"));
 const Copilots = lazy(() => import("./sections/Copilots"));
 const Governance = lazy(() => import("./sections/Governance"));
+const Scoring = lazy(() => import("./sections/Scoring"));
 
 const apiBase = import.meta.env.VITE_API_BASE_URL || "/api";
 
@@ -42,7 +43,7 @@ class UIErrorBoundary extends Component<{ children: ReactNode; resetKey: string 
     return this.props.children;
   }
 }
-type View = "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "copilots" | "governance" | "suppressions" | "sender-identities" | "device-tokens";
+type View = "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "copilots" | "governance" | "suppressions" | "sender-identities" | "device-tokens";
 type CredentialSource = "manual" | "session" | "oidc";
 
 const viewTitles: Record<View, [string, string]> = {
@@ -54,6 +55,7 @@ const viewTitles: Record<View, [string, string]> = {
   operations: ["Operations", "Inspect queues, DLQs, and replay determinism."],
   audit: ["Audit", "Review tenant-scoped security and operations activity."],
   segments: ["Segments", "Manage customer segments and membership rules."],
+  scoring: ["Scoring", "Publish governed scoring models and inspect profile scores."],
   templates: ["Templates", "Design email templates with Liquid tags and live preview."],
   campaigns: ["Campaigns", "Schedule and manage sharded marketing campaigns linked to segments and templates."],
   journeys: ["Journeys", "Design, publish, and monitor automated customer experiences."],
@@ -243,7 +245,7 @@ export function App() {
       <aside>
         <div className="brand"><span>O</span> OpenJourney</div>
         <nav aria-label="Primary">
-          {(["profiles", "segments", "templates", "campaigns", "journeys", "experiments", "reports", "copilots", "governance", "suppressions", "sender-identities", "device-tokens", "schemas", "api-keys", "privacy", "access", "operations", "audit"] as View[]).map((item) => (
+          {(["profiles", "segments", "scoring", "templates", "campaigns", "journeys", "experiments", "reports", "copilots", "governance", "suppressions", "sender-identities", "device-tokens", "schemas", "api-keys", "privacy", "access", "operations", "audit"] as View[]).map((item) => (
             <button key={item} className={view === item ? "active" : ""}
               onClick={() => setView(item)}>{viewTitles[item][0]}</button>
           ))}
@@ -266,6 +268,7 @@ export function App() {
         <UIErrorBoundary resetKey={view}>
         {view === "profiles" && <Profiles apiKey={apiKey} />}
         {view === "segments" && <Segments apiKey={apiKey} />}
+        {view === "scoring" && <Suspense fallback={<p role="status">Loading scoring…</p>}><Scoring apiKey={apiKey} baseURL={apiBase} /></Suspense>}
         {view === "templates" && <Templates apiKey={apiKey} />}
         {view === "campaigns" && <Campaigns apiKey={apiKey} />}
         {view === "journeys" && (
@@ -600,10 +603,16 @@ function Segments({ apiKey }: { apiKey: string }) {
   const [memberProfileID, setMemberProfileID] = useState("");
   const [membership, setMembership] = useState<"include" | "exclude">("include");
   const [error, setError] = useState("");
+  const [scoringModels, setScoringModels] = useState<ScoringModel[]>([]);
+  const [scoreModel, setScoreModel] = useState("");
+  const [scoreName, setScoreName] = useState("");
+  const [scoreOperator, setScoreOperator] = useState("greater_than");
+  const [scoreValue, setScoreValue] = useState(0);
 
   async function refresh() {
     try {
-      setItems(await listSegments(apiBase, apiKey));
+      const [segments, models] = await Promise.all([listSegments(apiBase, apiKey), listScoringModels(apiBase, apiKey)]);
+      setItems(segments); setScoringModels(models);
       setError("");
     } catch (cause) {
       setError(message(cause));
@@ -623,6 +632,7 @@ function Segments({ apiKey }: { apiKey: string }) {
       } catch (e) {
         throw new Error("Invalid DSL JSON: " + (e as Error).message);
       }
+      if (scoreModel) parsedDSL = { type: "score", model: scoreModel, score_name: scoreName, operator: scoreOperator, value: scoreValue };
       await createSegment(apiBase, apiKey, {
         name,
         description,
@@ -649,6 +659,7 @@ function Segments({ apiKey }: { apiKey: string }) {
       } catch (e) {
         throw new Error("Invalid DSL JSON: " + (e as Error).message);
       }
+      if (scoreModel) parsedDSL = { type: "score", model: scoreModel, score_name: scoreName, operator: scoreOperator, value: scoreValue };
       await updateSegment(apiBase, apiKey, editingSegment.id, {
         name,
         description,
@@ -688,6 +699,9 @@ function Segments({ apiKey }: { apiKey: string }) {
     setType(seg.type);
     setStatus(seg.status);
     setDsl(JSON.stringify(seg.dsl, null, 2));
+    const score = seg.dsl as { type?: string; model?: string; score_name?: string; operator?: string; value?: number };
+    setScoreModel(score.type === "score" ? score.model || "" : ""); setScoreName(score.type === "score" ? score.score_name || "" : "");
+    setScoreOperator(score.type === "score" ? score.operator || "greater_than" : "greater_than"); setScoreValue(score.type === "score" ? Number(score.value || 0) : 0);
   }
 
   return (
@@ -718,6 +732,7 @@ function Segments({ apiKey }: { apiKey: string }) {
           <label className="full">DSL Definition (JSON)
             <textarea value={dsl} onChange={(e) => setDsl(e.target.value)} rows={7} />
           </label>
+          <fieldset className="full score-condition"><legend>Score condition (optional)</legend><div className="score-condition-fields"><label>Model<select value={scoreModel} onChange={e => setScoreModel(e.target.value)}><option value="">Use JSON DSL</option>{scoringModels.map(model => <option key={model.id} value={model.id}>{model.name}</option>)}</select></label><label>Score name<input value={scoreName} onChange={e => setScoreName(e.target.value)} placeholder="purchase_propensity" /></label><label>Operator<select value={scoreOperator} onChange={e => setScoreOperator(e.target.value)}><option value="greater_than">greater than</option><option value="less_than">less than</option><option value="equals">equals</option></select></label><label>Value<input type="number" step="any" value={scoreValue} onChange={e => setScoreValue(Number(e.target.value))} /></label></div><p className="field-help">Selecting a model writes a parameterized score leaf into the segment DSL.</p></fieldset>
           <div className="form-actions full">
             <button disabled={!apiKey}>{editingSegment ? "Update Segment" : "Create Segment"}</button>
             {editingSegment && <button type="button" className="secondary" onClick={() => {

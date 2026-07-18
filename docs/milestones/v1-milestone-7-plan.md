@@ -416,9 +416,9 @@ task ends with a **Done when**. Do them in order; compile + `go vet` between mil
    whose holdout_pct is preserved. — done: added immutable experiment_versions snapshots, human-gated approval route, and HTTP/DB integration coverage for api_key rejection plus seed/holdout preservation.
 
 ### Milestone 12.10 — UI
-1. **Scoring + scores**: scoring-model editor (expression/LLM, publish), a per-profile scores
+1. [x] **Scoring + scores**: scoring-model editor (expression/LLM, publish), a per-profile scores
    inspector, and a **score condition** in the segment builder. *Done when:* `npm run build` passes;
-   a scoring model and a score-triggered segment round-trip.
+   a scoring model and a score-triggered segment round-trip. — done: added governed scoring model/version APIs, Scoring editor and profile score inspector, score-condition segment controls, and Scoring UI round-trip test; Go and web suites pass.
 2. **Realtime node + optimization**: an `ai_decision` node in the journey builder (with a required
    fallback branch) and an online-optimization proposals review/approve panel. *Done when:* the node
    round-trips with its fallback; a proposal can be approved from the UI (human actor).

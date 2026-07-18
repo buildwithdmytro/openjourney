@@ -199,6 +199,7 @@ type Store interface {
 	CompleteScoring(ctx context.Context, id string) error
 	FailScoring(ctx context.Context, id string, message string) error
 	UpsertProfileScores(ctx context.Context, scores []domain.ProfileScore) error
+	ListProfileScores(ctx context.Context, p domain.Principal, profileID string) ([]domain.ProfileScore, error)
 	GetEventCount(ctx context.Context, tenantID, workspaceID, externalID, anonymousID, eventType string, days int) (int64, error)
 
 	CreateFieldClassification(ctx context.Context, p domain.Principal, classification domain.FieldClassification) (domain.FieldClassification, error)

@@ -458,6 +458,27 @@ func (s *Store) UpsertProfileScores(ctx context.Context, scores []domain.Profile
 	return tx.Commit(ctx)
 }
 
+func (s *Store) ListProfileScores(ctx context.Context, p domain.Principal, profileID string) ([]domain.ProfileScore, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT tenant_id, workspace_id, app_id, profile_id, scoring_model_id, score_name, value, model_version, computed_at
+		FROM profile_scores
+		WHERE tenant_id = $1 AND workspace_id = $2 AND profile_id = $3
+		ORDER BY score_name, scoring_model_id`, p.TenantID, p.WorkspaceID, profileID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.ProfileScore
+	for rows.Next() {
+		var score domain.ProfileScore
+		if err := rows.Scan(&score.TenantID, &score.WorkspaceID, &score.AppID, &score.ProfileID, &score.ScoringModelID, &score.ScoreName, &score.Value, &score.ModelVersion, &score.ComputedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, score)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) GetEventCount(ctx context.Context, tenantID, workspaceID, externalID, anonymousID, eventType string, days int) (int64, error) {
 	if externalID == "" && anonymousID == "" {
 		return 0, nil
@@ -472,4 +493,3 @@ func (s *Store) GetEventCount(ctx context.Context, tenantID, workspaceID, extern
 	`, tenantID, workspaceID, externalID, anonymousID, eventType, days).Scan(&count)
 	return count, err
 }
-

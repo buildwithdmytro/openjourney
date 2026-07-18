@@ -33,6 +33,12 @@ button.secondary { background: #e9edf2; color: #344156; }
 .stack { display: grid; gap: 18px; }
 .schema-form { grid-template-columns: 2fr 1fr; }
 .schema-form .full { grid-column: 1 / -1; }
+.scoring-view { max-width: 1100px; }
+.scoring-form { display: grid; grid-template-columns: 1fr 1fr; align-items: end; margin-top: 18px; }
+.scoring-wide { grid-column: 1 / -1; }
+.score-condition { border: 1px solid #e0e5eb; border-radius: 10px; padding: 14px; }
+.score-condition legend { padding: 0 6px; font-size: 13px; font-weight: 750; }
+.score-condition-fields { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
 textarea { border: 1px solid #ccd3dd; border-radius: 8px; padding: 10px 12px; font: 13px ui-monospace, monospace; resize: vertical; }
 label { display: grid; gap: 7px; font-size: 13px; font-weight: 650; }
 input, select { width: 100%; border: 1px solid #ccd3dd; border-radius: 8px; padding: 10px 12px; font: inherit; outline: none; background: white; }
