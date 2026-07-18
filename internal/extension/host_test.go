@@ -203,7 +203,7 @@ func TestHostInvoke_Success(t *testing.T) {
 		Scopes:      []string{"profiles:read"},
 	}
 
-	res, err := host.Invoke(context.Background(), principal, extID, "send", json.RawMessage(`{"hello":"world"}`))
+	res, _, err := host.Invoke(context.Background(), principal, extID, "send", json.RawMessage(`{"hello":"world"}`))
 	if err != nil {
 		t.Fatalf("Invoke failed: %v", err)
 	}
@@ -266,7 +266,7 @@ func TestHostInvoke_OffAllowlist(t *testing.T) {
 	}
 
 	principal := domain.Principal{TenantID: "tenant-1", WorkspaceID: "workspace-1"}
-	_, err := host.Invoke(context.Background(), principal, extID, "send", json.RawMessage(`{}`))
+	_, _, err := host.Invoke(context.Background(), principal, extID, "send", json.RawMessage(`{}`))
 	if err == nil {
 		t.Fatal("expected error due to off-allowlist")
 	}
@@ -317,7 +317,7 @@ func TestHostInvoke_Timeout(t *testing.T) {
 	}
 
 	principal := domain.Principal{TenantID: "tenant-1", WorkspaceID: "workspace-1"}
-	_, err := host.Invoke(context.Background(), principal, extID, "send", json.RawMessage(`{}`))
+	_, _, err := host.Invoke(context.Background(), principal, extID, "send", json.RawMessage(`{}`))
 	if err == nil {
 		t.Fatal("expected timeout error")
 	}
@@ -369,7 +369,7 @@ func TestHostInvoke_CircuitBreaker(t *testing.T) {
 
 	// Trigger 5 consecutive failures
 	for i := 0; i < 5; i++ {
-		_, err := host.Invoke(context.Background(), principal, extID, "send", json.RawMessage(`{}`))
+		_, _, err := host.Invoke(context.Background(), principal, extID, "send", json.RawMessage(`{}`))
 		if err == nil {
 			t.Fatal("expected failure")
 		}
@@ -382,7 +382,7 @@ func TestHostInvoke_CircuitBreaker(t *testing.T) {
 
 	// 6th call should immediately short circuit with ErrCircuitOpen
 	store.activities = nil
-	_, err := host.Invoke(context.Background(), principal, extID, "send", json.RawMessage(`{}`))
+	_, _, err := host.Invoke(context.Background(), principal, extID, "send", json.RawMessage(`{}`))
 	if !errors.Is(err, ErrCircuitOpen) {
 		t.Errorf("expected ErrCircuitOpen, got %v", err)
 	}
@@ -427,7 +427,7 @@ func TestHostInvoke_RateLimit(t *testing.T) {
 	store.invocationCount = 10 // rate limit reached
 
 	principal := domain.Principal{TenantID: "tenant-1", WorkspaceID: "workspace-1"}
-	_, err := host.Invoke(context.Background(), principal, extID, "send", json.RawMessage(`{}`))
+	_, _, err := host.Invoke(context.Background(), principal, extID, "send", json.RawMessage(`{}`))
 	if !errors.Is(err, ErrRateLimitExceeded) {
 		t.Errorf("expected ErrRateLimitExceeded, got %v", err)
 	}
@@ -472,7 +472,7 @@ func TestHostInvoke_BudgetLimit(t *testing.T) {
 	store.budgetUsage = 100 // budget reached
 
 	principal := domain.Principal{TenantID: "tenant-1", WorkspaceID: "workspace-1"}
-	_, err := host.Invoke(context.Background(), principal, extID, "send", json.RawMessage(`{}`))
+	_, _, err := host.Invoke(context.Background(), principal, extID, "send", json.RawMessage(`{}`))
 	if !errors.Is(err, ErrBudgetExceeded) {
 		t.Errorf("expected ErrBudgetExceeded, got %v", err)
 	}

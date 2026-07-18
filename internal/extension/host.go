@@ -82,47 +82,47 @@ func NewHost(store ports.Store) *Host {
 	}
 }
 
-func (h *Host) Invoke(ctx context.Context, principal domain.Principal, extensionID string, invocation string, input json.RawMessage) (json.RawMessage, error) {
+func (h *Host) Invoke(ctx context.Context, principal domain.Principal, extensionID string, invocation string, input json.RawMessage) (json.RawMessage, string, error) {
 	// 1. Resolve parent extension
 	ext, err := h.store.GetExtension(ctx, principal, extensionID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get extension: %w", err)
+		return nil, "", fmt.Errorf("failed to get extension: %w", err)
 	}
 
 	if ext.Status == "disabled" {
-		_ = h.recordActivity(ctx, principal, extensionID, 0, "unknown", invocation, &input, nil, 0, 0, "circuit_open")
-		return nil, fmt.Errorf("extension is disabled: %s", extensionID)
+		actID, _ := h.recordActivity(ctx, principal, extensionID, 0, "unknown", invocation, &input, nil, 0, 0, "circuit_open")
+		return nil, actID, fmt.Errorf("extension is disabled: %s", extensionID)
 	}
 
 	// 2. Resolve version (enabled/active version)
 	if ext.CurrentVersionID == nil || *ext.CurrentVersionID == "" {
-		_ = h.recordActivity(ctx, principal, extensionID, 0, "unknown", invocation, &input, nil, 0, 0, "error")
-		return nil, fmt.Errorf("extension %s has no active version published", extensionID)
+		actID, _ := h.recordActivity(ctx, principal, extensionID, 0, "unknown", invocation, &input, nil, 0, 0, "error")
+		return nil, actID, fmt.Errorf("extension %s has no active version published", extensionID)
 	}
 
 	ev, err := h.store.GetExtensionVersion(ctx, principal, *ext.CurrentVersionID)
 	if err != nil {
-		_ = h.recordActivity(ctx, principal, extensionID, 0, "unknown", invocation, &input, nil, 0, 0, "error")
-		return nil, fmt.Errorf("failed to get extension version: %w", err)
+		actID, _ := h.recordActivity(ctx, principal, extensionID, 0, "unknown", invocation, &input, nil, 0, 0, "error")
+		return nil, actID, fmt.Errorf("failed to get extension version: %w", err)
 	}
 
 	// 3. Resolve config
 	config, err := h.store.GetExtensionConfig(ctx, principal, extensionID)
 	if err != nil {
-		_ = h.recordActivity(ctx, principal, extensionID, ev.Version, ev.Kind, invocation, &input, nil, 0, 0, "error")
-		return nil, fmt.Errorf("failed to get extension config: %w", err)
+		actID, _ := h.recordActivity(ctx, principal, extensionID, ev.Version, ev.Kind, invocation, &input, nil, 0, 0, "error")
+		return nil, actID, fmt.Errorf("failed to get extension config: %w", err)
 	}
 
 	if config.Status == "disabled" {
-		_ = h.recordActivity(ctx, principal, extensionID, ev.Version, ev.Kind, invocation, &input, nil, 0, 0, "circuit_open")
-		return nil, fmt.Errorf("extension config is disabled: %s", extensionID)
+		actID, _ := h.recordActivity(ctx, principal, extensionID, ev.Version, ev.Kind, invocation, &input, nil, 0, 0, "circuit_open")
+		return nil, actID, fmt.Errorf("extension config is disabled: %s", extensionID)
 	}
 
 	// 4. Check circuit breaker state
 	health, err := h.store.GetExtensionHealth(ctx, principal, extensionID)
 	if err != nil {
-		_ = h.recordActivity(ctx, principal, extensionID, ev.Version, ev.Kind, invocation, &input, nil, 0, 0, "error")
-		return nil, fmt.Errorf("failed to get extension health: %w", err)
+		actID, _ := h.recordActivity(ctx, principal, extensionID, ev.Version, ev.Kind, invocation, &input, nil, 0, 0, "error")
+		return nil, actID, fmt.Errorf("failed to get extension health: %w", err)
 	}
 
 	if health.State == "open" {
@@ -132,16 +132,16 @@ func (h *Host) Invoke(ctx context.Context, principal domain.Principal, extension
 				slog.Error("failed to update health state to half_open", "error", err)
 			}
 		} else {
-			_ = h.recordActivity(ctx, principal, extensionID, ev.Version, ev.Kind, invocation, &input, nil, 0, 0, "circuit_open")
-			return nil, ErrCircuitOpen
+			actID, _ := h.recordActivity(ctx, principal, extensionID, ev.Version, ev.Kind, invocation, &input, nil, 0, 0, "circuit_open")
+			return nil, actID, ErrCircuitOpen
 		}
 	}
 
 	// 5. Intersect scopes (grant ∩ requested)
 	intersection, err := ResolveScopes(ctx, h.store, principal, extensionID, ev.Version)
 	if err != nil {
-		_ = h.recordActivity(ctx, principal, extensionID, ev.Version, ev.Kind, invocation, &input, nil, 0, 0, "error")
-		return nil, fmt.Errorf("failed to resolve scopes: %w", err)
+		actID, _ := h.recordActivity(ctx, principal, extensionID, ev.Version, ev.Kind, invocation, &input, nil, 0, 0, "error")
+		return nil, actID, fmt.Errorf("failed to resolve scopes: %w", err)
 	}
 
 	derivedP := principal
@@ -152,12 +152,12 @@ func (h *Host) Invoke(ctx context.Context, principal domain.Principal, extension
 	if config.RatePerMin > 0 {
 		count, err := h.store.GetExtensionInvocationCountLastMin(ctx, principal.TenantID, principal.WorkspaceID, extensionID)
 		if err != nil {
-			_ = h.recordActivity(ctx, derivedP, extensionID, ev.Version, ev.Kind, invocation, &input, nil, 0, 0, "error")
-			return nil, fmt.Errorf("failed to check invocation count: %w", err)
+			actID, _ := h.recordActivity(ctx, derivedP, extensionID, ev.Version, ev.Kind, invocation, &input, nil, 0, 0, "error")
+			return nil, actID, fmt.Errorf("failed to check invocation count: %w", err)
 		}
 		if count >= config.RatePerMin {
-			_ = h.recordActivity(ctx, derivedP, extensionID, ev.Version, ev.Kind, invocation, &input, nil, 0, 0, "denied_rate")
-			return nil, ErrRateLimitExceeded
+			actID, _ := h.recordActivity(ctx, derivedP, extensionID, ev.Version, ev.Kind, invocation, &input, nil, 0, 0, "denied_rate")
+			return nil, actID, ErrRateLimitExceeded
 		}
 	}
 
@@ -166,12 +166,12 @@ func (h *Host) Invoke(ctx context.Context, principal domain.Principal, extension
 		period := time.Now().UTC().Format("2006-01")
 		usage, err := h.store.GetExtensionBudgetUsage(ctx, principal.TenantID, principal.WorkspaceID, extensionID, period)
 		if err != nil {
-			_ = h.recordActivity(ctx, derivedP, extensionID, ev.Version, ev.Kind, invocation, &input, nil, 0, 0, "error")
-			return nil, fmt.Errorf("failed to check budget: %w", err)
+			actID, _ := h.recordActivity(ctx, derivedP, extensionID, ev.Version, ev.Kind, invocation, &input, nil, 0, 0, "error")
+			return nil, actID, fmt.Errorf("failed to check budget: %w", err)
 		}
 		if usage >= config.MonthlyBudgetCents {
-			_ = h.recordActivity(ctx, derivedP, extensionID, ev.Version, ev.Kind, invocation, &input, nil, 0, 0, "denied_budget")
-			return nil, ErrBudgetExceeded
+			actID, _ := h.recordActivity(ctx, derivedP, extensionID, ev.Version, ev.Kind, invocation, &input, nil, 0, 0, "denied_budget")
+			return nil, actID, ErrBudgetExceeded
 		}
 	}
 
@@ -216,8 +216,8 @@ func (h *Host) Invoke(ctx context.Context, principal domain.Principal, extension
 			slog.Error("failed to update health state on failure", "error", err)
 		}
 
-		_ = h.recordActivity(ctx, derivedP, extensionID, ev.Version, ev.Kind, invocation, &input, nil, duration, 0, decision)
-		return nil, invokeErr
+		actID, _ := h.recordActivity(ctx, derivedP, extensionID, ev.Version, ev.Kind, invocation, &input, nil, duration, 0, decision)
+		return nil, actID, invokeErr
 	}
 
 	health.ConsecutiveFailures = 0
@@ -227,8 +227,8 @@ func (h *Host) Invoke(ctx context.Context, principal domain.Principal, extension
 		slog.Error("failed to reset health state on success", "error", err)
 	}
 
-	_ = h.recordActivity(ctx, derivedP, extensionID, ev.Version, ev.Kind, invocation, &input, &output, duration, 0, decision)
-	return output, nil
+	actID, _ := h.recordActivity(ctx, derivedP, extensionID, ev.Version, ev.Kind, invocation, &input, &output, duration, 0, decision)
+	return output, actID, nil
 }
 
 func (h *Host) invokeRemoteHTTP(ctx context.Context, p domain.Principal, ev domain.ExtensionVersion, cfg domain.ExtensionConfig, invocation string, input json.RawMessage) (json.RawMessage, error) {
@@ -294,7 +294,7 @@ func (h *Host) invokeRemoteHTTP(ctx context.Context, p domain.Principal, ev doma
 	return json.RawMessage(bodyBytes), nil
 }
 
-func (h *Host) recordActivity(ctx context.Context, p domain.Principal, extensionID string, version int, kind string, invocation string, input *json.RawMessage, output *json.RawMessage, latencyMs int64, costCents int64, decision string) error {
+func (h *Host) recordActivity(ctx context.Context, p domain.Principal, extensionID string, version int, kind string, invocation string, input *json.RawMessage, output *json.RawMessage, latencyMs int64, costCents int64, decision string) (string, error) {
 	var inputRef *string
 	if input != nil {
 		str := string(*input)
@@ -321,8 +321,11 @@ func (h *Host) recordActivity(ctx context.Context, p domain.Principal, extension
 		PolicyDecision:   decision,
 	}
 
-	_, err := h.store.RecordExtensionActivity(ctx, p, activity)
-	return err
+	stored, err := h.store.RecordExtensionActivity(ctx, p, activity)
+	if err != nil {
+		return "", err
+	}
+	return stored.ID, nil
 }
 
 func isEndpointAllowed(targetURL string, allowlist []string) error {

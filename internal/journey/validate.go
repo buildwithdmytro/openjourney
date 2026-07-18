@@ -7,6 +7,7 @@ import (
 )
 
 const maxAIDecisionTimeout = 5 * time.Second
+const maxExtensionTimeout = 10 * time.Second
 
 func Validate(graph *Graph) error {
 	if graph == nil {
@@ -119,6 +120,25 @@ func validateDurations(node Node) error {
 			return fmt.Errorf("ai_decision node %s requires a positive max_cost_cents", node.ID)
 		}
 		return nil
+	case NodeTypeExtensionAction, NodeTypeExtensionCondition:
+		cfgAny, err := DecodeConfig(node)
+		if err != nil {
+			return err
+		}
+		cfg := cfgAny.(ExtensionNodeConfig)
+		if cfg.ExtensionID == "" {
+			return fmt.Errorf("%s node %s requires extension_id", node.Type, node.ID)
+		}
+		if cfg.ExtensionVersion <= 0 {
+			return fmt.Errorf("%s node %s requires a positive extension_version", node.Type, node.ID)
+		}
+		if cfg.TimeoutMS <= 0 {
+			return fmt.Errorf("%s node %s requires a positive timeout_ms", node.Type, node.ID)
+		}
+		if time.Duration(cfg.TimeoutMS)*time.Millisecond > maxExtensionTimeout {
+			return fmt.Errorf("%s node %s timeout_ms exceeds maximum of %d", node.Type, node.ID, maxExtensionTimeout/time.Millisecond)
+		}
+		return nil
 	default:
 		return nil
 	}
@@ -178,6 +198,27 @@ func validateOutgoing(node Node, edges []Edge) error {
 		}
 		if !fallbackDeclared {
 			return fmt.Errorf("ai_decision node %s fallback branch %q is not declared", node.ID, cfg.Fallback)
+		}
+		return validateExactBranches(node, edges, labels)
+	case NodeTypeExtensionAction, NodeTypeExtensionCondition:
+		cfgAny, err := DecodeConfig(node)
+		if err != nil {
+			return err
+		}
+		cfg := cfgAny.(ExtensionNodeConfig)
+		if cfg.Fallback == "" {
+			return fmt.Errorf("%s node %s requires fallback", node.Type, node.ID)
+		}
+		labels := append([]string(nil), cfg.Branches...)
+		fallbackDeclared := false
+		for _, label := range labels {
+			if label == cfg.Fallback {
+				fallbackDeclared = true
+				break
+			}
+		}
+		if !fallbackDeclared {
+			return fmt.Errorf("%s node %s fallback branch %q is not declared", node.Type, node.ID, cfg.Fallback)
 		}
 		return validateExactBranches(node, edges, labels)
 	case NodeTypeExit:

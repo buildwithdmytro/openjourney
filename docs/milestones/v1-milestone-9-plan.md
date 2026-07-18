@@ -388,11 +388,11 @@ keep tests reproducible; one consolidated security/integration pass in 14.10. Ea
    through the host (bounded + audited), and a provider failure surfaces as a normal `DeliveryError`. — done: implemented ExtensionChannelAdapter and RegisterChannelProviders, wired to worker/delivery startup, and verified via TestExtensionChannelAdapter and TestRegisterChannelProviders.
 
 ### Milestone 14.3 — Remote journey action/condition node
-1. **`extension_action` + `extension_condition` nodes** (§3.2): remove them from the rejected set
+1. [x] **`extension_action` + `extension_condition` nodes** (§3.2): remove them from the rejected set
    (`nodes.go:146`); executor copies `ai_decision` (bounded inline call + deterministic fallback
    branch); publish-time validation (declared branches incl. fallback; bounded timeout; a pinned
    `extension_id`+version). *Done when:* a slow/failing extension still advances the run to the
-   fallback branch; a valid decision takes the extension's branch; the run never dead-letters.
+   fallback branch; a valid decision takes the extension's branch; the run never dead-letters. — done: registered extension_action/condition, implemented execution delegating to Host with fallback, and verified via TestExtensionNodesExecution.
 
 ### Milestone 14.4 — WASI/Wasm sandbox (wazero)
 1. **Wasm runtime** `internal/extension/wasm.go` (Recipe 6.43): `wazero` module host with **no

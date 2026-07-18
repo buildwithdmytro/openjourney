@@ -3,6 +3,7 @@ package journey
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -213,14 +214,14 @@ func TestAIDecisionTimeoutUsesFallbackAndValidOutputUsesBranch(t *testing.T) {
 		<-ctx.Done()
 		return nil, ctx.Err()
 	}}
-	res, err := graph.Nodes[0].ExecuteWithGateway(context.Background(), newMockStore(), run, graph, time.Now(), "advance", newGateway(slow))
+	res, err := graph.Nodes[0].ExecuteWithGateway(context.Background(), newMockStore(), run, graph, time.Now(), "advance", newGateway(slow), nil)
 	if err != nil || res.NextNodeID != "no" || res.Transition.Outcome != "branch:no" {
 		t.Fatalf("timeout did not use fallback: result=%+v err=%v", res, err)
 	}
 	valid := decisionTestProvider{generate: func(context.Context, ai.GenerateRequest) (*ai.GenerateResponse, error) {
 		return &ai.GenerateResponse{Content: `{"branch":"yes"}`, Usage: ai.Usage{CostCents: 1}}, nil
 	}}
-	res, err = graph.Nodes[0].ExecuteWithGateway(context.Background(), newMockStore(), run, graph, time.Now(), "advance", newGateway(valid))
+	res, err = graph.Nodes[0].ExecuteWithGateway(context.Background(), newMockStore(), run, graph, time.Now(), "advance", newGateway(valid), nil)
 	if err != nil || res.NextNodeID != "yes" || res.Transition.Outcome != "branch:yes" {
 		t.Fatalf("valid output did not use model branch: result=%+v err=%v", res, err)
 	}
@@ -681,3 +682,278 @@ func TestExecuteMessage(t *testing.T) {
 		t.Errorf("expected Transactional to be false")
 	}
 }
+
+type mockExtensionHost struct {
+	invoke func(ctx context.Context, principal domain.Principal, extensionID string, invocation string, input json.RawMessage) (json.RawMessage, string, error)
+}
+
+func (m *mockExtensionHost) Invoke(ctx context.Context, principal domain.Principal, extensionID string, invocation string, input json.RawMessage) (json.RawMessage, string, error) {
+	if m.invoke != nil {
+		return m.invoke(ctx, principal, extensionID, invocation, input)
+	}
+	return nil, "", nil
+}
+
+func TestExtensionNodesExecution_Success(t *testing.T) {
+	graph := &Graph{
+		Nodes: []Node{
+			{
+				ID:   "n1",
+				Type: NodeTypeExtensionAction,
+				Config: json.RawMessage(`{
+					"extension_id": "ext-123",
+					"extension_version": 1,
+					"timeout_ms": 1000,
+					"branches": ["yes", "no"],
+					"fallback": "no",
+					"config": {"foo": "bar"}
+				}`),
+			},
+			{ID: "yes", Type: NodeTypeExit},
+			{ID: "no", Type: NodeTypeExit},
+		},
+		Edges: []Edge{
+			{From: "n1", To: "yes", Branch: "yes"},
+			{From: "n1", To: "no", Branch: "no"},
+		},
+	}
+
+	run := &domain.JourneyRun{
+		ID:          "run-1",
+		TenantID:    "tenant-1",
+		WorkspaceID: "workspace-1",
+		ProfileID:   "profile-1",
+		Status:      "active",
+	}
+
+	var capturedInput json.RawMessage
+	host := &mockExtensionHost{
+		invoke: func(ctx context.Context, p domain.Principal, extID string, invocation string, input json.RawMessage) (json.RawMessage, string, error) {
+			capturedInput = input
+			if extID != "ext-123" {
+				return nil, "", fmt.Errorf("unexpected extID: %s", extID)
+			}
+			if invocation != "decide" {
+				return nil, "", fmt.Errorf("unexpected invocation: %s", invocation)
+			}
+			return json.RawMessage(`{"branch": "yes"}`), "act-uuid-123", nil
+		},
+	}
+
+	res, err := graph.Nodes[0].ExecuteWithGateway(context.Background(), newMockStore(), run, graph, time.Now(), "advance", nil, host)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if res.NextNodeID != "yes" {
+		t.Errorf("expected NextNodeID 'yes', got %q", res.NextNodeID)
+	}
+
+	var detail map[string]string
+	if err := json.Unmarshal(res.Transition.Detail, &detail); err != nil {
+		t.Fatalf("failed to decode detail: %v", err)
+	}
+	if detail["extension_activity_id"] != "act-uuid-123" {
+		t.Errorf("expected activity ID 'act-uuid-123', got %q", detail["extension_activity_id"])
+	}
+
+	var inputMap map[string]any
+	if err := json.Unmarshal(capturedInput, &inputMap); err != nil {
+		t.Fatalf("failed to decode captured input: %v", err)
+	}
+	if inputMap["profile_id"] != "profile-1" {
+		t.Errorf("expected profile_id 'profile-1', got %v", inputMap["profile_id"])
+	}
+	cfgVal := inputMap["config"].(map[string]any)
+	if cfgVal["foo"] != "bar" {
+		t.Errorf("expected config.foo = 'bar', got %v", cfgVal["foo"])
+	}
+}
+
+func TestExtensionNodesExecution_FallbackOnError(t *testing.T) {
+	graph := &Graph{
+		Nodes: []Node{
+			{
+				ID:   "n1",
+				Type: NodeTypeExtensionCondition,
+				Config: json.RawMessage(`{
+					"extension_id": "ext-123",
+					"extension_version": 2,
+					"timeout_ms": 500,
+					"branches": ["yes", "no"],
+					"fallback": "no"
+				}`),
+			},
+			{ID: "yes", Type: NodeTypeExit},
+			{ID: "no", Type: NodeTypeExit},
+		},
+		Edges: []Edge{
+			{From: "n1", To: "yes", Branch: "yes"},
+			{From: "n1", To: "no", Branch: "no"},
+		},
+	}
+
+	run := &domain.JourneyRun{
+		ID:          "run-1",
+		TenantID:    "tenant-1",
+		WorkspaceID: "workspace-1",
+		ProfileID:   "profile-1",
+		Status:      "active",
+	}
+
+	// Host returns an error, should fallback to fallback branch deterministically without failing the step.
+	host := &mockExtensionHost{
+		invoke: func(ctx context.Context, p domain.Principal, extID string, invocation string, input json.RawMessage) (json.RawMessage, string, error) {
+			return nil, "act-err-999", fmt.Errorf("remote extension unavailable")
+		},
+	}
+
+	res, err := graph.Nodes[0].ExecuteWithGateway(context.Background(), newMockStore(), run, graph, time.Now(), "advance", nil, host)
+	if err != nil {
+		t.Fatalf("unexpected execution error: %v", err)
+	}
+
+	if res.NextNodeID != "no" {
+		t.Errorf("expected NextNodeID to be fallback 'no', got %q", res.NextNodeID)
+	}
+
+	var detail map[string]string
+	_ = json.Unmarshal(res.Transition.Detail, &detail)
+	if detail["extension_activity_id"] != "act-err-999" {
+		t.Errorf("expected activity ID 'act-err-999', got %q", detail["extension_activity_id"])
+	}
+}
+
+func TestExtensionNodesExecution_FallbackOnUnconfigured(t *testing.T) {
+	graph := &Graph{
+		Nodes: []Node{
+			{
+				ID:   "n1",
+				Type: NodeTypeExtensionAction,
+				Config: json.RawMessage(`{
+					"extension_id": "ext-123",
+					"extension_version": 1,
+					"timeout_ms": 1000,
+					"branches": ["yes", "no"],
+					"fallback": "yes"
+				}`),
+			},
+			{ID: "yes", Type: NodeTypeExit},
+			{ID: "no", Type: NodeTypeExit},
+		},
+		Edges: []Edge{
+			{From: "n1", To: "yes", Branch: "yes"},
+			{From: "n1", To: "no", Branch: "no"},
+		},
+	}
+
+	run := &domain.JourneyRun{
+		ID:          "run-1",
+		TenantID:    "tenant-1",
+		WorkspaceID: "workspace-1",
+		ProfileID:   "profile-1",
+		Status:      "active",
+	}
+
+	// Passing nil host (unconfigured) should immediately fallback to Fallback branch.
+	res, err := graph.Nodes[0].ExecuteWithGateway(context.Background(), newMockStore(), run, graph, time.Now(), "advance", nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if res.NextNodeID != "yes" {
+		t.Errorf("expected NextNodeID to be fallback 'yes', got %q", res.NextNodeID)
+	}
+}
+
+func TestExtensionNodesExecution_Validation(t *testing.T) {
+	tests := []struct {
+		name    string
+		graph   *Graph
+		wantErr string
+	}{
+		{
+			name: "missing extension_id",
+			graph: &Graph{
+				EntryNodeID: "n1",
+				Nodes: []Node{
+					{ID: "n1", Type: NodeTypeEntry, Config: json.RawMessage(`{"trigger":"event","event_type":"a"}`)},
+					{ID: "n2", Type: NodeTypeExtensionAction, Config: json.RawMessage(`{"extension_version":1,"timeout_ms":1000,"branches":["ok"],"fallback":"ok"}`)},
+					{ID: "ok", Type: NodeTypeExit},
+				},
+				Edges: []Edge{
+					{From: "n1", To: "n2"},
+					{From: "n2", To: "ok", Branch: "ok"},
+				},
+			},
+			wantErr: "requires extension_id",
+		},
+		{
+			name: "invalid timeout",
+			graph: &Graph{
+				EntryNodeID: "n1",
+				Nodes: []Node{
+					{ID: "n1", Type: NodeTypeEntry, Config: json.RawMessage(`{"trigger":"event","event_type":"a"}`)},
+					{ID: "n2", Type: NodeTypeExtensionAction, Config: json.RawMessage(`{"extension_id":"ext-1","extension_version":1,"timeout_ms":20000,"branches":["ok"],"fallback":"ok"}`)},
+					{ID: "ok", Type: NodeTypeExit},
+				},
+				Edges: []Edge{
+					{From: "n1", To: "n2"},
+					{From: "n2", To: "ok", Branch: "ok"},
+				},
+			},
+			wantErr: "timeout_ms exceeds maximum",
+		},
+		{
+			name: "fallback branch not declared",
+			graph: &Graph{
+				EntryNodeID: "n1",
+				Nodes: []Node{
+					{ID: "n1", Type: NodeTypeEntry, Config: json.RawMessage(`{"trigger":"event","event_type":"a"}`)},
+					{ID: "n2", Type: NodeTypeExtensionAction, Config: json.RawMessage(`{"extension_id":"ext-1","extension_version":1,"timeout_ms":1000,"branches":["ok"],"fallback":"err"}`)},
+					{ID: "ok", Type: NodeTypeExit},
+				},
+				Edges: []Edge{
+					{From: "n1", To: "n2"},
+					{From: "n2", To: "ok", Branch: "ok"},
+				},
+			},
+			wantErr: "fallback branch \"err\" is not declared",
+		},
+		{
+			name: "correct validation",
+			graph: &Graph{
+				EntryNodeID: "n1",
+				Nodes: []Node{
+					{ID: "n1", Type: NodeTypeEntry, Config: json.RawMessage(`{"trigger":"event","event_type":"a"}`)},
+					{ID: "n2", Type: NodeTypeExtensionAction, Config: json.RawMessage(`{"extension_id":"ext-1","extension_version":1,"timeout_ms":1000,"branches":["ok"],"fallback":"ok"}`)},
+					{ID: "ok", Type: NodeTypeExit},
+				},
+				Edges: []Edge{
+					{From: "n1", To: "n2"},
+					{From: "n2", To: "ok", Branch: "ok"},
+				},
+			},
+			wantErr: "",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := Validate(tc.graph)
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("expected no validation error, got %v", err)
+				}
+			} else {
+				if err == nil {
+					t.Fatal("expected validation error, got nil")
+				}
+				if !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("expected error containing %q, got %v", tc.wantErr, err)
+				}
+			}
+		})
+	}
+}
+

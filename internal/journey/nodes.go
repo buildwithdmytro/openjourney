@@ -13,17 +13,33 @@ import (
 )
 
 const (
-	NodeTypeEntry      = "entry"
-	NodeTypeDelay      = "delay"
-	NodeTypeCondition  = "condition"
-	NodeTypeSplit      = "split"
-	NodeTypeMessage    = "message"
-	NodeTypeWaitEvent  = "wait_event"
-	NodeTypeAction     = "action"
-	NodeTypeGoal       = "goal"
-	NodeTypeExit       = "exit"
-	NodeTypeAIDecision = "ai_decision"
+	NodeTypeEntry              = "entry"
+	NodeTypeDelay              = "delay"
+	NodeTypeCondition          = "condition"
+	NodeTypeSplit              = "split"
+	NodeTypeMessage            = "message"
+	NodeTypeWaitEvent          = "wait_event"
+	NodeTypeAction             = "action"
+	NodeTypeGoal               = "goal"
+	NodeTypeExit               = "exit"
+	NodeTypeAIDecision         = "ai_decision"
+	NodeTypeExtensionAction    = "extension_action"
+	NodeTypeExtensionCondition = "extension_condition"
 )
+
+type ExtensionHost interface {
+	Invoke(ctx context.Context, principal domain.Principal, extensionID string, invocation string, input json.RawMessage) (json.RawMessage, string, error)
+}
+
+type ExtensionNodeConfig struct {
+	ExtensionID      string          `json:"extension_id"`
+	ExtensionVersion int             `json:"extension_version"`
+	TimeoutMS        int             `json:"timeout_ms"`
+	Branches         []string        `json:"branches"`
+	Fallback         string          `json:"fallback"`
+	Config           json.RawMessage `json:"config,omitempty"`
+}
+
 
 type EntryConfig struct {
 	Trigger       string `json:"trigger"`
@@ -143,6 +159,12 @@ func DecodeConfig(node Node) (any, error) {
 	case NodeTypeAIDecision:
 		var cfg AIDecisionConfig
 		return cfg, decodeNodeConfig(node, &cfg)
+	case NodeTypeExtensionAction:
+		var cfg ExtensionNodeConfig
+		return cfg, decodeNodeConfig(node, &cfg)
+	case NodeTypeExtensionCondition:
+		var cfg ExtensionNodeConfig
+		return cfg, decodeNodeConfig(node, &cfg)
 	case "feature_flag", "nested_journey", "webhook_action", "integration_action", "experiment", "holdout":
 		return nil, fmt.Errorf("unsupported node type: %s", node.Type)
 	default:
@@ -174,17 +196,17 @@ type ExecutionResult struct {
 }
 
 func (n *Node) Execute(ctx context.Context, store ports.Store, run *domain.JourneyRun, graph *Graph, now time.Time, stepKind string) (ExecutionResult, error) {
-	return n.execute(ctx, store, run, graph, now, stepKind, nil)
+	return n.execute(ctx, store, run, graph, now, stepKind, nil, nil)
 }
 
 // ExecuteWithGateway runs a realtime AI decision with the supplied governed gateway.
 // Execute remains available for non-AI callers and treats an unconfigured gateway as
 // a deterministic fallback, so a provider failure can never enter the step retry path.
-func (n *Node) ExecuteWithGateway(ctx context.Context, store ports.Store, run *domain.JourneyRun, graph *Graph, now time.Time, stepKind string, gateway *ai.Gateway) (ExecutionResult, error) {
-	return n.execute(ctx, store, run, graph, now, stepKind, gateway)
+func (n *Node) ExecuteWithGateway(ctx context.Context, store ports.Store, run *domain.JourneyRun, graph *Graph, now time.Time, stepKind string, gateway *ai.Gateway, extHost ExtensionHost) (ExecutionResult, error) {
+	return n.execute(ctx, store, run, graph, now, stepKind, gateway, extHost)
 }
 
-func (n *Node) execute(ctx context.Context, store ports.Store, run *domain.JourneyRun, graph *Graph, now time.Time, stepKind string, gateway *ai.Gateway) (ExecutionResult, error) {
+func (n *Node) execute(ctx context.Context, store ports.Store, run *domain.JourneyRun, graph *Graph, now time.Time, stepKind string, gateway *ai.Gateway, extHost ExtensionHost) (ExecutionResult, error) {
 	var nextNodeID string
 	var nextStep *domain.JourneyStep
 	var trans domain.JourneyTransition
@@ -338,6 +360,57 @@ func (n *Node) execute(ctx context.Context, store ports.Store, run *domain.Journ
 		nextStep = &domain.JourneyStep{RunID: run.ID, TenantID: run.TenantID, NodeID: nextNodeID, Kind: "advance", Status: "pending", AvailableAt: now}
 		detail, _ := json.Marshal(map[string]string{"ai_activity_id": activityID})
 		trans = domain.JourneyTransition{RunID: run.ID, TenantID: run.TenantID, FromNode: &n.ID, ToNode: &nextNodeID, NodeType: NodeTypeAIDecision, Outcome: "branch:" + branch, Detail: detail}
+
+	case NodeTypeExtensionAction, NodeTypeExtensionCondition:
+		var cfg ExtensionNodeConfig
+		if err := decodeNodeConfig(*n, &cfg); err != nil {
+			return ExecutionResult{}, err
+		}
+		branch := cfg.Fallback
+		activityID := ""
+		if extHost != nil && cfg.ExtensionID != "" && cfg.TimeoutMS > 0 {
+			branches := append([]string(nil), cfg.Branches...)
+			inputPayload, err := json.Marshal(map[string]any{
+				"run_id":       run.ID,
+				"profile_id":   run.ProfileID,
+				"tenant_id":    run.TenantID,
+				"workspace_id": run.WorkspaceID,
+				"node_id":      n.ID,
+				"node_type":    n.Type,
+				"config":       cfg.Config,
+			})
+			if err == nil {
+				decisionCtx, cancel := context.WithTimeout(ctx, time.Duration(cfg.TimeoutMS)*time.Millisecond)
+				responseBytes, actID, err := extHost.Invoke(decisionCtx, domain.Principal{
+					TenantID:    run.TenantID,
+					WorkspaceID: run.WorkspaceID,
+					ActorType:   "system",
+				}, cfg.ExtensionID, "decide", inputPayload)
+				cancel()
+				activityID = actID
+				if err == nil && len(responseBytes) > 0 {
+					var output struct {
+						Branch string `json:"branch"`
+					}
+					if json.Unmarshal(responseBytes, &output) == nil {
+						for _, declared := range branches {
+							if output.Branch == declared {
+								branch = output.Branch
+								break
+							}
+						}
+					}
+				}
+			}
+		}
+		nxt, err := findNextNode(graph, n.ID, branch)
+		if err != nil {
+			return ExecutionResult{}, fmt.Errorf("find successor branch %q: %w", branch, err)
+		}
+		nextNodeID = nxt
+		nextStep = &domain.JourneyStep{RunID: run.ID, TenantID: run.TenantID, NodeID: nextNodeID, Kind: "advance", Status: "pending", AvailableAt: now}
+		detail, _ := json.Marshal(map[string]string{"extension_activity_id": activityID})
+		trans = domain.JourneyTransition{RunID: run.ID, TenantID: run.TenantID, FromNode: &n.ID, ToNode: &nextNodeID, NodeType: n.Type, Outcome: "branch:" + branch, Detail: detail}
 
 	case NodeTypeSplit:
 		var cfg SplitConfig

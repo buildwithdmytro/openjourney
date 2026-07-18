@@ -19,6 +19,7 @@ type Deps struct {
 	Clock         Clock
 	LateThreshold time.Duration
 	AIGateway     *ai.Gateway
+	ExtensionHost ExtensionHost
 }
 
 func TickNext(ctx context.Context, store ports.Store, deps Deps) (bool, error) {
@@ -157,7 +158,7 @@ func TickNext(ctx context.Context, store ports.Store, deps Deps) (bool, error) {
 		}
 	}
 
-	res, err := node.ExecuteWithGateway(ctx, store, &run, graph, now, step.Kind, deps.AIGateway)
+	res, err := node.ExecuteWithGateway(ctx, store, &run, graph, now, step.Kind, deps.AIGateway, deps.ExtensionHost)
 	if err != nil {
 		slog.Error("failed to execute node", "error", err, "node_id", node.ID, "run_id", step.RunID)
 		failStep(ctx, store, step, fmt.Sprintf("execute node: %v", err))
