@@ -362,9 +362,9 @@ keep tests reproducible; one consolidated security/integration pass in 14.10. Ea
 **Done when**. Do them in order; compile + `go vet` between milestones.
 
 ### Milestone 14.0 — Foundations: signed manifest registry + config + grants — DO FIRST
-1. **Migration** `041_extensions.sql` per §2.1 + scopes `extensions:read/write/install` in `rbac.go`
+1. [x] **Migration** `041_extensions.sql` per §2.1 + scopes `extensions:read/write/install` in `rbac.go`
    allowlist and the `api_keys` default array + the `connector.run` job type. *Done when:* tables +
-   scopes exist.
+   scopes exist. — done: created 041_extensions.sql, added scopes to allowedPermissions in rbac.go, and verified via TestExtensionsMigrationAndDefaultScopesIntegration_14_0_1.
 2. **Registry store + signed freeze** (Recipe 6.40) `internal/postgres/extensions.go` + `ports.Store`:
    manifest CRUD; install verifies the publisher JWS (`go-jose`) against a configured trusted key and
    freezes an immutable `extension_versions` row (blob); install/enable behind the human-actor gate.

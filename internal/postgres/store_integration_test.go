@@ -1404,6 +1404,82 @@ func TestAIRegistrySchema_11_3_1(t *testing.T) {
 	}
 }
 
+func TestExtensionsMigrationAndDefaultScopesIntegration_14_0_1(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, table := range []string{"extensions", "extension_versions", "extension_configs", "extension_grants"} {
+		var exists bool
+		if err := store.pool.QueryRow(ctx, `SELECT to_regclass('public.' || $1) IS NOT NULL`, table).Scan(&exists); err != nil {
+			t.Fatal(err)
+		}
+		if !exists {
+			t.Fatalf("table %s does not exist", table)
+		}
+	}
+
+	rawKey := fmt.Sprintf("extensions-default-scopes-%d", time.Now().UnixNano())
+	if err := store.EnsureDevelopmentTenant(ctx, rawKey); err != nil {
+		t.Fatal(err)
+	}
+	principal, err := store.Authenticate(ctx, rawKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, scope := range []string{"extensions:read", "extensions:write", "extensions:install"} {
+		if !principal.HasScope(scope) {
+			t.Fatalf("fresh API key scopes %v do not include %q", principal.Scopes, scope)
+		}
+	}
+	if _, err := store.CreateRole(ctx, principal, "Extension Manager", []string{
+		"extensions:read", "extensions:write", "extensions:install",
+	}); err != nil {
+		t.Fatalf("CreateRole extensions scopes: %v", err)
+	}
+
+	// Verify operation_jobs constraint accepts connector.run
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+
+	var tenantID, workspaceID string
+	err = tx.QueryRow(ctx, "SELECT tenant_id, id FROM workspaces LIMIT 1").Scan(&tenantID, &workspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var jobID string
+	err = tx.QueryRow(ctx, `
+		INSERT INTO operation_jobs (tenant_id, workspace_id, job_type, payload)
+		VALUES ($1, $2, 'connector.run', '{}'::jsonb)
+		RETURNING id
+	`, tenantID, workspaceID).Scan(&jobID)
+	if err != nil {
+		t.Fatalf("failed to insert connector.run job: %v", err)
+	}
+
+	_, err = tx.Exec(ctx, `
+		INSERT INTO operation_jobs (tenant_id, workspace_id, job_type, payload)
+		VALUES ($1, $2, 'invalid.job.type', '{}'::jsonb)
+	`, tenantID, workspaceID)
+	if err == nil {
+		t.Errorf("expected invalid job type to be rejected, but it succeeded")
+	}
+}
+
 func TestMain(m *testing.M) {
 	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
 	if databaseURL != "" {
