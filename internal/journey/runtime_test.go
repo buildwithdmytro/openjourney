@@ -37,7 +37,9 @@ func TestAIDecisionTimeoutIsDeterministicAndNeverDeadLetters(t *testing.T) {
 		t.Fatalf("marshal graph: %v", err)
 	}
 
+	providerCalls := 0
 	slow := decisionTestProvider{generate: func(ctx context.Context, _ ai.GenerateRequest) (*ai.GenerateResponse, error) {
+		providerCalls++
 		<-ctx.Done()
 		return nil, ctx.Err()
 	}}
@@ -64,6 +66,9 @@ func TestAIDecisionTimeoutIsDeterministicAndNeverDeadLetters(t *testing.T) {
 		if got := store.steps["step-"+runID].Status; got != "completed" {
 			t.Fatalf("timed-out decision entered retry/dead-letter path for %s: step status=%q", runID, got)
 		}
+		if store.steps["step-"+runID].ErrorMessage != nil {
+			t.Fatalf("timed-out decision recorded an execution failure for %s: %v", runID, *store.steps["step-"+runID].ErrorMessage)
+		}
 		if got := store.runs[runID].CurrentNodeID; got != "no" {
 			t.Fatalf("timed-out decision used non-deterministic branch for %s: %q", runID, got)
 		}
@@ -73,7 +78,14 @@ func TestAIDecisionTimeoutIsDeterministicAndNeverDeadLetters(t *testing.T) {
 		if len(store.activities) != 1 {
 			t.Fatalf("expected one audit activity for %s, got %d", runID, len(store.activities))
 		}
+		activity := store.activities[0]
+		if activity.Action != "ai.journey_decision" || activity.PolicyDecision != "execution_error" {
+			t.Fatalf("timeout decision was not audited as execution_error for %s: %+v", runID, activity)
+		}
 		outcomes = append(outcomes, store.transitions[0].Outcome)
+	}
+	if providerCalls != 2 {
+		t.Fatalf("expected exactly one provider call per decision, got %d (model failure retried)", providerCalls)
 	}
 	if outcomes[0] != outcomes[1] {
 		t.Fatalf("timed-out decisions were not deterministic: %v", outcomes)

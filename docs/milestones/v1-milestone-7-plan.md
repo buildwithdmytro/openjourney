@@ -429,8 +429,9 @@ task ends with a **Done when**. Do them in order; compile + `go vet` between mil
 1. [x] **Score-triggered E2E** (DB-gated): compute scores for a segment, resolve a score-conditioned
    segment, enroll a scheduled journey; assert the enrolled set. *Done when:* counts match.
    — done: TestScoreTriggeredE2E_12_11_1 drains scores.compute, resolves the score audience, and verifies the exact scheduled enrollment set.
-2. **Realtime-node determinism**: model timeout → deterministic fallback; run advances, never
+2. [x] **Realtime-node determinism**: model timeout → deterministic fallback; run advances, never
    dead-letters; every decision logged in `ai_activity`. *Done when:* asserted.
+   — done: TestAIDecisionTimeoutIsDeterministicAndNeverDeadLetters proves one-call timeout fallback, completed steps without retry/dead-letter, deterministic outcomes, and execution_error audit rows.
 3. **Governance**: online-optimization approval requires a human actor (api_key → 403); seed
    immutable across reallocation; holdout never sent to; append-only `ai_activity` (UPDATE raises).
    *Done when:* all asserted.
