@@ -49,11 +49,22 @@ type AIGateway interface {
 	Generate(context.Context, domain.Principal, ai.GenerateRequest) (*ai.GenerateResponse, error)
 }
 
+// ExtensionInvoker is the bounded extension host used by connector jobs. The
+// operations package depends only on this seam so the job worker remains
+// usable with a nil invoker in deployments that have extensions disabled.
+type ExtensionInvoker interface {
+	Invoke(context.Context, domain.Principal, string, string, json.RawMessage) (json.RawMessage, string, error)
+}
+
 func Drain(ctx context.Context, store Store, blobs ports.BlobStore, maxItems int, watch bool) (int, error) {
 	return DrainWithGateway(ctx, store, blobs, nil, maxItems, watch)
 }
 
 func DrainWithGateway(ctx context.Context, store Store, blobs ports.BlobStore, gateway AIGateway, maxItems int, watch bool) (int, error) {
+	return DrainWithGatewayAndExtensions(ctx, store, blobs, gateway, nil, maxItems, watch)
+}
+
+func DrainWithGatewayAndExtensions(ctx context.Context, store Store, blobs ports.BlobStore, gateway AIGateway, extensions ExtensionInvoker, maxItems int, watch bool) (int, error) {
 	processed := 0
 	for processed < maxItems {
 		job, found, err := store.ClaimOperationJob(ctx)
@@ -71,7 +82,7 @@ func DrainWithGateway(ctx context.Context, store Store, blobs ports.BlobStore, g
 				continue
 			}
 		}
-		if err := execute(ctx, store, blobs, gateway, job.Type, job.Payload); err != nil {
+		if err := execute(ctx, store, blobs, gateway, extensions, job.Type, job.Payload); err != nil {
 			if failErr := store.FailOperationJob(ctx, job.ID, err); failErr != nil {
 				return processed, failErr
 			}
@@ -85,13 +96,14 @@ func DrainWithGateway(ctx context.Context, store Store, blobs ports.BlobStore, g
 	return processed, nil
 }
 
-func execute(ctx context.Context, store Store, blobs ports.BlobStore, gateway AIGateway, jobType string, payload json.RawMessage) error {
+func execute(ctx context.Context, store Store, blobs ports.BlobStore, gateway AIGateway, extensions ExtensionInvoker, jobType string, payload json.RawMessage) error {
 	var input struct {
-		RequestID string          `json:"request_id"`
-		TenantID  string          `json:"tenant_id"`
-		TaskType  string          `json:"task_type"`
-		Input     json.RawMessage `json:"input"`
-		Scopes    []string        `json:"scopes"`
+		RequestID   string          `json:"request_id"`
+		TenantID    string          `json:"tenant_id"`
+		WorkspaceID string          `json:"workspace_id"`
+		TaskType    string          `json:"task_type"`
+		Input       json.RawMessage `json:"input"`
+		Scopes      []string        `json:"scopes"`
 	}
 	if err := json.Unmarshal(payload, &input); err != nil {
 		return errors.New("operation payload must be a JSON object")
@@ -114,6 +126,33 @@ func execute(ctx context.Context, store Store, blobs ports.BlobStore, gateway AI
 			return err
 		}
 		return store.CompletePrivacyExport(ctx, input.RequestID, key)
+	case "connector.run":
+		if extensions == nil {
+			return errors.New("connector.run requires an extension host")
+		}
+		var connector struct {
+			ExtensionID string          `json:"extension_id"`
+			EventID     string          `json:"event_id"`
+			EventType   string          `json:"event_type"`
+			Event       json.RawMessage `json:"event"`
+		}
+		if err := json.Unmarshal(payload, &connector); err != nil {
+			return errors.New("connector.run payload must be a JSON object")
+		}
+		if connector.ExtensionID == "" || connector.EventID == "" || connector.EventType == "" || len(connector.Event) == 0 {
+			return errors.New("connector.run payload requires extension_id, event_id, event_type, and event")
+		}
+		connectorInput, err := json.Marshal(map[string]any{
+			"event_id": connector.EventID, "event_type": connector.EventType,
+			"idempotency_key": "connector:" + connector.ExtensionID + ":" + connector.EventID,
+			"event":           json.RawMessage(connector.Event),
+		})
+		if err != nil {
+			return err
+		}
+		principal := domain.Principal{TenantID: input.TenantID, WorkspaceID: input.WorkspaceID, ActorType: "system"}
+		_, _, err = extensions.Invoke(ctx, principal, connector.ExtensionID, "deliver", connectorInput)
+		return err
 	case "privacy.delete":
 		if input.RequestID == "" {
 			return errors.New("privacy.delete payload requires request_id")

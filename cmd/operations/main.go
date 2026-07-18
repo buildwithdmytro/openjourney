@@ -12,6 +12,7 @@ import (
 	"github.com/buildwithdmytro/openjourney/internal/ai"
 	"github.com/buildwithdmytro/openjourney/internal/blob"
 	"github.com/buildwithdmytro/openjourney/internal/config"
+	"github.com/buildwithdmytro/openjourney/internal/extension"
 	"github.com/buildwithdmytro/openjourney/internal/operations"
 	"github.com/buildwithdmytro/openjourney/internal/postgres"
 )
@@ -44,7 +45,9 @@ func main() {
 		slog.Error("open object store", "error", err)
 		os.Exit(1)
 	}
-	processed, err := operations.DrainWithGateway(ctx, store, blobs, ai.NewGateway(store), maxItems, watch)
+	extHost := extension.NewHost(store)
+	extHost.SetBlobStore(blobs)
+	processed, err := operations.DrainWithGatewayAndExtensions(ctx, store, blobs, ai.NewGateway(store), extHost, maxItems, watch)
 	if err != nil {
 		slog.Error("operations worker failed", "processed", processed, "error", err)
 		os.Exit(1)

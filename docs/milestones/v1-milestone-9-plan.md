@@ -415,10 +415,12 @@ keep tests reproducible; one consolidated security/integration pass in 14.10. Ea
    rendering plus discovery in TestTemplateFunctionFilterUsesWasmAndAudits and TestTemplateFunctionDiscoveryRegistersTag.
 
 ### Milestone 14.7 — Outbound connector extension
-1. **Connector job** (`connector.run`): subscribe (`extension_subscriptions`) to `events.accepted.v1`
+1. [x] **Connector job** (`connector.run`): subscribe (`extension_subscriptions`) to `events.accepted.v1`
    (outbox → a `connector.run` job) and deliver each event to the extension via `host.Invoke`
    (remote); per-event idempotency + retry/dead-letter via the leased queue. *Done when:* an accepted
-   event reaches an enabled outbound connector exactly once (idempotent), bounded + audited.
+   event reaches an enabled outbound connector exactly once (idempotent), bounded + audited. — done:
+   atomically enqueues deduplicated connector.run jobs from events.accepted.v1 and executes them through
+   the bounded host with stable per-event idempotency; verified by connector worker tests and go build/vet/test ./...
 
 ### Milestone 14.8 — Governance, health & kill switch
 1. **Circuit breaker + health + kill switch**: `extension_health` state machine (closed/open/

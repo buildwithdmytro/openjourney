@@ -288,6 +288,28 @@ func (s *Store) AcceptEvents(ctx context.Context, p domain.Principal, events []d
 			ON CONFLICT(topic,event_id) DO NOTHING`, p.TenantID, partitionKey, id, envelope); err != nil {
 			return nil, err
 		}
+		// Connector jobs are created in the same transaction as the accepted event
+		// and outbox record. The payload predicate makes replays idempotent per
+		// connector/event pair, including duplicate API submissions.
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO operation_jobs (tenant_id, workspace_id, job_type, payload)
+			SELECT $1, $2, 'connector.run', jsonb_build_object(
+				'tenant_id', $1, 'workspace_id', $2, 'extension_id', e.id::text,
+				'event_id', $3, 'event_type', $4, 'event', $5::jsonb)
+			FROM extensions e
+			JOIN extension_versions ev ON ev.id = e.current_version_id
+			JOIN extension_subscriptions es ON es.extension_id = e.id AND es.tenant_id = e.tenant_id
+			WHERE e.tenant_id = $1 AND e.workspace_id = $2 AND e.status = 'enabled'
+			  AND ev.kind = 'connector' AND ev.status = 'active'
+			  AND es.event_type = 'events.accepted.v1'
+			  AND NOT EXISTS (
+				SELECT 1 FROM operation_jobs existing
+				WHERE existing.job_type = 'connector.run'
+				  AND existing.payload->>'extension_id' = e.id::text
+				  AND existing.payload->>'event_id' = $3)
+		`, p.TenantID, p.WorkspaceID, id, event.Type, envelope); err != nil {
+			return nil, err
+		}
 		ids = append(ids, id)
 	}
 	var windowCount int
