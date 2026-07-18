@@ -417,9 +417,9 @@ Each task ends with a **Done when**. Do them in order; compile + `go vet` betwee
 2. [x] **HTML-serving substrate**: a helper that renders a pinned version via `render.Render` and writes
    `Content-Type: text/html` (+ a static asset route `GET /a/{blobKey}` via `BlobStore.Get`). *Done
    when:* a trivial page renders as HTML and an asset streams from blob. — done: `publicserve_test.go` proves Liquid HTML rendering and blob-backed asset streaming; full Go build/vet/test passes.
-3. **Versioned-resource scaffold** `internal/publishing`: the shared draft→immutable-published (blob
+3. [x] **Versioned-resource scaffold** `internal/publishing`: the shared draft→immutable-published (blob
    freeze) helper reused by forms & pages (Recipe 6.35), behind the human-actor gate. *Done when:* a
-   fixture resource publishes idempotently; api_key → 403.
+   fixture resource publishes idempotently; api_key → 403. — done: `publishing_test.go` proves deterministic blob freeze, idempotent retry, and API-key rejection before commit; full Go build/vet/test passes.
 
 ### Milestone 13.1 — Forms (schema + typed fields + versioned publish)
 1. **Migration** `035_forms.sql` per §2.1 + scopes `forms:read/write/publish` (and the rest of the
