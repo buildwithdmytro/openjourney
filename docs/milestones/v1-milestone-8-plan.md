@@ -475,7 +475,7 @@ Each task ends with a **Done when**. Do them in order; compile + `go vet` betwee
    and priority/idempotency tests; full Go build/vet/test passes.
 
 ### Milestone 13.7 — Company / account profiles
-1. **Migration** `companies` + `company_members` (§2.3) + scopes `companies:*`. *Done when:* exist.
+1. [x] **Migration** `companies` + `company_members` (§2.3) + scopes `companies:*`. *Done when:* exist. — done: migration 039 adds tenant/workspace-scoped company and membership tables with cascade/index constraints; acquisition scopes already wired; full Go build/vet/test passes.
 2. **Companies store + CRUD + membership** (upsert via `company.updated` events) + a **`Company`**
    audience leaf (Recipe 6.38, parameterized). Add `company.updated` to `isBuiltInEvent`. *Done when:*
    a company + members round-trip and a company-attribute segment resolves to its members.
