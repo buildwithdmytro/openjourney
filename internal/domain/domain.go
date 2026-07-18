@@ -363,6 +363,28 @@ type SegmentMember struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
+type Company struct {
+	ID          string          `json:"id"`
+	TenantID    string          `json:"tenant_id"`
+	WorkspaceID string          `json:"workspace_id"`
+	AppID       string          `json:"app_id"`
+	ExternalID  string          `json:"external_id,omitempty"`
+	Name        string          `json:"name"`
+	Attributes  json.RawMessage `json:"attributes"`
+	Version     int             `json:"version"`
+	CreatedAt   time.Time       `json:"created_at"`
+	UpdatedAt   time.Time       `json:"updated_at"`
+	Members     []CompanyMember `json:"members,omitempty"`
+}
+
+type CompanyMember struct {
+	CompanyID string    `json:"company_id"`
+	ProfileID string    `json:"profile_id"`
+	TenantID  string    `json:"tenant_id"`
+	Role      string    `json:"role,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type StageRule struct {
 	ID          string    `json:"id"`
 	TenantID    string    `json:"tenant_id"`

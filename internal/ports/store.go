@@ -79,6 +79,10 @@ type Store interface {
 	UpdateProfileAttributes(ctx context.Context, p domain.Principal, profileID string, attrs map[string]any) error
 	PreviewSegment(context.Context, domain.Principal, string) (int, map[string]int, error)
 	ResolveSegment(context.Context, domain.Principal, string) ([]string, error)
+	CreateCompany(context.Context, domain.Principal, domain.Company, []domain.CompanyMember) (domain.Company, error)
+	GetCompany(context.Context, domain.Principal, string) (domain.Company, error)
+	UpdateCompany(context.Context, domain.Principal, domain.Company, []domain.CompanyMember) (domain.Company, error)
+	ListCompanies(context.Context, domain.Principal) ([]domain.Company, error)
 
 	CreateSendingIdentity(context.Context, domain.Principal, domain.SendingIdentity) (domain.SendingIdentity, error)
 	GetSendingIdentity(context.Context, domain.Principal, string) (domain.SendingIdentity, error)

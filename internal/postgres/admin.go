@@ -130,6 +130,7 @@ func isBuiltInEvent(eventType string) bool {
 	return eventType == "profile.updated" || eventType == "consent.changed" ||
 		eventType == "form.submitted" ||
 		eventType == "stage.changed" ||
+		eventType == "company.updated" ||
 		eventType == "identity.alias" || eventType == "identity.merge" ||
 		eventType == "email.sent" || eventType == "email.opened" || eventType == "link.clicked" ||
 		eventType == "message.sent" || eventType == "message.delivered" ||

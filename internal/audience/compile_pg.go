@@ -117,6 +117,24 @@ func compileProfileNode(node Node, args *[]any) (string, error) {
 		return fmt.Sprintf("id IN (SELECT profile_id FROM profile_scores WHERE tenant_id = $1 AND workspace_id = $2 AND scoring_model_id = %s AND score_name = %s AND value %s %s)",
 			modelPlaceholder, namePlaceholder, opSql, valuePlaceholder), nil
 
+	case *Company:
+		if !fieldSafetyRegex.MatchString(n.Field) {
+			return "", fmt.Errorf("unsafe or invalid company field name: %s", n.Field)
+		}
+		*args = append(*args, n.Value)
+		placeholder := fmt.Sprintf("$%d", len(*args)+2)
+		condition := fmt.Sprintf("c.attributes->>'%s' = %s", n.Field, placeholder)
+		switch n.Operator {
+		case "equals":
+		case "contains":
+			condition = fmt.Sprintf("c.attributes->>'%s' LIKE '%%' || %s || '%%'", n.Field, placeholder)
+		case "in":
+			condition = fmt.Sprintf("c.attributes->>'%s' = ANY(%s)", n.Field, placeholder)
+		default:
+			return "", fmt.Errorf("unsupported company operator: %s", n.Operator)
+		}
+		return "id IN (SELECT m.profile_id FROM company_members m JOIN companies c ON c.id=m.company_id WHERE m.tenant_id=$1 AND c.tenant_id=$1 AND c.workspace_id=$2 AND " + condition + ")", nil
+
 	default:
 		return "", nil
 	}

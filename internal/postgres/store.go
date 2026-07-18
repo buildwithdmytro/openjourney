@@ -411,6 +411,44 @@ func (s *Store) ProjectEvent(ctx context.Context, event domain.AcceptedEvent) er
 		}
 	}
 	switch event.Type {
+	case "company.updated":
+		var body struct {
+			Company struct {
+				ExternalID string          `json:"external_id"`
+				Name       string          `json:"name"`
+				Attributes json.RawMessage `json:"attributes"`
+			} `json:"company"`
+			Members []struct {
+				ProfileExternalID string `json:"profile_external_id"`
+				Role              string `json:"role"`
+			} `json:"members"`
+		}
+		if err := json.Unmarshal(event.Payload, &body); err != nil || body.Company.Name == "" {
+			return errors.New("company.updated payload requires company name")
+		}
+		attrs := body.Company.Attributes
+		if len(attrs) == 0 {
+			attrs = json.RawMessage(`{}`)
+		}
+		var companyID string
+		if err := tx.QueryRow(ctx, `INSERT INTO companies(tenant_id,workspace_id,app_id,external_id,name,attributes) VALUES($1,$2,$3,NULLIF($4,''),$5,$6) ON CONFLICT(tenant_id,app_id,external_id) DO UPDATE SET name=EXCLUDED.name,attributes=companies.attributes || EXCLUDED.attributes,version=companies.version+1,updated_at=now() RETURNING id`, event.Principal.TenantID, event.Principal.WorkspaceID, event.Principal.AppID, body.Company.ExternalID, body.Company.Name, attrs).Scan(&companyID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM company_members WHERE tenant_id=$1 AND company_id=$2`, event.Principal.TenantID, companyID); err != nil {
+			return err
+		}
+		for _, member := range body.Members {
+			if member.ProfileExternalID == "" {
+				continue
+			}
+			var profileID string
+			if err := tx.QueryRow(ctx, `SELECT id FROM profiles WHERE tenant_id=$1 AND workspace_id=$2 AND app_id=$3 AND external_id=$4`, event.Principal.TenantID, event.Principal.WorkspaceID, event.Principal.AppID, member.ProfileExternalID).Scan(&profileID); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx, `INSERT INTO company_members(tenant_id,company_id,profile_id,role) VALUES($1,$2,$3,$4) ON CONFLICT(company_id,profile_id) DO UPDATE SET role=EXCLUDED.role`, event.Principal.TenantID, companyID, profileID, member.Role); err != nil {
+				return err
+			}
+		}
 	case "profile.updated":
 		var body struct {
 			Attributes map[string]any `json:"attributes"`

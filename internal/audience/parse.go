@@ -174,6 +174,23 @@ func (rn *rawNode) toNode() (Node, error) {
 			Value:     val,
 		}, nil
 
+	case "company":
+		if rn.Field == "" || rn.Operator == "" {
+			return nil, errors.New("company condition requires field and operator")
+		}
+		switch rn.Operator {
+		case "equals", "contains", "in":
+		default:
+			return nil, fmt.Errorf("unknown company operator: %s", rn.Operator)
+		}
+		var val any
+		if len(rn.Value) > 0 {
+			if err := json.Unmarshal(rn.Value, &val); err != nil {
+				return nil, err
+			}
+		}
+		return &Company{Field: rn.Field, Operator: rn.Operator, Value: val}, nil
+
 	default:
 		return nil, fmt.Errorf("unknown condition type: %s", rn.Type)
 	}

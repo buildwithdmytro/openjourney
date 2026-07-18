@@ -476,9 +476,9 @@ Each task ends with a **Done when**. Do them in order; compile + `go vet` betwee
 
 ### Milestone 13.7 — Company / account profiles
 1. [x] **Migration** `companies` + `company_members` (§2.3) + scopes `companies:*`. *Done when:* exist. — done: migration 039 adds tenant/workspace-scoped company and membership tables with cascade/index constraints; acquisition scopes already wired; full Go build/vet/test passes.
-2. **Companies store + CRUD + membership** (upsert via `company.updated` events) + a **`Company`**
+2. [x] **Companies store + CRUD + membership** (upsert via `company.updated` events) + a **`Company`**
    audience leaf (Recipe 6.38, parameterized). Add `company.updated` to `isBuiltInEvent`. *Done when:*
-   a company + members round-trip and a company-attribute segment resolves to its members.
+   a company + members round-trip and a company-attribute segment resolves to its members. — done: event-backed company CRUD/membership, tenant-scoped parameterized Company DSL leaf, and DB-gated round-trip/resolution test; full Go build/vet/test passes.
 
 ### Milestone 13.8 — Imports (CSV)
 1. **Migration** `038_imports.sql` + scopes `imports:*` + the `profiles.import` job type. *Done when:*

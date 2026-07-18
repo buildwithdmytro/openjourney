@@ -55,3 +55,11 @@ type Score struct {
 }
 
 func (s *Score) Type() string { return "score" }
+
+type Company struct {
+	Field    string `json:"field"`
+	Operator string `json:"operator"`
+	Value    any    `json:"value"`
+}
+
+func (c *Company) Type() string { return "company" }
