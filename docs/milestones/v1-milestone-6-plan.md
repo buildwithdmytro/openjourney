@@ -538,7 +538,7 @@ them in order; compile + `go vet` between milestones. **Substrate (11.0–11.7) 
    explanation contains no redacted field values. — done: added the governed audience copilot endpoint with pinned prompt/schema and `audience.Parse` validation, draft-only segment creation, preview response, field-neutral explanation, and fake-provider integration coverage.
 
 ### Milestone 11.10 — Copilot: journey drafting + deterministic validation
-1. **Journey-draft prompt version**; output_schema = the journey graph AST. *Done when:* seeded/`passed`.
+1. [x] **Journey-draft prompt version**; output_schema = the journey graph AST. *Done when:* seeded/`passed`. — done: development bootstrap seeds an idempotent fake journey-draft prompt with entry/nodes/edges graph schema and active/passed version; TestSeededJourneyDraftPrompt verifies it.
 2. **Endpoint** `POST /v1/ai/copilots/journey`: NL → journey graph that **must pass
    `internal/journey/validate`** (graph/reach/consent/provider-readiness) → **DRAFT journey
    version** (not published). *Done when:* the drafted graph validates and is stored as a draft;
