@@ -1174,7 +1174,80 @@ func TestAIBudgetUsage_11_1_4(t *testing.T) {
 	}
 }
 
+func TestAIRegistrySchema_11_3_1(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
 
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	var tenantID, workspaceID string
+	err = store.pool.QueryRow(ctx, "INSERT INTO tenants(name) VALUES('AI Registry Schema Tenant') RETURNING id").Scan(&tenantID)
+	if err != nil {
+		t.Fatalf("failed to insert tenant: %v", err)
+	}
+	err = store.pool.QueryRow(ctx, "INSERT INTO workspaces(tenant_id, name) VALUES($1, 'AI Registry Schema Workspace') RETURNING id", tenantID).Scan(&workspaceID)
+	if err != nil {
+		t.Fatalf("failed to insert workspace: %v", err)
+	}
+
+	// 1. Insert into prompts table
+	var promptID string
+	err = store.pool.QueryRow(ctx, `
+		INSERT INTO prompts (tenant_id, workspace_id, name, task_type)
+		VALUES ($1, $2, 'test-prompt', 'content_draft') RETURNING id
+	`, tenantID, workspaceID).Scan(&promptID)
+	if err != nil {
+		t.Fatalf("failed to insert prompt: %v", err)
+	}
+
+	// Verify task_type CHECK constraint on prompts
+	_, err = store.pool.Exec(ctx, `
+		INSERT INTO prompts (tenant_id, workspace_id, name, task_type)
+		VALUES ($1, $2, 'test-prompt-invalid', 'invalid_task_type')
+	`, tenantID, workspaceID)
+	if err == nil {
+		t.Errorf("expected invalid task_type to be rejected, but it succeeded")
+	}
+
+	// 2. Insert into prompt_versions table
+	var versionID string
+	err = store.pool.QueryRow(ctx, `
+		INSERT INTO prompt_versions (prompt_id, tenant_id, version, template, input_schema, output_schema, provider, model, manifest_key, status, eval_status)
+		VALUES ($1, $2, 1, 'System template', '{}'::jsonb, '{}'::jsonb, 'fake', 'fake-model', 'manifest-123', 'draft', 'pending')
+		RETURNING id
+	`, promptID, tenantID).Scan(&versionID)
+	if err != nil {
+		t.Fatalf("failed to insert prompt_version: %v", err)
+	}
+
+	// Verify status CHECK constraint on prompt_versions
+	_, err = store.pool.Exec(ctx, `
+		INSERT INTO prompt_versions (prompt_id, tenant_id, version, template, input_schema, output_schema, provider, model, manifest_key, status, eval_status)
+		VALUES ($1, $2, 2, 'System template', '{}'::jsonb, '{}'::jsonb, 'fake', 'fake-model', 'manifest-123', 'invalid_status', 'pending')
+	`, promptID, tenantID)
+	if err == nil {
+		t.Errorf("expected invalid status to be rejected, but it succeeded")
+	}
+
+	// Verify eval_status CHECK constraint on prompt_versions
+	_, err = store.pool.Exec(ctx, `
+		INSERT INTO prompt_versions (prompt_id, tenant_id, version, template, input_schema, output_schema, provider, model, manifest_key, status, eval_status)
+		VALUES ($1, $2, 3, 'System template', '{}'::jsonb, '{}'::jsonb, 'fake', 'fake-model', 'manifest-123', 'draft', 'invalid_eval_status')
+	`, promptID, tenantID)
+	if err == nil {
+		t.Errorf("expected invalid eval_status to be rejected, but it succeeded")
+	}
+}
 
 func TestMain(m *testing.M) {
 	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")

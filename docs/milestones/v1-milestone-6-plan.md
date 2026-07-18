@@ -469,7 +469,7 @@ them in order; compile + `go vet` between milestones. **Substrate (11.0–11.7) 
    allowlisted (tests for both). — done: implemented IsDomainAllowed egress guard and verified via TestHTTPModelProvider_SSRFGuard.
 
 ### Milestone 11.3 — Prompt/model registry (immutable) + output validator
-1. **Migration** `026_ai_registry.sql` per §2.2. *Done when:* tables exist.
+1. [x] **Migration** `026_ai_registry.sql` per §2.2. *Done when:* tables exist. — done: created migration 026_ai_registry.sql and verified tables via TestAIRegistrySchema_11_3_1.
 2. **Registry store + freeze** (Recipe 6.27): `prompts`/`prompt_versions` CRUD; publish freezes to
    blob + immutable row; publish requires the human-actor gate; refuses non-`passed` eval. *Done
    when:* publish is idempotent, api_key→403, unpublished/unevaluated version can't be invoked.
