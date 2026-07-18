@@ -88,6 +88,17 @@ func (h *Host) SetBlobStore(blobs ports.BlobStore) {
 }
 
 func (h *Host) Invoke(ctx context.Context, principal domain.Principal, extensionID string, invocation string, input json.RawMessage) (json.RawMessage, string, error) {
+	return h.invoke(ctx, principal, extensionID, invocation, "", input)
+}
+
+// InvokeWithScope invokes an extension operation that requires one manifest
+// scope. The required scope is checked against the derived grant before any
+// transport is reached, and the denial is audited like every other call.
+func (h *Host) InvokeWithScope(ctx context.Context, principal domain.Principal, extensionID string, invocation string, requiredScope string, input json.RawMessage) (json.RawMessage, string, error) {
+	return h.invoke(ctx, principal, extensionID, invocation, requiredScope, input)
+}
+
+func (h *Host) invoke(ctx context.Context, principal domain.Principal, extensionID string, invocation string, requiredScope string, input json.RawMessage) (json.RawMessage, string, error) {
 	// 1. Resolve parent extension
 	ext, err := h.store.GetExtension(ctx, principal, extensionID)
 	if err != nil {
@@ -152,6 +163,10 @@ func (h *Host) Invoke(ctx context.Context, principal domain.Principal, extension
 	derivedP := principal
 	derivedP.ActorType = "extension"
 	derivedP.Scopes = intersection
+	if requiredScope != "" && !containsScope(intersection, requiredScope) {
+		actID, _ := h.recordActivity(ctx, derivedP, extensionID, ev.Version, ev.Kind, invocation, &input, nil, 0, 0, "denied_scope")
+		return nil, actID, fmt.Errorf("extension scope %q is not granted", requiredScope)
+	}
 
 	// 6. Rate limit check
 	if config.RatePerMin > 0 {
@@ -244,6 +259,15 @@ func (h *Host) Invoke(ctx context.Context, principal domain.Principal, extension
 
 	actID, _ := h.recordActivity(ctx, derivedP, extensionID, ev.Version, ev.Kind, invocation, &input, &output, duration, 0, decision)
 	return output, actID, nil
+}
+
+func containsScope(scopes []string, required string) bool {
+	for _, scope := range scopes {
+		if scope == required {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *Host) invokeRemoteHTTP(ctx context.Context, p domain.Principal, ev domain.ExtensionVersion, cfg domain.ExtensionConfig, invocation string, input json.RawMessage) (json.RawMessage, error) {
