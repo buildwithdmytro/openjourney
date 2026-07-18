@@ -176,6 +176,20 @@ type Store interface {
 	PublishPromptVersion(ctx context.Context, p domain.Principal, promptID string, version int, approverUserID string, manifestKey string) (domain.PromptVersion, error)
 	SetPromptVersionEvalStatus(ctx context.Context, p domain.Principal, id string, evalStatus string) error
 
+	CreateScoringModel(ctx context.Context, p domain.Principal, model domain.ScoringModel) (domain.ScoringModel, error)
+	GetScoringModel(ctx context.Context, p domain.Principal, id string) (domain.ScoringModel, error)
+	GetScoringModelByName(ctx context.Context, p domain.Principal, name string) (domain.ScoringModel, error)
+	ListScoringModels(ctx context.Context, p domain.Principal) ([]domain.ScoringModel, error)
+	UpdateScoringModel(ctx context.Context, p domain.Principal, model domain.ScoringModel) (domain.ScoringModel, error)
+	DeleteScoringModel(ctx context.Context, p domain.Principal, id string) error
+
+	CreateScoringModelVersion(ctx context.Context, p domain.Principal, sv domain.ScoringModelVersion) (domain.ScoringModelVersion, error)
+	GetScoringModelVersion(ctx context.Context, p domain.Principal, id string) (domain.ScoringModelVersion, error)
+	GetScoringModelVersionByNumber(ctx context.Context, p domain.Principal, modelID string, version int) (domain.ScoringModelVersion, error)
+	ListScoringModelVersions(ctx context.Context, p domain.Principal, modelID string) ([]domain.ScoringModelVersion, error)
+	PublishScoringModelVersion(ctx context.Context, p domain.Principal, modelID string, version int, approverUserID string, manifestKey string) (domain.ScoringModelVersion, error)
+	SetScoringModelVersionEvalStatus(ctx context.Context, p domain.Principal, id string, evalStatus string) error
+
 	CreateFieldClassification(ctx context.Context, p domain.Principal, classification domain.FieldClassification) (domain.FieldClassification, error)
 	GetFieldClassification(ctx context.Context, p domain.Principal, id string) (domain.FieldClassification, error)
 	ListFieldClassifications(ctx context.Context, p domain.Principal, entityType string) ([]domain.FieldClassification, error)

@@ -355,9 +355,9 @@ task ends with a **Done when**. Do them in order; compile + `go vet` between mil
 1. [x] **Migration** `031_scoring.sql` (scoring tables + `scores.compute` job type + scopes
    `scoring:read/write/compute`) per §2.2 + rbac allowlist + `api_keys` default. *Done when:* tables
    exist; a fresh key carries the scopes. — done: created 031_scoring.sql migration, updated rbac.go allowedPermissions, and verified tables/scopes via TestScoringMigrationAndDefaultScopesIntegration_12_2_1.
-2. **Registry store + freeze** (Recipe 6.31) `internal/postgres/scoring.go` + `ports.Store`:
+2. [x] **Registry store + freeze** (Recipe 6.31) `internal/postgres/scoring.go` + `ports.Store`:
    `scoring_models`/`scoring_model_versions` CRUD; publish freezes to blob + immutable row behind the
-   human gate; refuses `eval_status != 'passed'`. *Done when:* publish idempotent, api_key → 403.
+   human gate; refuses `eval_status != 'passed'`. *Done when:* publish idempotent, api_key → 403. — done: implemented scoring_models and scoring_model_versions CRUD operations, blob freeze and publish with human gate, verified with TestScoringRegistry.
 
 ### Milestone 12.3 — Expression scorer (deterministic, non-LLM)
 1. **Evaluator** `internal/scoring/expression.go`: evaluate a safe expression over a profile's
