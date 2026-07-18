@@ -426,8 +426,9 @@ task ends with a **Done when**. Do them in order; compile + `go vet` between mil
    typecheck, build, and 30-test suite pass including Experiments approval coverage.
 
 ### Milestone 12.11 — Integration, determinism, governance & audit closeout
-1. **Score-triggered E2E** (DB-gated): compute scores for a segment, resolve a score-conditioned
+1. [x] **Score-triggered E2E** (DB-gated): compute scores for a segment, resolve a score-conditioned
    segment, enroll a scheduled journey; assert the enrolled set. *Done when:* counts match.
+   — done: TestScoreTriggeredE2E_12_11_1 drains scores.compute, resolves the score audience, and verifies the exact scheduled enrollment set.
 2. **Realtime-node determinism**: model timeout → deterministic fallback; run advances, never
    dead-letters; every decision logged in `ai_activity`. *Done when:* asserted.
 3. **Governance**: online-optimization approval requires a human actor (api_key → 403); seed
