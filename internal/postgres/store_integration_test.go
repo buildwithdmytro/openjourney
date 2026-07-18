@@ -851,6 +851,85 @@ func TestPublishJourneyIntegration(t *testing.T) {
 	}
 }
 
+func TestAIGatewaySchema_11_1_1(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. Verify we can insert and query from ai_provider_configs table
+	var tenantID, workspaceID string
+	err = store.pool.QueryRow(ctx, "INSERT INTO tenants(name) VALUES('AI Test Tenant') RETURNING id").Scan(&tenantID)
+	if err != nil {
+		t.Fatalf("failed to insert tenant: %v", err)
+	}
+	err = store.pool.QueryRow(ctx, "INSERT INTO workspaces(tenant_id, name) VALUES($1, 'AI Test Workspace') RETURNING id", tenantID).Scan(&workspaceID)
+	if err != nil {
+		t.Fatalf("failed to insert workspace: %v", err)
+	}
+
+	_, err = store.pool.Exec(ctx, `
+		INSERT INTO ai_provider_configs (tenant_id, workspace_id, provider, is_default, config, endpoint_allowlist)
+		VALUES ($1, $2, 'fake', true, '{"api_key_ref": "FAKE_KEY"}'::jsonb, ARRAY['localhost:8080'])
+	`, tenantID, workspaceID)
+	if err != nil {
+		t.Fatalf("failed to insert into ai_provider_configs: %v", err)
+	}
+
+	var provider string
+	err = store.pool.QueryRow(ctx, "SELECT provider FROM ai_provider_configs WHERE tenant_id = $1", tenantID).Scan(&provider)
+	if err != nil || provider != "fake" {
+		t.Fatalf("failed to query ai_provider_configs: err=%v, provider=%s", err, provider)
+	}
+
+	// 2. Verify a fresh key carries the new scopes
+	devTenantKey := "ai-schema-test-dev-key"
+	err = store.EnsureDevelopmentTenant(ctx, devTenantKey)
+	if err != nil {
+		t.Fatalf("failed to EnsureDevelopmentTenant: %v", err)
+	}
+	principal, err := store.Authenticate(ctx, devTenantKey)
+	if err != nil {
+		t.Fatalf("failed to Authenticate: %v", err)
+	}
+
+	expectedScopes := []string{"ai:read", "ai:configure", "ai:invoke", "prompts:read", "prompts:write"}
+	for _, s := range expectedScopes {
+		if !principal.HasScope(s) {
+			t.Errorf("fresh key is missing scope: %s", s)
+		}
+	}
+
+	// 3. Verify widened check constraint on operation_jobs
+	_, err = store.pool.Exec(ctx, `
+		INSERT INTO operation_jobs (tenant_id, workspace_id, job_type, payload)
+		VALUES ($1, $2, 'ai.generate', '{}'::jsonb)
+	`, tenantID, workspaceID)
+	if err != nil {
+		t.Errorf("expected job_type 'ai.generate' to be allowed, but insert failed: %v", err)
+	}
+
+	_, err = store.pool.Exec(ctx, `
+		INSERT INTO operation_jobs (tenant_id, workspace_id, job_type, payload)
+		VALUES ($1, $2, 'ai.invalid_type', '{}'::jsonb)
+	`, tenantID, workspaceID)
+	if err == nil {
+		t.Errorf("expected job_type 'ai.invalid_type' to be rejected by the CHECK constraint, but insert succeeded")
+	} else if !strings.Contains(err.Error(), "operation_jobs_job_type_check") {
+		t.Errorf("expected check constraint error 'operation_jobs_job_type_check', got: %v", err)
+	}
+}
+
 func TestMain(m *testing.M) {
 	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
 	if databaseURL != "" {
