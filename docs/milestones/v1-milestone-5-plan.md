@@ -449,8 +449,8 @@ be registered in the adapter registry (10.0).**
 5. [x] **Telemetry**: `MessagesSent`/`Bounces`/`Complaints{channel=sms|push}`,
    `openjourney_push_tokens_retired_total`, `openjourney_sms_opt_outs_total`. *Done when:*
    counters increment with the right labels; retirement/opt-out counted exactly once. — done: `internal/postgres/telemetrytest/telemetry_integration_test.go` verifies that all custom counters (opt-out, retired, bounces, complaints) increment correctly.
-6. **Run the suite**: `go build/vet/test ./...`, `go mod tidy`, `cd web && npm run typecheck &&
-   npm run build && npm test`, `npm audit`. *Done when:* all green.
+6. [x] **Run the suite**: `go build/vet/test ./...`, `go mod tidy`, `cd web && npm run typecheck &&
+   npm run build && npm test`, `npm audit`. *Done when:* all green. — done: all backend tests build/vet/run successfully, and frontend typecheck, build, vitest tests and npm audit pass cleanly with 0 vulnerabilities.
 7. **Audit doc** `docs/milestones/v1-milestone-5-audit.md` in the M2/M3/M4 table format, one row
    per requirement (10.0–10.7) with direct current-state evidence. *Done when:* every row cites a
    named file/test.
