@@ -80,6 +80,7 @@ type usageSummary struct {
 	TotalTasks     int                      `json:"total_tasks"`
 	CompletedTasks int                      `json:"completed_tasks"`
 	Attempts       int                      `json:"attempts"`
+	MaxIterations  int                      `json:"max_iterations"`
 	Providers      map[string]providerUsage `json:"providers"`
 }
 
@@ -161,8 +162,9 @@ func run(ctx context.Context, cfg config) error {
 	if err := ensureBranch(root, cfg.branch); err != nil {
 		return preflightError(err)
 	}
-	usage := usageSummary{Started: time.Now(), TotalTasks: len(tasks), CompletedTasks: completedTaskCount(tasks), Providers: make(map[string]providerUsage)}
+	usage := usageSummary{Started: time.Now(), TotalTasks: len(tasks), CompletedTasks: completedTaskCount(tasks), MaxIterations: cfg.maxIterations, Providers: make(map[string]providerUsage)}
 	printProgress(tasks)
+	printRemaining(usage, cfg.primary)
 
 	for iteration := 1; iteration <= cfg.maxIterations; iteration++ {
 		current, err := readTasks(filepath.Join(root, cfg.planPath))
@@ -189,6 +191,7 @@ func run(ctx context.Context, cfg config) error {
 		usage.add(result)
 		usage.save(root)
 		printUsage(usage, result)
+		printRemaining(usage, cfg.primary)
 		outcome, err := validateAttempt(cfg, *next, beforeHead, beforeBlocker)
 		if outcome == "success" {
 			updated, _ := readTasks(filepath.Join(root, cfg.planPath))
@@ -214,6 +217,7 @@ func run(ctx context.Context, cfg config) error {
 		usage.add(fallbackResult)
 		usage.save(root)
 		printUsage(usage, fallbackResult)
+		printRemaining(usage, fallback)
 		outcome, err = validateAttempt(cfg, *next, beforeHead, beforeBlocker)
 		switch outcome {
 		case "success":
@@ -478,6 +482,19 @@ func printUsage(summary usageSummary, latest attemptResult) {
 		tokens = fmt.Sprintf("tokens in=%d cached=%d out=%d reasoning=%d", latest.InputTokens, latest.CachedInputTokens, latest.OutputTokens, latest.ReasoningOutputTokens)
 	}
 	fmt.Printf("Usage %s: attempt %s, %s; run attempts=%d elapsed=%s\n", latest.Provider, latest.Duration.Round(time.Second), tokens, summary.Attempts, time.Since(summary.Started).Round(time.Second))
+}
+
+func printRemaining(summary usageSummary, provider string) {
+	remainingTasks := summary.TotalTasks - summary.CompletedTasks
+	remainingIterations := summary.MaxIterations - summary.Attempts
+	if remainingIterations < 0 {
+		remainingIterations = 0
+	}
+	quota := "provider quota unavailable"
+	if providerUsage, ok := summary.Providers[provider]; ok && providerUsage.TokenUsageAvailable {
+		quota = fmt.Sprintf("tokens consumed=%d", providerUsage.InputTokens+providerUsage.OutputTokens)
+	}
+	fmt.Printf("Remaining: tasks=%d, iteration budget=%d, %s\n", remainingTasks, remainingIterations, quota)
 }
 
 func invoke(parent context.Context, cfg config, provider, mission, taskID string, iteration int) attemptResult {

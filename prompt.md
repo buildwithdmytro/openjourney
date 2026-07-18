@@ -23,7 +23,8 @@ switching branches or invoking an agent. Runtime transcripts and metadata are st
 The runner prints a milestone task bar before and after each completed task. After every provider
 attempt it also prints elapsed time, attempt totals, and Codex input/cached/output/reasoning token
 usage. Antigravity headless mode does not expose token counts, so its attempts and duration are
-reported with `tokens unavailable`. The latest machine-readable aggregate is written to
+reported with `provider quota unavailable`; the runner still shows unfinished tasks and remaining
+iteration budget before and after each attempt. The latest machine-readable aggregate is written to
 `.ralph/usage.json`.
 
 The unrestricted flag is deliberately explicit: both agents need non-interactive permission to
