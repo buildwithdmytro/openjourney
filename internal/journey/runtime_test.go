@@ -7,9 +7,78 @@ import (
 	"testing"
 	"time"
 
+	"github.com/buildwithdmytro/openjourney/internal/ai"
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 	"github.com/buildwithdmytro/openjourney/internal/ports"
 )
+
+type decisionAuditStore struct {
+	*mockStore
+	activities []domain.AIActivity
+}
+
+func (s *decisionAuditStore) RecordAIActivity(_ context.Context, _ domain.Principal, activity domain.AIActivity) (domain.AIActivity, error) {
+	activity.ID = "activity-" + string(rune(len(s.activities)+'1'))
+	s.activities = append(s.activities, activity)
+	return activity, nil
+}
+
+func TestAIDecisionTimeoutIsDeterministicAndNeverDeadLetters(t *testing.T) {
+	graph := &Graph{
+		Nodes: []Node{
+			{ID: "decision", Type: NodeTypeAIDecision, Config: json.RawMessage(`{"prompt_version_id":"pv-1","prompt":"choose","timeout_ms":10,"max_cost_cents":10,"branches":["yes","no"],"fallback":"no"}`)},
+			{ID: "yes", Type: NodeTypeExit, Config: json.RawMessage(`{"reason":"yes"}`)},
+			{ID: "no", Type: NodeTypeExit, Config: json.RawMessage(`{"reason":"no"}`)},
+		},
+		Edges: []Edge{{From: "decision", To: "yes", Branch: "yes"}, {From: "decision", To: "no", Branch: "no"}},
+	}
+	graphData, err := json.Marshal(graph)
+	if err != nil {
+		t.Fatalf("marshal graph: %v", err)
+	}
+
+	slow := decisionTestProvider{generate: func(ctx context.Context, _ ai.GenerateRequest) (*ai.GenerateResponse, error) {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}}
+	now := time.Unix(1700000000, 0)
+	var outcomes []string
+	for _, runID := range []string{"run-a", "run-b"} {
+		store := &decisionAuditStore{mockStore: newMockStore()}
+		store.runs[runID] = domain.JourneyRun{
+			ID: runID, TenantID: "tenant-1", WorkspaceID: "workspace-1", ProfileID: "profile-1",
+			JourneyVersionID: "version-1", Status: "active", CurrentNodeID: "decision",
+		}
+		store.versions["version-1"] = domain.JourneyVersion{ID: "version-1", TenantID: "tenant-1", Graph: graphData, LatePolicy: "run"}
+		store.steps["step-"+runID] = domain.JourneyStep{
+			ID: "step-" + runID, RunID: runID, TenantID: "tenant-1", NodeID: "decision",
+			Kind: "advance", Status: "pending", Attempts: 10, AvailableAt: now,
+		}
+
+		gateway := ai.NewGateway(store)
+		gateway.SetProviderFactory(func(ai.ProviderProfile) ai.ModelProvider { return slow })
+		processed, err := TickNext(context.Background(), store, Deps{Clock: NewFakeClock(now), AIGateway: gateway})
+		if err != nil || !processed {
+			t.Fatalf("timed-out decision was not processed for %s: processed=%v err=%v", runID, processed, err)
+		}
+		if got := store.steps["step-"+runID].Status; got != "completed" {
+			t.Fatalf("timed-out decision entered retry/dead-letter path for %s: step status=%q", runID, got)
+		}
+		if got := store.runs[runID].CurrentNodeID; got != "no" {
+			t.Fatalf("timed-out decision used non-deterministic branch for %s: %q", runID, got)
+		}
+		if len(store.transitions) != 1 || store.transitions[0].Outcome != "branch:no" {
+			t.Fatalf("unexpected fallback transition for %s: %+v", runID, store.transitions)
+		}
+		if len(store.activities) != 1 {
+			t.Fatalf("expected one audit activity for %s, got %d", runID, len(store.activities))
+		}
+		outcomes = append(outcomes, store.transitions[0].Outcome)
+	}
+	if outcomes[0] != outcomes[1] {
+		t.Fatalf("timed-out decisions were not deterministic: %v", outcomes)
+	}
+}
 
 type mockStore struct {
 	ports.Store

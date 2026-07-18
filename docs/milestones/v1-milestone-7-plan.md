@@ -397,8 +397,8 @@ task ends with a **Done when**. Do them in order; compile + `go vet` between mil
    `prompt_version_id`. *Done when:* a graph with an `ai_decision` missing its fallback branch or a
    pinned prompt fails `Validate`. — done: Validate enforces pinned prompts, positive cost caps, a
    five-second timeout ceiling, declared fallback branches, and exact outgoing labels with tests.
-3. **Determinism test**: same inputs + timed-out model → same fallback branch across runs; the run
-   never dead-letters on repeated model failure. *Done when:* asserted.
+3. [x] **Determinism test**: same inputs + timed-out model → same fallback branch across runs; the run
+   never dead-letters on repeated model failure. *Done when:* asserted. — done: runtime test verifies repeated slow fake-provider decisions deterministically complete on fallback at retry-limit attempts and each records one audit activity.
 
 ### Milestone 12.8 — Online-optimization controller
 1. **Migration** `032_online_optimization.sql` per §2.3. *Done when:* table exists.
