@@ -439,10 +439,10 @@ be registered in the adapter registry (10.0).**
    callbacks (DLR, STOP, push receipt, invalid-token); assert dispositions, `engagement_facts`,
    suppressions, token retirement, and the per-channel report numbers exactly. *Done when:* the
    numbers match seeded data. — done: `internal/postgres/sms_push_e2e_integration_test.go` seeds and tests SMS & push campaigns e2e, drives callbacks, and asserts reports and dispositions successfully.
-3. **Compliance tests**: sending to a STOP-suppressed phone (or opted-out profile) is blocked by
+3. [x] **Compliance tests**: sending to a STOP-suppressed phone (or opted-out profile) is blocked by
    the policy gate; quiet-hours honored for sms/push; fatigue counts sms+push **together with**
    email (cross-channel cap, reuse `TestSentCountSince_FatigueAcrossChannels`). *Done when:*
-   each is proven by a test.
+   each is proven by a test. — done: `internal/postgres/compliance_integration_test.go` asserts STOP-suppression blocking, quiet-hours, and cross-channel fatigue capping correctly.
 4. **Determinism**: an experiment-bound subject gets the **same variant regardless of channel**
    (email vs sms vs push) — the assignment is channel-independent. *Done when:* a test asserts
    identical variant across channels.
