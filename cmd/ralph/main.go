@@ -35,6 +35,7 @@ type config struct {
 	promptPath       string
 	planPath         string
 	branch           string
+	milestone        string
 	maxIterations    int
 	attemptTimeout   time.Duration
 	codexModel       string
@@ -105,7 +106,7 @@ type runError struct {
 func (e *runError) Error() string { return e.err.Error() }
 
 var (
-	milestoneRE = regexp.MustCompile(`^### Milestone (11\.[0-9]+)\b`)
+	milestoneRE = regexp.MustCompile(`^### Milestone ([0-9]+\.[0-9]+)\b`)
 	itemRE      = regexp.MustCompile(`^([0-9]+)\.\s+(?:\[([ xX])\]\s+)?`)
 )
 
@@ -127,8 +128,9 @@ func parseFlags() config {
 	var cfg config
 	flag.StringVar(&cfg.primary, "primary", "", "primary provider: codex or antigravity (required)")
 	flag.StringVar(&cfg.promptPath, "prompt", "prompt.md", "path to the Ralph mission prompt")
-	flag.StringVar(&cfg.planPath, "plan", "docs/milestones/v1-milestone-6-plan.md", "path to the milestone plan")
-	flag.StringVar(&cfg.branch, "branch", "phase6", "implementation branch")
+	flag.StringVar(&cfg.planPath, "plan", "docs/milestones/v1-milestone-7-plan.md", "path to the milestone plan")
+	flag.StringVar(&cfg.branch, "branch", "phase7", "implementation branch")
+	flag.StringVar(&cfg.milestone, "milestone", "7", "human milestone label for completion/error messages")
 	flag.IntVar(&cfg.maxIterations, "max-iterations", 100, "maximum successful task iterations")
 	flag.DurationVar(&cfg.attemptTimeout, "attempt-timeout", 2*time.Hour, "timeout for each provider attempt")
 	flag.StringVar(&cfg.codexModel, "codex-model", "gpt-5.6-luna", "Codex model identifier")
@@ -173,7 +175,7 @@ func run(ctx context.Context, cfg config) error {
 		}
 		next := firstTODO(current)
 		if next == nil {
-			fmt.Println("MILESTONE 6 COMPLETE")
+			fmt.Printf("MILESTONE %s COMPLETE\n", cfg.milestone)
 			return nil
 		}
 
@@ -241,7 +243,7 @@ func run(ctx context.Context, cfg config) error {
 	}
 	remaining, err := readTasks(filepath.Join(root, cfg.planPath))
 	if err == nil && firstTODO(remaining) == nil {
-		fmt.Println("MILESTONE 6 COMPLETE")
+		fmt.Printf("MILESTONE %s COMPLETE\n", cfg.milestone)
 		return nil
 	}
 	return &runError{code: exitMax, err: fmt.Errorf("maximum of %d iterations reached", cfg.maxIterations)}
@@ -263,7 +265,7 @@ func preflight(ctx context.Context, cfg config) (string, []task, error) {
 		return "", nil, err
 	}
 	if len(tasks) == 0 {
-		return "", nil, errors.New("no Milestone 6 tasks found in the plan")
+		return "", nil, fmt.Errorf("no Milestone %s tasks found in the plan", cfg.milestone)
 	}
 	if _, err := exec.LookPath("git"); err != nil {
 		return "", nil, err

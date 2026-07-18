@@ -53,17 +53,17 @@ func TestReadTasksTracksMultilineDoneNotes(t *testing.T) {
 }
 
 func TestCurrentMilestonePlanParsesInDocumentOrder(t *testing.T) {
-	tasks, err := readTasks(filepath.Join("..", "..", "docs", "milestones", "v1-milestone-6-plan.md"))
+	tasks, err := readTasks(filepath.Join("..", "..", "docs", "milestones", "v1-milestone-7-plan.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tasks) != 38 {
-		t.Fatalf("got %d tasks, want 38", len(tasks))
+	if len(tasks) != 24 {
+		t.Fatalf("got %d tasks, want 24", len(tasks))
 	}
-	if tasks[0].ID != "11.0.1" {
+	if tasks[0].ID != "12.0.1" {
 		t.Fatalf("first task = %#v", tasks[0])
 	}
-	if tasks[len(tasks)-1].ID != "11.14.5" {
+	if tasks[len(tasks)-1].ID != "12.11.5" {
 		t.Fatalf("last task = %#v", tasks[len(tasks)-1])
 	}
 }
@@ -165,6 +165,7 @@ printf '%s\n' '11.0.1 complete'
 		promptPath:       "prompt.md",
 		planPath:         "plan.md",
 		branch:           "phase6",
+		milestone:        "7",
 		maxIterations:    1,
 		attemptTimeout:   time.Minute,
 		codexModel:       "gpt-5.6-luna",

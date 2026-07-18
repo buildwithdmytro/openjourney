@@ -1,10 +1,11 @@
-# Milestone 6 — Ralph-loop prompt
+# Milestone 7 — Ralph-loop prompt
 
 **What this is:** an autonomous single-task loop prompt for implementing OpenJourney
-**Milestone 6 — Governed AI Layer** (`docs/milestones/v1-milestone-6-plan.md`, tasks 11.0–11.14).
-Each run does exactly ONE task, verifies it, records progress in the plan file, commits, and
-stops. Run it repeatedly (fresh context each time) until it prints `MILESTONE 6 COMPLETE` or
-writes a new line to `docs/milestones/BLOCKERS.md`.
+**Milestone 7 — Predictive Scoring, Realtime AI Decisioning & Online Optimization**
+(`docs/milestones/v1-milestone-7-plan.md`, tasks 12.0–12.11). Each run does exactly ONE task,
+verifies it, records progress in the plan file, commits, and stops. Run it repeatedly (fresh
+context each time) until it prints `MILESTONE 7 COMPLETE` or writes a new line to
+`docs/milestones/BLOCKERS.md`.
 
 **Recommended runner:** use the repository CLI to start a fresh Codex or Antigravity process for
 each task. The primary provider gets one attempt; if it fails before committing or recording a
@@ -15,10 +16,11 @@ go run ./cmd/ralph --primary codex --unsafe-autonomous
 go run ./cmd/ralph --primary antigravity --unsafe-autonomous
 ```
 
-Run `go run ./cmd/ralph --help` for model, timeout, iteration, branch, prompt, and plan overrides.
-Use `--dry-run` to validate the repository, prompt, task scan, CLIs, and configured models without
-switching branches or invoking an agent. Runtime transcripts and metadata are stored under
-`.ralph/runs/` and are ignored by Git.
+The defaults now target Milestone 7 (`--plan docs/milestones/v1-milestone-7-plan.md`,
+`--branch phase7`, `--milestone 7`). Run `go run ./cmd/ralph --help` for model, timeout,
+iteration, branch, prompt, plan, and milestone overrides. Use `--dry-run` to validate the
+repository, prompt, task scan, CLIs, and configured models without switching branches or invoking
+an agent. Runtime transcripts and metadata are stored under `.ralph/runs/` and are ignored by Git.
 
 The runner prints a milestone task bar before and after each completed task. After every provider
 attempt it also prints elapsed time, attempt totals, and Codex input/cached/output/reasoning token
@@ -33,104 +35,106 @@ model is `gpt-5.6-luna`; startup fails closed when that model is absent from the
 catalog. The Antigravity default is `Gemini 3.5 Flash (Medium)`.
 
 **Manual Antigravity use:** alternatively, paste the block below as the agent mission and let it
-run on the `phase6` branch; re-trigger the same mission for each iteration. Keep auto-run enabled
+run on the `phase7` branch; re-trigger the same mission for each iteration. Keep auto-run enabled
 for the verify commands in STEP 3.
 
 ---
 
 ```text
-You are an autonomous coding agent implementing OpenJourney **Milestone 6 — Governed AI Layer**,
-strictly following `docs/milestones/v1-milestone-6-plan.md`. This is ONE iteration of a loop: do
-**exactly ONE task**, verify it, record it, commit, then STOP. A fresh agent runs next iteration
-with NO memory of this one — all state must be on disk (the plan's checkboxes + git). Do not try
-to do the whole milestone in one run.
+You are an autonomous coding agent implementing OpenJourney **Milestone 7 — Predictive Scoring,
+Realtime AI Decisioning & Online Optimization**, strictly following
+`docs/milestones/v1-milestone-7-plan.md`. This is ONE iteration of a loop: do **exactly ONE
+task**, verify it, record it, commit, then STOP. A fresh agent runs next iteration with NO memory
+of this one — all state must be on disk (the plan's checkboxes + git). Do not try to do the whole
+milestone in one run.
 
 ## STEP 1 — Orient (every iteration, in this order)
-1. Read `docs/milestones/v1-milestone-6-plan.md` IN FULL.
+1. Read `docs/milestones/v1-milestone-7-plan.md` IN FULL.
 2. Re-read §"Design decisions (locked)" and §7 "Carry-over hazards & invariants". These are
    INVARIANTS you may not violate.
-3. Skim the recipes it cites — 6.1–6.25 from prior plans (`v1-milestone-2..5-plan.md`) and this
-   plan's AI recipes 6.26–6.30. This milestone builds on all of them.
+3. Skim the recipes it cites — 6.1–6.30 from prior plans (`v1-milestone-2..6-plan.md`) and this
+   plan's new recipes 6.31–6.34. This milestone builds on the M6 AI gateway/registry/eval/audit and
+   the M4 experiment stats/holdout.
 4. Run `git log --oneline -15` and `git status` to see what already exists on disk.
 5. A task is DONE only if its line contains `[x]` or a `— done:` note; otherwise it is TODO. Work
-   the **first TODO in document order**. Tasks run strictly 11.0 → 11.14 and NEVER skip ahead.
-   **11.0 (the M5 push-callback signature fix) must land first**, and the **substrate 11.1–11.7
-   must be fully done before any copilot 11.8–11.11** — the copilots inherit the gateway,
-   registry, redaction, and audit. Document order already enforces this; do not reorder.
+   the **first TODO in document order**. Tasks run strictly 12.0 → 12.11 and NEVER skip ahead.
+   **12.0 (the M6 audit-hardening fold-in) must land first** — more AI decisioning rides on the
+   audit trail. Document order already enforces this; do not reorder.
 
 ## STEP 2 — Do exactly ONE task
 - Implement only that single sub-task. Follow its referenced Recipe: open the named existing
   file, copy it, rename, change the fields. DO NOT design from scratch or invent patterns —
   everything you need has a cited file:line in the plan.
 - Honor these invariants every time they apply:
-  - **AI NEVER publishes.** Run AI tools under an `ActorType="ai_agent"` principal whose scopes
-    are the INTERSECTION of the caller's scopes and the tool's declared scopes; it must be
-    structurally rejected by the human-approval gate (`journeys.go:80`, `experiments.go:72`).
-    Every copilot's terminal action is a DRAFT resource or a proposed NEW immutable version —
-    NEVER a mutation of a live journey/campaign/segment. Do not add an AI bypass to the gate.
-  - **Redact before egress, fail closed.** No `restricted`/unauthorized field ever leaves for a
-    model provider; retrieval is permission-aware; untrusted retrieved DATA is passed in a
-    delimited section, isolated from instructions (prompt-injection defense). A field with no
-    classification defaults to REDACT, not send.
-  - **Structured output only.** Model output MUST pass its `output_schema` AND the deterministic
-    domain validator (`audience.Parse`, journey `validate`, or `render`) before ANY use;
-    schema-reject → one bounded repair retry → hard fail. No free-form model text drives a mutation.
-  - **Pinned immutable prompts.** Every gateway invoke references a `prompt_version_id` that is
-    `status='active'` AND `eval_status='passed'`. Changing a prompt = a NEW version (+ eval gate +
-    human publish). Reuse the `journey/publish.go` freeze (sha256 → blob.Put → immutable row).
-  - **Egress safety.** Never blanket-bypass the SSRF private-IP guard (`webhook.go` `IsSafeURL`).
-    Hosted providers must match the domain allowlist; a local/self-host endpoint is allowed ONLY
-    if present in `ai_provider_configs.endpoint_allowlist`. Keep the TOCTOU-safe dial guard.
-  - **Log every AI action** in the append-only `ai_activity` table (allowed AND denied), with
-    model/prompt_version/cost/tokens/policy_decision/approver. An unlogged AI action is a bug.
-  - **Budgets enforced at the gateway** — over-budget denies with a clear error; no silent overspend.
-  - **Determinism** — use the `fake` provider + golden outputs in tests; NO test depends on a live
-    model; NO `math/rand` anywhere.
+  - **Realtime AI node fails to a DETERMINISTIC branch, never to a retry.** In the `ai_decision`
+    node, a model timeout / over-budget / provider error / schema-reject must return a normal
+    ExecutionResult on the configured fallback branch — NEVER an error that triggers
+    `FailJourneyStep` (which re-invokes the model up to 10× and can dead-letter the run). The run
+    ALWAYS advances; the per-call timeout is far tighter than the 5-minute step lease.
+  - **AI decisioning is bounded + governed.** The pinned `prompt_version` must be `status='active'`
+    AND `eval_status='passed'`; enforce a per-call timeout AND a per-call cost cap; the output must
+    map to a declared branch or fall back; record every decision in `ai_activity`.
+  - **Scores are versioned + eval-gated + human-published.** A scoring-model version is immutable
+    (blob-frozen); publishing requires the human-actor gate; a compute job refuses a non-`passed`
+    version. `profile_scores` records which `model_version` produced each value.
+  - **Score DSL leg is parameterized + scoped.** Never interpolate values/identifiers into SQL;
+    keep the `fieldSafetyRegex` allowlist; filter `tenant_id` AND `workspace_id`.
+  - **Online optimization PROPOSES; humans APPROVE.** Never self-reallocate or self-rollout.
+    Reallocate via a NEW immutable experiment version (seed UNCHANGED, holdout preserved); a
+    guardrail regression HALTS; the approve path reuses the human-actor gate (api_key/ai_agent →
+    403). Never send to a holdout.
+  - **Determinism.** NO `math/rand`; deterministic bucketing/assignment; the expression scorer is
+    pure; tests use the `fake` provider + golden outputs; NO test depends on a live model.
+  - **Audit + scan-free.** Every AI decision and score computation logs to the append-only
+    `ai_activity`; segment resolution / reports add no full-population OLTP scans (score reads hit
+    the indexed `profile_scores`).
   - New scope → add in ALL THREE places (`rbac.go` allowlist, the `api_keys` default array in the
     new migration, and the `s.authenticate("scope", ...)` routes). Widen the
-    `operation_jobs.job_type` CHECK for `ai.generate`; register the `ai.action` event type; and
-    enumerate EVERY value the code writes in any CHECK constraint.
-  - New migration = next zero-padded number (start at `025`), `IF NOT EXISTS`, uuid PK, timestamptz.
+    `operation_jobs.job_type` CHECK for `scores.compute`; enumerate EVERY value the code writes in
+    any CHECK constraint.
+  - New migration = next zero-padded number (start at `030`), `IF NOT EXISTS`, uuid PK, timestamptz.
     When altering an UNNAMED inline CHECK, confirm its generated name with `\d <table>` first.
   - New frontend: follow the existing section/editor patterns; add NO new npm dependency; theme-aware.
 
 ## STEP 3 — Verify (MANDATORY — do not mark a task done if any check fails)
 - Go changes: `go build ./... && go vet ./... && go test ./...` (or the touched package).
   Run `go mod tidy` if you added an import.
-- Migration: confirm it applies cleanly against a test DB, and that any widened CHECK now ACCEPTS
-  the new values AND still REJECTS an unknown one.
+- Migration: confirm it applies cleanly against a test DB, and that any widened/added CHECK ACCEPTS
+  every value the code writes AND still REJECTS an unknown one.
 - UI changes: `cd web && npm run typecheck && npm run build && npm test`.
-- The task's literal **"Done when"** condition MUST be observably satisfied. For the governance
-  properties (AI-cannot-publish, redaction-before-egress, unauthorized-retrieval-blocked,
-  schema-reject-repair-or-fail, over-budget-denied, every-invoke-logged, eval-gate) that means an
-  actual test proving the property on the FAKE provider — not just `err == nil`.
+- The task's literal **"Done when"** condition MUST be observably satisfied. For the load-bearing
+  properties (realtime-node-falls-back-on-timeout, run-never-dead-letters-on-model-failure,
+  scores-eval-gated, score-SQL-parameterized, online-opt-requires-human, seed-immutable,
+  holdout-preserved, append-only-audit) that means an actual test proving the property on the FAKE
+  provider / deterministic scorer — not just `err == nil`.
 
 ## STEP 4 — Record & commit
-- Edit `docs/milestones/v1-milestone-6-plan.md`: prefix the finished sub-task with `[x]` and
+- Edit `docs/milestones/v1-milestone-7-plan.md`: prefix the finished sub-task with `[x]` and
   append `— done: <one-line evidence>` (match the prior-plan style).
-- Ensure you are on branch `phase6` (create it from the current branch if it doesn't exist).
+- Ensure you are on branch `phase7` (create it from the current branch if it doesn't exist).
   NEVER commit to `main`.
 - Commit ONLY this task's changes with a conventional message, e.g.
-  `feat(ai): 11.1.2 add provider-neutral gateway with fake/anthropic/openai profiles`
-  or `fix(channels): 11.0.1 require signature verification on push callbacks`.
+  `feat(scoring): 12.2 add versioned scoring-model registry`
+  or `feat(journeys): 12.7 add bounded realtime ai_decision node with deterministic fallback`.
   Follow the repository's commit-trailer convention.
 
 ## STEP 5 — Stop
 - After committing ONE task, output a 2-line summary (task id + what you did) and STOP.
-- If ALL tasks are `[x]`, output `MILESTONE 6 COMPLETE` and STOP.
+- If ALL tasks are `[x]`, output `MILESTONE 7 COMPLETE` and STOP.
 - If BLOCKED (real ambiguity, a failing build you can't fix within this task's scope, a missing
   prerequisite, a needed human approval, or anything that would require weakening an invariant —
-  e.g. bypassing the SSRF guard, sending an unredacted field, or letting AI publish): do NOT hack
-  around it and do NOT mark the task done. Append the blocker to `docs/milestones/BLOCKERS.md`
-  (task id + what's blocking + what you need), commit that file only, and STOP.
+  e.g. letting AI self-rollout, a realtime node that errors instead of falling back, unparameterized
+  score SQL, changing an experiment seed, or sending to a holdout): do NOT hack around it and do NOT
+  mark the task done. Append the blocker to `docs/milestones/BLOCKERS.md` (task id + what's blocking
+  + what you need), commit that file only, and STOP.
 ```
 
 ---
 
 **Runner:** loop this mission with a **fresh context each iteration**, capped at some max, and
-stop when the output contains `MILESTONE 6 COMPLETE` or a new line lands in
+stop when the output contains `MILESTONE 7 COMPLETE` or a new line lands in
 `docs/milestones/BLOCKERS.md`.
 
-**Note:** the M6 tasks are plain numbered lines. This prompt treats "no `[x]` / no `— done:`" as
-TODO, so it works as-is; if you want an unambiguous scan signal, convert every 11.x sub-task to
-`[ ]` checkboxes in one pass first.
+**Note:** the M7 tasks are plain numbered lines. This prompt (and `cmd/ralph`) treats "no `[x]` /
+no `— done:`" as TODO, so it works as-is; if you want an unambiguous scan signal, convert every
+12.x sub-task to `[ ]` checkboxes in one pass first.
