@@ -20,25 +20,26 @@ import (
 
 type fakeStore struct {
 	ports.Store
-	accepted        int
-	scopes          []string
-	oidcPrincipal   *domain.Principal
-	localSession    domain.AuthSession
-	revokedToken    string
-	published       int
-	rollouts        int
-	runs            []domain.JourneyRun
+	accepted                               int
+	scopes                                 []string
+	oidcPrincipal                          *domain.Principal
+	localSession                           domain.AuthSession
+	revokedToken                           string
+	published                              int
+	rollouts                               int
+	runs                                   []domain.JourneyRun
 	getTemplateFunc                        func(id string) (domain.Template, error)
 	getProfileFunc                         func(externalID string) (domain.Profile, error)
 	getProfileByPhoneFunc                  func(tenantID, phone string) (domain.Profile, error)
 	getSendingIdentityFunc                 func(id string) (domain.SendingIdentity, error)
 	getSendingIdentityByProviderConfigFunc func(provider, configKey, configVal string) (domain.SendingIdentity, error)
 	AcceptEventsFunc                       func(ctx context.Context, p domain.Principal, events []domain.Event) ([]string, error)
-	registerDeviceTokenFunc       func(ctx context.Context, tenantID, workspaceID, appID, profileID, platform, provider, token string) (domain.DeviceToken, error)
-	retireDeviceTokenFunc         func(ctx context.Context, tenantID, appID, token string) error
-	retireDeviceTokenByIDFunc     func(ctx context.Context, tenantID, id string) error
-	listActiveDeviceTokensFunc    func(ctx context.Context, tenantID, workspaceID, profileID string) ([]domain.DeviceToken, error)
-	listDeviceTokensByProfileFunc func(ctx context.Context, tenantID, workspaceID, profileID string) ([]domain.DeviceToken, error)
+	registerDeviceTokenFunc                func(ctx context.Context, tenantID, workspaceID, appID, profileID, platform, provider, token string) (domain.DeviceToken, error)
+	retireDeviceTokenFunc                  func(ctx context.Context, tenantID, appID, token string) error
+	retireDeviceTokenByIDFunc              func(ctx context.Context, tenantID, id string) error
+	listActiveDeviceTokensFunc             func(ctx context.Context, tenantID, workspaceID, profileID string) ([]domain.DeviceToken, error)
+	listDeviceTokensByProfileFunc          func(ctx context.Context, tenantID, workspaceID, profileID string) ([]domain.DeviceToken, error)
+	listAIActivityFunc                     func(ctx context.Context, p domain.Principal, limit int) ([]domain.AIActivity, error)
 }
 
 type fakeBlobStore struct {
@@ -200,6 +201,12 @@ func (f *fakeStore) CreateUser(_ context.Context, _ domain.Principal, user domai
 	return user, nil
 }
 func (f *fakeStore) ListAuditEvents(context.Context, domain.Principal, int) ([]domain.AuditEvent, error) {
+	return nil, nil
+}
+func (f *fakeStore) ListAIActivity(ctx context.Context, p domain.Principal, limit int) ([]domain.AIActivity, error) {
+	if f.listAIActivityFunc != nil {
+		return f.listAIActivityFunc(ctx, p, limit)
+	}
 	return nil, nil
 }
 func (f *fakeStore) CreateSegment(_ context.Context, _ domain.Principal, seg domain.Segment) (domain.Segment, error) {
@@ -604,6 +611,43 @@ func TestListDeadLettersRequiresOperationsRead(t *testing.T) {
 	}
 	if !strings.Contains(response.Body.String(), "event-1") {
 		t.Fatalf("unexpected body=%s", response.Body.String())
+	}
+}
+
+func TestListAIActivityRequiresScopeAndIsTenantScoped(t *testing.T) {
+	var gotPrincipal domain.Principal
+	store := &fakeStore{
+		scopes: []string{"ai:read"},
+		listAIActivityFunc: func(_ context.Context, p domain.Principal, limit int) ([]domain.AIActivity, error) {
+			gotPrincipal = p
+			if limit != 25 {
+				t.Fatalf("limit=%d, want 25", limit)
+			}
+			return []domain.AIActivity{{ID: "activity-a", TenantID: p.TenantID, WorkspaceID: p.WorkspaceID}}, nil
+		},
+	}
+	server := New(store, 75)
+	request := httptest.NewRequest(http.MethodGet, "/v1/ai/activity?limit=25", nil)
+	request.Header.Set("Authorization", "Bearer test-key")
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if gotPrincipal.TenantID != "tenant" || gotPrincipal.WorkspaceID != "workspace" {
+		t.Fatalf("activity query was not scoped: %+v", gotPrincipal)
+	}
+	if !strings.Contains(response.Body.String(), "activity-a") {
+		t.Fatalf("unexpected body=%s", response.Body.String())
+	}
+
+	request = httptest.NewRequest(http.MethodGet, "/v1/ai/activity", nil)
+	request.Header.Set("Authorization", "Bearer test-key")
+	response = httptest.NewRecorder()
+	server = New(&fakeStore{scopes: []string{"profiles:read"}}, 75)
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("without ai:read status=%d body=%s", response.Code, response.Body.String())
 	}
 }
 
@@ -1778,8 +1822,3 @@ func TestDeviceTokensAPI(t *testing.T) {
 		}
 	})
 }
-
-
-
-
-

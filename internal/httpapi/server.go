@@ -150,6 +150,7 @@ func (s *Server) buildMux() http.Handler {
 	mux.Handle("GET /v1/users", s.authenticate("users:read", http.HandlerFunc(s.listUsers)))
 	mux.Handle("POST /v1/users", s.authenticate("users:write", http.HandlerFunc(s.createUser)))
 	mux.Handle("GET /v1/audit", s.authenticate("operations:read", http.HandlerFunc(s.listAudit)))
+	mux.Handle("GET /v1/ai/activity", s.authenticate("ai:read", http.HandlerFunc(s.listAIActivity)))
 	return otelhttp.NewHandler(requestLog(s.cors(mux)), "openjourney-api")
 }
 

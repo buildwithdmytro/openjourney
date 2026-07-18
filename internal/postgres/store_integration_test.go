@@ -600,7 +600,6 @@ func TestDeviceTokensMigrationAndDefaultScopesIntegration(t *testing.T) {
 	}
 }
 
-
 func TestExperimentBindingsMigrationIntegration(t *testing.T) {
 	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
 	if databaseURL == "" {
@@ -927,6 +926,58 @@ func TestAIGatewaySchema_11_1_1(t *testing.T) {
 		t.Errorf("expected job_type 'ai.invalid_type' to be rejected by the CHECK constraint, but insert succeeded")
 	} else if !strings.Contains(err.Error(), "operation_jobs_job_type_check") {
 		t.Errorf("expected check constraint error 'operation_jobs_job_type_check', got: %v", err)
+	}
+}
+
+func TestListAIActivityTenantWorkspaceScope_11_6_3(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	var tenantA, workspaceA, tenantB, workspaceB string
+	if err := store.pool.QueryRow(ctx, "INSERT INTO tenants(name) VALUES($1) RETURNING id", "activity-a-"+time.Now().Format("150405.000000000")).Scan(&tenantA); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.pool.QueryRow(ctx, "INSERT INTO workspaces(tenant_id,name) VALUES($1,$2) RETURNING id", tenantA, "workspace-a").Scan(&workspaceA); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.pool.QueryRow(ctx, "INSERT INTO tenants(name) VALUES($1) RETURNING id", "activity-b-"+time.Now().Format("150405.000000000")).Scan(&tenantB); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.pool.QueryRow(ctx, "INSERT INTO workspaces(tenant_id,name) VALUES($1,$2) RETURNING id", tenantB, "workspace-b").Scan(&workspaceB); err != nil {
+		t.Fatal(err)
+	}
+	_, err = store.pool.Exec(ctx, `INSERT INTO ai_activity
+		(tenant_id,workspace_id,action,provider,model,policy_decision)
+		VALUES($1,$2,'ai.allowed','fake','fake-model','allowed'),($3,$4,'ai.denied','fake','fake-model','denied_policy')`,
+		tenantA, workspaceA, tenantB, workspaceB)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	items, err := store.ListAIActivity(ctx, domain.Principal{TenantID: tenantA, WorkspaceID: workspaceA}, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].Action != "ai.allowed" || items[0].TenantID != tenantA || items[0].WorkspaceID != workspaceA {
+		t.Fatalf("unexpected scoped activity: %+v", items)
+	}
+	otherWorkspaceItems, err := store.ListAIActivity(ctx, domain.Principal{TenantID: tenantA, WorkspaceID: workspaceB}, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(otherWorkspaceItems) != 0 {
+		t.Fatalf("activity leaked across workspace: %+v", otherWorkspaceItems)
 	}
 }
 

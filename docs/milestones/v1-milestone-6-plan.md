@@ -506,8 +506,8 @@ them in order; compile + `go vet` between milestones. **Substrate (11.0–11.7) 
    (register the event type / add to the built-in allow-list, `admin.go:128`). *Done when:* every
    invoke path produces exactly one activity row; a denied invoke is logged with its
    `policy_decision`. — done: gateway records allowed, denied, and failed Generate/Embed/Moderate invokes; Postgres appends ai_activity plus ai.action audit event transactionally; exact-once allowed/denied test passes.
-3. **Query API + scope**: `GET /v1/ai/activity` (scope `ai:read`), tenant+workspace scoped.
-   *Done when:* the endpoint returns the tenant's activity, never another tenant's.
+3. [x] **Query API + scope**: `GET /v1/ai/activity` (scope `ai:read`), tenant+workspace scoped.
+   *Done when:* the endpoint returns the tenant's activity, never another tenant's. — done: added tenant/workspace-scoped query store method and `ai:read` endpoint; HTTP and DB-gated isolation tests pass.
 
 ### Milestone 11.7 — Async generation (operation id + status)
 1. **Migration** already has `ai.generate` job type (11.1) + `ai_generation_requests` (11.6).
