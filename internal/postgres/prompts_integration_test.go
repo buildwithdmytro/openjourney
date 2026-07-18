@@ -498,3 +498,49 @@ func TestSeededJourneyDraftPrompt(t *testing.T) {
 		}
 	}
 }
+
+func TestSeededPerformanceSummaryPrompt(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.pool.Exec(ctx, "TRUNCATE tenants CASCADE"); err != nil {
+		t.Fatal(err)
+	}
+	const key = "seeded-performance-prompt"
+	if err := store.EnsureDevelopmentTenant(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	p, err := store.Authenticate(ctx, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed, err := store.GetPromptByName(ctx, p, performanceSummaryPromptName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seed.CurrentVersionID == nil || seed.LatestVersion != 1 || seed.TaskType != "performance_summary" {
+		t.Fatalf("seeded performance prompt metadata = %+v", seed)
+	}
+	version, err := store.GetPromptVersion(ctx, p, *seed.CurrentVersionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if version.Status != "active" || version.EvalStatus != "passed" || version.Provider != "fake" {
+		t.Fatalf("seeded performance version is not usable: %+v", version)
+	}
+	for _, field := range []string{"summary", "key_metrics", "recommendations", "proposed_version"} {
+		if !strings.Contains(string(version.OutputSchema), `"`+field+`"`) {
+			t.Errorf("seeded performance schema omits %s: %s", field, version.OutputSchema)
+		}
+	}
+}

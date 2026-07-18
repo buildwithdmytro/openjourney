@@ -546,8 +546,8 @@ them in order; compile + `go vet` between milestones. **Substrate (11.0–11.7) 
    deterministic graph validation, fake-provider coverage, and draft-only journey creation.
 
 ### Milestone 11.11 — Copilot: performance summary + suggested next version
-1. **Performance-summary prompt version**; input = M4 report reads (read-only tools). *Done when:*
-   seeded/`passed`.
+1. [x] **Performance-summary prompt version**; input = M4 report reads (read-only tools). *Done when:*
+   seeded/`passed`. — done: development bootstrap seeds an idempotent fake performance-summary prompt with campaign/experiment report input and summary/proposed-version output schemas; TestSeededPerformanceSummaryPrompt verifies active/passed metadata.
 2. **Endpoint** `POST /v1/ai/copilots/performance/{campaignId}`: summarize the campaign/experiment
    report (reusing M4 `CampaignReport`/`ExperimentReport`) and **propose a new immutable version**
    (draft) — never auto-rolls-out (rollout stays behind the human gate + experiment rollout path).
