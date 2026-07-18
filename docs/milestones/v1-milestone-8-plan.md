@@ -440,7 +440,7 @@ Each task ends with a **Done when**. Do them in order; compile + `go vet` betwee
    per-IP 429; full Go build/vet/test passes.
 
 ### Milestone 13.3 — Landing pages + assets
-1. **Migration** `036_pages_assets.sql` per §2.2 + scopes `pages:*`, `assets:*`. *Done when:* exists.
+1. [x] **Migration** `036_pages_assets.sql` per §2.2 + scopes `pages:*`, `assets:*`. *Done when:* exists. — done: added landing-page/version and content-addressed asset tables with existing page/asset scope wiring; Go build/vet/test pass.
 2. **Pages + assets store/CRUD/publish** + asset upload (`POST /v1/assets` → `BlobStore.Put`,
    content-addressed). *Done when:* a page publishes an immutable version; an asset uploads + lists.
 3. **Public page serving** `GET /p/{slug}` (§3.2): render the pinned version, inject a signed form
