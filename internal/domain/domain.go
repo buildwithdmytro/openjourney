@@ -799,5 +799,13 @@ type PromptVersion struct {
 	CreatedAt    time.Time       `json:"created_at"`
 }
 
-
-
+type FieldClassification struct {
+	ID             string    `json:"id"`
+	TenantID       string    `json:"tenant_id"`
+	WorkspaceID    string    `json:"workspace_id"`
+	EntityType     string    `json:"entity_type"`
+	FieldPath      string    `json:"field_path"`
+	Classification string    `json:"classification"`
+	SendToModel    string    `json:"send_to_model"`
+	CreatedAt      time.Time `json:"created_at"`
+}

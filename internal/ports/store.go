@@ -172,6 +172,12 @@ type Store interface {
 	ListPromptVersions(ctx context.Context, p domain.Principal, promptID string) ([]domain.PromptVersion, error)
 	PublishPromptVersion(ctx context.Context, p domain.Principal, promptID string, version int, approverUserID string, manifestKey string) (domain.PromptVersion, error)
 	SetPromptVersionEvalStatus(ctx context.Context, p domain.Principal, id string, evalStatus string) error
+
+	CreateFieldClassification(ctx context.Context, p domain.Principal, classification domain.FieldClassification) (domain.FieldClassification, error)
+	GetFieldClassification(ctx context.Context, p domain.Principal, id string) (domain.FieldClassification, error)
+	ListFieldClassifications(ctx context.Context, p domain.Principal, entityType string) ([]domain.FieldClassification, error)
+	UpdateFieldClassification(ctx context.Context, p domain.Principal, classification domain.FieldClassification) (domain.FieldClassification, error)
+	DeleteFieldClassification(ctx context.Context, p domain.Principal, id string) error
 }
 
 type TokenVerifier interface {

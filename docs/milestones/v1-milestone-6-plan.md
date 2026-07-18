@@ -489,8 +489,8 @@ them in order; compile + `go vet` between milestones. **Substrate (11.0–11.7) 
    prompt-injection text cannot alter the instruction (test on the fake provider's captured input). — done: GovernedPrompt JSON-delimits retrieved data and TestGovernedPromptIsolatesUntrustedDataOnFakeProvider verifies the captured request.
 
 ### Milestone 11.5 — Field sensitivity + retrieval + PII redaction
-1. **Migration** `028_field_sensitivity.sql` per §2.4 + `field_classifications` CRUD (scope
-   `schemas:write`). *Done when:* classifications round-trip.
+1. [x] **Migration** `028_field_sensitivity.sql` per §2.4 + `field_classifications` CRUD (scope
+   `schemas:write`). *Done when:* classifications round-trip. — done: added migration, tenant/workspace-scoped CRUD, and verified create/get/update/list/delete round-trip in TestFieldClassificationCRUD_11_5_1.
 2. **Permission-aware retrieval** `internal/ai/retrieval.go`: fetch only fields the derived
    principal may read; attach retrieval refs (ids). *Done when:* an unauthorized field is never
    returned.
