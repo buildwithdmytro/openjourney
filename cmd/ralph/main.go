@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -49,13 +50,50 @@ type task struct {
 }
 
 type attemptResult struct {
-	Provider string        `json:"provider"`
-	TaskID   string        `json:"task_id"`
-	Started  time.Time     `json:"started_at"`
-	Duration time.Duration `json:"duration"`
-	ExitCode int           `json:"exit_code"`
-	TimedOut bool          `json:"timed_out"`
-	Error    string        `json:"error,omitempty"`
+	Provider              string        `json:"provider"`
+	TaskID                string        `json:"task_id"`
+	Started               time.Time     `json:"started_at"`
+	Duration              time.Duration `json:"duration"`
+	ExitCode              int           `json:"exit_code"`
+	TimedOut              bool          `json:"timed_out"`
+	TokenUsageAvailable   bool          `json:"token_usage_available"`
+	InputTokens           int64         `json:"input_tokens,omitempty"`
+	CachedInputTokens     int64         `json:"cached_input_tokens,omitempty"`
+	OutputTokens          int64         `json:"output_tokens,omitempty"`
+	ReasoningOutputTokens int64         `json:"reasoning_output_tokens,omitempty"`
+	Error                 string        `json:"error,omitempty"`
+}
+
+type providerUsage struct {
+	Attempts              int           `json:"attempts"`
+	Duration              time.Duration `json:"duration"`
+	TokenUsageAvailable   bool          `json:"token_usage_available"`
+	InputTokens           int64         `json:"input_tokens,omitempty"`
+	CachedInputTokens     int64         `json:"cached_input_tokens,omitempty"`
+	OutputTokens          int64         `json:"output_tokens,omitempty"`
+	ReasoningOutputTokens int64         `json:"reasoning_output_tokens,omitempty"`
+}
+
+type usageSummary struct {
+	Started        time.Time                `json:"started_at"`
+	Updated        time.Time                `json:"updated_at"`
+	TotalTasks     int                      `json:"total_tasks"`
+	CompletedTasks int                      `json:"completed_tasks"`
+	Attempts       int                      `json:"attempts"`
+	Providers      map[string]providerUsage `json:"providers"`
+}
+
+type codexStream struct {
+	log     io.Writer
+	display io.Writer
+	pending []byte
+	usage   struct {
+		InputTokens           int64 `json:"input_tokens"`
+		CachedInputTokens     int64 `json:"cached_input_tokens"`
+		OutputTokens          int64 `json:"output_tokens"`
+		ReasoningOutputTokens int64 `json:"reasoning_output_tokens"`
+	}
+	foundUsage bool
 }
 
 type runError struct {
@@ -123,6 +161,8 @@ func run(ctx context.Context, cfg config) error {
 	if err := ensureBranch(root, cfg.branch); err != nil {
 		return preflightError(err)
 	}
+	usage := usageSummary{Started: time.Now(), TotalTasks: len(tasks), CompletedTasks: completedTaskCount(tasks), Providers: make(map[string]providerUsage)}
+	printProgress(tasks)
 
 	for iteration := 1; iteration <= cfg.maxIterations; iteration++ {
 		current, err := readTasks(filepath.Join(root, cfg.planPath))
@@ -146,8 +186,15 @@ func run(ctx context.Context, cfg config) error {
 		}
 
 		result := invoke(ctx, cfg, cfg.primary, mission, next.ID, iteration)
+		usage.add(result)
+		usage.save(root)
+		printUsage(usage, result)
 		outcome, err := validateAttempt(cfg, *next, beforeHead, beforeBlocker)
 		if outcome == "success" {
+			updated, _ := readTasks(filepath.Join(root, cfg.planPath))
+			usage.CompletedTasks = completedTaskCount(updated)
+			usage.save(root)
+			printProgress(updated)
 			continue
 		}
 		if outcome == "blocked" {
@@ -164,9 +211,16 @@ func run(ctx context.Context, cfg config) error {
 		fmt.Fprintf(os.Stderr, "Primary %s did not complete task %s (%v); trying %s once.\n", cfg.primary, next.ID, attemptFailure(result), fallback)
 		recoveryMission := mission + fmt.Sprintf("\n\nRUNNER RECOVERY NOTE: The previous %s attempt failed before committing. Continue the existing uncommitted work for task %s only. Inspect it carefully, finish and verify that same task, commit it, then stop.\n", cfg.primary, next.ID)
 		fallbackResult := invoke(ctx, cfg, fallback, recoveryMission, next.ID, iteration)
+		usage.add(fallbackResult)
+		usage.save(root)
+		printUsage(usage, fallbackResult)
 		outcome, err = validateAttempt(cfg, *next, beforeHead, beforeBlocker)
 		switch outcome {
 		case "success":
+			updated, _ := readTasks(filepath.Join(root, cfg.planPath))
+			usage.CompletedTasks = completedTaskCount(updated)
+			usage.save(root)
+			printProgress(updated)
 			continue
 		case "blocked":
 			return &runError{code: exitBlocked, err: fmt.Errorf("task %s recorded a blocker", next.ID)}
@@ -364,6 +418,68 @@ func nextTaskID(tasks []task) string {
 	return "complete"
 }
 
+func completedTaskCount(tasks []task) int {
+	done := 0
+	for _, candidate := range tasks {
+		if candidate.Done {
+			done++
+		}
+	}
+	return done
+}
+
+func progressLine(tasks []task, width int) string {
+	if width < 1 {
+		width = 1
+	}
+	total := len(tasks)
+	done := completedTaskCount(tasks)
+	filled := 0
+	percent := 100.0
+	if total > 0 {
+		filled = done * width / total
+		percent = float64(done) * 100 / float64(total)
+	}
+	next := nextTaskID(tasks)
+	return fmt.Sprintf("Progress [%s%s] %d/%d (%.1f%%) next: %s", strings.Repeat("#", filled), strings.Repeat("-", width-filled), done, total, percent, next)
+}
+
+func printProgress(tasks []task) {
+	fmt.Println(progressLine(tasks, 30))
+}
+
+func (u *usageSummary) add(result attemptResult) {
+	u.Attempts++
+	u.Updated = time.Now()
+	provider := u.Providers[result.Provider]
+	provider.Attempts++
+	provider.Duration += result.Duration
+	provider.TokenUsageAvailable = provider.TokenUsageAvailable || result.TokenUsageAvailable
+	provider.InputTokens += result.InputTokens
+	provider.CachedInputTokens += result.CachedInputTokens
+	provider.OutputTokens += result.OutputTokens
+	provider.ReasoningOutputTokens += result.ReasoningOutputTokens
+	u.Providers[result.Provider] = provider
+}
+
+func (u usageSummary) save(root string) {
+	u.Updated = time.Now()
+	b, err := json.MarshalIndent(u, "", "  ")
+	if err != nil {
+		return
+	}
+	_ = os.MkdirAll(filepath.Join(root, ".ralph"), 0o755)
+	_ = os.WriteFile(filepath.Join(root, ".ralph", "usage.json"), append(b, '\n'), 0o644)
+}
+
+func printUsage(summary usageSummary, latest attemptResult) {
+	tokens := "tokens unavailable"
+	if latest.TokenUsageAvailable {
+		tokens = fmt.Sprintf("tokens in=%d cached=%d out=%d reasoning=%d", latest.InputTokens, latest.CachedInputTokens, latest.OutputTokens, latest.ReasoningOutputTokens)
+	}
+	fmt.Printf("Usage %s: attempt %s, %s; run attempts=%d elapsed=%s\n", latest.Provider, latest.Duration.Round(time.Second), tokens, summary.Attempts, time.Since(summary.Started).Round(time.Second))
+}
+
 func invoke(parent context.Context, cfg config, provider, mission, taskID string, iteration int) attemptResult {
 	started := time.Now()
 	result := attemptResult{Provider: provider, TaskID: taskID, Started: started, ExitCode: -1}
@@ -390,9 +506,23 @@ func invoke(parent context.Context, cfg config, provider, mission, taskID string
 
 	cmd := providerCommand(ctx, cfg, provider, mission)
 	cmd.Dir = cfg.root
-	cmd.Stdout = io.MultiWriter(os.Stdout, stdoutFile)
+	var codexOutput *codexStream
+	if provider == "codex" {
+		codexOutput = &codexStream{log: stdoutFile, display: os.Stdout}
+		cmd.Stdout = codexOutput
+	} else {
+		cmd.Stdout = io.MultiWriter(os.Stdout, stdoutFile)
+	}
 	cmd.Stderr = io.MultiWriter(os.Stderr, stderrFile)
 	err = cmd.Run()
+	if codexOutput != nil {
+		codexOutput.flush()
+		result.TokenUsageAvailable = codexOutput.foundUsage
+		result.InputTokens = codexOutput.usage.InputTokens
+		result.CachedInputTokens = codexOutput.usage.CachedInputTokens
+		result.OutputTokens = codexOutput.usage.OutputTokens
+		result.ReasoningOutputTokens = codexOutput.usage.ReasoningOutputTokens
+	}
 	result.Duration = time.Since(started)
 	if err == nil {
 		result.ExitCode = 0
@@ -411,11 +541,63 @@ func invoke(parent context.Context, cfg config, provider, mission, taskID string
 
 func providerCommand(ctx context.Context, cfg config, provider, mission string) *exec.Cmd {
 	if provider == "codex" {
-		cmd := exec.CommandContext(ctx, "codex", "exec", "--model", cfg.codexModel, "--dangerously-bypass-approvals-and-sandbox", "--cd", cfg.root, "-")
+		cmd := exec.CommandContext(ctx, "codex", "exec", "--json", "--model", cfg.codexModel, "--dangerously-bypass-approvals-and-sandbox", "--cd", cfg.root, "-")
 		cmd.Stdin = strings.NewReader(mission)
 		return cmd
 	}
 	return exec.CommandContext(ctx, "agy", "--model", cfg.antigravityModel, "--mode", "accept-edits", "--dangerously-skip-permissions", "--print-timeout", cfg.attemptTimeout.String(), "--print", mission)
+}
+
+func (s *codexStream) Write(p []byte) (int, error) {
+	if _, err := s.log.Write(p); err != nil {
+		return 0, err
+	}
+	s.pending = append(s.pending, p...)
+	for {
+		newline := bytes.IndexByte(s.pending, '\n')
+		if newline < 0 {
+			break
+		}
+		s.consume(s.pending[:newline])
+		s.pending = s.pending[newline+1:]
+	}
+	return len(p), nil
+}
+
+func (s *codexStream) flush() {
+	if len(s.pending) > 0 {
+		s.consume(s.pending)
+		s.pending = nil
+	}
+}
+
+func (s *codexStream) consume(line []byte) {
+	var event struct {
+		Type  string `json:"type"`
+		Usage *struct {
+			InputTokens           int64 `json:"input_tokens"`
+			CachedInputTokens     int64 `json:"cached_input_tokens"`
+			OutputTokens          int64 `json:"output_tokens"`
+			ReasoningOutputTokens int64 `json:"reasoning_output_tokens"`
+		} `json:"usage"`
+		Item *struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"item"`
+	}
+	if json.Unmarshal(line, &event) != nil {
+		return
+	}
+	if event.Type == "item.completed" && event.Item != nil && event.Item.Type == "agent_message" && event.Item.Text != "" {
+		fmt.Fprintln(s.display, event.Item.Text)
+	}
+	if event.Type == "turn.completed" && event.Usage != nil {
+		s.foundUsage = true
+		s.usage.InputTokens += event.Usage.InputTokens
+		s.usage.CachedInputTokens += event.Usage.CachedInputTokens
+		s.usage.OutputTokens += event.Usage.OutputTokens
+		s.usage.ReasoningOutputTokens += event.Usage.ReasoningOutputTokens
+	}
 }
 
 func validateAttempt(cfg config, selected task, beforeHead string, beforeBlocker [32]byte) (string, error) {

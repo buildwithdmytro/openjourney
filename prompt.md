@@ -20,6 +20,12 @@ Use `--dry-run` to validate the repository, prompt, task scan, CLIs, and configu
 switching branches or invoking an agent. Runtime transcripts and metadata are stored under
 `.ralph/runs/` and are ignored by Git.
 
+The runner prints a milestone task bar before and after each completed task. After every provider
+attempt it also prints elapsed time, attempt totals, and Codex input/cached/output/reasoning token
+usage. Antigravity headless mode does not expose token counts, so its attempts and duration are
+reported with `tokens unavailable`. The latest machine-readable aggregate is written to
+`.ralph/usage.json`.
+
 The unrestricted flag is deliberately explicit: both agents need non-interactive permission to
 edit, verify, update the plan, and commit. Run it only in a trusted checkout. The default Codex
 model is `gpt-5.6-luna`; startup fails closed when that model is absent from the local Codex
