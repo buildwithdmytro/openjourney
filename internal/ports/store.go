@@ -158,6 +158,20 @@ type Store interface {
 
 	GetAIBudgetUsage(ctx context.Context, tenantID, workspaceID string, period string) (domain.AIBudgetUsage, error)
 	IncrementAIBudgetUsage(ctx context.Context, tenantID, workspaceID string, period string, costCents, inputTokens, outputTokens int64) error
+
+	CreatePrompt(ctx context.Context, p domain.Principal, prompt domain.Prompt) (domain.Prompt, error)
+	GetPrompt(ctx context.Context, p domain.Principal, id string) (domain.Prompt, error)
+	GetPromptByName(ctx context.Context, p domain.Principal, name string) (domain.Prompt, error)
+	ListPrompts(ctx context.Context, p domain.Principal) ([]domain.Prompt, error)
+	UpdatePrompt(ctx context.Context, p domain.Principal, prompt domain.Prompt) (domain.Prompt, error)
+	DeletePrompt(ctx context.Context, p domain.Principal, id string) error
+
+	CreatePromptVersion(ctx context.Context, p domain.Principal, pv domain.PromptVersion) (domain.PromptVersion, error)
+	GetPromptVersion(ctx context.Context, p domain.Principal, id string) (domain.PromptVersion, error)
+	GetPromptVersionByNumber(ctx context.Context, p domain.Principal, promptID string, version int) (domain.PromptVersion, error)
+	ListPromptVersions(ctx context.Context, p domain.Principal, promptID string) ([]domain.PromptVersion, error)
+	PublishPromptVersion(ctx context.Context, p domain.Principal, promptID string, version int, approverUserID string, manifestKey string) (domain.PromptVersion, error)
+	SetPromptVersionEvalStatus(ctx context.Context, p domain.Principal, id string, evalStatus string) error
 }
 
 type TokenVerifier interface {

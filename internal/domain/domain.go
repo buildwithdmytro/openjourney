@@ -767,4 +767,37 @@ type AIBudgetUsage struct {
 	UpdatedAt    time.Time `json:"updated_at"`
 }
 
+type Prompt struct {
+	ID               string    `json:"id"`
+	TenantID         string    `json:"tenant_id"`
+	WorkspaceID      string    `json:"workspace_id"`
+	Name             string    `json:"name"`
+	TaskType         string    `json:"task_type"` // content_draft, audience_dsl, journey_draft, performance_summary, moderation
+	CurrentVersionID *string   `json:"current_version_id,omitempty"`
+	LatestVersion    int       `json:"latest_version"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+}
+
+type PromptVersion struct {
+	ID           string          `json:"id"`
+	PromptID     string          `json:"prompt_id"`
+	TenantID     string          `json:"tenant_id"`
+	Version      int             `json:"version"`
+	Template     string          `json:"template"`
+	InputSchema  json.RawMessage `json:"input_schema"`
+	OutputSchema json.RawMessage `json:"output_schema"`
+	Provider     string          `json:"provider"`
+	Model        string          `json:"model"`
+	Params       json.RawMessage `json:"params"`
+	SafetyPolicy json.RawMessage `json:"safety_policy"`
+	ManifestKey  string          `json:"manifest_key"`
+	Status       string          `json:"status"` // draft, active, archived
+	EvalStatus   string          `json:"eval_status"` // pending, passed, failed
+	PublishedBy  *string         `json:"published_by,omitempty"`
+	PublishedAt  *time.Time      `json:"published_at,omitempty"`
+	CreatedAt    time.Time       `json:"created_at"`
+}
+
+
 
