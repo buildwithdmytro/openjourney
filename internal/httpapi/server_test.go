@@ -1233,6 +1233,27 @@ func TestExperimentOptimizationApprovalRequiresHumanActor(t *testing.T) {
 	}
 }
 
+func TestGovernanceCloseout_12_11_3(t *testing.T) {
+	store := &fakeStore{scopes: []string{"experiments:write"}}
+	server := NewWithSessionTTL(store, 75, nil, "http://localhost:3000", 12*time.Hour)
+
+	for _, actor := range []string{"api-key-actor", "ai-agent-actor"} {
+		t.Run(actor+" cannot approve", func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/v1/experiments/experiment-1/optimize/proposal-1/approve", nil)
+			req.Header.Set("Authorization", "Bearer "+actor)
+			res := httptest.NewRecorder()
+			server.ServeHTTP(res, req)
+			if res.Code != http.StatusForbidden || !strings.Contains(res.Body.String(), `"code":"human_approval_required"`) {
+				t.Fatalf("actor=%s status=%d body=%s; optimization approval must require a human", actor, res.Code, res.Body.String())
+			}
+		})
+	}
+
+	if store.optimizationApprovals != 0 {
+		t.Fatalf("non-human actor bypassed approval gate: calls=%d", store.optimizationApprovals)
+	}
+}
+
 func TestTemplateListEndpointsUseResponseEnvelopes(t *testing.T) {
 	server := New(&fakeStore{scopes: []string{"templates:read"}}, 75)
 

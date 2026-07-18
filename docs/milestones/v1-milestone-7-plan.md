@@ -432,9 +432,9 @@ task ends with a **Done when**. Do them in order; compile + `go vet` between mil
 2. [x] **Realtime-node determinism**: model timeout → deterministic fallback; run advances, never
    dead-letters; every decision logged in `ai_activity`. *Done when:* asserted.
    — done: TestAIDecisionTimeoutIsDeterministicAndNeverDeadLetters proves one-call timeout fallback, completed steps without retry/dead-letter, deterministic outcomes, and execution_error audit rows.
-3. **Governance**: online-optimization approval requires a human actor (api_key → 403); seed
+3. [x] **Governance**: online-optimization approval requires a human actor (api_key → 403); seed
    immutable across reallocation; holdout never sent to; append-only `ai_activity` (UPDATE raises).
-   *Done when:* all asserted.
+   *Done when:* all asserted. — done: TestGovernanceCloseout_12_11_3 plus TestOptimizationProposalUsesReportGateAndDoesNotReassign_12_8_2, TestExperimentOptimizationApprovalRequiresHumanActor, TestAIActivityHardening_12_0_2, and holdout delivery tests assert the approval gate, immutable seed/holdout, no holdout sends, and append-only audit.
 4. **Run the suite**: `go build/vet/test ./...`, `go mod tidy`, `cd web && npm run typecheck &&
    npm run build && npm test`, `npm audit`. *Done when:* green.
 5. **Audit doc** `docs/milestones/v1-milestone-7-audit.md` in the M2–M6 table format, one row per
