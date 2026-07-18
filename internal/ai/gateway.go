@@ -156,6 +156,55 @@ func (g *Gateway) Generate(ctx context.Context, principal domain.Principal, req 
 		return nil, err
 	}
 
+	// Validate output against output_schema and domain validator
+	var valErr error
+	if len(req.OutputSchema) > 0 || req.DomainValidator != nil {
+		valErr = ValidateOutput([]byte(resp.Content), req.OutputSchema, req.DomainValidator)
+	}
+
+	if valErr != nil {
+		// Schema/domain validation failed: increment schema rejections counter
+		telemetry.AISchemaRejections.Add(ctx, 1, otelmetric.WithAttributes(
+			attribute.String("tenant_id", principal.TenantID),
+			attribute.String("workspace_id", principal.WorkspaceID),
+		))
+
+		// Check budget again before attempting the repair call
+		if err := g.checkBudget(ctx, principal, cfg, period); err != nil {
+			return nil, fmt.Errorf("model output failed validation: %v; repair retry blocked: %w", valErr, err)
+		}
+
+		// Prepare repair request by suffixing the prompt with repair instructions
+		repairReq := req
+		repairReq.Prompt = fmt.Sprintf(
+			"%s\n\nYour previous response failed validation with the following error:\n%v\n\nPlease fix the response and return it conforming strictly to the requested schema. Do not include any other text.",
+			req.Prompt,
+			valErr,
+		)
+
+		startRepair := time.Now()
+		repairResp, repairErr := prov.Generate(ctx, repairReq)
+		if repairErr != nil {
+			return nil, fmt.Errorf("model output failed validation: %v; repair retry failed: %w", valErr, repairErr)
+		}
+		durationRepair := time.Since(startRepair).Milliseconds()
+
+		if err := g.recordMetricsAndIncrementBudget(ctx, principal, cfg, period, repairResp.Usage, durationRepair, req.Model); err != nil {
+			return nil, err
+		}
+
+		// Validate repaired output
+		if repairValErr := ValidateOutput([]byte(repairResp.Content), req.OutputSchema, req.DomainValidator); repairValErr != nil {
+			telemetry.AISchemaRejections.Add(ctx, 1, otelmetric.WithAttributes(
+				attribute.String("tenant_id", principal.TenantID),
+				attribute.String("workspace_id", principal.WorkspaceID),
+			))
+			return nil, fmt.Errorf("model output failed validation: %v; repaired output also failed validation: %w", valErr, repairValErr)
+		}
+
+		resp = repairResp
+	}
+
 	return resp, nil
 }
 

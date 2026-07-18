@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
@@ -244,4 +245,183 @@ func TestGatewayEgressPropagation(t *testing.T) {
 	if len(capturedAllowlist) != 2 || capturedAllowlist[0] != "127.0.0.1:11434" || capturedAllowlist[1] != "custom-model.local" {
 		t.Errorf("expected allowlist [127.0.0.1:11434, custom-model.local], got %v", capturedAllowlist)
 	}
+}
+
+func TestGatewayValidationAndRepair(t *testing.T) {
+	principal := domain.Principal{
+		TenantID:    "tenant-1",
+		WorkspaceID: "workspace-1",
+	}
+
+	outputSchema := json.RawMessage(`{
+		"type": "object",
+		"properties": {
+			"name": {"type": "string"},
+			"age": {"type": "integer"}
+		},
+		"required": ["name", "age"]
+	}`)
+
+	domainValidator := func(content []byte) error {
+		var val struct {
+			Age int `json:"age"`
+		}
+		if err := json.Unmarshal(content, &val); err != nil {
+			return err
+		}
+		if val.Age < 18 {
+			return errors.New("must be at least 18")
+		}
+		return nil
+	}
+
+	t.Run("PassesImmediately", func(t *testing.T) {
+		var callCount int
+		store := &mockStore{
+			getConfigFunc: func(ctx context.Context, p domain.Principal) (domain.AIProviderConfig, error) {
+				return domain.AIProviderConfig{
+					Provider: "fake",
+					Status:   "active",
+					Config:   json.RawMessage(`{}`),
+				}, nil
+			},
+			incrementUsageFunc: func(ctx context.Context, tenantID, workspaceID string, period string, costCents, inputTokens, outputTokens int64) error {
+				return nil
+			},
+		}
+
+		g := NewGateway(store)
+		g.newProvider = func(profile ProviderProfile) ModelProvider {
+			return &mockModelProvider{
+				generateFunc: func(ctx context.Context, req GenerateRequest) (*GenerateResponse, error) {
+					callCount++
+					return &GenerateResponse{
+						Content: `{"name": "Alice", "age": 30}`,
+						Usage:   Usage{CostCents: 5},
+					}, nil
+				},
+			}
+		}
+
+		resp, err := g.Generate(context.Background(), principal, GenerateRequest{
+			OutputSchema:    outputSchema,
+			DomainValidator: domainValidator,
+		})
+		if err != nil {
+			t.Fatalf("expected success, got %v", err)
+		}
+		if resp.Content != `{"name": "Alice", "age": 30}` {
+			t.Errorf("unexpected content: %s", resp.Content)
+		}
+		if callCount != 1 {
+			t.Errorf("expected 1 call, got %d", callCount)
+		}
+	})
+
+	t.Run("FailsFirstRepairsSecond", func(t *testing.T) {
+		var callCount int
+		var promptUsedInRepair string
+		var incrementCount int
+
+		store := &mockStore{
+			getConfigFunc: func(ctx context.Context, p domain.Principal) (domain.AIProviderConfig, error) {
+				return domain.AIProviderConfig{
+					Provider: "fake",
+					Status:   "active",
+					Config:   json.RawMessage(`{}`),
+				}, nil
+			},
+			incrementUsageFunc: func(ctx context.Context, tenantID, workspaceID string, period string, costCents, inputTokens, outputTokens int64) error {
+				incrementCount++
+				return nil
+			},
+		}
+
+		g := NewGateway(store)
+		g.newProvider = func(profile ProviderProfile) ModelProvider {
+			return &mockModelProvider{
+				generateFunc: func(ctx context.Context, req GenerateRequest) (*GenerateResponse, error) {
+					callCount++
+					if callCount == 1 {
+						// Malformed output: missing "age"
+						return &GenerateResponse{
+							Content: `{"name": "Alice"}`,
+							Usage:   Usage{CostCents: 5},
+						}, nil
+					}
+					promptUsedInRepair = req.Prompt
+					// Corrected output
+					return &GenerateResponse{
+						Content: `{"name": "Alice", "age": 30}`,
+						Usage:   Usage{CostCents: 5},
+					}, nil
+				},
+			}
+		}
+
+		resp, err := g.Generate(context.Background(), principal, GenerateRequest{
+			Prompt:          "create user",
+			OutputSchema:    outputSchema,
+			DomainValidator: domainValidator,
+		})
+		if err != nil {
+			t.Fatalf("expected success on repair, got %v", err)
+		}
+		if resp.Content != `{"name": "Alice", "age": 30}` {
+			t.Errorf("unexpected content: %s", resp.Content)
+		}
+		if callCount != 2 {
+			t.Errorf("expected 2 calls (first failed, second repaired), got %d", callCount)
+		}
+		if incrementCount != 2 {
+			t.Errorf("expected 2 budget increments, got %d", incrementCount)
+		}
+		if !strings.Contains(promptUsedInRepair, "validation failed") {
+			t.Errorf("expected repair prompt to include error details, got: %s", promptUsedInRepair)
+		}
+	})
+
+	t.Run("FailsBothCalls", func(t *testing.T) {
+		var callCount int
+		store := &mockStore{
+			getConfigFunc: func(ctx context.Context, p domain.Principal) (domain.AIProviderConfig, error) {
+				return domain.AIProviderConfig{
+					Provider: "fake",
+					Status:   "active",
+					Config:   json.RawMessage(`{}`),
+				}, nil
+			},
+			incrementUsageFunc: func(ctx context.Context, tenantID, workspaceID string, period string, costCents, inputTokens, outputTokens int64) error {
+				return nil
+			},
+		}
+
+		g := NewGateway(store)
+		g.newProvider = func(profile ProviderProfile) ModelProvider {
+			return &mockModelProvider{
+				generateFunc: func(ctx context.Context, req GenerateRequest) (*GenerateResponse, error) {
+					callCount++
+					// Both outputs fail domain validation (age < 18)
+					return &GenerateResponse{
+						Content: `{"name": "Alice", "age": 15}`,
+						Usage:   Usage{CostCents: 5},
+					}, nil
+				},
+			}
+		}
+
+		_, err := g.Generate(context.Background(), principal, GenerateRequest{
+			OutputSchema:    outputSchema,
+			DomainValidator: domainValidator,
+		})
+		if err == nil {
+			t.Fatal("expected validation error, got nil")
+		}
+		if !strings.Contains(err.Error(), "repaired output also failed validation") {
+			t.Errorf("unexpected error: %v", err)
+		}
+		if callCount != 2 {
+			t.Errorf("expected 2 calls, got %d", callCount)
+		}
+	})
 }
