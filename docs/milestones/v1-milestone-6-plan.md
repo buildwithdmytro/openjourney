@@ -530,7 +530,7 @@ them in order; compile + `go vet` between milestones. **Substrate (11.0–11.7) 
    template that renders via `internal/render`; no existing template is mutated. — done: added governed content copilot endpoint with active/passed prompt pinning, fake-provider schema/QA/render validation, draft-only template creation, activity ID response, and TestContentCopilotCreatesRenderableDraftWithoutMutation.
 
 ### Milestone 11.9 — Copilot: NL → audience DSL (preview + explainability)
-1. **Audience-DSL prompt version**; output_schema = the audience AST. *Done when:* seeded/`passed`.
+1. [x] **Audience-DSL prompt version**; output_schema = the audience AST. *Done when:* seeded/`passed`. — done: development bootstrap seeds an idempotent fake audience-dsl prompt with an audience AST schema and active/passed version; TestSeededAudienceDSLPrompt verifies it (DB integration skipped when OPENJOURNEY_TEST_DATABASE_URL is unset).
 2. **Endpoint** `POST /v1/ai/copilots/audience`: NL → JSON-AST that **must pass `audience.Parse`**
    (`parse.go`); return the DSL + a **plan preview** via `PreviewSegment` (count + per-leg) + an
    explanation that **never exposes unauthorized fields**; create a **DRAFT segment**. *Done when:*
