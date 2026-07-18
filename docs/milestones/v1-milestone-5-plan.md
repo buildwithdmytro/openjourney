@@ -446,9 +446,9 @@ be registered in the adapter registry (10.0).**
 4. [x] **Determinism**: an experiment-bound subject gets the **same variant regardless of channel**
    (email vs sms vs push) — the assignment is channel-independent. *Done when:* a test asserts
    identical variant across channels. — done: `internal/postgres/determinism_integration_test.go` verifies that a subject assigned a variant (e.g. treatment) gets the same variant on subsequent assignments for different channels.
-5. **Telemetry**: `MessagesSent`/`Bounces`/`Complaints{channel=sms|push}`,
+5. [x] **Telemetry**: `MessagesSent`/`Bounces`/`Complaints{channel=sms|push}`,
    `openjourney_push_tokens_retired_total`, `openjourney_sms_opt_outs_total`. *Done when:*
-   counters increment with the right labels; retirement/opt-out counted exactly once.
+   counters increment with the right labels; retirement/opt-out counted exactly once. — done: `internal/postgres/telemetrytest/telemetry_integration_test.go` verifies that all custom counters (opt-out, retired, bounces, complaints) increment correctly.
 6. **Run the suite**: `go build/vet/test ./...`, `go mod tidy`, `cd web && npm run typecheck &&
    npm run build && npm test`, `npm audit`. *Done when:* all green.
 7. **Audit doc** `docs/milestones/v1-milestone-5-audit.md` in the M2/M3/M4 table format, one row
