@@ -41,6 +41,8 @@ type fakeStore struct {
 	listActiveDeviceTokensFunc             func(ctx context.Context, tenantID, workspaceID, profileID string) ([]domain.DeviceToken, error)
 	listDeviceTokensByProfileFunc          func(ctx context.Context, tenantID, workspaceID, profileID string) ([]domain.DeviceToken, error)
 	listAIActivityFunc                     func(ctx context.Context, p domain.Principal, limit int) ([]domain.AIActivity, error)
+	listExtensionActivitiesFunc            func(ctx context.Context, p domain.Principal, extensionID string, limit int) ([]domain.ExtensionActivity, error)
+	getExtensionHealthFunc                 func(ctx context.Context, p domain.Principal, extensionID string) (domain.ExtensionHealth, error)
 }
 
 type fakeBlobStore struct {
@@ -215,6 +217,18 @@ func (f *fakeStore) ListAIActivity(ctx context.Context, p domain.Principal, limi
 		return f.listAIActivityFunc(ctx, p, limit)
 	}
 	return nil, nil
+}
+func (f *fakeStore) ListExtensionActivities(ctx context.Context, p domain.Principal, extensionID string, limit int) ([]domain.ExtensionActivity, error) {
+	if f.listExtensionActivitiesFunc != nil {
+		return f.listExtensionActivitiesFunc(ctx, p, extensionID, limit)
+	}
+	return nil, nil
+}
+func (f *fakeStore) GetExtensionHealth(ctx context.Context, p domain.Principal, extensionID string) (domain.ExtensionHealth, error) {
+	if f.getExtensionHealthFunc != nil {
+		return f.getExtensionHealthFunc(ctx, p, extensionID)
+	}
+	return domain.ExtensionHealth{ExtensionID: extensionID, TenantID: p.TenantID, State: "closed"}, nil
 }
 func (f *fakeStore) CreateSegment(_ context.Context, _ domain.Principal, seg domain.Segment) (domain.Segment, error) {
 	seg.ID = "segment-1"
@@ -659,6 +673,46 @@ func TestListAIActivityRequiresScopeAndIsTenantScoped(t *testing.T) {
 	server.ServeHTTP(response, request)
 	if response.Code != http.StatusForbidden {
 		t.Fatalf("without ai:read status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestListExtensionActivityRequiresScopeAndIsTenantWorkspaceScoped(t *testing.T) {
+	var gotPrincipal domain.Principal
+	store := &fakeStore{
+		scopes: []string{"extensions:read"},
+		listExtensionActivitiesFunc: func(_ context.Context, p domain.Principal, extensionID string, limit int) ([]domain.ExtensionActivity, error) {
+			gotPrincipal = p
+			if extensionID != "extension-1" || limit != 25 {
+				t.Fatalf("unexpected query: extension=%q limit=%d", extensionID, limit)
+			}
+			return []domain.ExtensionActivity{{ID: "activity-1", TenantID: p.TenantID, WorkspaceID: p.WorkspaceID, ExtensionID: extensionID}}, nil
+		},
+		getExtensionHealthFunc: func(_ context.Context, p domain.Principal, extensionID string) (domain.ExtensionHealth, error) {
+			return domain.ExtensionHealth{ExtensionID: extensionID, TenantID: p.TenantID, State: "open"}, nil
+		},
+	}
+	server := New(store, 75)
+	request := httptest.NewRequest(http.MethodGet, "/v1/extensions/extension-1/activity?limit=25", nil)
+	request.Header.Set("Authorization", "Bearer test-key")
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if gotPrincipal.TenantID != "tenant" || gotPrincipal.WorkspaceID != "workspace" {
+		t.Fatalf("activity query was not scoped: %+v", gotPrincipal)
+	}
+	if !strings.Contains(response.Body.String(), `"activity-1"`) || !strings.Contains(response.Body.String(), `"state":"open"`) {
+		t.Fatalf("unexpected body=%s", response.Body.String())
+	}
+
+	request = httptest.NewRequest(http.MethodGet, "/v1/extensions/extension-1/activity", nil)
+	request.Header.Set("Authorization", "Bearer test-key")
+	response = httptest.NewRecorder()
+	server = New(&fakeStore{scopes: []string{"profiles:read"}}, 75)
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("without extensions:read status=%d body=%s", response.Code, response.Body.String())
 	}
 }
 

@@ -213,6 +213,7 @@ func (s *Server) buildMux() http.Handler {
 	mux.Handle("POST /v1/users", s.authenticate("users:write", http.HandlerFunc(s.createUser)))
 	mux.Handle("GET /v1/audit", s.authenticate("operations:read", http.HandlerFunc(s.listAudit)))
 	mux.Handle("GET /v1/ai/activity", s.authenticate("ai:read", http.HandlerFunc(s.listAIActivity)))
+	mux.Handle("GET /v1/extensions/{id}/activity", s.authenticate("extensions:read", http.HandlerFunc(s.listExtensionActivity)))
 	mux.Handle("GET /v1/ai/providers", s.authenticate("ai:configure", http.HandlerFunc(s.listAIProviderConfigs)))
 	mux.Handle("POST /v1/ai/providers", s.authenticate("ai:configure", http.HandlerFunc(s.createAIProviderConfig)))
 	mux.Handle("PUT /v1/ai/providers/{id}", s.authenticate("ai:configure", http.HandlerFunc(s.updateAIProviderConfig)))

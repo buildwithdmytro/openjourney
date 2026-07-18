@@ -423,11 +423,12 @@ keep tests reproducible; one consolidated security/integration pass in 14.10. Ea
    the bounded host with stable per-event idempotency; verified by connector worker tests and go build/vet/test ./...
 
 ### Milestone 14.8 — Governance, health & kill switch
-1. **Circuit breaker + health + kill switch**: `extension_health` state machine (closed/open/
+1. [x] **Circuit breaker + health + kill switch**: `extension_health` state machine (closed/open/
    half_open), a `disabled` kill switch honored everywhere, per-extension rate + budget enforced in
    the host, and `GET /v1/extensions/{id}/activity` (scope `extensions:read`). *Done when:* disabling
    an extension stops all its invocations; an open breaker short-circuits to fallback; activity is
-   tenant-scoped.
+   tenant-scoped. — done: added tenant/workspace-scoped activity + health endpoint and verified
+   extensions:read authorization, disabled kill-switch transport short-circuit, and existing breaker tests.
 
 ### Milestone 14.9 — UI
 1. **Extension registry UI**: install (upload signed manifest), review requested scopes + grant a

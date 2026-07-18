@@ -91,7 +91,6 @@ func (m *mockStore) GetExtensionVersionByNumber(ctx context.Context, p domain.Pr
 	return domain.ExtensionVersion{}, errors.New("not found")
 }
 
-
 func (m *mockStore) GetExtensionConfig(ctx context.Context, p domain.Principal, extensionID string) (domain.ExtensionConfig, error) {
 	cfg, ok := m.configs[extensionID]
 	if !ok {
@@ -482,5 +481,38 @@ func TestHostInvoke_BudgetLimit(t *testing.T) {
 	}
 	if store.activities[0].PolicyDecision != "denied_budget" {
 		t.Errorf("expected decision = denied_budget, got %s", store.activities[0].PolicyDecision)
+	}
+}
+
+func TestHostInvoke_DisabledExtensionStopsBeforeTransport(t *testing.T) {
+	store := newMockStore()
+	host := NewHost(store)
+	called := false
+	host.httpClient.Transport = &mockRoundTripper{
+		RoundTripFunc: func(req *http.Request) (*http.Response, error) {
+			called = true
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewBufferString(`{}`))}, nil
+		},
+	}
+
+	extID := "ext-disabled"
+	versionID := "ver-disabled"
+	store.extensions[extID] = domain.Extension{ID: extID, Status: "disabled", CurrentVersionID: &versionID}
+	store.versions[versionID] = domain.ExtensionVersion{ID: versionID, ExtensionID: extID, Version: 1, Kind: "channel_provider", Transport: "remote_http"}
+	store.configs[extID] = domain.ExtensionConfig{
+		ExtensionID: extID, Status: "active", Config: json.RawMessage(`{"base_url":"http://example.com"}`),
+		EndpointAllowlist: []string{"http://example.com"}, TimeoutMs: 1000,
+	}
+
+	principal := domain.Principal{TenantID: "tenant-1", WorkspaceID: "workspace-1"}
+	_, _, err := host.Invoke(context.Background(), principal, extID, "send", json.RawMessage(`{}`))
+	if err == nil || !strings.Contains(err.Error(), "disabled") {
+		t.Fatalf("expected disabled extension error, got %v", err)
+	}
+	if called {
+		t.Fatal("disabled extension reached remote transport")
+	}
+	if len(store.activities) != 1 || store.activities[0].PolicyDecision != "circuit_open" {
+		t.Fatalf("expected one circuit_open activity, got %+v", store.activities)
 	}
 }
