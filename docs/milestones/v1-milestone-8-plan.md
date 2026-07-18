@@ -422,9 +422,10 @@ Each task ends with a **Done when**. Do them in order; compile + `go vet` betwee
    fixture resource publishes idempotently; api_key → 403. — done: `publishing_test.go` proves deterministic blob freeze, idempotent retry, and API-key rejection before commit; full Go build/vet/test passes.
 
 ### Milestone 13.1 — Forms (schema + typed fields + versioned publish)
-1. **Migration** `035_forms.sql` per §2.1 + scopes `forms:read/write/publish` (and the rest of the
+1. [x] **Migration** `035_forms.sql` per §2.1 + scopes `forms:read/write/publish` (and the rest of the
    acquisition scopes) in `rbac.go` allowlist + the `api_keys` default array. *Done when:* tables +
-   scopes exist.
+   scopes exist. — done: `035_forms.sql` creates the form/version/submission tables and acquisition
+   scopes; RBAC allowlist updated; migration and full Go suite pass.
 2. **Form store + CRUD + publish** `internal/postgres/forms.go` + `ports.Store` (Recipes 6.35): draft
    CRUD; publish freezes a `form_versions` row with a compiled JSON Schema. HTTP `/v1/forms`. *Done
    when:* a form round-trips and publishes an immutable version; the schema compiles.
