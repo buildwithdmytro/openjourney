@@ -210,6 +210,7 @@ func (s *Server) buildMux() http.Handler {
 	mux.Handle("GET /v1/scoring/requests/{id}", s.authenticate("scoring:compute", http.HandlerFunc(s.getScoringRequest)))
 	mux.Handle("GET /v1/scoring/models", s.authenticate("scoring:read", http.HandlerFunc(s.listScoringModels)))
 	mux.Handle("POST /v1/scoring/models", s.authenticate("scoring:write", http.HandlerFunc(s.createScoringModel)))
+	mux.Handle("POST /v1/scoring/lead-models", s.authenticate("scoring:write", http.HandlerFunc(s.createLeadScoringModel)))
 	mux.Handle("POST /v1/scoring/models/{id}/versions", s.authenticate("scoring:write", http.HandlerFunc(s.createScoringModelVersion)))
 	mux.Handle("POST /v1/scoring/models/{id}/publish", s.authenticate("scoring:write", http.HandlerFunc(s.publishScoringModelVersion)))
 	mux.Handle("GET /v1/scoring/profiles/{profileID}", s.authenticate("scoring:read", http.HandlerFunc(s.listProfileScores)))

@@ -457,10 +457,13 @@ Each task ends with a **Done when**. Do them in order; compile + `go vet` betwee
    — done: `short_links_test.go` proves UTM-preserving redirect and `link.clicked` capture; full Go build/vet/test passes.
 
 ### Milestone 13.5 — Rules-based lead scoring (reuse M7)
-1. **Lead-scoring authoring**: a friendly surface that creates a `kind='expression'` scoring model
+1. [x] **Lead-scoring authoring**: a friendly surface that creates a `kind='expression'` scoring model
    (points formula, `output_max` raised) reusing M7's registry + `scores.compute`; NO new points
    table. *Done when:* a lead-score model computes into `profile_scores` and a `Score` audience leaf
-   filters on it. (Optional) a projector hook enqueues recompute for touched profiles.
+   filters on it. (Optional) a projector hook enqueues recompute for touched profiles. — done: added
+   authenticated `/v1/scoring/lead-models` authoring over M7 expression models, with syntax validation,
+   default/raised output cap, and tests; existing scores.compute/profile_scores/Score integration passes
+   in the full Go suite.
 
 ### Milestone 13.6 — Lifecycle stages
 1. **`stage_rules`** (migration §2.3 stage_rules portion) + a `stages.apply` pass (reuse the
