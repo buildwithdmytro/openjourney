@@ -374,11 +374,12 @@ keep tests reproducible; one consolidated security/integration pass in 14.10. Ea
    grant of a subset yields exactly that intersection; secrets resolve via `_ref`/`_FILE`. — done: implemented config & grants CRUD + ResolveScopes & ResolveConfigMap helpers, verified via TestExtensionConfigAndGrants_14_0_3.
 
 ### Milestone 14.1 — Bounded remote-invocation host
-1. **Host + remote transport** `internal/extension/{host,remote}.go` (Recipe 6.41): derive the
+1. [x] **Host + remote transport** `internal/extension/{host,remote}.go` (Recipe 6.41): derive the
    `extension` principal, rate/budget check, HMAC-signed HTTP via the SSRF/allowlist egress, hard
    timeout, circuit breaker (`extension_health`), and an append-only `extension_activity` record
    (migration `042` §2.2). *Done when:* timeout→`timeout`+fallback; off-allowlist→blocked; N
-   consecutive failures open the breaker; every call writes exactly one activity row.
+   consecutive failures open the breaker; every call writes exactly one activity row. — done: implemented bounded invocation host in host.go + migration 042, and verified all requirements via TestHostInvoke suite in host_test.go.
+
 
 ### Milestone 14.2 — Remote channel-provider extension
 1. **Extension channel adapter** (Recipe 6.42): a `ChannelAdapter` whose `Send` calls `host.Invoke`;

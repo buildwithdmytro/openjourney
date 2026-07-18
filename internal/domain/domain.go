@@ -1165,3 +1165,29 @@ type ExtensionGrant struct {
 	GrantedAt   time.Time `json:"granted_at"`
 }
 
+type ExtensionActivity struct {
+	ID               string    `json:"id"`
+	TenantID         string    `json:"tenant_id"`
+	WorkspaceID      string    `json:"workspace_id"`
+	ExtensionID      string    `json:"extension_id"`
+	ExtensionVersion int       `json:"extension_version"`
+	Kind             string    `json:"kind"`
+	Invocation       string    `json:"invocation"`
+	DerivedScopes    []string  `json:"derived_scopes"`
+	InputRef         *string   `json:"input_ref,omitempty"`
+	OutputRef        *string   `json:"output_ref,omitempty"`
+	LatencyMs        int       `json:"latency_ms"`
+	CostCents        int64     `json:"cost_cents"`
+	PolicyDecision   string    `json:"policy_decision"`
+	CreatedAt        time.Time `json:"created_at"`
+}
+
+type ExtensionHealth struct {
+	ExtensionID         string     `json:"extension_id"`
+	TenantID            string     `json:"tenant_id"`
+	State               string     `json:"state"` // closed, open, half_open
+	ConsecutiveFailures int        `json:"consecutive_failures"`
+	OpenedAt            *time.Time `json:"opened_at,omitempty"`
+	UpdatedAt           time.Time  `json:"updated_at"`
+}
+

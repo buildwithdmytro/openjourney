@@ -527,3 +527,173 @@ func (s *Store) DeleteExtensionGrant(ctx context.Context, p domain.Principal, ex
 	return nil
 }
 
+func (s *Store) RecordExtensionActivity(ctx context.Context, p domain.Principal, act domain.ExtensionActivity) (domain.ExtensionActivity, error) {
+	if act.ExtensionID == "" {
+		return domain.ExtensionActivity{}, errors.New("extension ID is required")
+	}
+	if act.PolicyDecision == "" {
+		return domain.ExtensionActivity{}, errors.New("policy decision is required")
+	}
+	var out domain.ExtensionActivity
+
+	query := `INSERT INTO extension_activity (tenant_id, workspace_id, extension_id, extension_version, kind, invocation, derived_scopes, input_ref, output_ref, latency_ms, cost_cents, policy_decision`
+	values := []any{p.TenantID, p.WorkspaceID, act.ExtensionID, act.ExtensionVersion, act.Kind, act.Invocation, act.DerivedScopes, act.InputRef, act.OutputRef, act.LatencyMs, act.CostCents, act.PolicyDecision}
+	if !act.CreatedAt.IsZero() {
+		query += `, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`
+		values = append(values, act.CreatedAt)
+	} else {
+		query += `) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`
+	}
+	query += ` RETURNING id, tenant_id, workspace_id, extension_id, extension_version, kind, invocation, derived_scopes, input_ref, output_ref, latency_ms, cost_cents, policy_decision, created_at`
+
+	err := s.pool.QueryRow(ctx, query, values...).
+		Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.ExtensionID, &out.ExtensionVersion, &out.Kind, &out.Invocation,
+			&out.DerivedScopes, &out.InputRef, &out.OutputRef, &out.LatencyMs, &out.CostCents, &out.PolicyDecision, &out.CreatedAt)
+	if err != nil {
+		return domain.ExtensionActivity{}, err
+	}
+	return out, nil
+}
+
+func (s *Store) ListExtensionActivities(ctx context.Context, p domain.Principal, extensionID string, limit int) ([]domain.ExtensionActivity, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, tenant_id, workspace_id, extension_id, extension_version, kind, invocation,
+			derived_scopes, input_ref, output_ref, latency_ms, cost_cents, policy_decision, created_at
+		FROM extension_activity
+		WHERE tenant_id = $1 AND workspace_id = $2 AND extension_id = $3
+		ORDER BY created_at DESC
+		LIMIT $4`,
+		p.TenantID, p.WorkspaceID, extensionID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []domain.ExtensionActivity
+	for rows.Next() {
+		var item domain.ExtensionActivity
+		err := rows.Scan(&item.ID, &item.TenantID, &item.WorkspaceID, &item.ExtensionID, &item.ExtensionVersion, &item.Kind, &item.Invocation,
+			&item.DerivedScopes, &item.InputRef, &item.OutputRef, &item.LatencyMs, &item.CostCents, &item.PolicyDecision, &item.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) GetExtensionHealth(ctx context.Context, p domain.Principal, extensionID string) (domain.ExtensionHealth, error) {
+	var out domain.ExtensionHealth
+	err := s.pool.QueryRow(ctx, `
+		SELECT extension_id, tenant_id, state, consecutive_failures, opened_at, updated_at
+		FROM extension_health
+		WHERE tenant_id = $1 AND extension_id = $2`,
+		p.TenantID, extensionID).
+		Scan(&out.ExtensionID, &out.TenantID, &out.State, &out.ConsecutiveFailures, &out.OpenedAt, &out.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.ExtensionHealth{
+			ExtensionID:         extensionID,
+			TenantID:            p.TenantID,
+			State:               "closed",
+			ConsecutiveFailures: 0,
+		}, nil
+	}
+	if err != nil {
+		return domain.ExtensionHealth{}, err
+	}
+	return out, nil
+}
+
+func (s *Store) UpdateExtensionHealth(ctx context.Context, p domain.Principal, health domain.ExtensionHealth) (domain.ExtensionHealth, error) {
+	if health.ExtensionID == "" {
+		return domain.ExtensionHealth{}, errors.New("extension ID is required")
+	}
+	var out domain.ExtensionHealth
+	err := s.pool.QueryRow(ctx, `
+		INSERT INTO extension_health (extension_id, tenant_id, state, consecutive_failures, opened_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, now())
+		ON CONFLICT (extension_id) DO UPDATE SET
+			state = EXCLUDED.state,
+			consecutive_failures = EXCLUDED.consecutive_failures,
+			opened_at = EXCLUDED.opened_at,
+			updated_at = now()
+		RETURNING extension_id, tenant_id, state, consecutive_failures, opened_at, updated_at`,
+		health.ExtensionID, p.TenantID, health.State, health.ConsecutiveFailures, health.OpenedAt).
+		Scan(&out.ExtensionID, &out.TenantID, &out.State, &out.ConsecutiveFailures, &out.OpenedAt, &out.UpdatedAt)
+	if err != nil {
+		return domain.ExtensionHealth{}, err
+	}
+	return out, nil
+}
+
+func (s *Store) UpsertExtensionSubscriptions(ctx context.Context, p domain.Principal, extensionID string, eventTypes []string) error {
+	if extensionID == "" {
+		return errors.New("extension ID is required")
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	_, err = tx.Exec(ctx, `DELETE FROM extension_subscriptions WHERE tenant_id = $1 AND extension_id = $2`, p.TenantID, extensionID)
+	if err != nil {
+		return err
+	}
+
+	for _, et := range eventTypes {
+		_, err = tx.Exec(ctx, `INSERT INTO extension_subscriptions (extension_id, tenant_id, event_type) VALUES ($1, $2, $3)`,
+			extensionID, p.TenantID, et)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit(ctx)
+}
+
+func (s *Store) ListExtensionSubscriptions(ctx context.Context, p domain.Principal, extensionID string) ([]string, error) {
+	rows, err := s.pool.Query(ctx, `SELECT event_type FROM extension_subscriptions WHERE tenant_id = $1 AND extension_id = $2`, p.TenantID, extensionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []string
+	for rows.Next() {
+		var et string
+		if err := rows.Scan(&et); err != nil {
+			return nil, err
+		}
+		out = append(out, et)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) GetExtensionBudgetUsage(ctx context.Context, tenantID, workspaceID, extensionID, period string) (int64, error) {
+	var total int64
+	err := s.pool.QueryRow(ctx, `
+		SELECT COALESCE(SUM(cost_cents), 0)
+		FROM extension_activity
+		WHERE tenant_id = $1 AND workspace_id = $2 AND extension_id = $3
+		  AND to_char(created_at, 'YYYY-MM') = $4`,
+		tenantID, workspaceID, extensionID, period).Scan(&total)
+	return total, err
+}
+
+func (s *Store) GetExtensionInvocationCountLastMin(ctx context.Context, tenantID, workspaceID, extensionID string) (int, error) {
+	var count int
+	err := s.pool.QueryRow(ctx, `
+		SELECT COUNT(1)
+		FROM extension_activity
+		WHERE tenant_id = $1 AND workspace_id = $2 AND extension_id = $3
+		  AND created_at >= now() - interval '1 minute'`,
+		tenantID, workspaceID, extensionID).Scan(&count)
+	return count, err
+}
+
+
+
