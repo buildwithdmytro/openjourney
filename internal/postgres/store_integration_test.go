@@ -600,6 +600,51 @@ func TestDeviceTokensMigrationAndDefaultScopesIntegration(t *testing.T) {
 	}
 }
 
+func TestScoringMigrationAndDefaultScopesIntegration_12_2_1(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, table := range []string{"scoring_models", "scoring_model_versions", "profile_scores"} {
+		var exists bool
+		if err := store.pool.QueryRow(ctx, `SELECT to_regclass('public.' || $1) IS NOT NULL`, table).Scan(&exists); err != nil {
+			t.Fatal(err)
+		}
+		if !exists {
+			t.Fatalf("table %s does not exist", table)
+		}
+	}
+
+	rawKey := fmt.Sprintf("scoring-default-scopes-%d", time.Now().UnixNano())
+	if err := store.EnsureDevelopmentTenant(ctx, rawKey); err != nil {
+		t.Fatal(err)
+	}
+	principal, err := store.Authenticate(ctx, rawKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, scope := range []string{"scoring:read", "scoring:write", "scoring:compute"} {
+		if !principal.HasScope(scope) {
+			t.Fatalf("fresh API key scopes %v do not include %q", principal.Scopes, scope)
+		}
+	}
+	if _, err := store.CreateRole(ctx, principal, "Scoring analyst", []string{
+		"scoring:read", "scoring:write", "scoring:compute",
+	}); err != nil {
+		t.Fatalf("CreateRole scoring scopes: %v", err)
+	}
+}
+
 func TestExperimentBindingsMigrationIntegration(t *testing.T) {
 	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
 	if databaseURL == "" {

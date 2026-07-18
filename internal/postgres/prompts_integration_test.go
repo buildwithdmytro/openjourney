@@ -90,7 +90,7 @@ func TestPromptsRegistry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to list prompts: %v", err)
 	}
-	if len(allPrompts) != 4 {
+	if len(allPrompts) != 5 {
 		t.Fatalf("expected seeded and test prompts, got %d", len(allPrompts))
 	}
 
