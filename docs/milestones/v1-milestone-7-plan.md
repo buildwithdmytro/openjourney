@@ -364,8 +364,8 @@ task ends with a **Done when**. Do them in order; compile + `go vet` between mil
    attributes + bounded event aggregates → a numeric score clamped to `[output_min, output_max]`;
    pure/deterministic (no `math/rand`, no clock beyond an injected one). *Done when:* the same
    profile+version always yields the same score (golden test). — done: implemented deterministic Go-AST-based expression parser & evaluator and verified with golden & determinism tests.
-2. **Eval gate for expression models**: a deterministic eval run (golden cases) flips
-   `eval_status='passed'`. *Done when:* an expression version can't be computed until eval passes.
+2. [x] **Eval gate for expression models**: a deterministic eval run (golden cases) flips
+   `eval_status='passed'`. *Done when:* an expression version can't be computed until eval passes. — done: implemented EvaluateExpressionModel and verified that it runs eval_cases and updates eval_status, gating usable versions in GetUsableScoringModelVersion.
 
 ### Milestone 12.4 — LLM scorer (reuse M6 gateway + eval)
 1. **LLM scorer** `internal/scoring/llm.go`: for a `kind='llm'` model, call `Gateway.Generate` with
