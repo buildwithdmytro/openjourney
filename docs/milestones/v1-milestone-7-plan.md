@@ -360,10 +360,10 @@ task ends with a **Done when**. Do them in order; compile + `go vet` between mil
    human gate; refuses `eval_status != 'passed'`. *Done when:* publish idempotent, api_key → 403. — done: implemented scoring_models and scoring_model_versions CRUD operations, blob freeze and publish with human gate, verified with TestScoringRegistry.
 
 ### Milestone 12.3 — Expression scorer (deterministic, non-LLM)
-1. **Evaluator** `internal/scoring/expression.go`: evaluate a safe expression over a profile's
+1. [x] **Evaluator** `internal/scoring/expression.go`: evaluate a safe expression over a profile's
    attributes + bounded event aggregates → a numeric score clamped to `[output_min, output_max]`;
    pure/deterministic (no `math/rand`, no clock beyond an injected one). *Done when:* the same
-   profile+version always yields the same score (golden test).
+   profile+version always yields the same score (golden test). — done: implemented deterministic Go-AST-based expression parser & evaluator and verified with golden & determinism tests.
 2. **Eval gate for expression models**: a deterministic eval run (golden cases) flips
    `eval_status='passed'`. *Done when:* an expression version can't be computed until eval passes.
 
