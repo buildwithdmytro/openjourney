@@ -409,10 +409,11 @@ Testing bar: unit + golden per milestone; one consolidated integration/anti-abus
 Each task ends with a **Done when**. Do them in order; compile + `go vet` between milestones.
 
 ### Milestone 13.0 — Foundations: public serving + anti-abuse substrate — DO FIRST
-1. **Anti-abuse primitives** `internal/httpapi/publicguard.go`: a per-IP token-bucket limiter, a
-   honeypot check, an HMAC **form-token** signer/verifier (mirror `render/links.go:66-108`), and a
-   pluggable captcha interface (no-op default). *Done when:* unit tests cover limit/honeypot/token
-   expiry/tamper.
+1. [x] **Anti-abuse primitives** `internal/httpapi/publicguard.go`: a per-IP token-bucket limiter, a
+	honeypot check, an HMAC **form-token** signer/verifier (mirror `render/links.go:66-108`), and a
+	pluggable captcha interface (no-op default). *Done when:* unit tests cover limit/honeypot/token
+	expiry/tamper. — done: `publicguard_test.go` covers token-bucket limit/refill, honeypot, token
+	expiry/tamper, trusted client IP handling, and no-op captcha; full Go build/vet/test passes.
 2. **HTML-serving substrate**: a helper that renders a pinned version via `render.Render` and writes
    `Content-Type: text/html` (+ a static asset route `GET /a/{blobKey}` via `BlobStore.Get`). *Done
    when:* a trivial page renders as HTML and an asset streams from blob.
