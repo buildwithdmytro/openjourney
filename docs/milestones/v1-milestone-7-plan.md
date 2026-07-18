@@ -409,11 +409,11 @@ task ends with a **Done when**. Do them in order; compile + `go vet` between mil
    yields none. — done: added report-gated, idempotent proposal creation and POST controller; TestOptimizationProposalUsesReportGateAndDoesNotReassign_12_8_2 covers winner snapshots, no assignments, repeat calls, and guardrail blocking.
 
 ### Milestone 12.9 — Human-approved reallocation / rollout
-1. **Approve endpoint** `POST /v1/experiments/{id}/optimize/{proposalId}/approve` (human-actor
+1. [x] **Approve endpoint** `POST /v1/experiments/{id}/optimize/{proposalId}/approve` (human-actor
    gate): mint a new immutable experiment version with the proposed weights (seed unchanged, holdout
    preserved) or roll out the winner; mark the proposal `approved` with the approver. *Done when:*
    an api_key actor → 403; a user actor produces a new version whose seed equals the original and
-   whose holdout_pct is preserved.
+   whose holdout_pct is preserved. — done: added immutable experiment_versions snapshots, human-gated approval route, and HTTP/DB integration coverage for api_key rejection plus seed/holdout preservation.
 
 ### Milestone 12.10 — UI
 1. **Scoring + scores**: scoring-model editor (expression/LLM, publish), a per-profile scores

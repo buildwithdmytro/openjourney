@@ -150,6 +150,7 @@ type Store interface {
 	JourneyReport(ctx context.Context, p domain.Principal, journeyID string) (domain.JourneyReport, error)
 	ExperimentReport(ctx context.Context, p domain.Principal, experimentID string) (domain.ExperimentReport, error)
 	ProposeExperimentOptimization(ctx context.Context, p domain.Principal, experimentID string) (domain.OptimizationProposal, error)
+	ApproveExperimentOptimization(ctx context.Context, p domain.Principal, experimentID, proposalID string) (domain.ExperimentVersion, error)
 	RolloutExperiment(ctx context.Context, p domain.Principal, experimentID string) (domain.ExperimentRollout, error)
 
 	CreateAIProviderConfig(ctx context.Context, p domain.Principal, cfg domain.AIProviderConfig) (domain.AIProviderConfig, error)

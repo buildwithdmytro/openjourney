@@ -63,6 +63,85 @@ func (s *Store) ProposeExperimentOptimization(ctx context.Context, p domain.Prin
 		p.TenantID, p.WorkspaceID, experimentID, snapshot, *report.WinnerVariant, rationale))
 }
 
+// ApproveExperimentOptimization converts an advisory proposal into a new,
+// immutable assignment snapshot. It never changes the source experiment.
+func (s *Store) ApproveExperimentOptimization(ctx context.Context, p domain.Principal, experimentID, proposalID string) (domain.ExperimentVersion, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.ExperimentVersion{}, err
+	}
+	defer tx.Rollback(ctx)
+	var seed string
+	var holdout, latest int
+	if err := tx.QueryRow(ctx, `SELECT seed, holdout_pct, COALESCE((SELECT MAX(version) FROM experiment_versions WHERE experiment_id=e.id), 0)
+		FROM experiments e WHERE e.tenant_id=$1 AND e.workspace_id=$2 AND e.id=$3 FOR UPDATE`, p.TenantID, p.WorkspaceID, experimentID).Scan(&seed, &holdout, &latest); errors.Is(err, pgx.ErrNoRows) {
+		return domain.ExperimentVersion{}, ErrNotFound
+	} else if err != nil {
+		return domain.ExperimentVersion{}, err
+	}
+	var proposal domain.OptimizationProposal
+	if err := tx.QueryRow(ctx, `SELECT `+optimizationProposalColumns+` FROM optimization_proposals
+		WHERE tenant_id=$1 AND workspace_id=$2 AND experiment_id=$3 AND id=$4 FOR UPDATE`, p.TenantID, p.WorkspaceID, experimentID, proposalID).Scan(&proposal.ID, &proposal.TenantID, &proposal.WorkspaceID, &proposal.ExperimentID, &proposal.Kind, &proposal.ReportSnapshot, &proposal.ProposedWeights, &proposal.WinnerVariant, &proposal.Rationale, &proposal.Status, &proposal.ApprovedBy, &proposal.ApprovedAt, &proposal.CreatedAt); errors.Is(err, pgx.ErrNoRows) {
+		return domain.ExperimentVersion{}, ErrNotFound
+	} else if err != nil {
+		return domain.ExperimentVersion{}, err
+	}
+	if proposal.Status != "proposed" {
+		return scanExperimentVersion(tx.QueryRow(ctx, `SELECT id, experiment_id, tenant_id, workspace_id, version, seed, holdout_pct, variants, approved_by, created_at FROM experiment_versions WHERE experiment_id=$1 AND proposal_id=$2`, experimentID, proposalID))
+	}
+	variants, err := s.listExperimentVariants(ctx, p, experimentID)
+	if err != nil {
+		return domain.ExperimentVersion{}, err
+	}
+	weights := map[string]int{}
+	if len(proposal.ProposedWeights) > 0 {
+		if err := json.Unmarshal(proposal.ProposedWeights, &weights); err != nil {
+			return domain.ExperimentVersion{}, err
+		}
+	}
+	for i := range variants {
+		if proposal.Kind == "winner" {
+			variants[i].Weight = 0
+			if proposal.WinnerVariant != nil && variants[i].Label == *proposal.WinnerVariant {
+				variants[i].Weight = 100
+			}
+		} else if weight, ok := weights[variants[i].Label]; ok {
+			variants[i].Weight = weight
+		}
+	}
+	snapshot, err := json.Marshal(variants)
+	if err != nil {
+		return domain.ExperimentVersion{}, err
+	}
+	var out domain.ExperimentVersion
+	err = tx.QueryRow(ctx, `INSERT INTO experiment_versions (experiment_id,proposal_id,tenant_id,workspace_id,version,seed,holdout_pct,variants,approved_by)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id,experiment_id,tenant_id,workspace_id,version,seed,holdout_pct,variants,approved_by,created_at`,
+		experimentID, proposalID, p.TenantID, p.WorkspaceID, latest+1, seed, holdout, snapshot, p.UserID).Scan(&out.ID, &out.ExperimentID, &out.TenantID, &out.WorkspaceID, &out.Version, &out.Seed, &out.HoldoutPct, &snapshot, &out.ApprovedBy, &out.CreatedAt)
+	if err != nil {
+		return domain.ExperimentVersion{}, err
+	}
+	if err := json.Unmarshal(snapshot, &out.Variants); err != nil {
+		return domain.ExperimentVersion{}, err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE optimization_proposals SET status='approved', approved_by=$1, approved_at=now() WHERE id=$2 AND tenant_id=$3 AND workspace_id=$4`, p.UserID, proposalID, p.TenantID, p.WorkspaceID); err != nil {
+		return domain.ExperimentVersion{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.ExperimentVersion{}, err
+	}
+	return out, nil
+}
+
+func scanExperimentVersion(row pgx.Row) (domain.ExperimentVersion, error) {
+	var out domain.ExperimentVersion
+	var variants []byte
+	err := row.Scan(&out.ID, &out.ExperimentID, &out.TenantID, &out.WorkspaceID, &out.Version, &out.Seed, &out.HoldoutPct, &variants, &out.ApprovedBy, &out.CreatedAt)
+	if err == nil {
+		err = json.Unmarshal(variants, &out.Variants)
+	}
+	return out, err
+}
+
 func normalizeExperiment(e domain.Experiment) (domain.Experiment, error) {
 	if e.Name == "" || e.SubjectType == "" || e.Seed == "" {
 		return domain.Experiment{}, errors.New("experiment name, subject_type, and seed are required")

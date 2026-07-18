@@ -27,6 +27,7 @@ type fakeStore struct {
 	revokedToken                           string
 	published                              int
 	rollouts                               int
+	optimizationApprovals                  int
 	runs                                   []domain.JourneyRun
 	getTemplateFunc                        func(id string) (domain.Template, error)
 	getProfileFunc                         func(externalID string) (domain.Profile, error)
@@ -395,6 +396,10 @@ func (f *fakeStore) RolloutExperiment(_ context.Context, p domain.Principal, exp
 		ExperimentID: experimentID, WinnerVariant: "treatment", SubjectType: "journey",
 		JourneyVersion: &domain.JourneyVersion{ID: "version-2", JourneyID: "journey-1", TenantID: p.TenantID, WorkspaceID: p.WorkspaceID, Version: 2},
 	}, nil
+}
+func (f *fakeStore) ApproveExperimentOptimization(_ context.Context, p domain.Principal, experimentID, proposalID string) (domain.ExperimentVersion, error) {
+	f.optimizationApprovals++
+	return domain.ExperimentVersion{ID: "experiment-version-2", ExperimentID: experimentID, Version: 2, Seed: "fixed-seed", HoldoutPct: 10, ApprovedBy: p.UserID}, nil
 }
 func (f *fakeStore) SetJourneyVersionStatus(ctx context.Context, p domain.Principal, journeyID string, version int, status string) error {
 	if journeyID == "invalid-journey" {
@@ -1204,6 +1209,27 @@ func TestExperimentRolloutRequiresHumanActorAndReturnsNewVersion(t *testing.T) {
 	}
 	if store.rollouts != 1 || rollout.JourneyVersion == nil || rollout.JourneyVersion.Version != 2 {
 		t.Fatalf("rollout calls=%d response=%+v", store.rollouts, rollout)
+	}
+}
+
+func TestExperimentOptimizationApprovalRequiresHumanActor(t *testing.T) {
+	store := &fakeStore{scopes: []string{"experiments:write"}}
+	server := NewWithSessionTTL(store, 75, nil, "http://localhost:3000", 12*time.Hour)
+	for _, key := range []string{"api-key-actor", "ai-agent-actor"} {
+		req := httptest.NewRequest(http.MethodPost, "/v1/experiments/experiment-1/optimize/proposal-1/approve", nil)
+		req.Header.Set("Authorization", "Bearer "+key)
+		res := httptest.NewRecorder()
+		server.ServeHTTP(res, req)
+		if res.Code != http.StatusForbidden || !strings.Contains(res.Body.String(), `"code":"human_approval_required"`) {
+			t.Fatalf("%s approval status=%d body=%s", key, res.Code, res.Body.String())
+		}
+	}
+	req := httptest.NewRequest(http.MethodPost, "/v1/experiments/experiment-1/optimize/proposal-1/approve", nil)
+	req.Header.Set("Authorization", "Bearer test-key")
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+	if res.Code != http.StatusCreated || store.optimizationApprovals != 1 {
+		t.Fatalf("human approval status=%d approvals=%d body=%s", res.Code, store.optimizationApprovals, res.Body.String())
 	}
 }
 

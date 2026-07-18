@@ -70,6 +70,17 @@ func TestOptimizationProposalUsesReportGateAndDoesNotReassign_12_8_2(t *testing.
 	if err != nil || repeated.ID != proposal.ID {
 		t.Fatalf("repeat proposal = %+v, err=%v; want same pending proposal", repeated, err)
 	}
+	approved, err := store.ApproveExperimentOptimization(ctx, p, proposalExperiment.ID, proposal.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if approved.Seed != proposalExperiment.Seed || approved.HoldoutPct != proposalExperiment.HoldoutPct || approved.Version != 1 || approved.ApprovedBy != p.UserID {
+		t.Fatalf("approved version = %+v; want immutable seed/holdout and human approver", approved)
+	}
+	var proposalStatus string
+	if err := store.pool.QueryRow(ctx, `SELECT status FROM optimization_proposals WHERE id=$1`, proposal.ID).Scan(&proposalStatus); err != nil || proposalStatus != "approved" {
+		t.Fatalf("proposal status=%q err=%v, want approved", proposalStatus, err)
+	}
 
 	blockedExperiment := createOptimizationExperiment(t, ctx, store, p, "blocked", `[{"name":"complaint"}]`)
 	seedOptimizationFacts(t, ctx, store, p, blockedExperiment.ID, journeyID, versionID, templateID, true)

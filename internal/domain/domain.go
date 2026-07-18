@@ -545,6 +545,21 @@ type OptimizationProposal struct {
 	CreatedAt       time.Time       `json:"created_at"`
 }
 
+// ExperimentVersion is an immutable assignment snapshot minted by a human-approved
+// optimization. The original experiment seed and holdout are copied verbatim.
+type ExperimentVersion struct {
+	ID           string              `json:"id"`
+	ExperimentID string              `json:"experiment_id"`
+	TenantID     string              `json:"tenant_id"`
+	WorkspaceID  string              `json:"workspace_id"`
+	Version      int                 `json:"version"`
+	Seed         string              `json:"seed"`
+	HoldoutPct   int                 `json:"holdout_pct"`
+	Variants     []ExperimentVariant `json:"variants"`
+	ApprovedBy   string              `json:"approved_by"`
+	CreatedAt    time.Time           `json:"created_at"`
+}
+
 type ExperimentAssignment struct {
 	ExperimentID string    `json:"experiment_id"`
 	TenantID     string    `json:"tenant_id"`

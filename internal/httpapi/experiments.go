@@ -106,3 +106,21 @@ func (s *Server) proposeExperimentOptimization(w http.ResponseWriter, r *http.Re
 	}
 	writeJSON(w, http.StatusCreated, out)
 }
+
+func (s *Server) approveExperimentOptimization(w http.ResponseWriter, r *http.Request) {
+	p := principalFrom(r)
+	if p.ActorType != "user" || p.UserID == "" {
+		writeError(w, http.StatusForbidden, "human_approval_required", "optimization approval requires an authenticated user")
+		return
+	}
+	out, err := s.store.ApproveExperimentOptimization(r.Context(), p, r.PathValue("id"), r.PathValue("proposalId"))
+	if errors.Is(err, postgres.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "experiment or proposal not found")
+		return
+	}
+	if err != nil {
+		internalError(w, err, "approve experiment optimization", p)
+		return
+	}
+	writeJSON(w, http.StatusCreated, out)
+}
