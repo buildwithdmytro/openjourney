@@ -441,8 +441,9 @@ keep tests reproducible; one consolidated security/integration pass in 14.10. Ea
 1. [x] **Security E2E**: an unsigned/tampered manifest is rejected; an extension call beyond its granted
    scopes is `denied_scope`; an off-allowlist remote endpoint is blocked; a wasm module cannot reach
    net/fs and is killed at its deadline. *Done when:* all asserted. — done: added security E2E coverage for required-scope denial/audit and Wasm network/filesystem isolation; existing registry integration covers signed-manifest rejection.
-2. **Bounded-failure**: a remote timeout / open breaker / wasm trap → deterministic fallback; the host
-   never dead-letters a journey run or stalls ingestion. *Done when:* asserted per surface.
+2. [x] **Bounded-failure**: a remote timeout / open breaker / wasm trap → deterministic fallback; the host
+   never dead-letters a journey run or stalls ingestion. *Done when:* asserted per surface. — done:
+   added timeout/open-breaker journey fallback and ingestion deadline-trap passthrough regression tests.
 3. **Determinism + audit**: the same wasm input yields the same output; every extension invocation
    (allowed and denied) writes exactly one append-only `extension_activity` row (UPDATE raises).
    *Done when:* asserted.

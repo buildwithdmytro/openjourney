@@ -99,6 +99,26 @@ func TestIngestionTransformFailureUsesConfiguredPolicy(t *testing.T) {
 	}
 }
 
+func TestIngestionTransformDeadlineTrapNeverStallsAndUsesPassthrough(t *testing.T) {
+	versionID := "version-1"
+	store := &ingestionStore{
+		ext:     domain.Extension{ID: "extension-1", CurrentVersionID: &versionID, Status: "enabled"},
+		version: domain.ExtensionVersion{ID: versionID, Manifest: json.RawMessage(`{"on_error":"passthrough"}`)},
+	}
+	s := &Server{store: store, maxBatchSize: 10, extensionInvoker: ingestionInvoker{err: context.DeadlineExceeded}}
+	req := httptest.NewRequest(http.MethodPost, "/v1/events/batch", jsonBody(t, map[string]any{"events": []domain.Event{{
+		Type: "custom.event", SchemaVersion: 1, ExternalID: "external-1", IdempotencyKey: "event-1", OccurredAt: time.Now().UTC(), Payload: json.RawMessage(`{"value":42}`),
+	}}})).WithContext(context.WithValue(context.Background(), principalKey{}, domain.Principal{TenantID: "tenant-1", WorkspaceID: "workspace-1"}))
+	recorder := httptest.NewRecorder()
+	s.acceptEvents(recorder, req)
+	if recorder.Code != http.StatusAccepted || len(store.accepted) != 1 {
+		t.Fatalf("deadline trap stalled/rejected passthrough: status=%d body=%s accepted=%d", recorder.Code, recorder.Body.String(), len(store.accepted))
+	}
+	if string(store.accepted[0].Payload) != `{"value":42}` {
+		t.Fatalf("passthrough changed payload: %s", store.accepted[0].Payload)
+	}
+}
+
 func jsonBody(t *testing.T, value any) *bytes.Reader {
 	t.Helper()
 	data, err := json.Marshal(value)

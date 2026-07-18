@@ -3,6 +3,7 @@ package journey
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -824,6 +825,42 @@ func TestExtensionNodesExecution_FallbackOnError(t *testing.T) {
 	}
 }
 
+func TestExtensionNodesExecution_TimeoutAndCircuitOpenUseFallback(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{
+		{name: "remote timeout", err: context.DeadlineExceeded},
+		{name: "open breaker", err: errors.New("circuit breaker is open")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			graph := &Graph{
+				Nodes: []Node{
+					{ID: "n1", Type: NodeTypeExtensionAction, Config: json.RawMessage(`{"extension_id":"ext-123","extension_version":1,"timeout_ms":10,"branches":["ok","fallback"],"fallback":"fallback"}`)},
+					{ID: "ok", Type: NodeTypeExit},
+					{ID: "fallback", Type: NodeTypeExit},
+				},
+				Edges: []Edge{{From: "n1", To: "ok", Branch: "ok"}, {From: "n1", To: "fallback", Branch: "fallback"}},
+			}
+			run := &domain.JourneyRun{ID: "run-1", TenantID: "tenant-1", WorkspaceID: "workspace-1", ProfileID: "profile-1", Status: "active"}
+			host := &mockExtensionHost{invoke: func(ctx context.Context, _ domain.Principal, _ string, _ string, _ json.RawMessage) (json.RawMessage, string, error) {
+				if tc.name == "remote timeout" {
+					<-ctx.Done()
+				}
+				return nil, "activity-failure", tc.err
+			}}
+
+			res, err := graph.Nodes[0].ExecuteWithGateway(context.Background(), newMockStore(), run, graph, time.Now(), "advance", nil, host)
+			if err != nil {
+				t.Fatalf("failure entered journey retry path: %v", err)
+			}
+			if res.NextNodeID != "fallback" || res.Transition.Outcome != "branch:fallback" {
+				t.Fatalf("failure did not select deterministic fallback: next=%q transition=%+v", res.NextNodeID, res.Transition)
+			}
+		})
+	}
+}
+
 func TestExtensionNodesExecution_FallbackOnUnconfigured(t *testing.T) {
 	graph := &Graph{
 		Nodes: []Node{
@@ -956,4 +993,3 @@ func TestExtensionNodesExecution_Validation(t *testing.T) {
 		})
 	}
 }
-
