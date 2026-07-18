@@ -930,6 +930,180 @@ func TestAIGatewaySchema_11_1_1(t *testing.T) {
 	}
 }
 
+func TestAIProviderConfigCRUD_11_1_3(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create test tenant/workspace
+	var tenantID, workspaceID string
+	err = store.pool.QueryRow(ctx, "INSERT INTO tenants(name) VALUES('AI Config CRUD Tenant') RETURNING id").Scan(&tenantID)
+	if err != nil {
+		t.Fatalf("failed to insert tenant: %v", err)
+	}
+	err = store.pool.QueryRow(ctx, "INSERT INTO workspaces(tenant_id, name) VALUES($1, 'AI Config CRUD Workspace') RETURNING id", tenantID).Scan(&workspaceID)
+	if err != nil {
+		t.Fatalf("failed to insert workspace: %v", err)
+	}
+
+	p := domain.Principal{
+		TenantID:    tenantID,
+		WorkspaceID: workspaceID,
+	}
+
+	// 1. Create a config with a secret in the JSON config
+	configWithSecret := []byte(`{"api_key_ref": "CLAUDE_API_KEY", "api_key": "supersecretvalue123", "default_model": "claude-3-opus-20240229"}`)
+	cfg := domain.AIProviderConfig{
+		Provider:           "anthropic",
+		IsDefault:          true,
+		Config:             configWithSecret,
+		EndpointAllowlist:  []string{"api.anthropic.com"},
+		MonthlyBudgetCents: 5000,
+		Status:             "active",
+	}
+
+	created, err := store.CreateAIProviderConfig(ctx, p, cfg)
+	if err != nil {
+		t.Fatalf("failed to CreateAIProviderConfig: %v", err)
+	}
+
+	if created.ID == "" {
+		t.Errorf("expected generated UUID, got empty")
+	}
+
+	// Verify that the secret "api_key" is redacted in the returned struct
+	var createdJSON map[string]any
+	if err := json.Unmarshal(created.Config, &createdJSON); err != nil {
+		t.Fatalf("failed to unmarshal created config: %v", err)
+	}
+	if _, ok := createdJSON["api_key"]; ok {
+		t.Errorf("api_key should have been redacted/removed from config, but is present")
+	}
+	if createdJSON["api_key_ref"] != "CLAUDE_API_KEY" {
+		t.Errorf("expected api_key_ref to be CLAUDE_API_KEY, got %v", createdJSON["api_key_ref"])
+	}
+
+	// 2. Get the config by ID and verify redaction
+	fetched, err := store.GetAIProviderConfig(ctx, p, created.ID)
+	if err != nil {
+		t.Fatalf("failed to GetAIProviderConfig: %v", err)
+	}
+
+	var fetchedJSON map[string]any
+	if err := json.Unmarshal(fetched.Config, &fetchedJSON); err != nil {
+		t.Fatalf("failed to unmarshal fetched config: %v", err)
+	}
+	if _, ok := fetchedJSON["api_key"]; ok {
+		t.Errorf("api_key should have been redacted in Get, but is present")
+	}
+
+	// 3. Get Default AI Provider Config
+	defaultCfg, err := store.GetDefaultAIProviderConfig(ctx, p)
+	if err != nil {
+		t.Fatalf("failed to GetDefaultAIProviderConfig: %v", err)
+	}
+	if defaultCfg.ID != created.ID {
+		t.Errorf("expected default config ID %s, got %s", created.ID, defaultCfg.ID)
+	}
+
+	// 4. Create a second config and set it as default (should unset the first default)
+	cfg2 := domain.AIProviderConfig{
+		Provider:           "openai",
+		IsDefault:          true,
+		Config:             []byte(`{"api_key": "openai-secret", "api_key_ref": "OPENAI_API_KEY"}`),
+		EndpointAllowlist:  []string{"api.openai.com"},
+		MonthlyBudgetCents: 10000,
+		Status:             "active",
+	}
+
+	created2, err := store.CreateAIProviderConfig(ctx, p, cfg2)
+	if err != nil {
+		t.Fatalf("failed to Create second config: %v", err)
+	}
+
+	// First config should not be default anymore
+	fetched1Again, err := store.GetAIProviderConfig(ctx, p, created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fetched1Again.IsDefault {
+		t.Errorf("first config should have been updated to not default")
+	}
+
+	// GetDefault should now return the second config
+	defaultCfg2, err := store.GetDefaultAIProviderConfig(ctx, p)
+	if err != nil {
+		t.Fatalf("failed to GetDefaultAIProviderConfig: %v", err)
+	}
+	if defaultCfg2.ID != created2.ID {
+		t.Errorf("expected default config ID to switch to %s, got %s", created2.ID, defaultCfg2.ID)
+	}
+
+	// 5. Update the first config to make it default again
+	fetched1Again.IsDefault = true
+	fetched1Again.Config = []byte(`{"api_key": "updatedsecret", "api_key_ref": "CLAUDE_API_KEY"}`)
+	updated, err := store.UpdateAIProviderConfig(ctx, p, fetched1Again)
+	if err != nil {
+		t.Fatalf("failed to UpdateAIProviderConfig: %v", err)
+	}
+
+	var updatedJSON map[string]any
+	if err := json.Unmarshal(updated.Config, &updatedJSON); err != nil {
+		t.Fatalf("failed to unmarshal updated config: %v", err)
+	}
+	if _, ok := updatedJSON["api_key"]; ok {
+		t.Errorf("api_key should have been redacted in Update, but is present")
+	}
+
+	// Fetch default config again, should be first config ID
+	defaultCfg3, err := store.GetDefaultAIProviderConfig(ctx, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if defaultCfg3.ID != created.ID {
+		t.Errorf("expected default config ID to switch back to %s, got %s", created.ID, defaultCfg3.ID)
+	}
+
+	// 6. List configs
+	list, err := store.ListAIProviderConfigs(ctx, p)
+	if err != nil {
+		t.Fatalf("failed to ListAIProviderConfigs: %v", err)
+	}
+	if len(list) != 2 {
+		t.Errorf("expected 2 configs in list, got %d", len(list))
+	}
+	for _, item := range list {
+		var itemJSON map[string]any
+		_ = json.Unmarshal(item.Config, &itemJSON)
+		if _, ok := itemJSON["api_key"]; ok {
+			t.Errorf("api_key should be redacted in List for id %s", item.ID)
+		}
+	}
+
+	// 7. Delete config
+	err = store.DeleteAIProviderConfig(ctx, p, created.ID)
+	if err != nil {
+		t.Fatalf("failed to DeleteAIProviderConfig: %v", err)
+	}
+
+	_, err = store.GetAIProviderConfig(ctx, p, created.ID)
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("expected ErrNotFound for deleted config, got %v", err)
+	}
+}
+
+
 func TestMain(m *testing.M) {
 	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
 	if databaseURL != "" {

@@ -453,9 +453,9 @@ them in order; compile + `go vet` between milestones. **Substrate (11.0–11.7) 
    (Recipe 6.26) reusing the M5 egress client. Anthropic default model **Opus 4.8**, cheap model
    **Haiku 4.5**. *Done when:* the fake provider round-trips a structured response in a contract
    test; anthropic/openai profiles build correct requests (table test). — done: implemented ModelProvider interface, fake/anthropic/openai profiles, and verified via TestFakeProviderRoundTrip and TestHTTPModelProvider_SSRFGuard.
-3. **Provider config store** `internal/postgres/ai.go` + `ports.Store`: CRUD `ai_provider_configs`
+3. [x] **Provider config store** `internal/postgres/ai.go` + `ports.Store`: CRUD `ai_provider_configs`
    (tenant+workspace scoped; secret via `_FILE` ref, never returned in reads). *Done when:*
-   `go build ./...` passes; a config round-trips without leaking the secret.
+   `go build ./...` passes; a config round-trips without leaking the secret. — done: implemented CRUD in internal/postgres/ai.go and verified via TestAIProviderConfigCRUD_11_1_3.
 4. **Budget enforcement + telemetry**: gateway checks `ai_budget_usage` vs `monthly_budget_cents`
    and denies over-budget; add `Int64Histogram` helper to `telemetry.go` + counters for
    tokens/cost/latency/schema-rejection/safety. *Done when:* an over-budget invoke is denied and

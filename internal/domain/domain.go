@@ -741,3 +741,19 @@ type JourneyMessageIntent struct {
 	CreatedAt         time.Time       `json:"created_at"`
 	UpdatedAt         time.Time       `json:"updated_at"`
 }
+
+type AIProviderConfig struct {
+	ID                 string          `json:"id"`
+	TenantID           string          `json:"tenant_id"`
+	WorkspaceID        string          `json:"workspace_id"`
+	Provider           string          `json:"provider"`
+	IsDefault          bool            `json:"is_default"`
+	Config             json.RawMessage `json:"config"`
+	EndpointAllowlist  []string        `json:"endpoint_allowlist"`
+	FallbackProvider   *string         `json:"fallback_provider,omitempty"`
+	MonthlyBudgetCents int64           `json:"monthly_budget_cents"`
+	Status             string          `json:"status"`
+	CreatedAt          time.Time       `json:"created_at"`
+	UpdatedAt          time.Time       `json:"updated_at"`
+}
+

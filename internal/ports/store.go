@@ -148,6 +148,13 @@ type Store interface {
 	JourneyReport(ctx context.Context, p domain.Principal, journeyID string) (domain.JourneyReport, error)
 	ExperimentReport(ctx context.Context, p domain.Principal, experimentID string) (domain.ExperimentReport, error)
 	RolloutExperiment(ctx context.Context, p domain.Principal, experimentID string) (domain.ExperimentRollout, error)
+
+	CreateAIProviderConfig(ctx context.Context, p domain.Principal, cfg domain.AIProviderConfig) (domain.AIProviderConfig, error)
+	GetAIProviderConfig(ctx context.Context, p domain.Principal, id string) (domain.AIProviderConfig, error)
+	GetDefaultAIProviderConfig(ctx context.Context, p domain.Principal) (domain.AIProviderConfig, error)
+	UpdateAIProviderConfig(ctx context.Context, p domain.Principal, cfg domain.AIProviderConfig) (domain.AIProviderConfig, error)
+	ListAIProviderConfigs(ctx context.Context, p domain.Principal) ([]domain.AIProviderConfig, error)
+	DeleteAIProviderConfig(ctx context.Context, p domain.Principal, id string) error
 }
 
 type TokenVerifier interface {
