@@ -290,21 +290,75 @@ func TestHTTPModelProvider_SSRFGuard(t *testing.T) {
 	fakeProfile := ai.NewFakeProfile()
 	provider := ai.NewHTTPModelProvider(fakeProfile)
 
-	req := ai.GenerateRequest{
-		Model:   "fake-model",
-		Prompt:  "hello",
-		APIKey:  "key",
-		BaseURL: "http://127.0.0.1:8080/generate",
-	}
-
-	_, err := provider.Generate(context.Background(), req)
-	if err == nil {
-		t.Fatal("expected error when attempting to dial private IP range")
-	}
-
-	if !strings.Contains(err.Error(), "forbidden socket dial to private IP range") && !strings.Contains(err.Error(), "dial tcp 127.0.0.1") && !strings.Contains(err.Error(), "connection refused") {
-		if !strings.Contains(err.Error(), "forbidden socket dial to private IP range") {
-			t.Errorf("expected SSRF block error, got: %v", err)
+	t.Run("unlisted domain is blocked by default", func(t *testing.T) {
+		req := ai.GenerateRequest{
+			Model:   "fake-model",
+			Prompt:  "hello",
+			APIKey:  "key",
+			BaseURL: "https://unlisted-domain.com/generate",
 		}
-	}
+		_, err := provider.Generate(context.Background(), req)
+		if err == nil {
+			t.Fatal("expected error when attempting to dial unlisted domain")
+		}
+		if !strings.Contains(err.Error(), "is not in the allowed hosted providers") {
+			t.Errorf("expected egress allowlist block error, got: %v", err)
+		}
+	})
+
+	t.Run("local endpoint is blocked by default", func(t *testing.T) {
+		req := ai.GenerateRequest{
+			Model:   "fake-model",
+			Prompt:  "hello",
+			APIKey:  "key",
+			BaseURL: "http://127.0.0.1:8080/generate",
+		}
+		_, err := provider.Generate(context.Background(), req)
+		if err == nil {
+			t.Fatal("expected error when attempting to dial local IP")
+		}
+		if !strings.Contains(err.Error(), "is not in the allowed hosted providers") {
+			t.Errorf("expected egress allowlist block error, got: %v", err)
+		}
+	})
+
+	t.Run("local endpoint is allowed when explicitly allowlisted", func(t *testing.T) {
+		req := ai.GenerateRequest{
+			Model:   "fake-model",
+			Prompt:  "hello",
+			APIKey:  "key",
+			BaseURL: "http://127.0.0.1:8080/generate",
+		}
+		ctx := ai.WithEndpointAllowlist(context.Background(), []string{"127.0.0.1:8080"})
+		_, err := provider.Generate(ctx, req)
+		if err == nil {
+			t.Fatal("expected connection error")
+		}
+		if strings.Contains(err.Error(), "forbidden socket dial to private IP range") || strings.Contains(err.Error(), "is not in the allowed hosted providers") {
+			t.Errorf("expected connection/dial failure, not security rejection. got: %v", err)
+		}
+	})
+
+	t.Run("hosted domains are allowed by default", func(t *testing.T) {
+		provider.Client.Transport = mockRoundTripper(func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: 200,
+				Body:       io.NopCloser(strings.NewReader(`{"status":"ok"}`)),
+				Header:     make(http.Header),
+			}, nil
+		})
+
+		req := ai.GenerateRequest{
+			Model:        "fake-model",
+			Prompt:       "hello",
+			APIKey:       "key",
+			BaseURL:      "https://api.openai.com/v1/chat/completions",
+			OutputSchema: []byte(`{"type":"object"}`),
+		}
+
+		_, err := provider.Generate(context.Background(), req)
+		if err != nil {
+			t.Errorf("expected no error for allowed hosted domain, got: %v", err)
+		}
+	})
 }

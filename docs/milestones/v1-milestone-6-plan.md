@@ -462,11 +462,11 @@ them in order; compile + `go vet` between milestones. **Substrate (11.0–11.7) 
    counted; usage increments on success. — done: implemented Gateway budget check and telemetry helpers, verified via TestGatewayBudgetEnforcement.
 
 ### Milestone 11.2 — Egress allowlist (hosted + local)
-1. **AI egress guard** `internal/ai/egress.go`: hosted providers must match a known-provider
+1. [x] **AI egress guard** `internal/ai/egress.go`: hosted providers must match a known-provider
    domain allowlist; a private/local endpoint is allowed **only** if present in
    `ai_provider_configs.endpoint_allowlist`; still apply the TOCTOU-safe dial guard. *Done when:*
    a hosted call to an unlisted domain is blocked; a local endpoint is blocked unless explicitly
-   allowlisted (tests for both).
+   allowlisted (tests for both). — done: implemented IsDomainAllowed egress guard and verified via TestHTTPModelProvider_SSRFGuard.
 
 ### Milestone 11.3 — Prompt/model registry (immutable) + output validator
 1. **Migration** `026_ai_registry.sql` per §2.2. *Done when:* tables exist.

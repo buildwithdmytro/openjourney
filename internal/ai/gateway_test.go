@@ -196,3 +196,52 @@ func TestGatewayBudgetEnforcement(t *testing.T) {
 		}
 	})
 }
+
+func TestGatewayEgressPropagation(t *testing.T) {
+	principal := domain.Principal{
+		TenantID:    "tenant-1",
+		WorkspaceID: "workspace-1",
+	}
+
+	store := &mockStore{
+		getConfigFunc: func(ctx context.Context, p domain.Principal) (domain.AIProviderConfig, error) {
+			return domain.AIProviderConfig{
+				Provider:           "fake",
+				Status:             "active",
+				EndpointAllowlist:  []string{"127.0.0.1:11434", "custom-model.local"},
+				MonthlyBudgetCents: 0,
+				Config:             json.RawMessage(`{}`),
+			}, nil
+		},
+		incrementUsageFunc: func(ctx context.Context, tenantID, workspaceID string, period string, costCents, inputTokens, outputTokens int64) error {
+			return nil
+		},
+	}
+
+	g := NewGateway(store)
+	var capturedAllowlist []string
+	g.newProvider = func(profile ProviderProfile) ModelProvider {
+		return &mockModelProvider{
+			generateFunc: func(ctx context.Context, req GenerateRequest) (*GenerateResponse, error) {
+				capturedAllowlist = GetEndpointAllowlist(ctx)
+				return &GenerateResponse{
+					Content: "ok",
+					Usage: Usage{
+						InputTokens:  1,
+						OutputTokens: 1,
+						CostCents:    1,
+					},
+				}, nil
+			},
+		}
+	}
+
+	_, err := g.Generate(context.Background(), principal, GenerateRequest{})
+	if err != nil {
+		t.Fatalf("expected success, got %v", err)
+	}
+
+	if len(capturedAllowlist) != 2 || capturedAllowlist[0] != "127.0.0.1:11434" || capturedAllowlist[1] != "custom-model.local" {
+		t.Errorf("expected allowlist [127.0.0.1:11434, custom-model.local], got %v", capturedAllowlist)
+	}
+}

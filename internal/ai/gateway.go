@@ -143,6 +143,7 @@ func (g *Gateway) Generate(ctx context.Context, principal domain.Principal, req 
 	if req.BaseURL == "" {
 		req.BaseURL = jsonCfg.BaseURL
 	}
+	ctx = WithEndpointAllowlist(ctx, cfg.EndpointAllowlist)
 
 	start := time.Now()
 	resp, err := prov.Generate(ctx, req)
@@ -179,6 +180,7 @@ func (g *Gateway) Embed(ctx context.Context, principal domain.Principal, req Emb
 	if req.BaseURL == "" {
 		req.BaseURL = jsonCfg.BaseURL
 	}
+	ctx = WithEndpointAllowlist(ctx, cfg.EndpointAllowlist)
 
 	start := time.Now()
 	resp, err := prov.Embed(ctx, req)
@@ -215,6 +217,7 @@ func (g *Gateway) Moderate(ctx context.Context, principal domain.Principal, req 
 	if req.BaseURL == "" {
 		req.BaseURL = jsonCfg.BaseURL
 	}
+	ctx = WithEndpointAllowlist(ctx, cfg.EndpointAllowlist)
 
 	start := time.Now()
 	resp, err := prov.Moderate(ctx, req)

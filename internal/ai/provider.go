@@ -8,6 +8,8 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/buildwithdmytro/openjourney/internal/channels"
@@ -111,8 +113,26 @@ func NewHTTPModelProvider(profile ProviderProfile) *HTTPModelProvider {
 			if len(ips) == 0 {
 				return nil, fmt.Errorf("no IP addresses resolved for host %s", host)
 			}
+			allowlist := GetEndpointAllowlist(ctx)
+			isAllowlisted := false
+			for _, allowed := range allowlist {
+				allowed = strings.TrimSpace(allowed)
+				if allowed == "" {
+					continue
+				}
+				if host == allowed || addr == allowed {
+					isAllowlisted = true
+					break
+				}
+				if u, err := url.Parse(allowed); err == nil && u.Host != "" {
+					if host == u.Hostname() || host == u.Host || addr == u.Host {
+						isAllowlisted = true
+						break
+					}
+				}
+			}
 			for _, ip := range ips {
-				if channels.IsPrivateIP(ip) {
+				if channels.IsPrivateIP(ip) && !isAllowlisted {
 					return nil, fmt.Errorf("forbidden socket dial to private IP range: %s", ip.String())
 				}
 			}
@@ -135,7 +155,8 @@ func NewHTTPModelProvider(profile ProviderProfile) *HTTPModelProvider {
 			if len(via) >= 5 {
 				return fmt.Errorf("redirect limit exceeded")
 			}
-			if err := channels.IsSafeURL(req.URL.String()); err != nil {
+			allowlist := GetEndpointAllowlist(req.Context())
+			if err := IsDomainAllowed(req.URL.String(), allowlist); err != nil {
 				return fmt.Errorf("redirect SSRF safeguard: %w", err)
 			}
 			return nil
@@ -152,6 +173,10 @@ func NewHTTPModelProvider(profile ProviderProfile) *HTTPModelProvider {
 func (h *HTTPModelProvider) Generate(ctx context.Context, req GenerateRequest) (*GenerateResponse, error) {
 	httpReq, err := h.Profile.BuildGenerateRequest(ctx, req)
 	if err != nil {
+		return nil, err
+	}
+	allowlist := GetEndpointAllowlist(ctx)
+	if err := IsDomainAllowed(httpReq.URL.String(), allowlist); err != nil {
 		return nil, err
 	}
 	resp, err := h.Client.Do(httpReq.WithContext(ctx))
@@ -174,6 +199,10 @@ func (h *HTTPModelProvider) Embed(ctx context.Context, req EmbedRequest) (*Embed
 	if err != nil {
 		return nil, err
 	}
+	allowlist := GetEndpointAllowlist(ctx)
+	if err := IsDomainAllowed(httpReq.URL.String(), allowlist); err != nil {
+		return nil, err
+	}
 	resp, err := h.Client.Do(httpReq.WithContext(ctx))
 	if err != nil {
 		return nil, err
@@ -192,6 +221,10 @@ func (h *HTTPModelProvider) Embed(ctx context.Context, req EmbedRequest) (*Embed
 func (h *HTTPModelProvider) Moderate(ctx context.Context, req ModerateRequest) (*ModerateResponse, error) {
 	httpReq, err := h.Profile.BuildModerateRequest(ctx, req)
 	if err != nil {
+		return nil, err
+	}
+	allowlist := GetEndpointAllowlist(ctx)
+	if err := IsDomainAllowed(httpReq.URL.String(), allowlist); err != nil {
 		return nil, err
 	}
 	resp, err := h.Client.Do(httpReq.WithContext(ctx))
