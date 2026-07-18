@@ -124,6 +124,15 @@ func main() {
 	if string(res1) != `{"value":42}` {
 		t.Errorf("unexpected output: %s", string(res1))
 	}
+
+	if len(store.activities) != 2 {
+		t.Fatalf("expected exactly one audit row per invocation, got %d", len(store.activities))
+	}
+	for i, activity := range store.activities {
+		if activity.PolicyDecision != "allowed" {
+			t.Errorf("activity %d: expected allowed decision, got %q", i, activity.PolicyDecision)
+		}
+	}
 }
 
 func TestWasm_DeadlineKill(t *testing.T) {

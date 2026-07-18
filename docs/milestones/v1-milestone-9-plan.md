@@ -444,9 +444,9 @@ keep tests reproducible; one consolidated security/integration pass in 14.10. Ea
 2. [x] **Bounded-failure**: a remote timeout / open breaker / wasm trap → deterministic fallback; the host
    never dead-letters a journey run or stalls ingestion. *Done when:* asserted per surface. — done:
    added timeout/open-breaker journey fallback and ingestion deadline-trap passthrough regression tests.
-3. **Determinism + audit**: the same wasm input yields the same output; every extension invocation
+3. [x] **Determinism + audit**: the same wasm input yields the same output; every extension invocation
    (allowed and denied) writes exactly one append-only `extension_activity` row (UPDATE raises).
-   *Done when:* asserted.
+   *Done when:* asserted. — done: added deterministic Wasm repeat-output and exact per-invocation audit assertions plus PostgreSQL allowed/denied append-only UPDATE/DELETE integration coverage.
 4. **Run the suite**: `go build/vet/test ./...`, `go mod tidy`, `cd web && npm run typecheck &&
    npm run build && npm test`, `npm audit`. *Done when:* green.
 5. **Audit doc** `docs/milestones/v1-milestone-9-audit.md` in the M2–M8 table format, one row per

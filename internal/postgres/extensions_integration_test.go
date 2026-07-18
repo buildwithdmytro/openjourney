@@ -537,3 +537,62 @@ func TestExtensionConfigAndGrants_14_0_3(t *testing.T) {
 		}
 	})
 }
+
+func TestExtensionActivityHardening_14_10_3(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	p, _ := setupTestTenant(t, ctx, store)
+	ext, err := store.CreateExtension(ctx, p, domain.Extension{
+		Name:      "audit-test-extension",
+		Publisher: "audit-test-publisher",
+		Status:    "enabled",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	allowed, err := store.RecordExtensionActivity(ctx, p, domain.ExtensionActivity{
+		ExtensionID: ext.ID, ExtensionVersion: 1, Kind: "ingestion_transform",
+		Invocation: "transform", PolicyDecision: "allowed",
+	})
+	if err != nil {
+		t.Fatalf("record allowed invocation: %v", err)
+	}
+	denied, err := store.RecordExtensionActivity(ctx, p, domain.ExtensionActivity{
+		ExtensionID: ext.ID, ExtensionVersion: 1, Kind: "ingestion_transform",
+		Invocation: "transform", PolicyDecision: "denied_scope",
+	})
+	if err != nil {
+		t.Fatalf("record denied invocation: %v", err)
+	}
+
+	var count int
+	if err := store.pool.QueryRow(ctx, `SELECT count(*) FROM extension_activity WHERE tenant_id=$1 AND workspace_id=$2 AND extension_id=$3`,
+		p.TenantID, p.WorkspaceID, ext.ID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Fatalf("expected exactly one audit row for each invocation, got %d", count)
+	}
+
+	for _, activityID := range []string{allowed.ID, denied.ID} {
+		if _, err := store.pool.Exec(ctx, `UPDATE extension_activity SET invocation='tampered' WHERE id=$1`, activityID); err == nil {
+			t.Fatal("expected UPDATE of extension_activity to be rejected")
+		}
+		if _, err := store.pool.Exec(ctx, `DELETE FROM extension_activity WHERE id=$1`, activityID); err == nil {
+			t.Fatal("expected DELETE of extension_activity to be rejected")
+		}
+	}
+}
