@@ -289,6 +289,35 @@ export async function updateTemplate(baseURL: string, apiKey: string, id: string
   return requestJSON(baseURL, apiKey, `/v1/templates/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(input) });
 }
 
+export type CopilotResponse = {
+  draft?: Record<string, unknown>;
+  activity_id?: string;
+  [key: string]: unknown;
+};
+
+async function invokeCopilot(baseURL: string, apiKey: string, path: string, input?: Record<string, unknown>): Promise<CopilotResponse> {
+  return requestJSON<CopilotResponse>(baseURL, apiKey, path, {
+    method: "POST",
+    body: JSON.stringify(input ?? {}),
+  });
+}
+
+export function createContentCopilot(baseURL: string, apiKey: string, input: { brief: string; locale?: string }): Promise<CopilotResponse> {
+  return invokeCopilot(baseURL, apiKey, "/v1/ai/copilots/content", input);
+}
+
+export function createAudienceCopilot(baseURL: string, apiKey: string, brief: string): Promise<CopilotResponse> {
+  return invokeCopilot(baseURL, apiKey, "/v1/ai/copilots/audience", { brief });
+}
+
+export function createJourneyCopilot(baseURL: string, apiKey: string, input: { brief: string; name?: string }): Promise<CopilotResponse> {
+  return invokeCopilot(baseURL, apiKey, "/v1/ai/copilots/journey", input);
+}
+
+export function createPerformanceCopilot(baseURL: string, apiKey: string, campaignID: string): Promise<CopilotResponse> {
+  return invokeCopilot(baseURL, apiKey, `/v1/ai/copilots/performance/${encodeURIComponent(campaignID)}`);
+}
+
 export async function previewTemplate(baseURL: string, apiKey: string, id: string, externalId: string): Promise<TemplatePreview> {
   return requestJSON(baseURL, apiKey, `/v1/templates/${encodeURIComponent(id)}/preview`, {
     method: "POST",

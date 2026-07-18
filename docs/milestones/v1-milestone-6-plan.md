@@ -562,9 +562,9 @@ them in order; compile + `go vet` between milestones. **Substrate (11.0–11.7) 
    `failed` and cannot be published; a clean one is `passed`. — done: added deterministic fake-provider eval runner with schema, policy, latency/cost, and validator gates; tests persist passed/failed eval runs and statuses.
 
 ### Milestone 11.13 — UI: copilot surfaces + governance settings
-1. **Copilot panels**: content/audience/journey/performance — each shows the AI draft with an
+1. [x] **Copilot panels**: content/audience/journey/performance — each shows the AI draft with an
    explicit **"review & approve"** step (approval reuses the human publish flow). *Done when:*
-   `npm run build` passes; a content draft round-trips to a saved draft template.
+   `npm run build` passes; a content draft round-trips to a saved draft template. — done: added the governed AI Copilots panel with four draft flows, human-editor review links, typed API helpers, and Copilots.test.tsx content draft round-trip coverage.
 2. **AI governance views**: provider/budget settings, `ai_activity` audit view, field-classification
    editor. *Done when:* activity + budget render; a config edit round-trips (secret never shown).
 

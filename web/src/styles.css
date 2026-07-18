@@ -113,6 +113,20 @@ button.danger { color: #a93838; background: #fff0f0; }
 .metric-tile strong { font-size: 30px; letter-spacing: -.03em; }
 .metric-tile small { color: var(--report-muted); }
 .report-table-wrap { overflow-x: auto; }
+.copilot-view { max-width: 900px; }
+.copilot-hero { display: grid; gap: 22px; }
+.copilot-hero h2 { margin: 4px 0 8px; }
+.copilot-tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+.copilot-tabs button { padding: 8px 13px; }
+.copilot-tabs button.active { background: #4d3ad0; }
+.copilot-form { display: grid; grid-template-columns: 1fr auto; align-items: end; }
+.copilot-form label:first-child { grid-column: 1 / -1; }
+.copilot-form textarea { min-height: 100px; }
+.copilot-draft { display: grid; gap: 14px; }
+.copilot-draft .section-title { padding: 0; }
+.copilot-draft details pre { max-height: 320px; }
+.copilot-content-preview { padding: 16px; border: 1px solid #e0e5eb; border-radius: 9px; background: #f8f9fb; }
+.copilot-content-preview p { margin: 8px 0 0; white-space: pre-wrap; }
 .variant-comparison { color: var(--report-ink); }
 .variant-comparison th,.variant-comparison td { border-color: var(--report-border); white-space: nowrap; }
 .variant-comparison th { color: var(--report-muted); }
