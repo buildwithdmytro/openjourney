@@ -59,7 +59,7 @@ func TestCurrentMilestonePlanParsesInDocumentOrder(t *testing.T) {
 	if len(tasks) != 38 {
 		t.Fatalf("got %d tasks, want 38", len(tasks))
 	}
-	if next := firstTODO(tasks); next == nil || next.ID != "11.0.1" {
+	if next := firstTODO(tasks); next == nil || next.ID != "11.1.1" {
 		t.Fatalf("first TODO = %#v", next)
 	}
 	if tasks[len(tasks)-1].ID != "11.14.5" {
