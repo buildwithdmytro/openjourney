@@ -852,3 +852,31 @@ type FieldClassification struct {
 	SendToModel    string    `json:"send_to_model"`
 	CreatedAt      time.Time `json:"created_at"`
 }
+
+type EvalDataset struct {
+	ID          string    `json:"id"`
+	TenantID    string    `json:"tenant_id"`
+	WorkspaceID string    `json:"workspace_id"`
+	TaskType    string    `json:"task_type"`
+	Name        string    `json:"name"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+type EvalCase struct {
+	ID           string          `json:"id"`
+	DatasetID    string          `json:"dataset_id"`
+	TenantID     string          `json:"tenant_id"`
+	Input        json.RawMessage `json:"input"`
+	Expectations json.RawMessage `json:"expectations"`
+}
+
+type EvalRun struct {
+	ID              string    `json:"id"`
+	PromptVersionID string    `json:"prompt_version_id"`
+	TenantID        string    `json:"tenant_id"`
+	DatasetID       string    `json:"dataset_id"`
+	Passed          int       `json:"passed"`
+	Failed          int       `json:"failed"`
+	Verdict         string    `json:"verdict"`
+	CreatedAt       time.Time `json:"created_at"`
+}

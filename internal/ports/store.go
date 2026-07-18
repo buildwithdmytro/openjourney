@@ -181,6 +181,20 @@ type Store interface {
 	ListFieldClassifications(ctx context.Context, p domain.Principal, entityType string) ([]domain.FieldClassification, error)
 	UpdateFieldClassification(ctx context.Context, p domain.Principal, classification domain.FieldClassification) (domain.FieldClassification, error)
 	DeleteFieldClassification(ctx context.Context, p domain.Principal, id string) error
+
+	CreateEvalDataset(ctx context.Context, p domain.Principal, dataset domain.EvalDataset) (domain.EvalDataset, error)
+	GetEvalDataset(ctx context.Context, p domain.Principal, id string) (domain.EvalDataset, error)
+	ListEvalDatasets(ctx context.Context, p domain.Principal) ([]domain.EvalDataset, error)
+	UpdateEvalDataset(ctx context.Context, p domain.Principal, dataset domain.EvalDataset) (domain.EvalDataset, error)
+	DeleteEvalDataset(ctx context.Context, p domain.Principal, id string) error
+	CreateEvalCase(ctx context.Context, p domain.Principal, evalCase domain.EvalCase) (domain.EvalCase, error)
+	GetEvalCase(ctx context.Context, p domain.Principal, id string) (domain.EvalCase, error)
+	ListEvalCases(ctx context.Context, p domain.Principal, datasetID string) ([]domain.EvalCase, error)
+	UpdateEvalCase(ctx context.Context, p domain.Principal, evalCase domain.EvalCase) (domain.EvalCase, error)
+	DeleteEvalCase(ctx context.Context, p domain.Principal, id string) error
+	CreateEvalRun(ctx context.Context, p domain.Principal, run domain.EvalRun) (domain.EvalRun, error)
+	GetEvalRun(ctx context.Context, p domain.Principal, id string) (domain.EvalRun, error)
+	ListEvalRuns(ctx context.Context, p domain.Principal, datasetID string) ([]domain.EvalRun, error)
 }
 
 // AIActivityRecorder is implemented by stores that persist the immutable AI

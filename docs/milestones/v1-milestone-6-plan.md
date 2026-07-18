@@ -554,7 +554,7 @@ them in order; compile + `go vet` between milestones. **Substrate (11.0–11.7) 
    *Done when:* the summary cites real report numbers and the proposed version is a draft. — done: added the pinned governed performance endpoint with report-number validation and draft-only campaign proposal; TestPerformanceCopilotCitesReportAndCreatesDraft passes.
 
 ### Milestone 11.12 — Offline eval harness + gate
-1. **Migration** `029_ai_eval.sql` + eval store CRUD. *Done when:* tables exist.
+1. [x] **Migration** `029_ai_eval.sql` + eval store CRUD. *Done when:* tables exist. — done: added migration 029 with eval datasets/cases/runs, tenant/workspace-scoped CRUD, and DB-gated TestAIEvalStoreCRUD_11_12_1.
 2. **Eval runner** `internal/ai/eval`: run a prompt_version against a dataset via the **fake**
    provider, apply validators (schema pass, forbidden-field/unauthorized-retrieval, latency, cost,
    basic hallucination checks), write `eval_runs`, and set `prompt_versions.eval_status`. A version
