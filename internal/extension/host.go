@@ -29,6 +29,7 @@ var ErrBudgetExceeded = errors.New("monthly budget exceeded")
 type Host struct {
 	store      ports.Store
 	httpClient *http.Client
+	blobs      ports.BlobStore
 }
 
 func NewHost(store ports.Store) *Host {
@@ -80,6 +81,10 @@ func NewHost(store ports.Store) *Host {
 		store:      store,
 		httpClient: client,
 	}
+}
+
+func (h *Host) SetBlobStore(blobs ports.BlobStore) {
+	h.blobs = blobs
 }
 
 func (h *Host) Invoke(ctx context.Context, principal domain.Principal, extensionID string, invocation string, input json.RawMessage) (json.RawMessage, string, error) {
@@ -191,7 +196,17 @@ func (h *Host) Invoke(ctx context.Context, principal domain.Principal, extension
 	if ev.Transport == "remote_http" {
 		output, invokeErr = h.invokeRemoteHTTP(invokeCtx, derivedP, ev, config, invocation, input)
 	} else if ev.Transport == "wasm" {
-		invokeErr = fmt.Errorf("wasm transport not implemented yet")
+		if h.blobs == nil {
+			invokeErr = fmt.Errorf("blob store is not configured on the extension host")
+		} else if ev.WasmBlobKey == nil || *ev.WasmBlobKey == "" {
+			invokeErr = fmt.Errorf("wasm blob key is missing in extension version")
+		} else {
+			var wasmBytes []byte
+			wasmBytes, invokeErr = h.blobs.Get(invokeCtx, *ev.WasmBlobKey)
+			if invokeErr == nil {
+				output, invokeErr = h.invokeWasm(invokeCtx, derivedP, ev, config, invocation, input, wasmBytes)
+			}
+		}
 	} else {
 		invokeErr = fmt.Errorf("unsupported transport: %s", ev.Transport)
 	}

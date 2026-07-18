@@ -395,10 +395,10 @@ keep tests reproducible; one consolidated security/integration pass in 14.10. Ea
    fallback branch; a valid decision takes the extension's branch; the run never dead-letters. — done: registered extension_action/condition, implemented execution delegating to Host with fallback, and verified via TestExtensionNodesExecution.
 
 ### Milestone 14.4 — WASI/Wasm sandbox (wazero)
-1. **Wasm runtime** `internal/extension/wasm.go` (Recipe 6.43): `wazero` module host with **no
+1. [x] **Wasm runtime** `internal/extension/wasm.go` (Recipe 6.43): `wazero` module host with **no
    net/fs**, a memory cap + ctx-deadline kill, JSON in/out; load the signed `wasm_blob_key` module.
    Add `wazero` to `go.mod`. *Done when:* deterministic output; deadline kills a hot loop; no
-   socket/file access is possible; `go mod tidy` clean.
+   socket/file access is possible; `go mod tidy` clean. — done: implemented wazero WASI sandbox in wasm.go with memory limits/close on context done, verified via TestWasm_* unit tests.
 
 ### Milestone 14.5 — Ingestion-transform extension
 1. **Pre-accept transform hook** (§3.3): between `ValidateEventSchema` and `AcceptEvents`
