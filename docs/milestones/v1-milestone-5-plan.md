@@ -443,9 +443,9 @@ be registered in the adapter registry (10.0).**
    the policy gate; quiet-hours honored for sms/push; fatigue counts sms+push **together with**
    email (cross-channel cap, reuse `TestSentCountSince_FatigueAcrossChannels`). *Done when:*
    each is proven by a test. — done: `internal/postgres/compliance_integration_test.go` asserts STOP-suppression blocking, quiet-hours, and cross-channel fatigue capping correctly.
-4. **Determinism**: an experiment-bound subject gets the **same variant regardless of channel**
+4. [x] **Determinism**: an experiment-bound subject gets the **same variant regardless of channel**
    (email vs sms vs push) — the assignment is channel-independent. *Done when:* a test asserts
-   identical variant across channels.
+   identical variant across channels. — done: `internal/postgres/determinism_integration_test.go` verifies that a subject assigned a variant (e.g. treatment) gets the same variant on subsequent assignments for different channels.
 5. **Telemetry**: `MessagesSent`/`Bounces`/`Complaints{channel=sms|push}`,
    `openjourney_push_tokens_retired_total`, `openjourney_sms_opt_outs_total`. *Done when:*
    counters increment with the right labels; retirement/opt-out counted exactly once.
