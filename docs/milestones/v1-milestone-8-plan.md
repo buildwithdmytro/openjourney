@@ -414,9 +414,9 @@ Each task ends with a **Done when**. Do them in order; compile + `go vet` betwee
 	pluggable captcha interface (no-op default). *Done when:* unit tests cover limit/honeypot/token
 	expiry/tamper. — done: `publicguard_test.go` covers token-bucket limit/refill, honeypot, token
 	expiry/tamper, trusted client IP handling, and no-op captcha; full Go build/vet/test passes.
-2. **HTML-serving substrate**: a helper that renders a pinned version via `render.Render` and writes
+2. [x] **HTML-serving substrate**: a helper that renders a pinned version via `render.Render` and writes
    `Content-Type: text/html` (+ a static asset route `GET /a/{blobKey}` via `BlobStore.Get`). *Done
-   when:* a trivial page renders as HTML and an asset streams from blob.
+   when:* a trivial page renders as HTML and an asset streams from blob. — done: `publicserve_test.go` proves Liquid HTML rendering and blob-backed asset streaming; full Go build/vet/test passes.
 3. **Versioned-resource scaffold** `internal/publishing`: the shared draft→immutable-published (blob
    freeze) helper reused by forms & pages (Recipe 6.35), behind the human-actor gate. *Done when:* a
    fixture resource publishes idempotently; api_key → 403.
