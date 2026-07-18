@@ -419,9 +419,11 @@ task ends with a **Done when**. Do them in order; compile + `go vet` between mil
 1. [x] **Scoring + scores**: scoring-model editor (expression/LLM, publish), a per-profile scores
    inspector, and a **score condition** in the segment builder. *Done when:* `npm run build` passes;
    a scoring model and a score-triggered segment round-trip. — done: added governed scoring model/version APIs, Scoring editor and profile score inspector, score-condition segment controls, and Scoring UI round-trip test; Go and web suites pass.
-2. **Realtime node + optimization**: an `ai_decision` node in the journey builder (with a required
+2. [x] **Realtime node + optimization**: an `ai_decision` node in the journey builder (with a required
    fallback branch) and an online-optimization proposals review/approve panel. *Done when:* the node
-   round-trips with its fallback; a proposal can be approved from the UI (human actor).
+   round-trips with its fallback; a proposal can be approved from the UI (human actor). — done: added
+   bounded ai_decision editor validation/config round-trip and governed proposal review/approval; web
+   typecheck, build, and 30-test suite pass including Experiments approval coverage.
 
 ### Milestone 12.11 — Integration, determinism, governance & audit closeout
 1. **Score-triggered E2E** (DB-gated): compute scores for a segment, resolve a score-conditioned

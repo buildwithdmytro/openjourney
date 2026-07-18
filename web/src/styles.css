@@ -75,6 +75,10 @@ button.danger { color: #a93838; background: #fff0f0; }
 
 /* Experiment authoring */
 .experiments-layout { display: grid; grid-template-columns: minmax(440px, .95fr) minmax(480px, 1.05fr); gap: 18px; align-items: start; }
+.optimization-panel { margin-top: 18px; padding-top: 18px; border-top: 1px solid #e4e7ec; }
+.optimization-panel h3 { margin: 4px 0; }
+.optimization-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 0; border-top: 1px solid #eef0f4; }
+.optimization-row strong { min-width: 150px; }
 .experiment-editor { position: sticky; top: 20px; }
 .experiment-form { display: grid; grid-template-columns: 1fr; align-items: stretch; margin-top: 18px; }
 .experiment-inline-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }

@@ -76,6 +76,7 @@ const stepCatalog = [
   { type: "wait_event", icon: "◎", title: "Wait for an event", description: "Continue when a customer takes an action", group: "Timing" },
   { type: "condition", icon: "◇", title: "Decision", description: "Create Yes and No paths using customer data", group: "Paths" },
   { type: "split", icon: "⑂", title: "Split paths", description: "Divide customers by percentage or audience", group: "Paths" },
+  { type: "ai_decision", icon: "✦", title: "AI decision", description: "Choose a declared path with a deterministic fallback", group: "Paths" },
   { type: "action", icon: "↻", title: "Update profile", description: "Save a value on the customer profile", group: "Data" },
   { type: "goal", icon: "⚑", title: "Mark a goal", description: "Record a successful journey outcome", group: "Finish" },
   { type: "exit", icon: "✓", title: "Exit journey", description: "End this path", group: "Finish" },
@@ -91,6 +92,7 @@ function nodeSummary(type: string, config: Record<string, any>): string {
   if (type === "wait_event") return `Wait for ${config.event_type || "an event"}`;
   if (type === "condition") return `${config.dsl?.field || "Customer"} ${config.dsl?.operator || "matches"} ${config.dsl?.value ?? "a value"}`;
   if (type === "split") return `${config.branches?.length || 2} customer paths`;
+  if (type === "ai_decision") return `${config.branches?.length || 2} paths · fallback: ${config.fallback || "required"}`;
   if (type === "action") return "Update customer attributes";
   if (type === "goal") return config.name || "Journey goal";
   if (type === "exit") return config.reason || "Journey complete";
@@ -137,6 +139,7 @@ const getNodeStyle = (type: string, selected: boolean) => {
       return { ...base, borderColor: "#af52de", background: "#f5ecfc", color: "#af52de" };
     case "condition":
     case "split":
+    case "ai_decision":
       return { ...base, borderColor: "#e27220", background: "#fef3eb", color: "#e27220" };
     default:
       return { ...base, borderColor: "#5f6368", background: "#f1f3f4", color: "#5f6368" };
@@ -501,6 +504,15 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
             errs.push(`Split node '${n.id}' is missing outgoing edge for branch '${br.label}'.`);
           }
         });
+      } else if (type === "ai_decision") {
+        const config = n.data.config as any;
+        const branches = Array.isArray(config.branches) ? config.branches : [];
+        const edgeLabels = outgoing.map((e) => e.label || "");
+        if (!config.prompt_version_id) errs.push(`AI decision node '${n.id}' requires a pinned prompt version.`);
+        if (!config.timeout_ms || Number(config.timeout_ms) <= 0 || Number(config.timeout_ms) > 5000) errs.push(`AI decision node '${n.id}' timeout must be between 1 and 5000 ms.`);
+        if (!config.max_cost_cents || Number(config.max_cost_cents) <= 0) errs.push(`AI decision node '${n.id}' requires a positive cost cap.`);
+        if (!config.fallback || !branches.includes(config.fallback)) errs.push(`AI decision node '${n.id}' fallback must be one of its declared branches.`);
+        if (outgoing.length !== branches.length || branches.some((branch: string) => !edgeLabels.includes(branch))) errs.push(`AI decision node '${n.id}' needs one outgoing edge for every declared branch.`);
       } else if (type === "wait_event") {
         if (outgoing.length !== 2) {
           errs.push(`Wait Event node '${n.id}' must have exactly 2 outgoing branches.`);
@@ -636,6 +648,7 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
     if (type === "delay") defaultConfig = { duration: "1h" };
     if (type === "condition") defaultConfig = { dsl: { field: "country", operator: "equals", value: "US" } };
     if (type === "split") defaultConfig = { mode: "random", branches: [{ label: "a", weight: 50 }, { label: "b", weight: 50 }] };
+    if (type === "ai_decision") defaultConfig = { prompt_version_id: "", timeout_ms: 1000, max_cost_cents: 10, branches: ["yes", "no"], fallback: "no" };
     if (type === "message") defaultConfig = { template_id: "", channel: "email", transactional: false };
     if (type === "wait_event") defaultConfig = { event_type: "email.opened", timeout: "24h" };
     if (type === "action") defaultConfig = { action: "profile_update", set: {} };
@@ -644,10 +657,10 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
 
     const selectedEdge = edges.find((edge) => edge.id === selectedEdgeId);
     const anchor = nodes.find((node) => node.id === selectedNodeId) || nodes.find((node) => node.id === selectedEdge?.source);
-    const canInsertAfterAnchor = anchor && !["condition", "split", "wait_event", "exit"].includes(anchor.data.type as string);
+    const canInsertAfterAnchor = anchor && !["condition", "split", "ai_decision", "wait_event", "exit"].includes(anchor.data.type as string);
     const insertionEdge = selectedEdge || (canInsertAfterAnchor ? edges.find((edge) => edge.source === anchor.id) : undefined);
     const edgeTarget = nodes.find((node) => node.id === insertionEdge?.target);
-    const branchLabels = type === "condition" ? ["true", "false"] : type === "wait_event" ? ["success", "timeout"] : type === "split" ? ["a", "b"] : [];
+    const branchLabels = type === "condition" ? ["true", "false"] : type === "wait_event" ? ["success", "timeout"] : type === "ai_decision" ? ["yes", "no"] : type === "split" ? ["a", "b"] : [];
     const fallbackID = branchLabels.length > 0 && insertionEdge ? `n_${crypto.randomUUID()}` : "";
     const downstreamNodeIDs = new Set<string>();
     if (insertionEdge) {
@@ -890,6 +903,30 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
               <input value={config.dsl?.value ?? ""} placeholder="US" onChange={(e) => updateSelectedNodeConfig("dsl", { ...config.dsl, value: e.target.value })} />
             </label>}
           </div>
+        )}
+
+        {type === "ai_decision" && (
+          <>
+            <label>Pinned prompt version
+              <input value={config.prompt_version_id || ""} onChange={(e) => updateSelectedNodeConfig("prompt_version_id", e.target.value)} placeholder="prompt-version-uuid" required />
+            </label>
+            <label>Decision timeout (ms)
+              <input type="number" min="1" max="5000" value={config.timeout_ms || 1000} onChange={(e) => updateSelectedNodeConfig("timeout_ms", Number(e.target.value))} />
+            </label>
+            <label>Maximum cost (cents)
+              <input type="number" min="1" value={config.max_cost_cents || 1} onChange={(e) => updateSelectedNodeConfig("max_cost_cents", Number(e.target.value))} />
+            </label>
+            <label>Declared branches
+              <input value={(config.branches || []).join(", ")} onChange={(e) => updateSelectedNodeConfig("branches", e.target.value.split(",").map((branch: string) => branch.trim()).filter(Boolean))} placeholder="yes, no" />
+            </label>
+            <label>Deterministic fallback
+              <select value={config.fallback || ""} onChange={(e) => updateSelectedNodeConfig("fallback", e.target.value)}>
+                <option value="">Select fallback</option>
+                {(config.branches || []).map((branch: string) => <option key={branch} value={branch}>{branch}</option>)}
+              </select>
+            </label>
+            <small className="field-help">Provider timeout, budget, schema, and errors advance on this fallback branch. Model failures never retry the journey step.</small>
+          </>
         )}
 
         {type === "split" && (

@@ -14,6 +14,9 @@ import {
   updateCampaign,
   updateExperiment,
   updateJourney,
+  approveExperimentOptimization,
+  proposeExperimentOptimization,
+  OptimizationProposal,
 } from "../api";
 
 type JourneyNode = {
@@ -55,6 +58,8 @@ export default function Experiments({ apiKey, baseURL }: { apiKey: string; baseU
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [proposals, setProposals] = useState<Record<string, OptimizationProposal>>({});
+  const [optimizingID, setOptimizingID] = useState("");
 
   const draftCampaigns = campaigns.filter((campaign) => campaign.status === "draft");
   const draftJourneys = journeys.filter((journey) => journey.status === "draft");
@@ -220,6 +225,26 @@ export default function Experiments({ apiKey, baseURL }: { apiKey: string; baseU
     }
   }
 
+  async function propose(item: Experiment) {
+    setOptimizingID(item.id); setError(""); setSuccess("");
+    try {
+      const proposal = await proposeExperimentOptimization(baseURL, apiKey, item.id);
+      setProposals((current) => ({ ...current, [item.id]: proposal }));
+      setSuccess(`Proposal ready for ${item.name}. It is advisory until a human approves it.`);
+    } catch (cause) { setError(message(cause, "Unable to create optimization proposal")); }
+    finally { setOptimizingID(""); }
+  }
+
+  async function approve(item: Experiment, proposal: OptimizationProposal) {
+    setOptimizingID(item.id); setError(""); setSuccess("");
+    try {
+      const version = await approveExperimentOptimization(baseURL, apiKey, item.id, proposal.id);
+      setProposals((current) => ({ ...current, [item.id]: { ...proposal, status: "approved", approved_at: version.created_at } }));
+      setSuccess(`Approved version ${version.version} created. Seed and ${version.holdout_pct}% holdout preserved.`);
+    } catch (cause) { setError(message(cause, "Unable to approve optimization")); }
+    finally { setOptimizingID(""); }
+  }
+
   return <section className="experiments-layout">
     <article className="card experiment-editor">
       <div className="section-title">
@@ -281,6 +306,21 @@ export default function Experiments({ apiKey, baseURL }: { apiKey: string; baseU
       {!loading && items.length === 0 ? <p className="muted">No experiments yet.</p> : <table><thead><tr><th>Name</th><th>Subject</th><th>Holdout</th><th>Status</th><th>Actions</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}>
         <td><strong>{item.name}</strong>{item.description && <small>{item.description}</small>}</td><td>{item.subject_type}</td><td>{item.holdout_pct}%</td><td><span className={`pill ${item.status}`}>{item.status}</span></td><td><div className="report-row-actions"><button type="button" className="secondary" onClick={() => void edit(item)}>Edit</button><a className="report-link" href={`#reports?type=experiment&id=${encodeURIComponent(item.id)}`}>Report</a></div></td>
       </tr>)}</tbody></table>}
+      <div className="optimization-panel">
+        <div><span className="eyebrow">Governed optimization</span><h3>Proposals review</h3></div>
+        <p className="field-help">Generate a report-gated recommendation first. Approval creates a new immutable version; live assignment, seed, and holdout are not changed automatically.</p>
+        {items.map((item) => {
+          const proposal = proposals[item.id];
+          return <div className="optimization-row" key={item.id}>
+            <strong>Proposal for {item.name}</strong>
+            {!proposal ? <button type="button" className="secondary" disabled={optimizingID === item.id} onClick={() => void propose(item)}>{optimizingID === item.id ? "Evaluating…" : "Propose optimization"}</button> : <>
+              <span className={`pill ${proposal.status}`}>{proposal.status}</span>
+              <span>{proposal.winner_variant ? `Winner: ${proposal.winner_variant}` : proposal.rationale}</span>
+              {proposal.status === "proposed" && <button type="button" className="publish-button" disabled={optimizingID === item.id} onClick={() => void approve(item, proposal)}>Approve new version</button>}
+            </>}
+          </div>;
+        })}
+      </div>
     </article>
   </section>;
 }

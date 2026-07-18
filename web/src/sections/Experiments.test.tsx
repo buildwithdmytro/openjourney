@@ -136,4 +136,30 @@ it("binds a journey experiment to an editable message node", async () => {
   expect(nodes.find((node) => node.id === "welcome")?.config.experiment_id).toBe("experiment-journey");
 });
 
+it("reviews a proposal and approves a new immutable version", async () => {
+  const experiment = { id: "experiment-1", name: "CTA test", subject_type: "campaign", status: "running", method: "frequentist", seed: "stable-seed", holdout_pct: 12, variants: [] };
+  const proposal = { id: "proposal-1", experiment_id: "experiment-1", kind: "winner", winner_variant: "treatment", rationale: "Significant with no guardrail regression.", status: "proposed", report_snapshot: {}, created_at: "2026-01-01T00:00:00Z" };
+  const writes: string[] = [];
+  vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input); const method = init?.method || "GET";
+    if (url.endsWith("/v1/experiments") && method === "GET") return response([experiment]);
+    if (url.endsWith("/v1/campaigns") && method === "GET") return response([]);
+    if (url.endsWith("/v1/journeys") && method === "GET") return response({ journeys: [] });
+    if (url.endsWith("/v1/templates") && method === "GET") return response({ templates: [] });
+    if (url.endsWith("/v1/experiments/experiment-1/optimize") && method === "POST") { writes.push(url); return response(proposal, 201); }
+    if (url.endsWith("/v1/experiments/experiment-1/optimize/proposal-1/approve") && method === "POST") { writes.push(url); return response({ id: "version-2", experiment_id: "experiment-1", version: 2, seed: "stable-seed", holdout_pct: 12, variants: [], approved_by: "user-1", created_at: "2026-01-02T00:00:00Z" }, 201); }
+    throw new Error(`Unexpected request: ${method} ${url}`);
+  }));
+  render(<Experiments apiKey="session-user" baseURL="/api" />);
+  await screen.findByText("CTA test");
+  fireEvent.click(screen.getByRole("button", { name: "Propose optimization" }));
+  await screen.findByText("Winner: treatment");
+  fireEvent.click(screen.getByRole("button", { name: "Approve new version" }));
+  expect(await screen.findByText("approved")).toBeInTheDocument();
+  expect(writes).toEqual([
+    "/api/v1/experiments/experiment-1/optimize",
+    "/api/v1/experiments/experiment-1/optimize/proposal-1/approve",
+  ]);
+});
+
 type JourneyNodeForTest = { id: string; config: Record<string, unknown> };

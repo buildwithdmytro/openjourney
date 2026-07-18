@@ -495,6 +495,23 @@ export async function updateExperiment(baseURL: string, apiKey: string, id: stri
   return requestJSON<Experiment>(baseURL, apiKey, `/v1/experiments/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(input) });
 }
 
+export type OptimizationProposal = {
+  id: string; experiment_id: string; kind: "reallocate" | "winner";
+  report_snapshot: Record<string, unknown>; proposed_weights?: Record<string, number>;
+  winner_variant?: string; rationale: string; status: "proposed" | "approved" | "rejected" | "superseded";
+  approved_by?: string; approved_at?: string; created_at: string;
+};
+export type ExperimentVersion = {
+  id: string; experiment_id: string; version: number; seed: string; holdout_pct: number;
+  variants: ExperimentVariant[]; approved_by: string; created_at: string;
+};
+export async function proposeExperimentOptimization(baseURL: string, apiKey: string, id: string): Promise<OptimizationProposal> {
+  return requestJSON(baseURL, apiKey, `/v1/experiments/${encodeURIComponent(id)}/optimize`, { method: "POST" });
+}
+export async function approveExperimentOptimization(baseURL: string, apiKey: string, id: string, proposalID: string): Promise<ExperimentVersion> {
+  return requestJSON(baseURL, apiKey, `/v1/experiments/${encodeURIComponent(id)}/optimize/${encodeURIComponent(proposalID)}/approve`, { method: "POST" });
+}
+
 export type ReportCount = { total: number; unique: number };
 
 export type ReportFunnel = {
