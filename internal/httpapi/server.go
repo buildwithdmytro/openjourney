@@ -35,6 +35,9 @@ type Server struct {
 	snsVerifier       snsSignatureVerifier
 	allowedTopicARNs  []string
 	aiGateway         *ai.Gateway
+	publicLimiter     *IPRateLimiter
+	captchaVerifier   CaptchaVerifier
+	trustedProxy      bool
 }
 
 func New(store ports.Store, maxBatchSize int) http.Handler {
@@ -51,6 +54,8 @@ func NewWithSessionTTL(store ports.Store, maxBatchSize int, verifier ports.Token
 		tokenVerifier: verifier, corsAllowedOrigin: corsAllowedOrigin, sessionTTL: sessionTTL,
 		trackingSecretKey: []byte("change-me-in-production"),
 		trackingBaseURL:   "http://localhost:8080",
+		publicLimiter:     NewIPRateLimiter(1, 10),
+		captchaVerifier:   NoopCaptchaVerifier{},
 		snsVerifier:       realSNSSignatureVerifier{},
 		aiGateway:         ai.NewGateway(store),
 	}
@@ -64,6 +69,16 @@ func NewWithSessionTTL(store ports.Store, maxBatchSize int, verifier ports.Token
 // and deployments that select a custom provider implementation.
 func WithAIGateway(gateway *ai.Gateway) func(*Server) {
 	return func(s *Server) { s.aiGateway = gateway }
+}
+
+func WithPublicGuard(limiter *IPRateLimiter, captcha CaptchaVerifier, trustedProxy bool) func(*Server) {
+	return func(s *Server) {
+		s.publicLimiter = limiter
+		if captcha != nil {
+			s.captchaVerifier = captcha
+		}
+		s.trustedProxy = trustedProxy
+	}
 }
 
 // SetTracking sets the HMAC secret key and tracking base URL used by link redirect and open pixel handlers.
@@ -142,6 +157,7 @@ func (s *Server) buildMux() http.Handler {
 	mux.HandleFunc("GET /r/{token}", s.redirectLink)
 	mux.HandleFunc("GET /o/{token}", s.openPixel)
 	mux.HandleFunc("GET /a/{blobKey}", s.serveAsset)
+	mux.HandleFunc("POST /f/{formId}", s.submitPublicForm)
 	mux.HandleFunc("POST /v1/callbacks/ses", s.handleSESCallback)
 	mux.HandleFunc("POST /v1/callbacks/sms/{provider}", s.handleSMSCallback)
 	mux.HandleFunc("POST /v1/callbacks/push/{provider}", s.handlePushCallback)

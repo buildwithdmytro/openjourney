@@ -431,11 +431,13 @@ Each task ends with a **Done when**. Do them in order; compile + `go vet` betwee
    when:* a form round-trips and publishes an immutable version; the schema compiles. — done: typed form schema compilation/validation test, tenant-scoped CRUD, idempotent blob-frozen publish, and authenticated `/v1/forms` routes; full Go build/vet/test passes.
 
 ### Milestone 13.2 — Public form submission (capture core)
-1. **Public submit** `POST /f/{formId}` (Recipe 6.36) using the 13.0 guard: validate vs the pinned
+1. [x] **Public submit** `POST /f/{formId}` (Recipe 6.36) using the 13.0 guard: validate vs the pinned
    version schema, emit `profile.updated` + `form.submitted` (+ `consent.changed` w/ evidence) via
    `AcceptEvents`, record `form_submissions`, capture UTM. Add `form.submitted` to `isBuiltInEvent`.
    *Done when:* a valid submission creates one profile idempotently with consent evidence; honeypot/
-   bad-token/over-limit are rejected as in §3.1.
+   bad-token/over-limit are rejected as in §3.1. — done: `form_submit_test.go` proves defended valid
+   capture, idempotent event keys, consent event evidence, honeypot silent-drop, bad-token 403, and
+   per-IP 429; full Go build/vet/test passes.
 
 ### Milestone 13.3 — Landing pages + assets
 1. **Migration** `036_pages_assets.sql` per §2.2 + scopes `pages:*`, `assets:*`. *Done when:* exists.

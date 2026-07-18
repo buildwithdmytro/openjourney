@@ -26,6 +26,9 @@ type Store interface {
 	UpdateForm(context.Context, domain.Principal, domain.Form) (domain.Form, error)
 	ListForms(context.Context, domain.Principal) ([]domain.Form, error)
 	PublishForm(context.Context, domain.Principal, string, string, string, json.RawMessage) (domain.FormVersion, error)
+	// Public form capture uses these methods without authenticating the visitor.
+	GetPublishedForm(context.Context, string) (domain.Form, domain.FormVersion, error)
+	RecordFormSubmission(context.Context, domain.Principal, string, int, json.RawMessage, json.RawMessage, string) error
 	ClaimProjectionJob(context.Context) (domain.AcceptedEvent, bool, error)
 	ProjectEvent(context.Context, domain.AcceptedEvent) error
 	FailProjectionJob(context.Context, string, error) error

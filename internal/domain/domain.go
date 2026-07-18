@@ -79,6 +79,13 @@ func (e Event) Validate(now time.Time) error {
 		return errors.New("payload must be a JSON object")
 	}
 	switch e.Type {
+	case "form.submitted":
+		var body struct {
+			FormID string `json:"form_id"`
+		}
+		if err := json.Unmarshal(e.Payload, &body); err != nil || strings.TrimSpace(body.FormID) == "" {
+			return errors.New("form.submitted payload requires form_id")
+		}
 	case "profile.updated":
 		var body struct {
 			Attributes map[string]any `json:"attributes"`

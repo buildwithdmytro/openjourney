@@ -97,3 +97,13 @@ func ValidateSubmission(definition json.RawMessage, payload json.RawMessage) err
 	}
 	return schemas.Validate(def.Schema, payload)
 }
+
+// FieldsFromDefinition exposes the frozen field mapping to capture adapters
+// without allowing them to mutate the published definition.
+func FieldsFromDefinition(definition json.RawMessage) []Field {
+	var def Definition
+	if json.Unmarshal(definition, &def) != nil {
+		return nil
+	}
+	return def.Fields
+}

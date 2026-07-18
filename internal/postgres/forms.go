@@ -119,3 +119,37 @@ func (s *Store) PublishForm(ctx context.Context, p domain.Principal, id, publish
 	}
 	return out, nil
 }
+
+// GetPublishedForm is intentionally not tenant-scoped: the public form ID is
+// the lookup key. It returns only the immutable version pinned by the form.
+func (s *Store) GetPublishedForm(ctx context.Context, id string) (domain.Form, domain.FormVersion, error) {
+	var form domain.Form
+	var version domain.FormVersion
+	err := scanForm(s.pool.QueryRow(ctx, `SELECT `+formColumns+` FROM forms WHERE id=$1 AND status='published'`, id), &form)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Form{}, domain.FormVersion{}, ErrNotFound
+	}
+	if err != nil {
+		return domain.Form{}, domain.FormVersion{}, err
+	}
+	if form.CurrentVersionID == nil {
+		return domain.Form{}, domain.FormVersion{}, ErrNotFound
+	}
+	err = s.pool.QueryRow(ctx, `SELECT id, form_id, tenant_id, version, definition, manifest_key, published_by, published_at
+		FROM form_versions WHERE id=$1 AND form_id=$2`, *form.CurrentVersionID, form.ID).
+		Scan(&version.ID, &version.FormID, &version.TenantID, &version.Version, &version.Definition,
+			&version.ManifestKey, &version.PublishedBy, &version.PublishedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Form{}, domain.FormVersion{}, ErrNotFound
+	}
+	return form, version, err
+}
+
+func (s *Store) RecordFormSubmission(ctx context.Context, p domain.Principal, formID string, version int,
+	payload, utm json.RawMessage, sourceEventID string) error {
+	_, err := s.pool.Exec(ctx, `INSERT INTO form_submissions
+		(tenant_id,workspace_id,app_id,form_id,form_version,payload,utm,source_event_id)
+		VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (tenant_id,source_event_id) DO NOTHING`,
+		p.TenantID, p.WorkspaceID, p.AppID, formID, version, payload, utm, sourceEventID)
+	return err
+}
