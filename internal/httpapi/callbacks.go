@@ -743,26 +743,37 @@ func (s *Server) handlePushCallback(w http.ResponseWriter, r *http.Request) {
 	// 4. Verify HMAC-SHA256 signature
 	var identCfg struct {
 		WebhookSecret string `json:"webhook_secret"`
+		AllowUnsigned bool   `json:"allow_unsigned"`
 	}
 	if len(identity.Config) > 0 && string(identity.Config) != "{}" {
 		_ = json.Unmarshal(identity.Config, &identCfg)
 	}
-	if identCfg.WebhookSecret != "" {
-		sig := r.Header.Get("X-Push-Signature")
-		if sig == "" {
-			http.Error(w, "missing X-Push-Signature header", http.StatusForbidden)
+	if identCfg.WebhookSecret == "" {
+		if !identCfg.AllowUnsigned {
+			slog.Warn("push callback: rejected unsigned push callback (no webhook secret)",
+				"identity_id", identity.ID, "provider", provider)
+			http.Error(w, "unsigned callbacks are not allowed", http.StatusForbidden)
 			return
 		}
-		// Accept "sha256=<hex>" or bare hex
-		sigHex := strings.TrimPrefix(sig, "sha256=")
-		mac := hmac.New(sha256.New, []byte(identCfg.WebhookSecret))
-		mac.Write(bodyBytes)
-		expected := fmt.Sprintf("%x", mac.Sum(nil))
-		if !hmac.Equal([]byte(sigHex), []byte(expected)) {
-			slog.Warn("push callback: signature verification failed",
-				"identity_id", identity.ID, "provider", provider)
-			http.Error(w, "signature verification failed", http.StatusForbidden)
-			return
+	} else {
+		sig := r.Header.Get("X-Push-Signature")
+		if sig == "" {
+			if !identCfg.AllowUnsigned {
+				http.Error(w, "missing X-Push-Signature header", http.StatusForbidden)
+				return
+			}
+		} else {
+			// Accept "sha256=<hex>" or bare hex
+			sigHex := strings.TrimPrefix(sig, "sha256=")
+			mac := hmac.New(sha256.New, []byte(identCfg.WebhookSecret))
+			mac.Write(bodyBytes)
+			expected := fmt.Sprintf("%x", mac.Sum(nil))
+			if !hmac.Equal([]byte(sigHex), []byte(expected)) {
+				slog.Warn("push callback: signature verification failed",
+					"identity_id", identity.ID, "provider", provider)
+				http.Error(w, "signature verification failed", http.StatusForbidden)
+				return
+			}
 		}
 	}
 

@@ -432,7 +432,7 @@ func TestHandlePushCallback_Delivered(t *testing.T) {
 	store.getSendingIdentityFunc = func(id string) (domain.SendingIdentity, error) {
 		return domain.SendingIdentity{
 			ID: id, TenantID: "ten-1", Channel: "push", Provider: "fcm",
-			Config: json.RawMessage(`{}`),
+			Config: json.RawMessage(`{"allow_unsigned":true}`),
 		}, nil
 	}
 	store.AcceptEventsFunc = func(_ context.Context, _ domain.Principal, events []domain.Event) ([]string, error) {
@@ -477,7 +477,7 @@ func TestHandlePushCallback_InvalidToken_RetiresToken(t *testing.T) {
 	store.getSendingIdentityFunc = func(id string) (domain.SendingIdentity, error) {
 		return domain.SendingIdentity{
 			ID: id, TenantID: "ten-1", Channel: "push", Provider: "fcm",
-			Config: json.RawMessage(`{}`),
+			Config: json.RawMessage(`{"allow_unsigned":true}`),
 		}, nil
 	}
 	store.retireDeviceTokenFunc = func(_ context.Context, _, _, token string) error {
@@ -539,6 +539,70 @@ func TestHandlePushCallback_BadSignatureRejected(t *testing.T) {
 	}
 	if len(captured) != 0 {
 		t.Errorf("expected no events on bad signature, got %d", len(captured))
+	}
+}
+
+func TestHandlePushCallback_NoSignatureRejectedByDefault(t *testing.T) {
+	var captured []domain.Event
+	store := &fakeStore{}
+	store.getSendingIdentityFunc = func(id string) (domain.SendingIdentity, error) {
+		return domain.SendingIdentity{
+			ID: id, TenantID: "ten-1", Channel: "push", Provider: "fcm",
+			Config: json.RawMessage(`{}`),
+		}, nil
+	}
+	store.AcceptEventsFunc = func(_ context.Context, _ domain.Principal, events []domain.Event) ([]string, error) {
+		captured = append(captured, events...)
+		return nil, nil
+	}
+	server := New(store, 0)
+
+	body, _ := json.Marshal(map[string]string{
+		"event": "delivered", "token": "tok-abc",
+		"tenant_id": "ten-1", "sending_identity_id": "iden-1",
+		"provider_message_id": "fcm-msg-1",
+	})
+	req := httptest.NewRequest("POST", "/v1/callbacks/push/fcm", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", w.Code)
+	}
+	if len(captured) != 0 {
+		t.Errorf("expected no events, got %d", len(captured))
+	}
+}
+
+func TestHandlePushCallback_WebhookSecretMissingSignatureRejected(t *testing.T) {
+	var captured []domain.Event
+	store := &fakeStore{}
+	store.getSendingIdentityFunc = func(id string) (domain.SendingIdentity, error) {
+		return domain.SendingIdentity{
+			ID: id, TenantID: "ten-1", Channel: "push", Provider: "fcm",
+			Config: json.RawMessage(`{"webhook_secret":"supersecret"}`),
+		}, nil
+	}
+	store.AcceptEventsFunc = func(_ context.Context, _ domain.Principal, events []domain.Event) ([]string, error) {
+		captured = append(captured, events...)
+		return nil, nil
+	}
+	server := New(store, 0)
+
+	body, _ := json.Marshal(map[string]string{
+		"event": "delivered", "token": "tok-abc",
+		"tenant_id": "ten-1", "sending_identity_id": "iden-1",
+		"provider_message_id": "fcm-msg-1",
+	})
+	req := httptest.NewRequest("POST", "/v1/callbacks/push/fcm", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", w.Code)
+	}
+	if len(captured) != 0 {
+		t.Errorf("expected no events, got %d", len(captured))
 	}
 }
 

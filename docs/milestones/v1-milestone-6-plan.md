@@ -435,11 +435,11 @@ them in order; compile + `go vet` between milestones. **Substrate (11.0–11.7) 
 (11.8–11.11).**
 
 ### Milestone 11.0 — Fold-in hardening (M5 review fix) — DO FIRST
-1. **Push callback signature gap.** In `internal/httpapi/callbacks.go:750`, require signature
+1. [x] **Push callback signature gap.** In `internal/httpapi/callbacks.go:750`, require signature
    verification for `POST /v1/callbacks/push/{provider}`: if the identity has no `webhook_secret`,
    **reject** (or gate behind an explicit, documented `allow_unsigned` config, default off) — an
    unsigned forged `invalid_token`/`delivered` must not be accepted. *Done when:* a forged
-   unsigned push callback is 403 by default; add the negative test.
+   unsigned push callback is 403 by default; add the negative test. — done: signature verification required by default; added test TestHandlePushCallback_NoSignatureRejectedByDefault.
 2. **Correct the two M5 audit slips** in `docs/milestones/v1-milestone-5-audit.md`: the push
    "verify signatures before updating records" wording (now conditional-free), and the migration
    filename (`024_push_delivery_unique.sql`, not `..._fanout_uniqueness.sql`). *Done when:* the
