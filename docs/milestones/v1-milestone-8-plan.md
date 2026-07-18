@@ -507,8 +507,8 @@ Each task ends with a **Done when**. Do them in order; compile + `go vet` betwee
    `acquisition_e2e_integration_test.go` serves a pinned page, submits its signed form, drains the
    event projector, and asserts one profile, consent ledger evidence, UTM attribution, and one
    `form.submitted`/`form_submissions` row; full Go build/vet/test passes.
-2. **Anti-abuse**: honeypot silent-drop, expired/tampered token → 403, per-IP burst → 429, bad values
-   → 422 — each proven by a test. *Done when:* asserted.
+2. [x] **Anti-abuse**: honeypot silent-drop, expired/tampered token → 403, per-IP burst → 429, bad values
+   → 422 — each proven by a test. *Done when:* asserted. — done: `form_submit_test.go` asserts all required status codes and no event side effects for rejected submissions; full Go build/vet/test passes.
 3. **Idempotency & governance**: re-submitting / re-importing the same input creates no duplicate
    profile; form/page publish requires a human actor (api_key → 403); every capture rides the event
    pipeline (no direct profile write). *Done when:* asserted.

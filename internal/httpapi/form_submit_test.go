@@ -103,7 +103,7 @@ func TestPublicFormSubmitDefensesAndIdempotency(t *testing.T) {
 		t.Fatalf("consent evidence = %s", consent.Payload)
 	}
 
-	_, invalidHandler, invalidToken := newPublicSubmitHandler(t, NewIPRateLimiter(1, 10))
+	invalidStore, invalidHandler, invalidToken := newPublicSubmitHandler(t, NewIPRateLimiter(1, 10))
 	invalidBody := `{"form_token":"` + invalidToken + `","values":{"email":"not-an-email"}}`
 	r := httptest.NewRequest(http.MethodPost, "/f/form-1", strings.NewReader(invalidBody))
 	r.RemoteAddr = "198.51.100.14:1234"
@@ -112,7 +112,10 @@ func TestPublicFormSubmitDefensesAndIdempotency(t *testing.T) {
 	if w.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("invalid schema status = %d", w.Code)
 	}
-	_, expiredHandler, _ := newPublicSubmitHandler(t, NewIPRateLimiter(1, 10))
+	if len(invalidStore.events) != 0 {
+		t.Fatalf("invalid values emitted %d events", len(invalidStore.events))
+	}
+	expiredStore, expiredHandler, _ := newPublicSubmitHandler(t, NewIPRateLimiter(1, 10))
 	expiredToken, err := SignFormToken("form-1", 1, time.Now().Add(-time.Minute), []byte("change-me-in-production"))
 	if err != nil {
 		t.Fatal(err)
@@ -125,8 +128,11 @@ func TestPublicFormSubmitDefensesAndIdempotency(t *testing.T) {
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("expired token status = %d", w.Code)
 	}
+	if len(expiredStore.events) != 0 {
+		t.Fatalf("expired token emitted %d events", len(expiredStore.events))
+	}
 
-	_, honeypotHandler, validToken := newPublicSubmitHandler(t, NewIPRateLimiter(1, 10))
+	honeypotStore, honeypotHandler, validToken := newPublicSubmitHandler(t, NewIPRateLimiter(1, 10))
 	honeypot := `{"form_token":"` + validToken + `","honeypot":"bot","values":{"email":"bot@example.com"}}`
 	if got := func() int {
 		r := httptest.NewRequest(http.MethodPost, "/f/form-1", strings.NewReader(honeypot))
@@ -137,8 +143,11 @@ func TestPublicFormSubmitDefensesAndIdempotency(t *testing.T) {
 	}(); got != http.StatusOK {
 		t.Fatalf("honeypot status = %d", got)
 	}
+	if len(honeypotStore.events) != 0 || honeypotStore.submissions != 0 {
+		t.Fatalf("honeypot emitted events=%d and recorded submissions=%d", len(honeypotStore.events), honeypotStore.submissions)
+	}
 
-	_, badTokenHandler, _ := newPublicSubmitHandler(t, NewIPRateLimiter(1, 10))
+	badTokenStore, badTokenHandler, _ := newPublicSubmitHandler(t, NewIPRateLimiter(1, 10))
 	bad := `{"form_token":"tampered","values":{"email":"person@example.com"}}`
 	r = httptest.NewRequest(http.MethodPost, "/f/form-1", strings.NewReader(bad))
 	r.RemoteAddr = "198.51.100.12:1234"
@@ -147,8 +156,11 @@ func TestPublicFormSubmitDefensesAndIdempotency(t *testing.T) {
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("bad token status = %d", w.Code)
 	}
+	if len(badTokenStore.events) != 0 {
+		t.Fatalf("tampered token emitted %d events", len(badTokenStore.events))
+	}
 
-	_, limitedHandler, limitedToken := newPublicSubmitHandler(t, NewIPRateLimiter(0, 1))
+	limitedStore, limitedHandler, limitedToken := newPublicSubmitHandler(t, NewIPRateLimiter(0, 1))
 	limitedBody := `{"form_token":"` + limitedToken + `","values":{"email":"person@example.com"}}`
 	for i := 0; i < 2; i++ {
 		r := httptest.NewRequest(http.MethodPost, "/f/form-1", strings.NewReader(limitedBody))
@@ -158,5 +170,8 @@ func TestPublicFormSubmitDefensesAndIdempotency(t *testing.T) {
 		if i == 1 && w.Code != http.StatusTooManyRequests {
 			t.Fatalf("over-limit status = %d", w.Code)
 		}
+	}
+	if len(limitedStore.events) != 2 {
+		t.Fatalf("rate-limited burst emitted %d events; want only the first submission", len(limitedStore.events))
 	}
 }
