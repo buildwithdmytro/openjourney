@@ -273,6 +273,32 @@ func (s *Store) resolveSegmentIDs(ctx context.Context, p domain.Principal, seg d
 			perLegCounts["profile_attributes"] += len(matchingProfileIDs)
 			return matchingProfileIDs, nil
 
+		case *audience.Score:
+			sql, args, err := audience.CompileProfile(nodeType)
+			if err != nil {
+				return nil, err
+			}
+
+			pgArgs := append([]any{p.TenantID, p.WorkspaceID}, args...)
+			pRows, err := s.pool.Query(ctx, sql, pgArgs...)
+			if err != nil {
+				return nil, err
+			}
+			defer pRows.Close()
+
+			matchingProfileIDs := make(map[string]bool)
+			for pRows.Next() {
+				var extID string
+				if err := pRows.Scan(&extID); err != nil {
+					return nil, err
+				}
+				if pID, exists := externalIDToProfileID[extID]; exists {
+					matchingProfileIDs[pID] = true
+				}
+			}
+			perLegCounts["scores"] += len(matchingProfileIDs)
+			return matchingProfileIDs, nil
+
 		case *audience.Consent:
 			sql, pgArgs := audience.CompileConsent(nodeType, p.TenantID, p.AppID)
 			cRows, err := s.pool.Query(ctx, sql, pgArgs...)

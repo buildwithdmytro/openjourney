@@ -381,10 +381,10 @@ task ends with a **Done when**. Do them in order; compile + `go vet` between mil
    (profile, model, score_name) with the latest value; the status resource reaches `complete`. — done: added scoring_requests table/CRUD, implemented batch scoring worker case, registered compute routes, and verified idempotency via TestBatchScoringJob_12_5_1.
 
 ### Milestone 12.6 — Score condition in the audience DSL
-1. **Score leaf** (Recipe 6.32): `Score` AST node + `parse` case + `compile_pg` parameterized
+1. [x] **Score leaf** (Recipe 6.32): `Score` AST node + `parse` case + `compile_pg` parameterized
    subquery on `profile_scores` + `segments.go` resolve case. *Done when:* a segment with a score
    condition resolves to the right profiles and the compiled SQL binds every value (no interpolation);
-   a score-triggered scheduled journey enrolls them with no new enrollment code.
+   a score-triggered scheduled journey enrolls them with no new enrollment code. — done: added score AST parsing, parameterized tenant/workspace-scoped compilation, single-profile evaluation, segment resolution, and scheduled-enrollment integration coverage.
 
 ### Milestone 12.7 — Bounded realtime AI decision node
 1. **`ai_decision` node** (Recipe 6.33): config struct + executor calling `Gateway.Generate` inline

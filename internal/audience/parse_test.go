@@ -26,6 +26,13 @@ func TestParseValid(t *testing.T) {
 				"channel": "email",
 				"topic": "marketing",
 				"state": "subscribed"
+			},
+			{
+				"type": "score",
+				"model": "model-1",
+				"score_name": "purchase_propensity",
+				"operator": "greater_than",
+				"value": 0.85
 			}
 		]
 	}`)
@@ -40,8 +47,8 @@ func TestParseValid(t *testing.T) {
 		t.Fatalf("expected *And node, got %T", node)
 	}
 
-	if len(andNode.Conditions) != 3 {
-		t.Fatalf("expected 3 conditions, got %d", len(andNode.Conditions))
+	if len(andNode.Conditions) != 4 {
+		t.Fatalf("expected 4 conditions, got %d", len(andNode.Conditions))
 	}
 
 	pa, ok := andNode.Conditions[0].(*ProfileAttribute)
@@ -57,6 +64,11 @@ func TestParseValid(t *testing.T) {
 	c, ok := andNode.Conditions[2].(*Consent)
 	if !ok || c.Channel != "email" || c.Topic != "marketing" || c.State != "subscribed" {
 		t.Fatalf("unexpected consent condition: %+v", andNode.Conditions[2])
+	}
+
+	sc, ok := andNode.Conditions[3].(*Score)
+	if !ok || sc.Model != "model-1" || sc.ScoreName != "purchase_propensity" || sc.Operator != "greater_than" || sc.Value != 0.85 {
+		t.Fatalf("unexpected score condition: %+v", andNode.Conditions[3])
 	}
 }
 
@@ -84,6 +96,22 @@ func TestParseInvalid(t *testing.T) {
 		{
 			name: "unknown consent state",
 			json: `{"type": "consent", "channel": "email", "topic": "marketing", "state": "opt_in"}`,
+		},
+		{
+			name: "missing score model",
+			json: `{"type": "score", "score_name": "purchase_propensity", "operator": "greater_than", "value": 0.85}`,
+		},
+		{
+			name: "missing score name",
+			json: `{"type": "score", "model": "model-1", "operator": "greater_than", "value": 0.85}`,
+		},
+		{
+			name: "unknown score operator",
+			json: `{"type": "score", "model": "model-1", "score_name": "purchase_propensity", "operator": "in", "value": 0.85}`,
+		},
+		{
+			name: "missing score value",
+			json: `{"type": "score", "model": "model-1", "score_name": "purchase_propensity", "operator": "greater_than"}`,
 		},
 	}
 

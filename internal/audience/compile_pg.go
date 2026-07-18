@@ -86,6 +86,37 @@ func compileProfileNode(node Node, args *[]any) (string, error) {
 			return "", fmt.Errorf("unsupported profile operator: %s", n.Operator)
 		}
 
+	case *Score:
+		if n.Model == "" {
+			return "", fmt.Errorf("score condition requires model")
+		}
+		if n.ScoreName == "" {
+			return "", fmt.Errorf("score condition requires score_name")
+		}
+		var opSql string
+		switch n.Operator {
+		case "greater_than":
+			opSql = ">"
+		case "less_than":
+			opSql = "<"
+		case "equals":
+			opSql = "="
+		default:
+			return "", fmt.Errorf("unsupported score operator: %s", n.Operator)
+		}
+
+		*args = append(*args, n.Model)
+		modelPlaceholder := fmt.Sprintf("$%d", len(*args)+2)
+
+		*args = append(*args, n.ScoreName)
+		namePlaceholder := fmt.Sprintf("$%d", len(*args)+2)
+
+		*args = append(*args, n.Value)
+		valuePlaceholder := fmt.Sprintf("$%d", len(*args)+2)
+
+		return fmt.Sprintf("id IN (SELECT profile_id FROM profile_scores WHERE tenant_id = $1 AND workspace_id = $2 AND scoring_model_id = %s AND score_name = %s AND value %s %s)",
+			modelPlaceholder, namePlaceholder, opSql, valuePlaceholder), nil
+
 	default:
 		return "", nil
 	}

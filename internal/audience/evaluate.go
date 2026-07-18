@@ -56,6 +56,14 @@ func Matches(ctx context.Context, store EvaluatorStore, tenantID, workspaceID, a
 		fullArgs := append([]any{tenantID, workspaceID, profileID}, args...)
 		return store.QueryProfileMatches(ctx, sql, fullArgs)
 
+	case *Score:
+		sql, args, err := CompileProfileSingle(n)
+		if err != nil {
+			return false, err
+		}
+		fullArgs := append([]any{tenantID, workspaceID, profileID}, args...)
+		return store.QueryProfileMatches(ctx, sql, fullArgs)
+
 	case *Consent:
 		sql, args := CompileConsentSingle(n, tenantID, appID, profileID)
 		return store.QueryConsentMatches(ctx, sql, args)

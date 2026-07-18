@@ -34,6 +34,10 @@ type rawNode struct {
 	Channel string `json:"channel"`
 	Topic   string `json:"topic"`
 	State   string `json:"state"`
+
+	// Score
+	Model     string `json:"model"`
+	ScoreName string `json:"score_name"`
 }
 
 func (rn *rawNode) toNode() (Node, error) {
@@ -139,6 +143,35 @@ func (rn *rawNode) toNode() (Node, error) {
 			Channel: rn.Channel,
 			Topic:   rn.Topic,
 			State:   rn.State,
+		}, nil
+
+	case "score":
+		if rn.Model == "" {
+			return nil, errors.New("score condition requires model")
+		}
+		if rn.ScoreName == "" {
+			return nil, errors.New("score condition requires score_name")
+		}
+		if rn.Operator == "" {
+			return nil, errors.New("score condition requires operator")
+		}
+		switch rn.Operator {
+		case "greater_than", "less_than", "equals":
+		default:
+			return nil, fmt.Errorf("unknown score operator: %s", rn.Operator)
+		}
+		if len(rn.Value) == 0 {
+			return nil, errors.New("score condition requires value")
+		}
+		var val float64
+		if err := json.Unmarshal(rn.Value, &val); err != nil {
+			return nil, err
+		}
+		return &Score{
+			Model:     rn.Model,
+			ScoreName: rn.ScoreName,
+			Operator:  rn.Operator,
+			Value:     val,
 		}, nil
 
 	default:

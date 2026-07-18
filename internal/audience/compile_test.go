@@ -61,6 +61,18 @@ func TestCompileProfile(t *testing.T) {
 			expected: "SELECT external_id FROM profiles WHERE tenant_id=$1 AND workspace_id=$2 AND ((attributes->>'country' = $3 AND (attributes->>'plan' = $4 OR NOT (attributes->>'churned' = $5))))",
 			args:     []any{"US", "gold", true},
 		},
+		{
+			name:     "score greater_than operator",
+			node:     &Score{Model: "model-1", ScoreName: "purchase_propensity", Operator: "greater_than", Value: 0.85},
+			expected: "SELECT external_id FROM profiles WHERE tenant_id=$1 AND workspace_id=$2 AND (id IN (SELECT profile_id FROM profile_scores WHERE tenant_id = $1 AND workspace_id = $2 AND scoring_model_id = $3 AND score_name = $4 AND value > $5))",
+			args:     []any{"model-1", "purchase_propensity", 0.85},
+		},
+		{
+			name:     "score less_than operator",
+			node:     &Score{Model: "model-1", ScoreName: "churn_risk", Operator: "less_than", Value: 0.3},
+			expected: "SELECT external_id FROM profiles WHERE tenant_id=$1 AND workspace_id=$2 AND (id IN (SELECT profile_id FROM profile_scores WHERE tenant_id = $1 AND workspace_id = $2 AND scoring_model_id = $3 AND score_name = $4 AND value < $5))",
+			args:     []any{"model-1", "churn_risk", 0.3},
+		},
 	}
 
 	for _, tc := range tests {

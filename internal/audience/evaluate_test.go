@@ -88,3 +88,21 @@ func TestMatchesEventHistory(t *testing.T) {
 		t.Errorf("expected matched to be true")
 	}
 }
+
+func TestMatchesScore(t *testing.T) {
+	store := &mockEvaluatorStore{profileMatched: true}
+	node := &Score{
+		Model:     "model-1",
+		ScoreName: "purchase_propensity",
+		Operator:  "greater_than",
+		Value:     0.85,
+	}
+
+	matched, err := Matches(context.Background(), store, "tenant-1", "workspace-1", "app-1", "profile-1", node)
+	if err != nil {
+		t.Fatalf("Matches failed: %v", err)
+	}
+	if !matched {
+		t.Errorf("expected matched to be true")
+	}
+}

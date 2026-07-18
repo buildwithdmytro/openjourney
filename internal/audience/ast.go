@@ -1,6 +1,5 @@
 package audience
 
-
 type Node interface {
 	Type() string
 }
@@ -47,3 +46,12 @@ type Consent struct {
 }
 
 func (c *Consent) Type() string { return "consent" }
+
+type Score struct {
+	Model     string  `json:"model"`
+	ScoreName string  `json:"score_name"`
+	Operator  string  `json:"operator"` // greater_than, less_than, equals
+	Value     float64 `json:"value"`
+}
+
+func (s *Score) Type() string { return "score" }
