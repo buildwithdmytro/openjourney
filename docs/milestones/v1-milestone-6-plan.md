@@ -578,8 +578,8 @@ them in order; compile + `go vet` between milestones. **Substrate (11.0–11.7) 
    draft. *Done when:* four copilot tests pass. — done: fake-provider tests assert render, audience parse/compile, journey validation, and performance report citation with draft-only resource creation.
 3. [x] **Eval gate**: an unevaluated/failed prompt_version cannot be invoked or published. *Done when:*
    asserted. — done: gateway rejects pending/failed prompt versions before provider egress with denied-policy activity; publish gate coverage remains in TestPromptsRegistry.
-4. **Run the suite**: `go build/vet/test ./...`, `go mod tidy`, `cd web && npm run typecheck &&
-   npm run build && npm test`, `npm audit`. *Done when:* green.
+4. [x] **Run the suite**: `go build/vet/test ./...`, `go mod tidy`, `cd web && npm run typecheck &&
+   npm run build && npm test`, `npm audit`. *Done when:* green. — done: go build, vet, tests, tidy; web typecheck, build, 28 tests, and npm audit (0 vulnerabilities) all pass.
 5. **Audit doc** `docs/milestones/v1-milestone-6-audit.md` in the M2–M5 table format, one row per
    requirement (11.0–11.14) with direct evidence. *Done when:* every row cites a named file/test.
 
