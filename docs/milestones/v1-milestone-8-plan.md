@@ -450,8 +450,8 @@ Each task ends with a **Done when**. Do them in order; compile + `go vet` betwee
    signed-token rendering, and token-backed form submission with event emission; full Go build/vet/test passes.
 
 ### Milestone 13.4 — Link / UTM tracking
-1. **Migration** `037_tracking_companies_stages.sql` (this task: `short_links`) + scopes `links:*`.
-   *Done when:* exists.
+1. [x] **Migration** `037_tracking_companies_stages.sql` (this task: `short_links`) + scopes `links:*`.
+   *Done when:* exists. — done: added tenant/workspace-scoped `short_links` with destination and UTM JSONB; links scopes were already wired in RBAC and migration 035; full Go build/vet/test passes.
 2. **Short-link redirect** `GET /s/{slug}` (Recipe 6.37): append UTM, emit `link.clicked`, redirect;
    capture UTM onto form submissions/profile. *Done when:* a redirect records a UTM click and lands.
 
