@@ -580,8 +580,9 @@ them in order; compile + `go vet` between milestones. **Substrate (11.0–11.7) 
    asserted. — done: gateway rejects pending/failed prompt versions before provider egress with denied-policy activity; publish gate coverage remains in TestPromptsRegistry.
 4. [x] **Run the suite**: `go build/vet/test ./...`, `go mod tidy`, `cd web && npm run typecheck &&
    npm run build && npm test`, `npm audit`. *Done when:* green. — done: go build, vet, tests, tidy; web typecheck, build, 28 tests, and npm audit (0 vulnerabilities) all pass.
-5. **Audit doc** `docs/milestones/v1-milestone-6-audit.md` in the M2–M5 table format, one row per
+5. [x] **Audit doc** `docs/milestones/v1-milestone-6-audit.md` in the M2–M5 table format, one row per
    requirement (11.0–11.14) with direct evidence. *Done when:* every row cites a named file/test.
+   — done: added the 11.0–11.14 completion table with direct implementation and test evidence.
 
 ---
 
