@@ -441,8 +441,9 @@ Each task ends with a **Done when**. Do them in order; compile + `go vet` betwee
 
 ### Milestone 13.3 — Landing pages + assets
 1. [x] **Migration** `036_pages_assets.sql` per §2.2 + scopes `pages:*`, `assets:*`. *Done when:* exists. — done: added landing-page/version and content-addressed asset tables with existing page/asset scope wiring; Go build/vet/test pass.
-2. **Pages + assets store/CRUD/publish** + asset upload (`POST /v1/assets` → `BlobStore.Put`,
+2. [x] **Pages + assets store/CRUD/publish** + asset upload (`POST /v1/assets` → `BlobStore.Put`,
    content-addressed). *Done when:* a page publishes an immutable version; an asset uploads + lists.
+   — done: landing-page CRUD/publish and tenant-scoped content-addressed asset APIs added; focused freeze/upload tests plus full Go build/vet/test pass.
 3. **Public page serving** `GET /p/{slug}` (§3.2): render the pinned version, inject a signed form
    token for the embedded form. *Done when:* the page serves HTML, embeds a working form, and a
    submission from it succeeds end-to-end.

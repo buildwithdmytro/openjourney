@@ -29,6 +29,14 @@ type Store interface {
 	// Public form capture uses these methods without authenticating the visitor.
 	GetPublishedForm(context.Context, string) (domain.Form, domain.FormVersion, error)
 	RecordFormSubmission(context.Context, domain.Principal, string, int, json.RawMessage, json.RawMessage, string) error
+	CreateLandingPage(context.Context, domain.Principal, domain.LandingPage) (domain.LandingPage, error)
+	GetLandingPage(context.Context, domain.Principal, string) (domain.LandingPage, error)
+	UpdateLandingPage(context.Context, domain.Principal, domain.LandingPage) (domain.LandingPage, error)
+	ListLandingPages(context.Context, domain.Principal) ([]domain.LandingPage, error)
+	PublishLandingPage(context.Context, domain.Principal, string, string, string, json.RawMessage) (domain.PageVersion, error)
+	GetPublishedLandingPage(context.Context, string) (domain.LandingPage, domain.PageVersion, error)
+	CreateAsset(context.Context, domain.Principal, domain.Asset) (domain.Asset, error)
+	ListAssets(context.Context, domain.Principal) ([]domain.Asset, error)
 	ClaimProjectionJob(context.Context) (domain.AcceptedEvent, bool, error)
 	ProjectEvent(context.Context, domain.AcceptedEvent) error
 	FailProjectionJob(context.Context, string, error) error
