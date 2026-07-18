@@ -517,8 +517,8 @@ Each task ends with a **Done when**. Do them in order; compile + `go vet` betwee
 4. [x] **Run the suite**: `go build/vet/test ./...`, `go mod tidy`, `cd web && npm run typecheck &&
    npm run build && npm test`, `npm audit`. *Done when:* green. — done: Go build/vet/test, go mod tidy,
    web typecheck/build/32 tests, and npm audit (0 vulnerabilities) all pass.
-5. **Audit doc** `docs/milestones/v1-milestone-8-audit.md` in the M2–M7 table format, one row per
-   requirement (13.0–13.10) with direct evidence. *Done when:* every row cites a named file/test.
+5. [x] **Audit doc** `docs/milestones/v1-milestone-8-audit.md` in the M2–M7 table format, one row per
+   requirement (13.0–13.10) with direct evidence. *Done when:* every row cites a named file/test. — done: added the M2–M7-format audit with named implementation and test evidence for every 13.0–13.10 requirement.
 
 ---
 
