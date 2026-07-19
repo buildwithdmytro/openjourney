@@ -29,6 +29,7 @@ type mockStore struct {
 	activities      []domain.ExtensionActivity
 	invocationCount int
 	budgetUsage     int64
+	recordErr       error
 }
 
 func newMockStore() *mockStore {
@@ -122,6 +123,9 @@ func (m *mockStore) ListExtensionGrants(ctx context.Context, p domain.Principal,
 }
 
 func (m *mockStore) RecordExtensionActivity(ctx context.Context, p domain.Principal, act domain.ExtensionActivity) (domain.ExtensionActivity, error) {
+	if m.recordErr != nil {
+		return domain.ExtensionActivity{}, m.recordErr
+	}
 	act.ID = fmt.Sprintf("activity-%d", len(m.activities)+1)
 	act.CreatedAt = time.Now()
 	m.activities = append(m.activities, act)
@@ -517,5 +521,103 @@ func TestHostInvoke_DisabledExtensionStopsBeforeTransport(t *testing.T) {
 	}
 	if len(store.activities) != 1 || store.activities[0].PolicyDecision != "circuit_open" {
 		t.Fatalf("expected one circuit_open activity, got %+v", store.activities)
+	}
+}
+
+// setupWorkingRemoteExtension configures an enabled remote_http extension whose
+// grant satisfies "profiles:read" so Invoke reaches the transport + success path.
+func setupWorkingRemoteExtension(t *testing.T, store *mockStore) string {
+	t.Helper()
+	extID := "ext-1"
+	versionID := "ver-1"
+	store.extensions[extID] = domain.Extension{ID: extID, Status: "enabled", CurrentVersionID: &versionID}
+	store.versions[versionID] = domain.ExtensionVersion{
+		ID: versionID, ExtensionID: extID, Version: 1, Kind: "channel_provider",
+		Transport: "remote_http", RequestedScopes: []string{"profiles:read"},
+	}
+	store.configs[extID] = domain.ExtensionConfig{
+		ExtensionID: extID, Status: "active",
+		Config:            json.RawMessage(`{"base_url": "http://example.com/api", "hmac_secret_ref": "TEST_HMAC_SECRET"}`),
+		EndpointAllowlist: []string{"http://example.com/api"},
+		TimeoutMs:         1000,
+	}
+	store.grants[extID] = []domain.ExtensionGrant{{ExtensionID: extID, Scope: "profiles:read"}}
+	t.Setenv("TEST_HMAC_SECRET", "supersecret")
+	return extID
+}
+
+func okTransport(body string) *mockRoundTripper {
+	return &mockRoundTripper{RoundTripFunc: func(req *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewBufferString(body))}, nil
+	}}
+}
+
+// 15.0.3: a successful invocation must never be reported as success without a
+// durable audit row.
+func TestHostInvoke_AuditWriteFailureAbortsInvocation(t *testing.T) {
+	store := newMockStore()
+	host := NewHost(store)
+	host.httpClient.Transport = okTransport(`{"ok":true}`)
+	extID := setupWorkingRemoteExtension(t, store)
+	store.recordErr = errors.New("audit db down")
+
+	principal := domain.Principal{TenantID: "tenant-1", WorkspaceID: "workspace-1", Scopes: []string{"profiles:read"}}
+	_, _, err := host.Invoke(context.Background(), principal, extID, "send", json.RawMessage(`{"hello":"world"}`))
+	if err == nil {
+		t.Fatal("expected invocation to fail when the audit write fails")
+	}
+	if !strings.Contains(err.Error(), "audit write failed") {
+		t.Fatalf("expected audit-write-failed error, got %v", err)
+	}
+}
+
+// 15.0.3: raw request/response payloads (which may carry secrets) must not be
+// persisted verbatim in the append-only audit log.
+func TestHostInvoke_PayloadSecretsRedacted(t *testing.T) {
+	store := newMockStore()
+	host := NewHost(store)
+	host.httpClient.Transport = okTransport(`{"token":"sk-live-OUTPUT-SECRET"}`)
+	extID := setupWorkingRemoteExtension(t, store)
+
+	principal := domain.Principal{TenantID: "tenant-1", WorkspaceID: "workspace-1", Scopes: []string{"profiles:read"}}
+	inputSecret := "sk-live-INPUT-SECRET"
+	_, _, err := host.Invoke(context.Background(), principal, extID, "send", json.RawMessage(`{"api_key":"`+inputSecret+`"}`))
+	if err != nil {
+		t.Fatalf("Invoke failed: %v", err)
+	}
+	if len(store.activities) != 1 {
+		t.Fatalf("expected 1 activity, got %d", len(store.activities))
+	}
+	act := store.activities[0]
+	if act.InputRef == nil || act.OutputRef == nil {
+		t.Fatal("expected input/output refs to be set")
+	}
+	if strings.Contains(*act.InputRef, inputSecret) {
+		t.Errorf("input secret leaked verbatim into audit: %q", *act.InputRef)
+	}
+	if strings.Contains(*act.OutputRef, "OUTPUT-SECRET") {
+		t.Errorf("output secret leaked verbatim into audit: %q", *act.OutputRef)
+	}
+	if !strings.HasPrefix(*act.InputRef, "redacted:sha256:") {
+		t.Errorf("expected a redacted digest, got %q", *act.InputRef)
+	}
+}
+
+// 15.0.3: the first resolution failure (GetExtension) records a best-effort
+// audit row instead of returning with none. (In real Postgres the FK may reject
+// a row for a non-existent extension; the mock has no FK, so the attempt lands.)
+func TestHostInvoke_FirstResolutionFailureAudited(t *testing.T) {
+	store := newMockStore()
+	host := NewHost(store)
+	principal := domain.Principal{TenantID: "tenant-1", WorkspaceID: "workspace-1"}
+	_, _, err := host.Invoke(context.Background(), principal, "missing-ext", "send", json.RawMessage(`{}`))
+	if err == nil {
+		t.Fatal("expected error resolving a missing extension")
+	}
+	if len(store.activities) != 1 {
+		t.Fatalf("expected a best-effort audit row on first-resolution failure, got %d", len(store.activities))
+	}
+	if store.activities[0].PolicyDecision != "error" {
+		t.Errorf("expected decision=error, got %s", store.activities[0].PolicyDecision)
 	}
 }

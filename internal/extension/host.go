@@ -110,7 +110,12 @@ func (h *Host) invoke(ctx context.Context, principal domain.Principal, extension
 	// 1. Resolve parent extension
 	ext, err := h.store.GetExtension(ctx, principal, extensionID)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to get extension: %w", err)
+		// Best-effort audit of the first resolution failure. If the extension truly
+		// does not exist the extension_activity FK prevents a row (there is no
+		// extension to attribute the call to); a transient store failure on a real
+		// extension is still recorded rather than silently dropped.
+		actID, _ := h.recordActivity(ctx, principal, extensionID, 0, "unknown", invocation, &input, nil, 0, 0, "error")
+		return nil, actID, fmt.Errorf("failed to get extension: %w", err)
 	}
 
 	if ext.Status == "disabled" {
@@ -280,7 +285,13 @@ func (h *Host) invoke(ctx context.Context, principal domain.Principal, extension
 		slog.Error("failed to reset health state on success", "error", err)
 	}
 
-	actID, _ := h.recordActivity(ctx, derivedP, extensionID, ev.Version, ev.Kind, invocation, &input, &output, duration, 0, decision)
+	actID, recErr := h.recordActivity(ctx, derivedP, extensionID, ev.Version, ev.Kind, invocation, &input, &output, duration, 0, decision)
+	if recErr != nil {
+		// A successful invocation must never be reported as success without a durable
+		// audit row. Surface the audit failure so the caller cannot act on an
+		// unaudited result.
+		return nil, "", fmt.Errorf("extension invocation succeeded but audit write failed: %w", recErr)
+	}
 	return output, actID, nil
 }
 
@@ -361,17 +372,6 @@ func (h *Host) invokeRemoteHTTP(ctx context.Context, p domain.Principal, ev doma
 }
 
 func (h *Host) recordActivity(ctx context.Context, p domain.Principal, extensionID string, version int, kind string, invocation string, input *json.RawMessage, output *json.RawMessage, latencyMs int64, costCents int64, decision string) (string, error) {
-	var inputRef *string
-	if input != nil {
-		str := string(*input)
-		inputRef = &str
-	}
-	var outputRef *string
-	if output != nil {
-		str := string(*output)
-		outputRef = &str
-	}
-
 	activity := domain.ExtensionActivity{
 		TenantID:         p.TenantID,
 		WorkspaceID:      p.WorkspaceID,
@@ -380,8 +380,8 @@ func (h *Host) recordActivity(ctx context.Context, p domain.Principal, extension
 		Kind:             kind,
 		Invocation:       invocation,
 		DerivedScopes:    p.Scopes,
-		InputRef:         inputRef,
-		OutputRef:        outputRef,
+		InputRef:         redactActivityPayload(input),
+		OutputRef:        redactActivityPayload(output),
 		LatencyMs:        int(latencyMs),
 		CostCents:        costCents,
 		PolicyDecision:   decision,
@@ -392,6 +392,19 @@ func (h *Host) recordActivity(ctx context.Context, p domain.Principal, extension
 		return "", err
 	}
 	return stored.ID, nil
+}
+
+// redactActivityPayload keeps raw request/response payloads — which may carry
+// secrets — out of the append-only, un-deletable extension_activity audit log.
+// It stores a content-digest reference instead of the verbatim JSON so a call
+// can still be correlated by payload identity without persisting the payload.
+func redactActivityPayload(raw *json.RawMessage) *string {
+	if raw == nil {
+		return nil
+	}
+	sum := sha256.Sum256(*raw)
+	ref := "redacted:sha256:" + hex.EncodeToString(sum[:])
+	return &ref
 }
 
 func isEndpointAllowed(targetURL string, allowlist []string) error {

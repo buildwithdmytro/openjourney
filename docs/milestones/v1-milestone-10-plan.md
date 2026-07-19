@@ -173,7 +173,12 @@ implemented as a **remote connector**, not a native one.
 - Widen `operation_jobs.job_type` CHECK: DROP/ADD adding `'warehouse.sync'`, `'reverse_etl.run'`,
   `'export.replay'` to the current `041:65-68` set.
 
-### 2.2 `044_connector_runs.sql`
+> **Migration numbering note:** task `15.0.3` (M9 audit hardening) added
+> `044_extension_activity_hardening.sql` (a `REVOKE` on `extension_activity`), so the connector-runs
+> and identity migrations below take the **next available** numbers `045` and `046`. Always use the
+> next zero-padded number on disk, not a hard-coded one.
+
+### 2.2 `045_connector_runs.sql`
 
 - `connector_runs` — append-only audit: `id uuid PK`, `tenant_id`/`workspace_id`/`app_id uuid`,
   `pipeline_id uuid REFERENCES connector_pipelines(id)`, `pipeline_version_id uuid`,
@@ -186,7 +191,7 @@ implemented as a **remote connector**, not a native one.
   in-progress `running` row, then the run writes a terminal `succeeded/failed` row (append, not update).
   Index `connector_runs_pipeline_idx (pipeline_id, started_at DESC)`.
 
-### 2.3 `045_identity_resolution.sql`
+### 2.3 `046_identity_resolution.sql`
 
 - `identity_namespaces` — per-tenant config: `id uuid PK`, `tenant_id`/`app_id uuid`,
   `namespace text` (e.g. `email`, `phone`, `user_id`), `priority int` (merge-winner tiebreak),
@@ -314,7 +319,7 @@ winner by `identity_namespaces.priority` + policy version.
    *Done when:* an install with a valid operator-trusted asymmetric key succeeds; an HMAC/symmetric
    "publisher key" is rejected; a remote extension config without an HMAC secret fails validation; tests
    cover all three. — done: API boot loads asymmetric JWK trust keys; asymmetric-only JWS, required HMAC refs, and config/integration tests pass.
-3. **Audit integrity + append-only enforcement.** Write an `extension_activity` row on the first
+3. [x] **Audit integrity + append-only enforcement.** Write an `extension_activity` row on the first
    resolution failure (`GetExtension`, `host.go:103`); make a failed `recordActivity` **fail the
    invocation** (return an error / same-tx write) so no call ever succeeds without a durable audit row
    (`host.go:260`); add `REVOKE UPDATE, DELETE` to the `extension_activity` append-only table
@@ -322,6 +327,12 @@ winner by `identity_namespaces.priority` + policy version.
    (`host.go:337-345`) — store a blob reference or redacted digest, not raw payload JSON.
    *Done when:* a forced audit-insert failure aborts the invocation; `UPDATE`/`DELETE` on the audit table
    is rejected even by the app role; a payload secret does not appear verbatim in `extension_activity`.
+   — done: `host.go` records a best-effort audit row on first-resolution failure, fails the invocation
+   when the success-path audit write errors, and redacts `input_ref`/`output_ref` to a
+   `redacted:sha256:` digest (`redactActivityPayload`); migration `044_extension_activity_hardening.sql`
+   REVOKEs UPDATE/DELETE on `extension_activity`; `connector_runs`' own REVOKE ships with its migration
+   (§2.2). Tests: `TestHostInvoke_AuditWriteFailureAbortsInvocation`,
+   `TestHostInvoke_PayloadSecretsRedacted`, `TestHostInvoke_FirstResolutionFailureAudited`.
 4. [x] **Bounded-failure completeness.** The `connector.run` path (`operations.go:129-155`) must degrade
    deterministically: a disabled/failing connector marks the run failed and does **not** dead-letter the
    host loop as an unbounded stall (bound the retry, or mark terminal without re-queuing on `disabled`).
@@ -418,7 +429,7 @@ winner by `identity_namespaces.priority` + policy version.
    audited in `extension_activity`, and honors its kill switch; test green; `go mod tidy` shows no new dep.
 
 ### Milestone 15.8 — Identity resolution: namespaced keys + pre-`ensureProfile` resolution
-1. **Migration `045_identity_resolution.sql`** (§2.3): `identity_namespaces` (+ seed), `profiles.merged_into`,
+1. **Migration `046_identity_resolution.sql`** (§2.3): `identity_namespaces` (+ seed), `profiles.merged_into`,
    `identity_merges` provenance columns, `identity_aliases` lookup index.
    *Done when:* migration applies; a merged profile can be tombstoned without deletion; CHECKs accept every
    written value.
