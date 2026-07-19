@@ -60,8 +60,24 @@ milestone in one run.
    `internal/dispatcher`, the audience `compile_pg` compiler, the immutable blob freeze, the
    `identity_aliases`/`identity_merges` scaffolding, and the SSRF/allowlist egress + `*_ref` secrets.
 4. Run `git log --oneline -15` and `git status` to see what already exists on disk.
-5. A task is DONE only if its line contains `[x]` or a `— done:` note; otherwise it is TODO. Work
-   the **first TODO in document order**. Tasks run strictly 15.0 → 15.12 and NEVER skip ahead.
+5. A task is DONE only if **its own** numbered line/block literally contains `[x]` or a `— done:`
+   note. Check EACH task individually — a neighbouring task being done (e.g. `15.0.2` and `15.0.4`
+   marked done) does **NOT** make the one between them (`15.0.3`) done. Work the **single first
+   unchecked task in document order** and nothing else.
+   - **NEVER skip a task or jump ahead.** Do not implement a later task while an earlier one is
+     unchecked — not even if the later one looks easier or more "real". Tasks run strictly
+     15.0 → 15.12 in order.
+   - **If the first unchecked task looks already-implemented in the code:** do NOT skip it and do NOT
+     move on. VERIFY its literal *Done when* condition. If it genuinely holds, mark that task `[x]` +
+     `— done: <evidence>` and commit **that doc change** (a docs-only commit for one task is correct).
+     If it does not hold, implement it. Either way you have worked the first unchecked task.
+   - **If you cannot complete the first unchecked task** (too hard, ambiguous, needs a human): append a
+     line to `docs/milestones/BLOCKERS.md` and commit only that. Do NOT route around it by doing a
+     different task.
+   - **Why this is strict:** the runner independently tracks the exact first-unchecked task. If you
+     commit work for a *different* task, the runner halts with `changed Git history ambiguously`
+     (exit 4) and the loop stalls — your work does not advance the milestone. Always work the first
+     unchecked task so the runner and you agree.
    **15.0 (the M9 security closeout) and 15.1 (connector foundation: registry + pipeline + freeze +
    scopes) must land first** — the new connector egress/scope/audit paths inherit 15.0's fixes, and no
    connector runs before 15.1's governed, versioned foundation exists. Document order already enforces
