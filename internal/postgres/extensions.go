@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
+	"github.com/buildwithdmytro/openjourney/internal/extension"
 	"github.com/go-jose/go-jose/v4"
 	"github.com/jackc/pgx/v5"
 )
@@ -84,6 +85,23 @@ func (s *Store) ListExtensions(ctx context.Context, p domain.Principal) ([]domai
 func (s *Store) UpdateExtension(ctx context.Context, p domain.Principal, ext domain.Extension) (domain.Extension, error) {
 	if ext.Status == "enabled" && (p.ActorType != "user" || p.UserID == "") {
 		return domain.Extension{}, errors.New("human_approval_required: enabling an extension requires an authenticated user")
+	}
+	if ext.Status == "enabled" {
+		var transport string
+		var config []byte
+		err := s.pool.QueryRow(ctx, `SELECT ev.transport, ec.config
+			FROM extensions e JOIN extension_versions ev ON ev.id=e.current_version_id
+			LEFT JOIN extension_configs ec ON ec.extension_id=e.id
+			WHERE e.tenant_id=$1 AND e.workspace_id=$2 AND e.id=$3`, p.TenantID, p.WorkspaceID, ext.ID).Scan(&transport, &config)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Extension{}, ErrNotFound
+		}
+		if err != nil {
+			return domain.Extension{}, err
+		}
+		if err := extension.ValidateRemoteHTTPConfig(transport, config); err != nil {
+			return domain.Extension{}, err
+		}
 	}
 	var out domain.Extension
 	err := s.pool.QueryRow(ctx, `UPDATE extensions
@@ -265,13 +283,25 @@ func (s *Store) PublishExtensionVersion(ctx context.Context, p domain.Principal,
 	if ev.Status == "active" {
 		return ev, nil
 	}
+	if ev.Transport == "remote_http" {
+		var config []byte
+		err := tx.QueryRow(ctx, `SELECT config FROM extension_configs WHERE tenant_id=$1 AND workspace_id=(SELECT workspace_id FROM extensions WHERE tenant_id=$1 AND id=$2) AND extension_id=$2`, p.TenantID, extensionID).Scan(&config)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ExtensionVersion{}, errors.New("remote_http extension requires an HMAC configuration before publish")
+		}
+		if err != nil {
+			return domain.ExtensionVersion{}, err
+		}
+		if err := extension.ValidateRemoteHTTPConfig(ev.Transport, config); err != nil {
+			return domain.ExtensionVersion{}, err
+		}
+	}
 
 	// Verify JWS signature using go-jose
 	object, err := jose.ParseSigned(ev.Signature, []jose.SignatureAlgorithm{
 		jose.RS256, jose.RS384, jose.RS512,
 		jose.ES256, jose.ES384, jose.ES512,
 		jose.EdDSA,
-		jose.HS256, jose.HS384, jose.HS512,
 	})
 	if err != nil {
 		return domain.ExtensionVersion{}, fmt.Errorf("invalid JWS signature: %w", err)

@@ -290,6 +290,12 @@ func (h *Host) invokeRemoteHTTP(ctx context.Context, p domain.Principal, ev doma
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve config: %w", err)
 	}
+	if err := ValidateRemoteHTTPConfig(ev.Transport, cfg.Config); err != nil {
+		return nil, err
+	}
+	if err := validateResolvedRemoteHMAC(resolvedConfig); err != nil {
+		return nil, err
+	}
 
 	baseURLVal, ok := resolvedConfig["base_url"].(string)
 	if !ok || baseURLVal == "" {
@@ -322,13 +328,11 @@ func (h *Host) invokeRemoteHTTP(ctx context.Context, p domain.Principal, ev doma
 	req.Header.Set("X-Extension-Kind", ev.Kind)
 	req.Header.Set("X-Extension-Invocation", invocation)
 
-	hmacSecret, _ := resolvedConfig["hmac_secret"].(string)
-	if hmacSecret != "" {
-		mac := hmac.New(sha256.New, []byte(hmacSecret))
-		mac.Write(input)
-		signature := hex.EncodeToString(mac.Sum(nil))
-		req.Header.Set("X-Signature", signature)
-	}
+	hmacSecret := resolvedConfig["hmac_secret"].(string)
+	mac := hmac.New(sha256.New, []byte(hmacSecret))
+	mac.Write(input)
+	signature := hex.EncodeToString(mac.Sum(nil))
+	req.Header.Set("X-Signature", signature)
 
 	resp, err := h.httpClient.Do(req)
 	if err != nil {

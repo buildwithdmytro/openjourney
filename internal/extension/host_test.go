@@ -236,6 +236,7 @@ func TestHostInvoke_Success(t *testing.T) {
 }
 
 func TestHostInvoke_OffAllowlist(t *testing.T) {
+	t.Setenv("TEST_HMAC_SECRET", "test-secret")
 	store := newMockStore()
 	host := NewHost(store)
 
@@ -259,7 +260,7 @@ func TestHostInvoke_OffAllowlist(t *testing.T) {
 	store.configs[extID] = domain.ExtensionConfig{
 		ExtensionID:       extID,
 		Status:            "active",
-		Config:            json.RawMessage(`{"base_url": "http://evil.com/api"}`),
+		Config:            json.RawMessage(`{"base_url": "http://evil.com/api", "hmac_secret_ref":"TEST_HMAC_SECRET"}`),
 		EndpointAllowlist: []string{"http://good.com"},
 		TimeoutMs:         1000,
 	}
@@ -276,6 +277,7 @@ func TestHostInvoke_OffAllowlist(t *testing.T) {
 }
 
 func TestHostInvoke_Timeout(t *testing.T) {
+	t.Setenv("TEST_HMAC_SECRET", "test-secret")
 	store := newMockStore()
 	host := NewHost(store)
 
@@ -310,7 +312,7 @@ func TestHostInvoke_Timeout(t *testing.T) {
 	store.configs[extID] = domain.ExtensionConfig{
 		ExtensionID:       extID,
 		Status:            "active",
-		Config:            json.RawMessage(`{"base_url": "http://example.com/api"}`),
+		Config:            json.RawMessage(`{"base_url": "http://example.com/api", "hmac_secret_ref":"TEST_HMAC_SECRET"}`),
 		EndpointAllowlist: []string{"http://example.com/api"},
 		TimeoutMs:         10, // low timeout
 	}
@@ -330,6 +332,7 @@ func TestHostInvoke_Timeout(t *testing.T) {
 }
 
 func TestHostInvoke_CircuitBreaker(t *testing.T) {
+	t.Setenv("TEST_HMAC_SECRET", "test-secret")
 	store := newMockStore()
 	host := NewHost(store)
 
@@ -359,7 +362,7 @@ func TestHostInvoke_CircuitBreaker(t *testing.T) {
 	store.configs[extID] = domain.ExtensionConfig{
 		ExtensionID:       extID,
 		Status:            "active",
-		Config:            json.RawMessage(`{"base_url": "http://example.com/api"}`),
+		Config:            json.RawMessage(`{"base_url": "http://example.com/api", "hmac_secret_ref":"TEST_HMAC_SECRET"}`),
 		EndpointAllowlist: []string{"http://example.com/api"},
 		TimeoutMs:         1000,
 	}

@@ -15,6 +15,7 @@ import (
 )
 
 func TestExtensionChannelAdapter_Send_Success(t *testing.T) {
+	t.Setenv("TEST_HMAC_SECRET", "test-secret")
 	store := newMockStore()
 	host := NewHost(store)
 
@@ -38,7 +39,7 @@ func TestExtensionChannelAdapter_Send_Success(t *testing.T) {
 	store.configs[extID] = domain.ExtensionConfig{
 		ExtensionID:       extID,
 		Status:            "active",
-		Config:            json.RawMessage(`{"base_url": "http://example.com"}`),
+		Config:            json.RawMessage(`{"base_url": "http://example.com", "hmac_secret_ref":"TEST_HMAC_SECRET"}`),
 		EndpointAllowlist: []string{"http://example.com"},
 	}
 

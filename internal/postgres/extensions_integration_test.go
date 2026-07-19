@@ -63,14 +63,15 @@ func TestExtensionsIntegration(t *testing.T) {
 	store.SetTrustedPublisherKeys(map[string]any{
 		"trusted-kid": &trustedKey.PublicKey,
 	})
+	t.Setenv("TEST_EXTENSION_HMAC", "test-extension-hmac")
 
 	// 3. Setup manifest and signers
 	manifestData := map[string]any{
-		"name":        "my-extension",
-		"publisher":   "trusted-publisher",
-		"version":     1,
-		"kind":        "channel_provider",
-		"transport":   "remote_http",
+		"name":         "my-extension",
+		"publisher":    "trusted-publisher",
+		"version":      1,
+		"kind":         "channel_provider",
+		"transport":    "remote_http",
 		"capabilities": []string{"send"},
 	}
 	manifestJSON, err := json.Marshal(manifestData)
@@ -195,6 +196,38 @@ func TestExtensionsIntegration(t *testing.T) {
 		}
 	})
 
+	t.Run("symmetric publisher signature -> rejected", func(t *testing.T) {
+		blobs := &memoryBlobs{objects: map[string][]byte{}}
+		if _, err := store.UpsertExtensionConfig(ctx, pUser, domain.ExtensionConfig{
+			ExtensionID: ext.ID,
+			Config:      json.RawMessage(`{"base_url":"http://example.com","hmac_secret_ref":"TEST_EXTENSION_HMAC"}`),
+		}); err != nil {
+			t.Fatalf("configure extension HMAC: %v", err)
+		}
+		symmetricSigner, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.HS256, Key: []byte("symmetric-publisher-key")}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		jws, err := symmetricSigner.Sign(manifestJSON)
+		if err != nil {
+			t.Fatal(err)
+		}
+		signature, err := jws.CompactSerialize()
+		if err != nil {
+			t.Fatal(err)
+		}
+		evDraft, err := store.CreateExtensionVersion(ctx, pUser, domain.ExtensionVersion{
+			ExtensionID: ext.ID, Version: 5, Kind: "channel_provider", Transport: "remote_http",
+			Manifest: manifestJSON, RequestedScopes: []string{"profiles:read"}, Signature: signature, Status: "draft",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := extension.Publish(ctx, store, blobs, pUser, ext.ID, evDraft.Version, pUser.UserID); err == nil {
+			t.Fatal("expected symmetric publisher signature to be rejected")
+		}
+	})
+
 	t.Run("valid key + human approval -> successful install & immutable version", func(t *testing.T) {
 		blobs := &memoryBlobs{objects: map[string][]byte{}}
 
@@ -223,6 +256,13 @@ func TestExtensionsIntegration(t *testing.T) {
 		}
 
 		// Publish (install) with user principal
+		if _, err := store.UpsertExtensionConfig(ctx, pUser, domain.ExtensionConfig{
+			ExtensionID:       ext.ID,
+			Config:            json.RawMessage(`{"base_url":"http://example.com","hmac_secret_ref":"TEST_EXTENSION_HMAC"}`),
+			EndpointAllowlist: []string{"http://example.com"},
+		}); err != nil {
+			t.Fatalf("configure extension HMAC: %v", err)
+		}
 		activeVer, err := extension.Publish(ctx, store, blobs, pUser, ext.ID, evDraft.Version, pUser.UserID)
 		if err != nil {
 			t.Fatalf("Publish: %v", err)
@@ -373,11 +413,11 @@ func TestExtensionConfigAndGrants_14_0_3(t *testing.T) {
 		})
 
 		manifestData := map[string]any{
-			"name":        "test-config-ext",
-			"publisher":   "test-publisher",
-			"version":     1,
-			"kind":        "channel_provider",
-			"transport":   "remote_http",
+			"name":         "test-config-ext",
+			"publisher":    "test-publisher",
+			"version":      1,
+			"kind":         "channel_provider",
+			"transport":    "remote_http",
 			"capabilities": []string{"send"},
 		}
 		manifestJSON, err := json.Marshal(manifestData)

@@ -306,14 +306,14 @@ winner by `identity_namespaces.priority` + policy version.
    *Done when:* a non-human `extensions:write` key gets 403 re-enabling a disabled extension; a test
    proves an over-scoped extension invocation is rejected `denied_scope` + audited on a real seam (not
    only via `InvokeWithScope` in a unit test). — done: HTTP human-actor gate and audited channel scope-denial tests pass; full Go build/vet/test and tidy show no dependency diff.
-2. **Signing hardening.** Wire operator trusted publisher keys from config into
+2. [x] **Signing hardening.** Wire operator trusted publisher keys from config into
    `SetTrustedPublisherKeys` (`internal/postgres/store.go:62`) at a `cmd/` boot site so installs work in
    prod; restrict the accepted JWS algorithm allowlist (`extensions.go:267`) to **asymmetric-only** (drop
    `HS256/384/512`); make remote HMAC signing **mandatory** — reject a `remote_http` config lacking
    `hmac_secret`/`hmac_secret_ref` at publish/enable rather than sending unsigned (`host.go:310`).
    *Done when:* an install with a valid operator-trusted asymmetric key succeeds; an HMAC/symmetric
    "publisher key" is rejected; a remote extension config without an HMAC secret fails validation; tests
-   cover all three.
+   cover all three. — done: API boot loads asymmetric JWK trust keys; asymmetric-only JWS, required HMAC refs, and config/integration tests pass.
 3. **Audit integrity + append-only enforcement.** Write an `extension_activity` row on the first
    resolution failure (`GetExtension`, `host.go:103`); make a failed `recordActivity` **fail the
    invocation** (return an error / same-tx write) so no call ever succeeds without a durable audit row

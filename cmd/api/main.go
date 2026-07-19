@@ -46,6 +46,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer store.Close()
+	store.SetTrustedPublisherKeys(cfg.TrustedPublisherKeys)
 	if cfg.AutoMigrate {
 		if err := store.Migrate(ctx); err != nil {
 			slog.Error("migrate database", "error", err)
