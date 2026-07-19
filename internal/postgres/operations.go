@@ -63,6 +63,14 @@ func (s *Store) FailOperationJob(ctx context.Context, id string, operationErr er
 	if err != nil {
 		return err
 	}
+	var terminal domain.TerminalOperationError
+	if errors.As(operationErr, &terminal) && terminal.TerminalOperation() {
+		if _, err := tx.Exec(ctx, `UPDATE operation_jobs SET status='dead',available_at=now(),
+			locked_until=NULL,last_error=$2 WHERE id=$1`, id, message); err != nil {
+			return err
+		}
+		return tx.Commit(ctx)
+	}
 	if status == "dead" {
 		var input struct {
 			RequestID string `json:"request_id"`

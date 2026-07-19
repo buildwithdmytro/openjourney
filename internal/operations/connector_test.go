@@ -3,9 +3,11 @@ package operations
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
+	"github.com/buildwithdmytro/openjourney/internal/extension"
 )
 
 type connectorInvoker struct {
@@ -13,6 +15,7 @@ type connectorInvoker struct {
 	extensionID string
 	invocation  string
 	input       json.RawMessage
+	err         error
 }
 
 type connectorJobStore struct {
@@ -20,6 +23,8 @@ type connectorJobStore struct {
 	job       domain.OperationJob
 	claimed   bool
 	completed string
+	failed    string
+	failErr   error
 }
 
 func (s *connectorJobStore) ClaimOperationJob(context.Context) (domain.OperationJob, bool, error) {
@@ -33,7 +38,10 @@ func (s *connectorJobStore) CompleteOperationJob(_ context.Context, id string) e
 	s.completed = id
 	return nil
 }
-func (s *connectorJobStore) FailOperationJob(context.Context, string, error) error { return nil }
+func (s *connectorJobStore) FailOperationJob(_ context.Context, id string, err error) error {
+	s.failed, s.failErr = id, err
+	return nil
+}
 
 func TestConnectorJobIsLeasedAndCompletedAfterBoundedInvocation(t *testing.T) {
 	store := &connectorJobStore{job: domain.OperationJob{
@@ -59,6 +67,9 @@ func (i *connectorInvoker) Invoke(_ context.Context, p domain.Principal, extensi
 }
 
 func (i *connectorInvoker) InvokeWithScope(ctx context.Context, p domain.Principal, extensionID, invocation, _ string, input json.RawMessage) (json.RawMessage, string, error) {
+	if i.err != nil {
+		return nil, "", i.err
+	}
 	return i.Invoke(ctx, p, extensionID, invocation, input)
 }
 
@@ -98,5 +109,21 @@ func TestConnectorRunRequiresHost(t *testing.T) {
 	err := execute(context.Background(), nil, nil, nil, nil, "connector.run", json.RawMessage(`{}`))
 	if err == nil {
 		t.Fatal("expected connector job without host to fail")
+	}
+}
+
+func TestDisabledConnectorFailureIsTerminalAndNotRequeued(t *testing.T) {
+	store := &connectorJobStore{job: domain.OperationJob{ID: "job-disabled", Type: "connector.run", Payload: json.RawMessage(`{
+		"tenant_id":"tenant-1","workspace_id":"workspace-1","extension_id":"connector-1",
+		"event_id":"event-1","event_type":"events.accepted.v1","event":{}
+	}`)}}
+	invoker := &connectorInvoker{err: extension.ErrExtensionDisabled}
+	processed, err := DrainWithGatewayAndExtensions(context.Background(), store, nil, nil, invoker, 1, false)
+	if err != nil || processed != 0 || store.failed != "job-disabled" || store.completed != "" {
+		t.Fatalf("processed=%d err=%v failed=%q completed=%q", processed, err, store.failed, store.completed)
+	}
+	var terminal domain.TerminalOperationError
+	if !errors.As(store.failErr, &terminal) || !terminal.TerminalOperation() {
+		t.Fatalf("disabled connector error was not terminal: %v", store.failErr)
 	}
 }

@@ -21,6 +21,15 @@ type TemplateRegistration struct {
 	ExtensionID string
 	Invocation  string
 	Tag         bool
+	Fallback    string
+	Context     context.Context
+}
+
+func (r TemplateRegistration) context() context.Context {
+	if r.Context != nil {
+		return r.Context
+	}
+	return context.Background()
 }
 
 type templateManifest struct {
@@ -30,6 +39,7 @@ type templateManifest struct {
 	TagName    string `json:"tag_name"`
 	Export     string `json:"export"`
 	WasmExport string `json:"wasm_export"`
+	Fallback   string `json:"fallback"`
 }
 
 // RegisterTemplateFunction installs one bounded, audited extension function.
@@ -53,11 +63,18 @@ func RegisterTemplateFunction(engine *liquid.Engine, host *Host, principal domai
 			if err != nil {
 				return "", err
 			}
-			output, _, err := host.InvokeWithScope(context.Background(), principal, registration.ExtensionID, registration.Invocation, "templates:read", input)
+			output, _, err := host.InvokeWithScope(registration.context(), principal, registration.ExtensionID, registration.Invocation, "templates:read", input)
 			if err != nil {
+				if registration.Fallback != "" {
+					return registration.Fallback, nil
+				}
 				return "", fmt.Errorf("template extension %s: %w", registration.Name, err)
 			}
-			return templateString(output)
+			result, err := templateString(output)
+			if err != nil && registration.Fallback != "" {
+				return registration.Fallback, nil
+			}
+			return result, err
 		})
 		return nil
 	}
@@ -67,12 +84,18 @@ func RegisterTemplateFunction(engine *liquid.Engine, host *Host, principal domai
 		if err != nil {
 			return nil, err
 		}
-		output, _, err := host.InvokeWithScope(context.Background(), principal, registration.ExtensionID, registration.Invocation, "templates:read", input)
+		output, _, err := host.InvokeWithScope(registration.context(), principal, registration.ExtensionID, registration.Invocation, "templates:read", input)
 		if err != nil {
+			if registration.Fallback != "" {
+				return registration.Fallback, nil
+			}
 			return nil, fmt.Errorf("template extension %s: %w", registration.Name, err)
 		}
 		var result interface{}
 		if err := json.Unmarshal(output, &result); err != nil {
+			if registration.Fallback != "" {
+				return registration.Fallback, nil
+			}
 			return nil, fmt.Errorf("template extension %s returned invalid JSON: %w", registration.Name, err)
 		}
 		return result, nil
@@ -135,7 +158,7 @@ func RegisterTemplateFunctions(ctx context.Context, engine *liquid.Engine, store
 			invocation = manifest.WasmExport
 		}
 		if err := RegisterTemplateFunction(engine, host, principal, TemplateRegistration{
-			Name: name, ExtensionID: ext.ID, Invocation: invocation, Tag: tag,
+			Name: name, ExtensionID: ext.ID, Invocation: invocation, Tag: tag, Fallback: manifest.Fallback, Context: ctx,
 		}); err != nil {
 			return err
 		}

@@ -26,6 +26,14 @@ var ErrCircuitOpen = errors.New("circuit breaker is open")
 var ErrRateLimitExceeded = errors.New("rate limit exceeded")
 var ErrBudgetExceeded = errors.New("monthly budget exceeded")
 
+type terminalExtensionError struct{ message string }
+
+func (e *terminalExtensionError) Error() string           { return e.message }
+func (e *terminalExtensionError) TerminalOperation() bool { return true }
+
+var ErrExtensionDisabled = &terminalExtensionError{message: "extension is disabled"}
+var ErrExtensionConfigDisabled = &terminalExtensionError{message: "extension config is disabled"}
+
 type Host struct {
 	store      ports.Store
 	httpClient *http.Client
@@ -107,7 +115,7 @@ func (h *Host) invoke(ctx context.Context, principal domain.Principal, extension
 
 	if ext.Status == "disabled" {
 		actID, _ := h.recordActivity(ctx, principal, extensionID, 0, "unknown", invocation, &input, nil, 0, 0, "circuit_open")
-		return nil, actID, fmt.Errorf("extension is disabled: %s", extensionID)
+		return nil, actID, fmt.Errorf("%w: %s", ErrExtensionDisabled, extensionID)
 	}
 
 	// 2. Resolve version (enabled/active version)
@@ -131,7 +139,7 @@ func (h *Host) invoke(ctx context.Context, principal domain.Principal, extension
 
 	if config.Status == "disabled" {
 		actID, _ := h.recordActivity(ctx, principal, extensionID, ev.Version, ev.Kind, invocation, &input, nil, 0, 0, "circuit_open")
-		return nil, actID, fmt.Errorf("extension config is disabled: %s", extensionID)
+		return nil, actID, fmt.Errorf("%w: %s", ErrExtensionConfigDisabled, extensionID)
 	}
 
 	// 4. Check circuit breaker state

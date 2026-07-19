@@ -322,7 +322,7 @@ winner by `identity_namespaces.priority` + policy version.
    (`host.go:337-345`) — store a blob reference or redacted digest, not raw payload JSON.
    *Done when:* a forced audit-insert failure aborts the invocation; `UPDATE`/`DELETE` on the audit table
    is rejected even by the app role; a payload secret does not appear verbatim in `extension_activity`.
-4. **Bounded-failure completeness.** The `connector.run` path (`operations.go:129-155`) must degrade
+4. [x] **Bounded-failure completeness.** The `connector.run` path (`operations.go:129-155`) must degrade
    deterministically: a disabled/failing connector marks the run failed and does **not** dead-letter the
    host loop as an unbounded stall (bound the retry, or mark terminal without re-queuing on `disabled`).
    Template-function extensions (`template.go:57,71`) get a configured deterministic fallback and the
@@ -330,7 +330,8 @@ winner by `identity_namespaces.priority` + policy version.
    (`ingestion.go:25-32`) honor the manifest `on_error` (passthrough) instead of always rejecting `422`.
    *Done when:* a disabled connector's job resolves terminally without infinite retry; a broken template
    extension renders its fallback; a store blip during ingestion transform passes through per `on_error`;
-   tests cover each.
+   tests cover each. — done: disabled connector terminal-job and template fallback tests pass; ingestion
+   passthrough coverage passes; full Go build/vet/test and tidy show no dependency diff.
 
 ### Milestone 15.1 — Connector foundation: driver registry + pipeline + freeze + scopes
 1. **Migration `043_connectors.sql`** (§2.1): widen `extension_versions.transport` to add `'native'`;

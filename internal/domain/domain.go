@@ -8,6 +8,12 @@ import (
 	"time"
 )
 
+// TerminalOperationError marks a job failure that must not be retried.
+type TerminalOperationError interface {
+	error
+	TerminalOperation() bool
+}
+
 type Principal struct {
 	TenantID    string
 	WorkspaceID string
@@ -1190,4 +1196,3 @@ type ExtensionHealth struct {
 	OpenedAt            *time.Time `json:"opened_at,omitempty"`
 	UpdatedAt           time.Time  `json:"updated_at"`
 }
-

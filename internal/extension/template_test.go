@@ -73,3 +73,18 @@ func TestTemplateFunctionDiscoveryRegistersTag(t *testing.T) {
 		t.Fatalf("expected Wasm tag result, got %q", out)
 	}
 }
+
+func TestTemplateFunctionUsesDeterministicFallbackWhenExtensionFails(t *testing.T) {
+	host, store, principal := templateFixture(t, "template-fallback", "template-fallback-v1", `{"filter_name":"ext_render","export":"run"}`)
+	store.extensions["template-fallback"] = domain.Extension{ID: "template-fallback", Status: "disabled", CurrentVersionID: stringPtr("template-fallback-v1")}
+	engine := render.NewEngine()
+	if err := RegisterTemplateFunction(engine, host, principal, TemplateRegistration{
+		Name: "ext_render", ExtensionID: "template-fallback", Invocation: "run", Fallback: "safe-default",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	out, err := engine.ParseAndRenderString(`{{ name | ext_render }}`, map[string]any{"name": "input"})
+	if err != nil || out != "safe-default" {
+		t.Fatalf("fallback output=%q err=%v", out, err)
+	}
+}
