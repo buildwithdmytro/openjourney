@@ -716,6 +716,18 @@ func TestListExtensionActivityRequiresScopeAndIsTenantWorkspaceScoped(t *testing
 	}
 }
 
+func TestUpdateExtensionEnableRequiresHumanActor(t *testing.T) {
+	server := New(&fakeStore{scopes: []string{"extensions:write"}}, 75)
+	request := httptest.NewRequest(http.MethodPut, "/v1/extensions/extension-1", strings.NewReader(`{"status":"enabled"}`))
+	request.Header.Set("Authorization", "Bearer api-key-actor")
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusForbidden || !strings.Contains(response.Body.String(), `"code":"human_approval_required"`) {
+		t.Fatalf("expected human approval gate, status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
 func TestAIGenerationEnqueueReturnsAcceptedAndStatus(t *testing.T) {
 	server := New(&fakeStore{scopes: []string{"ai:invoke"}}, 75)
 	request := httptest.NewRequest(http.MethodPost, "/v1/ai/generations", strings.NewReader(`{"task_type":"content_draft","input":{"brief":"win back"}}`))

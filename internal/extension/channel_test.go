@@ -27,12 +27,14 @@ func TestExtensionChannelAdapter_Send_Success(t *testing.T) {
 		CurrentVersionID: &versionID,
 	}
 	store.versions[versionID] = domain.ExtensionVersion{
-		ID:          versionID,
-		ExtensionID: extID,
-		Version:     1,
-		Kind:        "channel_provider",
-		Transport:   "remote_http",
+		ID:              versionID,
+		ExtensionID:     extID,
+		Version:         1,
+		Kind:            "channel_provider",
+		Transport:       "remote_http",
+		RequestedScopes: []string{"messages:write"},
 	}
+	store.grants[extID] = []domain.ExtensionGrant{{ExtensionID: extID, Scope: "messages:write"}}
 	store.configs[extID] = domain.ExtensionConfig{
 		ExtensionID:       extID,
 		Status:            "active",
@@ -98,12 +100,14 @@ func TestExtensionChannelAdapter_Send_FailureWrapsInDeliveryError(t *testing.T) 
 		CurrentVersionID: &versionID,
 	}
 	store.versions[versionID] = domain.ExtensionVersion{
-		ID:          versionID,
-		ExtensionID: extID,
-		Version:     1,
-		Kind:        "channel_provider",
-		Transport:   "remote_http",
+		ID:              versionID,
+		ExtensionID:     extID,
+		Version:         1,
+		Kind:            "channel_provider",
+		Transport:       "remote_http",
+		RequestedScopes: []string{"messages:write"},
 	}
+	store.grants[extID] = []domain.ExtensionGrant{{ExtensionID: extID, Scope: "messages:write"}}
 	store.configs[extID] = domain.ExtensionConfig{
 		ExtensionID:       extID,
 		Status:            "active",
@@ -139,6 +143,27 @@ func TestExtensionChannelAdapter_Send_FailureWrapsInDeliveryError(t *testing.T) 
 	var delErr *channels.DeliveryError
 	if !errors.As(err, &delErr) {
 		t.Errorf("expected a channels.DeliveryError, got %T: %v", err, err)
+	}
+}
+
+func TestExtensionChannelAdapter_OverScopedInvocationIsDeniedAndAudited(t *testing.T) {
+	store := newMockStore()
+	host := NewHost(store)
+	versionID := "ver-channel-scope"
+	store.extensions["ext-channel-scope"] = domain.Extension{ID: "ext-channel-scope", Name: "scoped_sms", Status: "enabled", CurrentVersionID: &versionID}
+	store.versions[versionID] = domain.ExtensionVersion{ID: versionID, ExtensionID: "ext-channel-scope", Version: 1, Kind: "channel_provider", Transport: "remote_http", RequestedScopes: []string{"messages:write"}}
+	store.grants["ext-channel-scope"] = []domain.ExtensionGrant{{ExtensionID: "ext-channel-scope", Scope: "messages:read"}}
+	store.configs["ext-channel-scope"] = domain.ExtensionConfig{ExtensionID: "ext-channel-scope", Status: "active", Config: json.RawMessage(`{"base_url":"http://example.com"}`), EndpointAllowlist: []string{"http://example.com"}}
+	host.httpClient.Transport = &mockRoundTripper{RoundTripFunc: func(*http.Request) (*http.Response, error) {
+		t.Fatal("over-scoped channel invocation reached transport")
+		return nil, nil
+	}}
+
+	_, err := NewExtensionChannelAdapter(host, store, "scoped_sms").Send(context.Background(), ports.RenderedMessage{
+		Channel: "sms", Endpoint: "+1", Body: "blocked", Identity: domain.SendingIdentity{TenantID: "tenant-1", WorkspaceID: "workspace-1"},
+	})
+	if err == nil || len(store.activities) != 1 || store.activities[0].PolicyDecision != "denied_scope" {
+		t.Fatalf("expected audited scope denial, err=%v activities=%+v", err, store.activities)
 	}
 }
 

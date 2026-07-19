@@ -28,7 +28,7 @@ const (
 )
 
 type ExtensionHost interface {
-	Invoke(ctx context.Context, principal domain.Principal, extensionID string, invocation string, input json.RawMessage) (json.RawMessage, string, error)
+	InvokeWithScope(ctx context.Context, principal domain.Principal, extensionID string, invocation string, requiredScope string, input json.RawMessage) (json.RawMessage, string, error)
 }
 
 type ExtensionNodeConfig struct {
@@ -39,7 +39,6 @@ type ExtensionNodeConfig struct {
 	Fallback         string          `json:"fallback"`
 	Config           json.RawMessage `json:"config,omitempty"`
 }
-
 
 type EntryConfig struct {
 	Trigger       string `json:"trigger"`
@@ -381,11 +380,11 @@ func (n *Node) execute(ctx context.Context, store ports.Store, run *domain.Journ
 			})
 			if err == nil {
 				decisionCtx, cancel := context.WithTimeout(ctx, time.Duration(cfg.TimeoutMS)*time.Millisecond)
-				responseBytes, actID, err := extHost.Invoke(decisionCtx, domain.Principal{
+				responseBytes, actID, err := extHost.InvokeWithScope(decisionCtx, domain.Principal{
 					TenantID:    run.TenantID,
 					WorkspaceID: run.WorkspaceID,
 					ActorType:   "system",
-				}, cfg.ExtensionID, "decide", inputPayload)
+				}, cfg.ExtensionID, "decide", "journeys:write", inputPayload)
 				cancel()
 				activityID = actID
 				if err == nil && len(responseBytes) > 0 {

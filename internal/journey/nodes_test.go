@@ -695,6 +695,10 @@ func (m *mockExtensionHost) Invoke(ctx context.Context, principal domain.Princip
 	return nil, "", nil
 }
 
+func (m *mockExtensionHost) InvokeWithScope(ctx context.Context, principal domain.Principal, extensionID string, invocation, _ string, input json.RawMessage) (json.RawMessage, string, error) {
+	return m.Invoke(ctx, principal, extensionID, invocation, input)
+}
+
 func TestExtensionNodesExecution_Success(t *testing.T) {
 	graph := &Graph{
 		Nodes: []Node{

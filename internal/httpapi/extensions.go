@@ -77,6 +77,10 @@ func (s *Server) updateExtension(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	in.ID = r.PathValue("id")
+	if in.Status == "enabled" && (p.ActorType != "user" || p.UserID == "") {
+		writeError(w, http.StatusForbidden, "human_approval_required", "enabling an extension requires an authenticated user")
+		return
+	}
 	out, err := s.store.UpdateExtension(r.Context(), p, in)
 	if err != nil {
 		internalError(w, err, "update extension", p)

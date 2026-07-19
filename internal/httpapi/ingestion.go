@@ -11,7 +11,7 @@ import (
 )
 
 type extensionInvoker interface {
-	Invoke(context.Context, domain.Principal, string, string, json.RawMessage) (json.RawMessage, string, error)
+	InvokeWithScope(context.Context, domain.Principal, string, string, string, json.RawMessage) (json.RawMessage, string, error)
 }
 
 var errTransformRejected = errors.New("ingestion transform rejected the event")
@@ -30,7 +30,7 @@ func (s *Server) applyIngestionTransforms(ctx context.Context, p domain.Principa
 			if err != nil {
 				return fmt.Errorf("resolve ingestion transform %s: %w", ext.ID, err)
 			}
-			output, _, invokeErr := s.extensionInvoker.Invoke(ctx, p, ext.ID, "transform", events[i].Payload)
+			output, _, invokeErr := s.extensionInvoker.InvokeWithScope(ctx, p, ext.ID, "transform", "events:write", events[i].Payload)
 			if invokeErr != nil {
 				if transformOnError(version.Manifest) == "passthrough" {
 					continue

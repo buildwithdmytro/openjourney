@@ -57,7 +57,7 @@ func (e *ExtensionChannelAdapter) Send(ctx context.Context, msg ports.RenderedMe
 	}
 
 	// 3. Call host.Invoke
-	output, _, err := e.host.Invoke(ctx, principal, ext.ID, "send", input)
+	output, _, err := e.host.InvokeWithScope(ctx, principal, ext.ID, "send", "messages:write", input)
 	if err != nil {
 		retryable := true
 		if errors.Is(err, ErrRateLimitExceeded) || errors.Is(err, ErrBudgetExceeded) {

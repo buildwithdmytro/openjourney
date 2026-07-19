@@ -53,7 +53,7 @@ func RegisterTemplateFunction(engine *liquid.Engine, host *Host, principal domai
 			if err != nil {
 				return "", err
 			}
-			output, _, err := host.Invoke(context.Background(), principal, registration.ExtensionID, registration.Invocation, input)
+			output, _, err := host.InvokeWithScope(context.Background(), principal, registration.ExtensionID, registration.Invocation, "templates:read", input)
 			if err != nil {
 				return "", fmt.Errorf("template extension %s: %w", registration.Name, err)
 			}
@@ -67,7 +67,7 @@ func RegisterTemplateFunction(engine *liquid.Engine, host *Host, principal domai
 		if err != nil {
 			return nil, err
 		}
-		output, _, err := host.Invoke(context.Background(), principal, registration.ExtensionID, registration.Invocation, input)
+		output, _, err := host.InvokeWithScope(context.Background(), principal, registration.ExtensionID, registration.Invocation, "templates:read", input)
 		if err != nil {
 			return nil, fmt.Errorf("template extension %s: %w", registration.Name, err)
 		}

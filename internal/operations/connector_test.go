@@ -58,6 +58,10 @@ func (i *connectorInvoker) Invoke(_ context.Context, p domain.Principal, extensi
 	return json.RawMessage(`{"accepted":true}`), "activity-1", nil
 }
 
+func (i *connectorInvoker) InvokeWithScope(ctx context.Context, p domain.Principal, extensionID, invocation, _ string, input json.RawMessage) (json.RawMessage, string, error) {
+	return i.Invoke(ctx, p, extensionID, invocation, input)
+}
+
 func TestConnectorRunUsesStablePerEventIdempotencyInput(t *testing.T) {
 	invoker := &connectorInvoker{}
 	payload := json.RawMessage(`{

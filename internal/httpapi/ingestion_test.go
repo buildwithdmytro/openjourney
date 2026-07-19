@@ -44,6 +44,10 @@ func (i ingestionInvoker) Invoke(context.Context, domain.Principal, string, stri
 	return i.output, "activity-1", i.err
 }
 
+func (i ingestionInvoker) InvokeWithScope(context.Context, domain.Principal, string, string, string, json.RawMessage) (json.RawMessage, string, error) {
+	return i.output, "activity-1", i.err
+}
+
 func TestIngestionTransformEnrichesAndPreservesEventIdentity(t *testing.T) {
 	versionID := "version-1"
 	store := &ingestionStore{

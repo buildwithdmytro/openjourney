@@ -159,6 +159,21 @@ func (h *Host) invoke(ctx context.Context, principal domain.Principal, extension
 		actID, _ := h.recordActivity(ctx, principal, extensionID, ev.Version, ev.Kind, invocation, &input, nil, 0, 0, "error")
 		return nil, actID, fmt.Errorf("failed to resolve scopes: %w", err)
 	}
+	// A caller carrying scopes can only delegate the scopes it possesses. Internal
+	// trusted workers omit Scopes and retain the existing system-principal path.
+	if principal.Scopes != nil {
+		callerScopes := make(map[string]bool, len(principal.Scopes))
+		for _, scope := range principal.Scopes {
+			callerScopes[scope] = true
+		}
+		filtered := intersection[:0]
+		for _, scope := range intersection {
+			if callerScopes[scope] || callerScopes["*"] {
+				filtered = append(filtered, scope)
+			}
+		}
+		intersection = filtered
+	}
 
 	derivedP := principal
 	derivedP.ActorType = "extension"
@@ -373,7 +388,7 @@ func isEndpointAllowed(targetURL string, allowlist []string) error {
 		return fmt.Errorf("invalid URL: %w", err)
 	}
 
-	host := parsed.Host          // e.g. "localhost:11434"
+	host := parsed.Host           // e.g. "localhost:11434"
 	hostname := parsed.Hostname() // e.g. "localhost"
 
 	for _, allowed := range allowlist {

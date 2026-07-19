@@ -30,7 +30,9 @@ func main() { os.Stdout.Write([]byte("\"rendered-by-wasm\"")) }
 	store.versions[versionID] = domain.ExtensionVersion{
 		ID: versionID, ExtensionID: extID, Version: 1, Kind: "template_function",
 		Transport: "wasm", Status: "active", Manifest: json.RawMessage(manifest), WasmBlobKey: stringPtr("template-wasm"),
+		RequestedScopes: []string{"templates:read"},
 	}
+	store.grants[extID] = []domain.ExtensionGrant{{ExtensionID: extID, Scope: "templates:read"}}
 	store.configs[extID] = domain.ExtensionConfig{ExtensionID: extID, Status: "active", TimeoutMs: 2000, MaxMemoryMb: 64}
 	host := NewHost(store)
 	host.SetBlobStore(&mockBlobStore{blobs: map[string][]byte{"template-wasm": wasm}})

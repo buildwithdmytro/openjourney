@@ -53,7 +53,7 @@ type AIGateway interface {
 // operations package depends only on this seam so the job worker remains
 // usable with a nil invoker in deployments that have extensions disabled.
 type ExtensionInvoker interface {
-	Invoke(context.Context, domain.Principal, string, string, json.RawMessage) (json.RawMessage, string, error)
+	InvokeWithScope(context.Context, domain.Principal, string, string, string, json.RawMessage) (json.RawMessage, string, error)
 }
 
 func Drain(ctx context.Context, store Store, blobs ports.BlobStore, maxItems int, watch bool) (int, error) {
@@ -151,7 +151,7 @@ func execute(ctx context.Context, store Store, blobs ports.BlobStore, gateway AI
 			return err
 		}
 		principal := domain.Principal{TenantID: input.TenantID, WorkspaceID: input.WorkspaceID, ActorType: "system"}
-		_, _, err = extensions.Invoke(ctx, principal, connector.ExtensionID, "deliver", connectorInput)
+		_, _, err = extensions.InvokeWithScope(ctx, principal, connector.ExtensionID, "deliver", "events:write", connectorInput)
 		return err
 	case "privacy.delete":
 		if input.RequestID == "" {

@@ -82,6 +82,9 @@ func (s *Store) ListExtensions(ctx context.Context, p domain.Principal) ([]domai
 }
 
 func (s *Store) UpdateExtension(ctx context.Context, p domain.Principal, ext domain.Extension) (domain.Extension, error) {
+	if ext.Status == "enabled" && (p.ActorType != "user" || p.UserID == "") {
+		return domain.Extension{}, errors.New("human_approval_required: enabling an extension requires an authenticated user")
+	}
 	var out domain.Extension
 	err := s.pool.QueryRow(ctx, `UPDATE extensions
 		SET name = COALESCE(NULLIF($4, ''), name),

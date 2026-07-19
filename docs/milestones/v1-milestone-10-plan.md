@@ -296,7 +296,7 @@ winner by `identity_namespaces.priority` + policy version.
 ## 6. Task list
 
 ### Milestone 15.0 — Security closeout of the M9 Extension Ecosystem — DO FIRST
-1. **Enable-gate + scope enforcement.** Add the human-actor gate (`p.ActorType != "user" || p.UserID == ""`
+1. [x] **Enable-gate + scope enforcement.** Add the human-actor gate (`p.ActorType != "user" || p.UserID == ""`
    → 403 `human_approval_required`) to the enable path (`UpdateExtension` when `status` transitions to
    `enabled`, `internal/httpapi/extensions.go:72` / `internal/postgres/extensions.go:84`). Wire a real
    `requiredScope` into every invocation site so `denied_scope` actually fires: `channel.go:60`,
@@ -305,7 +305,7 @@ winner by `identity_namespaces.priority` + policy version.
    the derived principal is intersected with the caller's scopes too.
    *Done when:* a non-human `extensions:write` key gets 403 re-enabling a disabled extension; a test
    proves an over-scoped extension invocation is rejected `denied_scope` + audited on a real seam (not
-   only via `InvokeWithScope` in a unit test).
+   only via `InvokeWithScope` in a unit test). — done: HTTP human-actor gate and audited channel scope-denial tests pass; full Go build/vet/test and tidy show no dependency diff.
 2. **Signing hardening.** Wire operator trusted publisher keys from config into
    `SetTrustedPublisherKeys` (`internal/postgres/store.go:62`) at a `cmd/` boot site so installs work in
    prod; restrict the accepted JWS algorithm allowlist (`extensions.go:267`) to **asymmetric-only** (drop
