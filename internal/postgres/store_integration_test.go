@@ -1419,7 +1419,7 @@ func TestExtensionsMigrationAndDefaultScopesIntegration_14_0_1(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, table := range []string{"extensions", "extension_versions", "extension_configs", "extension_grants"} {
+	for _, table := range []string{"extensions", "extension_versions", "extension_configs", "extension_grants", "connector_pipelines", "connector_pipeline_versions"} {
 		var exists bool
 		if err := store.pool.QueryRow(ctx, `SELECT to_regclass('public.' || $1) IS NOT NULL`, table).Scan(&exists); err != nil {
 			t.Fatal(err)
@@ -1437,18 +1437,18 @@ func TestExtensionsMigrationAndDefaultScopesIntegration_14_0_1(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, scope := range []string{"extensions:read", "extensions:write", "extensions:install"} {
+	for _, scope := range []string{"extensions:read", "extensions:write", "extensions:install", "connectors:read", "connectors:write", "connectors:run"} {
 		if !principal.HasScope(scope) {
 			t.Fatalf("fresh API key scopes %v do not include %q", principal.Scopes, scope)
 		}
 	}
 	if _, err := store.CreateRole(ctx, principal, "Extension Manager", []string{
-		"extensions:read", "extensions:write", "extensions:install",
+		"extensions:read", "extensions:write", "extensions:install", "connectors:read", "connectors:write", "connectors:run",
 	}); err != nil {
 		t.Fatalf("CreateRole extensions scopes: %v", err)
 	}
 
-	// Verify operation_jobs constraint accepts connector.run
+	// Verify operation_jobs constraint accepts every connector job type.
 	tx, err := store.pool.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -1460,15 +1460,36 @@ func TestExtensionsMigrationAndDefaultScopesIntegration_14_0_1(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	var jobID string
+	var extensionID string
 	err = tx.QueryRow(ctx, `
-		INSERT INTO operation_jobs (tenant_id, workspace_id, job_type, payload)
-		VALUES ($1, $2, 'connector.run', '{}'::jsonb)
-		RETURNING id
-	`, tenantID, workspaceID).Scan(&jobID)
+		INSERT INTO extensions (tenant_id, workspace_id, name, publisher)
+		VALUES ($1, $2, $3, 'test-publisher') RETURNING id
+	`, tenantID, workspaceID, fmt.Sprintf("connector-foundation-%d", time.Now().UnixNano())).Scan(&extensionID)
 	if err != nil {
-		t.Fatalf("failed to insert connector.run job: %v", err)
+		t.Fatalf("failed to insert connector extension: %v", err)
+	}
+	if _, err = tx.Exec(ctx, `
+		INSERT INTO extension_versions
+		(extension_id, tenant_id, version, kind, transport, manifest, signature, signing_key_id, manifest_key)
+		VALUES ($1, $2, 1, 'connector', 'native', '{}'::jsonb, 'test-signature', 'test-key', 'test-manifest')
+	`, extensionID, tenantID); err != nil {
+		t.Fatalf("native connector transport was rejected: %v", err)
+	}
+	if _, err = tx.Exec(ctx, `
+		INSERT INTO extension_versions
+		(extension_id, tenant_id, version, kind, transport, manifest, signature, signing_key_id, manifest_key)
+		VALUES ($1, $2, 2, 'connector', 'unknown', '{}'::jsonb, 'test-signature', 'test-key', 'test-manifest-2')
+	`, extensionID, tenantID); err == nil {
+		t.Fatal("unknown connector transport was accepted")
+	}
+
+	for _, jobType := range []string{"connector.run", "warehouse.sync", "reverse_etl.run", "export.replay"} {
+		if _, err = tx.Exec(ctx, `
+			INSERT INTO operation_jobs (tenant_id, workspace_id, job_type, payload)
+			VALUES ($1, $2, $3, '{}'::jsonb)
+		`, tenantID, workspaceID, jobType); err != nil {
+			t.Fatalf("failed to insert %s job: %v", jobType, err)
+		}
 	}
 
 	_, err = tx.Exec(ctx, `

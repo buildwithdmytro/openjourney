@@ -334,13 +334,15 @@ winner by `identity_namespaces.priority` + policy version.
    passthrough coverage passes; full Go build/vet/test and tidy show no dependency diff.
 
 ### Milestone 15.1 — Connector foundation: driver registry + pipeline + freeze + scopes
-1. **Migration `043_connectors.sql`** (§2.1): widen `extension_versions.transport` to add `'native'`;
+1. [x] **Migration `043_connectors.sql`** (§2.1): widen `extension_versions.transport` to add `'native'`;
    `connector_pipelines` + `connector_pipeline_versions`; `connectors:read/write/run` in `rbac.go:12-29`
    **and** the re-declared `api_keys` DEFAULT array; widen `operation_jobs.job_type` with `warehouse.sync`,
    `reverse_etl.run`, `export.replay`; add the `FailOperationJob` terminal branch (`operations.go:66`) for
    the new job types' request table (`connector_runs`).
    *Done when:* migration applies cleanly; the CHECK accepts every new value and rejects an unknown one;
-   `rbac.go` accepts the three new scopes; `go test ./internal/postgres/...` green.
+   `rbac.go` accepts the three new scopes; `go test ./internal/postgres/...` green. — done: 043 migration,
+   connector scopes, terminal connector-job handling, and integration assertions added; full Go build/vet/test
+   and tidy pass with no dependency diff (DB integration skipped because OPENJOURNEY_TEST_DATABASE_URL is unset).
 2. **Driver registry + ports + store** (Recipe 6.45): `internal/connector/registry.go` (`ConnectorDriver`
    interface, `DefaultRegistry` with `fake` + stubs, `For`, `Register`), a `RegisterNativeConnectors`/remote
    bridge (mirror `extension/channel.go:111`), and `ports.Store` + `internal/postgres` methods for pipelines

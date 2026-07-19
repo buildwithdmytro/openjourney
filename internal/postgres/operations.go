@@ -76,6 +76,12 @@ func (s *Store) FailOperationJob(ctx context.Context, id string, operationErr er
 			RequestID string `json:"request_id"`
 		}
 		if json.Unmarshal(payload, &input) == nil && input.RequestID != "" {
+			// Connector run records are append-only. Their executor owns the
+			// terminal connector_runs row; do not fall through to one of the
+			// request-table updates below when a connector job exhausts retries.
+			if jobType == "warehouse.sync" || jobType == "reverse_etl.run" || jobType == "export.replay" {
+				return tx.Commit(ctx)
+			}
 			if jobType == "profiles.import" {
 				if _, err := tx.Exec(ctx, `UPDATE import_requests SET status='failed',error=$2,completed_at=now() WHERE id=$1`, input.RequestID, message); err != nil {
 					return err
