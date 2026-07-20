@@ -518,11 +518,14 @@ winner by `identity_namespaces.priority` + policy version.
    *Done when:* the identity E2E passes and a grep/assertion confirms no new direct `profiles`/`identity_*`
    writer was introduced outside the projector (only the pre-existing `UpdateProfileAttributes` bypass remains).
    — done: order-independent namespace-arrival E2E and connector protected-table writer guard pass; full Go build/vet/test and tidy show no dependency diff.
-3. **Security E2E**: connector credentials are `*_ref` only (a raw-secret config is rejected); all native +
+3. [x] **Security E2E**: connector credentials are `*_ref` only (a raw-secret config is rejected); all native +
    remote egress is SSRF/allowlist-guarded; connector scopes are intersection-enforced; publish/enable is
    human-actor-gated; `connector_runs` + `extension_activity` are append-only and REVOKE-protected.
    *Done when:* each property has a test proving it (a raw-secret config rejected; a private-IP sink endpoint
-   blocked; an over-scoped connector `denied_scope`; a non-human publish 403; an audit UPDATE rejected).
+   blocked; an over-scoped connector `denied_scope`; a non-human publish 403; an audit UPDATE rejected). — done:
+   `TestWebhookSinkRejectsRawSecretWithoutReference`, `TestWebhookSinkBlocksPrivateEndpointWithoutAllowlist`,
+   `TestSecurityE2E_RequiredScopeIsDeniedAndAudited`, `TestPublishConnectorPipelineFreezesCanonicalDefinitionAndRequiresHuman`,
+   and append-only audit integration tests pass; full Go build/vet/test and tidy show no dependency diff.
 4. **Run the suite**: `go build ./... && go vet ./... && go test ./...`, `go mod tidy` (**MUST show no new
    dependency**), `cd web && npm run typecheck && npm run build && npm test`.
    *Done when:* all green and `git diff go.mod go.sum web/package.json` is empty of additions.

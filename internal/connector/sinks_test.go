@@ -99,3 +99,14 @@ func TestWebhookSinkRejectsRawSecretWithoutReference(t *testing.T) {
 		t.Fatal("raw webhook secret without *_ref must be rejected")
 	}
 }
+
+func TestWebhookSinkBlocksPrivateEndpointWithoutAllowlist(t *testing.T) {
+	sink := NewWebhookSink()
+	if _, err := sink.Write(context.Background(), map[string]any{
+		"endpoint":        "http://127.0.0.1:8080/hooks",
+		"hmac_secret_ref": "WEBHOOK_SECRET",
+		"hmac_secret":     "secret",
+	}, []Row{{"id": "1"}}); err == nil {
+		t.Fatal("private webhook endpoint without an explicit allowlist must be rejected")
+	}
+}
