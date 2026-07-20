@@ -347,6 +347,32 @@ type DeviceToken struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
+type InAppMessage struct {
+	ID                string          `json:"id"`
+	TenantID          string          `json:"tenant_id"`
+	WorkspaceID       string          `json:"workspace_id"`
+	AppID             string          `json:"app_id"`
+	ProfileID         string          `json:"profile_id"`
+	TemplateID        *string         `json:"template_id,omitempty"`
+	CampaignID        *string         `json:"campaign_id,omitempty"`
+	JourneyRunID      *string         `json:"journey_run_id,omitempty"`
+	DeliveryAttemptID *string         `json:"delivery_attempt_id,omitempty"`
+	MessageType       string          `json:"message_type"` // modal, banner, fullscreen, card
+	Content           json.RawMessage `json:"content"`
+	Rank              int             `json:"rank"`
+	Categories        []string        `json:"categories"`
+	StartAt           time.Time       `json:"start_at"`
+	ExpiresAt         *time.Time      `json:"expires_at,omitempty"`
+	IdempotencyKey    *string         `json:"idempotency_key,omitempty"`
+	Status            string          `json:"status"` // pending, delivered, displayed, clicked, dismissed, expired
+	DeliveredAt       *time.Time      `json:"delivered_at,omitempty"`
+	DisplayedAt       *time.Time      `json:"displayed_at,omitempty"`
+	ClickedAt         *time.Time      `json:"clicked_at,omitempty"`
+	DismissedAt       *time.Time      `json:"dismissed_at,omitempty"`
+	CreatedAt         time.Time       `json:"created_at"`
+	UpdatedAt         time.Time       `json:"updated_at"`
+}
+
 type EventSchema struct {
 	ID            string          `json:"id"`
 	EventType     string          `json:"event_type"`

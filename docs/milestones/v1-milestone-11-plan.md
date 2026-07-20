@@ -371,7 +371,7 @@ model). No new npm dep; framework-free.
    *Done when:* migration applies cleanly; the CHECKs accept `in_app`/`inapp`/`webpush` and reject an
    unknown value; `rbac.go` accepts the two new scopes; `go test ./internal/postgres/...` green.
    — done: 048_inapp_messaging.sql created with channel/provider/body-presence CHECKs widened; inapp_messages table with 61-col schema + inbox index; messages:read/write added to rbac.go allowedPermissions and api_keys DEFAULT array; go build/vet/test all green
-2. [ ] **Domain + store for `inapp_messages`**: `domain.InAppMessage` struct (`domain.go`, json tags,
+2. [x] **Domain + store for `inapp_messages`**: `domain.InAppMessage` struct (`domain.go`, json tags,
    `*T` nullables); `ports.Store` methods `CreateInAppMessage`, `ListInboxForProfile`,
    `GetInAppMessage`, `ListInAppMessages` (admin); `internal/postgres/messages.go` implementing them
    tenant+workspace-scoped, `CreateInAppMessage` inheriting `(tenant,workspace,app)` from the profile,
@@ -379,6 +379,7 @@ model). No new npm dep; framework-free.
    *Done when:* an in-app message round-trips through the store; a create with a mismatched
    tenant/profile is rejected; the inbox query returns only undismissed, in-window rows ordered by rank;
    unit + integration tests green.
+   — done: InAppMessage struct with proper json tags and nullable pointers; CreateInAppMessage/GetInAppMessage/ListInboxForProfile/ListInAppMessages implemented in messages.go with scoping and inbox filtering; ListInboxForProfile returns undismissed, in-window rows by rank DESC; integration tests verify round-trip, idempotency, inbox filtering (dismissed/expired excluded), and ErrNotFound; go build/vet/test pass
 3. [ ] **`inapp` channel adapter + registration** (Recipe 6.52): `internal/channels/inapp.go`
    implementing `ports.ChannelAdapter`; `RegisterInApp(reg, store)` wired in
    `cmd/campaigns-delivery/main.go:95` and `cmd/journeys-worker/main.go:97`; `provider='inapp'`.

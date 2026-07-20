@@ -126,6 +126,11 @@ type Store interface {
 	ListActiveDeviceTokens(ctx context.Context, tenantID, workspaceID, profileID string) ([]domain.DeviceToken, error)
 	ListDeviceTokensByProfile(ctx context.Context, tenantID, workspaceID, profileID string) ([]domain.DeviceToken, error)
 
+	CreateInAppMessage(ctx context.Context, tenantID, workspaceID, appID, profileID string, msg domain.InAppMessage) (domain.InAppMessage, error)
+	GetInAppMessage(ctx context.Context, tenantID, msgID string) (domain.InAppMessage, error)
+	ListInboxForProfile(ctx context.Context, tenantID, appID, profileID string, limit int) ([]domain.InAppMessage, error)
+	ListInAppMessages(ctx context.Context, p domain.Principal, appID string) ([]domain.InAppMessage, error)
+
 	CreateCampaign(ctx context.Context, p domain.Principal, c domain.Campaign) (domain.Campaign, error)
 	GetCampaign(ctx context.Context, p domain.Principal, id string) (domain.Campaign, error)
 	GetCampaignSystem(ctx context.Context, tenantID, id string) (domain.Campaign, error)
