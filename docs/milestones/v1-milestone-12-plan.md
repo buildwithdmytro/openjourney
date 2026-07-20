@@ -370,10 +370,11 @@ fake-store unit test + postgres integration test (the M10/M11 template).
    *Done when:* a section shows a `Skeleton` instead of "Loading…" text; reduced-motion renders a static
    fallback; tests green.
    — done: Spinner.tsx/Skeleton.tsx created with size/circle props; @keyframes spin and shimmer added with @media (prefers-reduced-motion: reduce) guards; 16 component tests passing; SuspenseLoader component adopted in Scoring/Acquisition Suspense fallbacks using Skeleton; Spinner used in Suppressions list-loading; 131 total tests green
-2. [ ] **EmptyState**: `<EmptyState icon title description cta>` replacing ~27 ad-hoc
+2. [x] **EmptyState**: `<EmptyState icon title description cta>` replacing ~27 ad-hoc
    `<p className="muted">No X yet</p>`; adopted in 3+ sections.
    *Done when:* empty lists render a consistent `EmptyState` with a CTA where relevant; a test asserts the
    CTA is reachable by role; the ad-hoc `muted` empties in the migrated sections are gone.
+   — done: EmptyState.tsx with icon/title/description/cta props; 7 component tests passing; Connectors.tsx, Extensions.tsx, and Scoring.tsx migrated (3 sections); CTA button tested via getByRole and fireEvent.click; 138 total tests green
 3. [ ] **ErrorState + retry + centralized errors**: `<ErrorState onRetry>` generalizing `ErrorMessage`
    (`App.tsx:830`); centralize the duplicated `message()`/`errorMessage()` into `web/src/errors.ts`.
    *Done when:* a failed fetch shows a retry control that re-runs the loader; `errors.ts` is imported

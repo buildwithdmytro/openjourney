@@ -519,3 +519,35 @@ button.danger { color: var(--color-danger-text); background: var(--color-danger-
     animation: shimmer 2s infinite;
   }
 }
+
+.empty-state {
+  display: grid;
+  place-items: center;
+  gap: 16px;
+  padding: 40px 24px;
+  text-align: center;
+  color: var(--color-ink-muted);
+}
+
+.empty-state-icon {
+  color: var(--color-accent);
+  opacity: 0.7;
+}
+
+.empty-state-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.empty-state-description {
+  margin: 0;
+  max-width: 360px;
+  font-size: 14px;
+  color: var(--color-ink-muted);
+}
+
+.empty-state-cta {
+  margin-top: 8px;
+}

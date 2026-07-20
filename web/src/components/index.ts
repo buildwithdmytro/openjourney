@@ -20,3 +20,5 @@ export { default as Spinner } from "./Spinner";
 export type { SpinnerProps } from "./Spinner";
 export { default as Skeleton } from "./Skeleton";
 export type { SkeletonProps } from "./Skeleton";
+export { default as EmptyState } from "./EmptyState";
+export type { EmptyStateProps, EmptyStateCTA } from "./EmptyState";
