@@ -1189,6 +1189,18 @@ type ConnectorPipeline struct {
 	UpdatedAt               time.Time  `json:"updated_at"`
 }
 
+type ConnectorPipelineVersion struct {
+	ID              string          `json:"id"`
+	PipelineID      string          `json:"pipeline_id"`
+	TenantID        string          `json:"tenant_id"`
+	Version         int             `json:"version"`
+	MappingKey      string          `json:"mapping_key"`
+	Mapping         json.RawMessage `json:"mapping"`
+	DefinitionSHA   string          `json:"definition_sha"`
+	CreatedByUserID *string         `json:"created_by_user_id,omitempty"`
+	CreatedAt       time.Time       `json:"created_at"`
+}
+
 type ExtensionActivity struct {
 	ID               string    `json:"id"`
 	TenantID         string    `json:"tenant_id"`

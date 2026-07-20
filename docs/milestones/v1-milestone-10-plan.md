@@ -365,7 +365,10 @@ winner by `identity_namespaces.priority` + policy version.
    (`server.go:216` style); publish freezes the mapping definition (canonical JSON → sha256 → `blobs.Put` →
    immutable version row) and requires the human-actor gate.
    *Done when:* a non-human actor is 403 on publish/enable; publishing writes an immutable version + blob;
-   the definition sha is stable for identical input; httpapi tests green.
+   the definition sha is stable for identical input; httpapi tests green. — done: connector pipeline CRUD/
+   publish routes, canonical blob freeze, immutable version persistence, human publish/enable gates, and
+   `TestPublishConnectorPipelineFreezesCanonicalDefinitionAndRequiresHuman` pass; full Go build/vet/test and
+   tidy pass with no dependency diff.
 
 ### Milestone 15.2 — Leased scheduler (recurring runs)
 1. **Scheduler drain + worker** (Recipe 6.47): `internal/scheduler` claims due pipelines

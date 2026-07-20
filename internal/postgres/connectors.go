@@ -2,7 +2,9 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 	"github.com/jackc/pgx/v5"
@@ -68,4 +70,80 @@ func (s *Store) GetConnectorPipeline(ctx context.Context, p domain.Principal, id
 		return domain.ConnectorPipeline{}, ErrNotFound
 	}
 	return out, err
+}
+
+func (s *Store) UpdateConnectorPipeline(ctx context.Context, p domain.Principal, pipeline domain.ConnectorPipeline) (domain.ConnectorPipeline, error) {
+	if pipeline.Name == "" || pipeline.ConnectorExtensionID == "" {
+		return domain.ConnectorPipeline{}, errors.New("connector pipeline name and connector are required")
+	}
+	if pipeline.Direction != "source" && pipeline.Direction != "sink" && pipeline.Direction != "export" {
+		return domain.ConnectorPipeline{}, errors.New("invalid connector pipeline direction")
+	}
+	var out domain.ConnectorPipeline
+	err := scanConnectorPipeline(s.pool.QueryRow(ctx, `UPDATE connector_pipelines
+		SET app_id=$4, connector_extension_id=$5, name=$6, direction=$7,
+			status=CASE WHEN status='enabled' THEN status ELSE COALESCE(NULLIF($8,''),status) END,
+			schedule_enabled=$9, schedule_interval_seconds=$10, next_run_at=$11, updated_at=now()
+		WHERE tenant_id=$1 AND workspace_id=$2 AND id=$3
+		RETURNING `+connectorPipelineColumns,
+		p.TenantID, p.WorkspaceID, pipeline.ID, pipeline.AppID, pipeline.ConnectorExtensionID,
+		pipeline.Name, pipeline.Direction, pipeline.Status, pipeline.ScheduleEnabled,
+		pipeline.ScheduleIntervalSeconds, pipeline.NextRunAt), &out)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.ConnectorPipeline{}, ErrNotFound
+	}
+	return out, err
+}
+
+func (s *Store) PublishConnectorPipeline(ctx context.Context, p domain.Principal, id, publisher, manifestKey string, definition json.RawMessage, definitionSHA string) (domain.ConnectorPipelineVersion, error) {
+	if publisher == "" || manifestKey == "" || len(definition) == 0 || definitionSHA == "" {
+		return domain.ConnectorPipelineVersion{}, errors.New("publisher, manifest, definition, and definition sha are required")
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.ConnectorPipelineVersion{}, err
+	}
+	defer tx.Rollback(ctx)
+	var current *string
+	var latest int
+	err = tx.QueryRow(ctx, `SELECT current_version_id,
+		COALESCE((SELECT MAX(version) FROM connector_pipeline_versions WHERE pipeline_id=connector_pipelines.id),0)
+		FROM connector_pipelines WHERE tenant_id=$1 AND workspace_id=$2 AND id=$3 FOR UPDATE`,
+		p.TenantID, p.WorkspaceID, id).Scan(&current, &latest)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.ConnectorPipelineVersion{}, ErrNotFound
+	}
+	if err != nil {
+		return domain.ConnectorPipelineVersion{}, err
+	}
+	if current != nil {
+		var existing domain.ConnectorPipelineVersion
+		err = tx.QueryRow(ctx, `SELECT id,pipeline_id,version,mapping_key,mapping,definition_sha,created_by_user_id,created_at
+			FROM connector_pipeline_versions WHERE id=$1`, *current).Scan(&existing.ID, &existing.PipelineID,
+			&existing.Version, &existing.MappingKey, &existing.Mapping, &existing.DefinitionSHA, &existing.CreatedByUserID, &existing.CreatedAt)
+		if err != nil {
+			return domain.ConnectorPipelineVersion{}, err
+		}
+		if existing.DefinitionSHA == definitionSHA {
+			return existing, nil
+		}
+	}
+	var out domain.ConnectorPipelineVersion
+	err = tx.QueryRow(ctx, `INSERT INTO connector_pipeline_versions
+		(pipeline_id,version,mapping_key,mapping,definition_sha,created_by_user_id)
+		VALUES ($1,$2,$3,$4,$5,$6)
+		RETURNING id,pipeline_id,version,mapping_key,mapping,definition_sha,created_by_user_id,created_at`,
+		id, latest+1, manifestKey, definition, definitionSHA, publisher).Scan(&out.ID, &out.PipelineID,
+		&out.Version, &out.MappingKey, &out.Mapping, &out.DefinitionSHA, &out.CreatedByUserID, &out.CreatedAt)
+	if err != nil {
+		return domain.ConnectorPipelineVersion{}, err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE connector_pipelines SET current_version_id=$1,status='enabled',updated_at=now()
+		WHERE tenant_id=$2 AND workspace_id=$3 AND id=$4`, out.ID, p.TenantID, p.WorkspaceID, id); err != nil {
+		return domain.ConnectorPipelineVersion{}, fmt.Errorf("activate connector pipeline: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.ConnectorPipelineVersion{}, err
+	}
+	return out, nil
 }
