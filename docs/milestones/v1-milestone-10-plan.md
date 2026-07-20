@@ -386,11 +386,12 @@ winner by `identity_namespaces.priority` + policy version.
    egress pinned + allowlisted.
    *Done when:* the driver reads a fixture bucket (fake/minio) into rows deterministically with a resumable
    cursor; unit test green. — done: MinIO-backed S3 driver with guarded endpoint/ref validation and deterministic CSV/JSONL cursor-resume test passes; full Go build/vet/test and tidy show no dependency diff.
-2. **`warehouse.sync` source executor** (Recipe 6.48): map rows → `domain.Event` per the pipeline mapping,
+2. [x] **`warehouse.sync` source executor** (Recipe 6.48): map rows → `domain.Event` per the pipeline mapping,
    deterministic idempotency key, `AcceptEvents` batched to `max_batch_size`, quarantine rejects to object
    storage, write a `connector_runs` row (running → terminal).
    *Done when:* a source run round-trips rows → events → profiles; re-running the SAME objects is a no-op
    (idempotent); rejected rows land in the quarantine blob with counts on the run; integration test green.
+   — done: `warehouse.sync` maps bounded driver pages into batched `AcceptEvents`, writes append-only running/terminal `connector_runs`, quarantines rejected rows, and `TestWarehouseSyncIsEventSourcedAndIdempotent` proves replay deduplication; full Go build/vet/test and tidy pass with no dependency diff.
 
 ### Milestone 15.4 — Warehouse & cloud-stream sources
 1. **`clickhouse` source driver** (Recipe 6.45, `clickhouse-go`): a bounded parameterized `SELECT` with a

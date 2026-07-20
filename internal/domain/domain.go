@@ -1201,6 +1201,25 @@ type ConnectorPipelineVersion struct {
 	CreatedAt       time.Time       `json:"created_at"`
 }
 
+type ConnectorRun struct {
+	ID                string     `json:"id"`
+	TenantID          string     `json:"tenant_id"`
+	WorkspaceID       string     `json:"workspace_id"`
+	AppID             string     `json:"app_id"`
+	PipelineID        string     `json:"pipeline_id"`
+	PipelineVersionID string     `json:"pipeline_version_id"`
+	JobType           string     `json:"job_type"`
+	Status            string     `json:"status"`
+	Cursor            string     `json:"cursor,omitempty"`
+	RowsIn            int64      `json:"rows_in"`
+	RowsOut           int64      `json:"rows_out"`
+	RowsRejected      int64      `json:"rows_rejected"`
+	RejectBlobKey     string     `json:"reject_blob_key,omitempty"`
+	Error             string     `json:"error,omitempty"`
+	StartedAt         time.Time  `json:"started_at"`
+	FinishedAt        *time.Time `json:"finished_at,omitempty"`
+}
+
 type ExtensionActivity struct {
 	ID               string    `json:"id"`
 	TenantID         string    `json:"tenant_id"`

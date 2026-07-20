@@ -13,7 +13,9 @@ import (
 	"time"
 
 	"github.com/buildwithdmytro/openjourney/internal/ai"
+	"github.com/buildwithdmytro/openjourney/internal/connector"
 	"github.com/buildwithdmytro/openjourney/internal/domain"
+	"github.com/buildwithdmytro/openjourney/internal/extension"
 	"github.com/buildwithdmytro/openjourney/internal/ports"
 	"github.com/buildwithdmytro/openjourney/internal/scoring"
 	"github.com/buildwithdmytro/openjourney/internal/telemetry"
@@ -36,6 +38,14 @@ type ImportStore interface {
 	FailImport(context.Context, string, string) error
 	AcceptEvents(context.Context, domain.Principal, []domain.Event) ([]string, error)
 	IsSuppressed(context.Context, domain.Principal, string, string) (bool, error)
+}
+
+type ConnectorStore interface {
+	GetConnectorPipeline(context.Context, domain.Principal, string) (domain.ConnectorPipeline, error)
+	GetConnectorPipelineVersion(context.Context, domain.Principal, string) (domain.ConnectorPipelineVersion, error)
+	GetExtensionConfig(context.Context, domain.Principal, string) (domain.ExtensionConfig, error)
+	RecordConnectorRun(context.Context, domain.ConnectorRun) error
+	AcceptEvents(context.Context, domain.Principal, []domain.Event) ([]string, error)
 }
 
 type AIGenerationStore interface {
@@ -101,6 +111,9 @@ func execute(ctx context.Context, store Store, blobs ports.BlobStore, gateway AI
 		RequestID   string          `json:"request_id"`
 		TenantID    string          `json:"tenant_id"`
 		WorkspaceID string          `json:"workspace_id"`
+		AppID       string          `json:"app_id"`
+		PipelineID  string          `json:"pipeline_id"`
+		Cursor      string          `json:"cursor"`
 		TaskType    string          `json:"task_type"`
 		Input       json.RawMessage `json:"input"`
 		Scopes      []string        `json:"scopes"`
@@ -184,10 +197,176 @@ func execute(ctx context.Context, store Store, blobs ports.BlobStore, gateway AI
 			return errors.New("operation store does not support imports")
 		}
 		return executeImport(ctx, importStore, blobs, input.RequestID)
+	case "warehouse.sync":
+		cs, ok := store.(ConnectorStore)
+		if !ok {
+			return errors.New("operation store does not support connector sources")
+		}
+		job := warehouseSyncInput{RequestID: input.RequestID, TenantID: input.TenantID, WorkspaceID: input.WorkspaceID, AppID: input.AppID, PipelineID: input.PipelineID, Cursor: input.Cursor}
+		if len(input.Input) > 0 {
+			if err := json.Unmarshal(input.Input, &job); err != nil {
+				return fmt.Errorf("warehouse.sync input: %w", err)
+			}
+		}
+		return executeWarehouseSync(ctx, cs, blobs, job)
 	default:
 		return fmt.Errorf("unsupported operation type %q", jobType)
 	}
 }
+
+type warehouseSyncInput struct {
+	RequestID   string `json:"request_id"`
+	TenantID    string `json:"tenant_id"`
+	WorkspaceID string `json:"workspace_id"`
+	AppID       string `json:"app_id"`
+	PipelineID  string `json:"pipeline_id"`
+	Cursor      string `json:"cursor"`
+}
+
+func executeWarehouseSync(ctx context.Context, store ConnectorStore, blobs ports.BlobStore, job warehouseSyncInput) error {
+	return executeWarehouseSyncWithRegistry(ctx, store, blobs, job, connector.DefaultRegistry())
+}
+
+func executeWarehouseSyncWithRegistry(ctx context.Context, store ConnectorStore, blobs ports.BlobStore, job warehouseSyncInput, registry *connector.Registry) error {
+	if job.PipelineID == "" {
+		return errors.New("warehouse.sync requires pipeline_id")
+	}
+	p := domain.Principal{TenantID: job.TenantID, WorkspaceID: job.WorkspaceID, AppID: job.AppID, ActorType: "connector"}
+	pipeline, err := store.GetConnectorPipeline(ctx, p, job.PipelineID)
+	if err != nil {
+		return err
+	}
+	if pipeline.CurrentVersionID == nil {
+		return errors.New("connector pipeline has no published version")
+	}
+	version, err := store.GetConnectorPipelineVersion(ctx, p, *pipeline.CurrentVersionID)
+	if err != nil {
+		return err
+	}
+	cfg, err := store.GetExtensionConfig(ctx, p, pipeline.ConnectorExtensionID)
+	if err != nil {
+		return err
+	}
+	resolved, err := extension.ResolveConfigMap(cfg.Config)
+	if err != nil {
+		return fmt.Errorf("connector config: %w", err)
+	}
+	var mapping map[string]any
+	if err := json.Unmarshal(version.Mapping, &mapping); err != nil {
+		return fmt.Errorf("pipeline mapping: %w", err)
+	}
+	resolved["mapping"] = mapping
+	if registry == nil {
+		return errors.New("connector registry is required")
+	}
+	driver := registry.For(stringValue(resolved, "driver"))
+	rows, nextCursor, err := driver.Read(ctx, resolved, job.Cursor)
+	if err != nil {
+		return err
+	}
+	run := domain.ConnectorRun{TenantID: job.TenantID, WorkspaceID: job.WorkspaceID, AppID: pipeline.AppID, PipelineID: pipeline.ID, PipelineVersionID: version.ID, JobType: "warehouse.sync", Status: "running", Cursor: job.Cursor, RowsIn: int64(len(rows)), StartedAt: time.Now().UTC()}
+	if err := store.RecordConnectorRun(ctx, run); err != nil {
+		return err
+	}
+	valid, rejected := makeSourceEvents(rows, resolved, pipeline.ConnectorExtensionID, version.Version, job.Cursor)
+	batchSize := 75
+	if configured, ok := resolved["max_batch_size"].(float64); ok && configured >= 1 && configured <= 1000 {
+		batchSize = int(configured)
+	}
+	for start := 0; start < len(valid); start += batchSize {
+		end := start + batchSize
+		if end > len(valid) {
+			end = len(valid)
+		}
+		ids, acceptErr := store.AcceptEvents(ctx, p, valid[start:end])
+		if acceptErr != nil {
+			for row := start; row < end; row++ {
+				rejected = append(rejected, reject{Row: row, Error: acceptErr.Error()})
+			}
+		} else {
+			run.RowsOut += int64(len(ids))
+		}
+	}
+	run.RowsRejected = int64(len(rejected))
+	run.Cursor = nextCursor
+	finished := time.Now().UTC()
+	run.FinishedAt = &finished
+	if len(rejected) > 0 && blobs != nil {
+		data, _ := json.Marshal(rejected)
+		run.RejectBlobKey = fmt.Sprintf("connectors/%s/%s/rejected/%s.json", job.TenantID, pipeline.ID, nextCursor)
+		if err := blobs.Put(ctx, run.RejectBlobKey, data, "application/json"); err != nil {
+			return err
+		}
+	}
+	run.Status = "succeeded"
+	if len(rejected) == len(rows) && len(rows) > 0 {
+		run.Status = "failed"
+	}
+	return store.RecordConnectorRun(ctx, run)
+}
+
+type reject struct {
+	Row   int    `json:"row"`
+	Error string `json:"error"`
+}
+
+func makeSourceEvents(rows []connector.Row, cfg map[string]any, connectorID string, version int, cursor string) ([]domain.Event, []reject) {
+	mapping, _ := cfg["mapping"].(map[string]any)
+	if mapping == nil {
+		mapping = cfg
+	}
+	eventType, _ := mapping["event_type"].(string)
+	if eventType == "" {
+		eventType = "profile.updated"
+	}
+	schemaVersion := 1
+	if n, ok := mapping["schema_version"].(float64); ok && n > 0 {
+		schemaVersion = int(n)
+	}
+	var events []domain.Event
+	var rejects []reject
+	for i, row := range rows {
+		get := func(key string) string {
+			source, _ := mapping[key].(string)
+			if source == "" {
+				source = key
+			}
+			value, ok := row[source]
+			if !ok || value == nil {
+				return ""
+			}
+			return strings.TrimSpace(fmt.Sprint(value))
+		}
+		externalID := get("external_id")
+		anonymousID := get("anonymous_id")
+		if externalID == "" && anonymousID == "" {
+			rejects = append(rejects, reject{i, "external_id or anonymous_id is required"})
+			continue
+		}
+		attrs := map[string]any{}
+		if fields, ok := mapping["attributes"].(map[string]any); ok {
+			for target, source := range fields {
+				if s, ok := source.(string); ok {
+					attrs[target] = row[s]
+				}
+			}
+		}
+		payload := map[string]any{"attributes": attrs}
+		if raw, ok := mapping["payload"].(map[string]any); ok {
+			payload = map[string]any{}
+			for key, source := range raw {
+				if s, ok := source.(string); ok {
+					payload[key] = row[s]
+				}
+			}
+		}
+		data, _ := json.Marshal(payload)
+		events = append(events, domain.Event{Type: eventType, SchemaVersion: schemaVersion, ExternalID: externalID, AnonymousID: anonymousID, IdempotencyKey: fmt.Sprintf("%s:%d:%s:%d", connectorID, version, cursor, i), OccurredAt: time.Now().UTC(), Source: "connector:" + connectorID, Payload: data})
+	}
+	return events, rejects
+}
+
+func stringValue(cfg map[string]any, key string) string { value, _ := cfg[key].(string); return value }
 
 func executeImport(ctx context.Context, base ImportStore, blobs ports.BlobStore, requestID string) error {
 	if requestID == "" {

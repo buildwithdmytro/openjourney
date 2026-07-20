@@ -72,6 +72,27 @@ func (s *Store) GetConnectorPipeline(ctx context.Context, p domain.Principal, id
 	return out, err
 }
 
+func (s *Store) GetConnectorPipelineVersion(ctx context.Context, p domain.Principal, id string) (domain.ConnectorPipelineVersion, error) {
+	var out domain.ConnectorPipelineVersion
+	err := s.pool.QueryRow(ctx, `SELECT v.id,v.pipeline_id,v.version,v.mapping_key,v.mapping,v.definition_sha,v.created_by_user_id,v.created_at
+		FROM connector_pipeline_versions v JOIN connector_pipelines p ON p.id=v.pipeline_id
+		WHERE p.tenant_id=$1 AND p.workspace_id=$2 AND v.id=$3`, p.TenantID, p.WorkspaceID, id).
+		Scan(&out.ID, &out.PipelineID, &out.Version, &out.MappingKey, &out.Mapping, &out.DefinitionSHA, &out.CreatedByUserID, &out.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.ConnectorPipelineVersion{}, ErrNotFound
+	}
+	return out, err
+}
+
+func (s *Store) RecordConnectorRun(ctx context.Context, run domain.ConnectorRun) error {
+	_, err := s.pool.Exec(ctx, `INSERT INTO connector_runs
+		(tenant_id,workspace_id,app_id,pipeline_id,pipeline_version_id,job_type,status,cursor,rows_in,rows_out,rows_rejected,reject_blob_key,error,started_at,finished_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NULLIF($12,''),NULLIF($13,''),COALESCE($14,now()),$15)`,
+		run.TenantID, run.WorkspaceID, run.AppID, run.PipelineID, run.PipelineVersionID, run.JobType, run.Status,
+		run.Cursor, run.RowsIn, run.RowsOut, run.RowsRejected, run.RejectBlobKey, run.Error, run.StartedAt, run.FinishedAt)
+	return err
+}
+
 func (s *Store) UpdateConnectorPipeline(ctx context.Context, p domain.Principal, pipeline domain.ConnectorPipeline) (domain.ConnectorPipeline, error) {
 	if pipeline.Name == "" || pipeline.ConnectorExtensionID == "" {
 		return domain.ConnectorPipeline{}, errors.New("connector pipeline name and connector are required")

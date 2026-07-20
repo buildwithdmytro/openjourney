@@ -86,8 +86,10 @@ type Store interface {
 	CreateConnectorPipeline(context.Context, domain.Principal, domain.ConnectorPipeline) (domain.ConnectorPipeline, error)
 	ListConnectorPipelines(context.Context, domain.Principal) ([]domain.ConnectorPipeline, error)
 	GetConnectorPipeline(context.Context, domain.Principal, string) (domain.ConnectorPipeline, error)
+	GetConnectorPipelineVersion(context.Context, domain.Principal, string) (domain.ConnectorPipelineVersion, error)
 	UpdateConnectorPipeline(context.Context, domain.Principal, domain.ConnectorPipeline) (domain.ConnectorPipeline, error)
 	PublishConnectorPipeline(context.Context, domain.Principal, string, string, string, json.RawMessage, string) (domain.ConnectorPipelineVersion, error)
+	RecordConnectorRun(context.Context, domain.ConnectorRun) error
 
 	CreateSendingIdentity(context.Context, domain.Principal, domain.SendingIdentity) (domain.SendingIdentity, error)
 	GetSendingIdentity(context.Context, domain.Principal, string) (domain.SendingIdentity, error)
