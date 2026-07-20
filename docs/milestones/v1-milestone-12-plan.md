@@ -292,10 +292,11 @@ fake-store unit test + postgres integration test (the M10/M11 template).
    *Done when:* `TestCreateAdminMessageCannotForgeDisplayState` passes; a grep confirms no display-state
    writer outside `ProjectEvent`; a private-IP push endpoint is blocked by a test.
    — done: TestCreateAdminMessageCannotForgeDisplayState passes, display-state only written in ProjectEvent cases (message.impression/clicked/dismissed), TestWebPushSSRFProtection blocks 169.254.169.254 and other private IPs
-3. [ ] **Verify scopes enforced + no new dependency (M11).** `messages:read`/`messages:write` guard the
+3. [x] **Verify scopes enforced + no new dependency (M11).** `messages:read`/`messages:write` guard the
    admin routes (a `messages:read` key is 403 on write); no dependency was added across M11.
    *Done when:* the scope-enforcement test passes and `git diff` shows no additions to `go.mod`/`go.sum`/
    `web/package.json`/`sdk/javascript/package.json` from M11.
+   — done: TestMessagesReadKeyForbiddenOnWrite verifies messages:read key gets 403 on POST /v1/messages; no dependency changes in git diff
 4. [ ] **Impression projection is idempotent + monotonic (review finding #3).** The `message.impression`
    `ProjectEvent` case (`internal/postgres/store.go:~689`) is guarded only by `dismissed_at IS NULL` —
    unlike `message.clicked` (`clicked_at IS NULL`) and `message.dismissed` — so a replayed impression

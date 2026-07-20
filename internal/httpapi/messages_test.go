@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -668,18 +669,31 @@ func TestForgedTokenRejected(t *testing.T) {
 }
 
 func TestMessagesReadKeyForbiddenOnWrite(t *testing.T) {
-	// This test verifies that a key with only messages:read scope
-	// is rejected when attempting a write operation (POST /v1/messages)
+	store := &fakeStore{scopes: []string{"messages:read"}}
+	server := NewWithSessionTTL(store, 75, nil, "http://localhost:3000", 12*time.Hour)
 
-	// The test uses the authenticate middleware which checks scopes.
-	// We can't test this at the handler level without a full auth setup,
-	// so we verify this through integration testing or document it as a
-	// responsibility of the authenticate middleware.
+	createMsg := `{
+		"app_id": "app-1",
+		"profile_id": "profile-1",
+		"template_id": "template-1",
+		"channel": "in_app",
+		"content": {"html": "<p>Test</p>"}
+	}`
 
-	// Note: This is enforced by the s.authenticate("messages:write", ...)
-	// middleware at server.go:193 which will reject any request with
-	// insufficient scopes before the handler is called.
-	t.Log("messages:read scope enforcement is enforced by s.authenticate middleware at server.go:193")
+	request := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(createMsg))
+	request.Header.Set("Authorization", "Bearer test-key")
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+
+	server.ServeHTTP(response, request)
+
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 Forbidden for messages:read key on write, got %d body=%s",
+			response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), "required scope") {
+		t.Fatalf("expected scope error message, got body=%s", response.Body.String())
+	}
 }
 
 func TestDisplayStateWriteOnlyInProjector(t *testing.T) {
