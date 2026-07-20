@@ -3,11 +3,124 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 )
+
+func TestConnectorIdentityWritersRemainEventSourced(t *testing.T) {
+	// Connector paths must only emit events or use the read-only projection
+	// port. Keep this guard close to the identity E2E so a future connector
+	// cannot silently add a second profiles/identity_* write path.
+	protectedWrite := regexp.MustCompile(`(?is)\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:profiles|identity_aliases|identity_merges|identity_namespaces)\b`)
+	files := []string{
+		"internal/httpapi/connectors.go",
+		"internal/operations/operations.go",
+		"internal/postgres/connectors.go",
+	}
+	for _, name := range files {
+		path := filepath.Join("..", "..", name)
+		source, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		if name != "internal/operations/operations.go" {
+			if protectedWrite.Match(source) {
+				t.Fatalf("connector path %s contains a direct protected-table write", name)
+			}
+			continue
+		}
+
+		fset := token.NewFileSet()
+		file, err := parser.ParseFile(fset, name, source, 0)
+		if err != nil {
+			t.Fatalf("parse %s: %v", name, err)
+		}
+		for _, declaration := range file.Decls {
+			function, ok := declaration.(*ast.FuncDecl)
+			if !ok || function.Body == nil ||
+				!(strings.HasPrefix(function.Name.Name, "executeReverseETL") ||
+					strings.HasPrefix(function.Name.Name, "executeWarehouseSync")) {
+				continue
+			}
+			start := fset.Position(function.Body.Pos()).Offset
+			end := fset.Position(function.Body.End()).Offset
+			if protectedWrite.Match(source[start:end]) {
+				t.Fatalf("connector executor %s contains a direct protected-table write", function.Name.Name)
+			}
+		}
+	}
+}
+
+func TestIdentityMergeWinnerIsIndependentOfNamespaceArrivalOrder(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	store.SetBlobStore(&memoryBlobs{objects: map[string][]byte{}})
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	mergeWinner := func(reverseArrival bool) string {
+		t.Helper()
+		p, _ := setupTestTenant(t, ctx, store)
+		if _, err := store.pool.Exec(ctx, `INSERT INTO identity_namespaces
+			(tenant_id,app_id,namespace,priority) VALUES
+			($1,$2,'user_id',10),($1,$2,'email',20)
+			ON CONFLICT (tenant_id,app_id,namespace) DO UPDATE SET priority=EXCLUDED.priority`, p.TenantID, p.AppID); err != nil {
+			t.Fatal(err)
+		}
+		project := func(e domain.Event) {
+			t.Helper()
+			if _, err := store.AcceptEvents(ctx, p, []domain.Event{e}); err != nil {
+				t.Fatal(err)
+			}
+			accepted, found, err := store.ClaimProjectionJob(ctx)
+			if err != nil || !found {
+				t.Fatalf("claim projection job found=%v err=%v", found, err)
+			}
+			if err := store.ProjectEvent(ctx, accepted); err != nil {
+				t.Fatal(err)
+			}
+		}
+		aliases := []domain.Event{
+			event("identity.alias", "email-profile", "arrival-email", `{"namespace":"email","value":"order-independent@example.test"}`),
+			event("identity.alias", "user-profile", "arrival-user", `{"namespace":"user_id","value":"order-independent-user"}`),
+		}
+		if reverseArrival {
+			aliases[0], aliases[1] = aliases[1], aliases[0]
+		}
+		for _, alias := range aliases {
+			project(alias)
+		}
+		project(event("profile.updated", "conflict-profile", "arrival-conflict", `{"identities":{"email":"order-independent@example.test","user_id":"order-independent-user"},"attributes":{"merged":true}}`))
+		var winner string
+		if err := store.pool.QueryRow(ctx, `SELECT external_id FROM profiles
+			WHERE tenant_id=$1 AND app_id=$2 AND merged_into IS NULL
+			AND external_id IN ('email-profile','user-profile')`, p.TenantID, p.AppID).Scan(&winner); err != nil {
+			t.Fatal(err)
+		}
+		return winner
+	}
+
+	if first, second := mergeWinner(false), mergeWinner(true); first != "user-profile" || second != first {
+		t.Fatalf("namespace arrival order changed deterministic winner: first=%q second=%q", first, second)
+	}
+}
 
 func TestNamespacedIdentityResolutionPreEnsureProfileAndRetroAssociates(t *testing.T) {
 	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")

@@ -512,11 +512,12 @@ winner by `identity_namespaces.priority` + policy version.
    *Done when:* the end-to-end source→profile and audience→sink flows pass, both idempotent. — done:
    `TestConnectorDataRoundTripE2E` proves S3 CSV source replay and fake-sink reverse-ETL replay remain
    single-row through event/profile projection.
-2. **Identity E2E**: multi-namespace resolution, deterministic order-independent merge, reversible unmerge,
+2. [x] **Identity E2E**: multi-namespace resolution, deterministic order-independent merge, reversible unmerge,
    and the "nothing writes profiles directly" invariant (all four identity tables mutated only inside
    `ProjectEvent`) hold under test.
    *Done when:* the identity E2E passes and a grep/assertion confirms no new direct `profiles`/`identity_*`
    writer was introduced outside the projector (only the pre-existing `UpdateProfileAttributes` bypass remains).
+   — done: order-independent namespace-arrival E2E and connector protected-table writer guard pass; full Go build/vet/test and tidy show no dependency diff.
 3. **Security E2E**: connector credentials are `*_ref` only (a raw-secret config is rejected); all native +
    remote egress is SSRF/allowlist-guarded; connector scopes are intersection-enforced; publish/enable is
    human-actor-gated; `connector_runs` + `extension_activity` are append-only and REVOKE-protected.
