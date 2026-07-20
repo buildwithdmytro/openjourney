@@ -123,7 +123,7 @@ const getNodeStyle = (type: string, selected: boolean) => {
     borderRadius: "8px",
     fontSize: "12px",
     fontWeight: "bold" as const,
-    border: "2px solid #ccc",
+    border: "2px solid var(--color-border-default)",
     background: journeyColors.white,
     color: journeyColors.black,
     boxShadow: selected ? "0 0 8px rgba(26, 115, 232, 0.6)" : "none",
@@ -955,7 +955,7 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
             </label>
             <h4>Paths</h4>
             {(config.branches || []).map((br: any, idx: number) => (
-              <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", borderBottom: "1px solid #eee", paddingBottom: "0.5rem" }}>
+              <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", borderBottom: "1px solid var(--color-border-light)", paddingBottom: "0.5rem" }}>
                 <label>Path name
                   <input
                     value={br.label}
@@ -1418,7 +1418,7 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
                 {selectedRun ? (
                   <div>
                     <h3>Run Inspector</h3>
-                    <div style={{ fontSize: "12px", borderBottom: "1px solid #eee", paddingBottom: "1rem", marginBottom: "1rem" }}>
+                    <div style={{ fontSize: "12px", borderBottom: "1px solid var(--color-border-light)", paddingBottom: "1rem", marginBottom: "1rem" }}>
                       <div><strong>Run ID:</strong> {selectedRun.id}</div>
                       <div><strong>External Subject:</strong> {selectedRun.subject_external_id}</div>
                       <div><strong>Status:</strong> <span className={`pill ${selectedRun.status}`}>{selectedRun.status}</span></div>
@@ -1432,7 +1432,7 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
                     {transitions.length === 0 ? (
                       <p className="muted" style={{ fontSize: "11px" }}>No transitions recorded yet.</p>
                     ) : (
-                      <div style={{ display: "flex", flexDirection: "column", gap: "1rem", position: "relative", paddingLeft: "10px", borderLeft: "2px solid #e8eaed" }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "1rem", position: "relative", paddingLeft: "10px", borderLeft: "2px solid var(--color-border-light)" }}>
                         {transitions.map((t, idx) => (
                           <div key={t.id || idx} style={{ position: "relative", fontSize: "12px" }}>
                             <div style={{ position: "absolute", left: "-15px", top: "4px", width: "8px", height: "8px", borderRadius: "50%", background: journeyColors.dotBg }} />

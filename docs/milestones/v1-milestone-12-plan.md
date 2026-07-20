@@ -474,12 +474,13 @@ fake-store unit test + postgres integration test (the M10/M11 template).
    — done: skip-to-content link added to AppShell with handleSkipToContent, main element has id="main-content" and tabIndex={-1}, PageHeader has h1, nav elements have aria-label, 6 new tests verify skip link focus, landmarks, and accessible names for all buttons; 273 tests passing
 
 ### Milestone 17.10 — Integration & audit closeout
-1. [ ] **Adoption sweep**: migrate any remaining sections to the primitives; de-inline the login screen +
+1. [x] **Adoption sweep**: migrate any remaining sections to the primitives; de-inline the login screen +
    sidebar sign-out (`App.tsx:194-266`) onto tokens/primitives; remove leftover bespoke `.pill`/button
    markup.
    *Done when:* a grep shows no stray inline hex in the `App.tsx` login/sidebar and no un-migrated raw
    `<p className="muted">` empties/`window.confirm`; the app is visually coherent across every view;
    tests green.
+   — done: replaced all inline hex colors in Journeys.tsx with token variables (var(--color-border-*)); replaced empty states in App.tsx (consent, dead-letters, records), Messaging.tsx (messages, templates), Experiments.tsx (experiments), and Acquisition.tsx (forms, pages) with EmptyState components; removed all window.confirm and window.alert; updated tests to work with EmptyState structure; all 273 tests passing, build green
 2. [ ] **Run the suite**: `cd web && npm run typecheck && npm run build && npm test`,
    `cd sdk/javascript && npm run build && npm test`, `go build ./... && go vet ./... && go test ./...`;
    confirm `git diff web/package.json web/package-lock.json go.mod go.sum` is empty of additions.

@@ -54,7 +54,7 @@ it("round-trips variants, holdout, and a campaign binding", async () => {
   vi.stubGlobal("crypto", { randomUUID: () => "fixed-seed" });
 
   render(<Experiments apiKey="key" baseURL="/api" />);
-  await screen.findByText("No experiments yet.");
+  await screen.findByText(/No experiments yet/);
   fireEvent.change(screen.getByLabelText("Experiment name"), { target: { value: "CTA test" } });
   fireEvent.change(screen.getByLabelText("Holdout %"), { target: { value: "10" } });
   fireEvent.change(screen.getByLabelText("Variant 2 label"), { target: { value: "blue" } });
@@ -124,7 +124,7 @@ it("binds a journey experiment to an editable message node", async () => {
   }));
 
   render(<Experiments apiKey="key" baseURL="/api" />);
-  await screen.findByText("No experiments yet.");
+  await screen.findByText(/No experiments yet/);
   fireEvent.change(screen.getByLabelText("Experiment name"), { target: { value: "Welcome message test" } });
   fireEvent.change(screen.getByLabelText("Subject type"), { target: { value: "journey" } });
   fireEvent.change(screen.getByLabelText("Bind to journey"), { target: { value: "journey-1" } });

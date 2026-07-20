@@ -17,7 +17,7 @@ import { oidcConfigured, restoreOIDCSession, signIn, signOut } from "./auth";
 import { staticColors, defaultAccentColor, defaultBackgroundColor } from "./tokens";
 import { useTheme } from "./useTheme";
 import { useForm } from "./useForm";
-import { Skeleton, Spinner, ToastProvider, useToast, ConfirmDialog, Field, Input, Select, Textarea, JsonField, AppShell, ScopeSelector } from "./components";
+import { Skeleton, Spinner, ToastProvider, useToast, ConfirmDialog, Field, Input, Select, Textarea, JsonField, AppShell, ScopeSelector, EmptyState } from "./components";
 import { message } from "./errors";
 
 const Overview = lazy(() => import("./sections/Overview"));
@@ -351,7 +351,7 @@ function Profiles({ apiKey }: { apiKey: string }) {
       <article className="card"><div className="eyebrow">Attributes</div>
         <pre>{JSON.stringify(profile.attributes, null, 2)}</pre></article>
       <article className="card wide"><div className="eyebrow">Consent</div>
-        {consents.length === 0 ? <p className="muted">No consent records.</p> :
+        {consents.length === 0 ? <EmptyState title="No consent records" icon="info" /> :
           <table><thead><tr><th>Channel</th><th>Topic</th><th>State</th><th>Changed</th></tr></thead>
             <tbody>{consents.map((consent) => <tr key={`${consent.channel}:${consent.topic}`}>
               <td>{consent.channel}</td><td>{consent.topic}</td>
@@ -600,7 +600,7 @@ function Operations({ apiKey }: { apiKey: string }) {
         <option value="">All</option><option value="projection">Projection</option>
         <option value="outbox">Outbox</option><option value="operations">Operations</option>
       </select></label></div>
-      {deadLetters.length === 0 ? <p className="muted">No dead-letter items.</p> : deadLetters.map((item) =>
+      {deadLetters.length === 0 ? <EmptyState title="No dead-letter items" icon="check" /> : deadLetters.map((item) =>
         <div className="key-row" key={`${item.queue}:${item.id}`}><div><strong>{item.queue} · {item.kind}</strong>
           <small>{item.subject_id || item.id} · attempts {item.attempts} · {item.last_error || "no error"}</small></div>
           <div className="row-actions"><button onClick={() => void dlq("retry", item)}>Retry</button>
@@ -855,7 +855,7 @@ function Segments({ apiKey }: { apiKey: string }) {
 }
 
 function ResourceTable({ headers, rows }: { headers: string[]; rows: (string | number)[][] }) {
-  if (rows.length === 0) return <p className="muted">No records.</p>;
+  if (rows.length === 0) return <EmptyState title="No records" icon="search" />;
   return <table><thead><tr>{headers.map((header) => <th key={header}>{header}</th>)}</tr></thead>
     <tbody>{rows.map((row, index) => <tr key={index}>{row.map((value, cell) =>
       <td key={cell}>{value}</td>)}</tr>)}</tbody></table>;

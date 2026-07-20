@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { InAppMessage, listMessages, createMessage, getProfileInbox, listTemplates, Template } from "../api";
+import { EmptyState } from "../components";
 
 const message = (e: unknown) => e instanceof Error ? e.message : "Request failed";
 const blank = (): Partial<InAppMessage> => ({
@@ -98,7 +99,7 @@ export default function Messaging({ apiKey, baseURL }: { apiKey: string; baseURL
               </tbody>
             </table>
           ) : (
-            <p className="muted">No messages yet.</p>
+            <EmptyState title="No messages yet" description="Create a message to get started" icon="plus" />
           )}
         </article>
 
@@ -145,7 +146,7 @@ export default function Messaging({ apiKey, baseURL }: { apiKey: string; baseURL
               </form>
             </>
           ) : (
-            <p className="muted">Choose a message type or select a template to begin.</p>
+            <EmptyState title="No message selected" description="Choose a message type or select a template to begin" icon="search" />
           )}
         </article>
       </div>
