@@ -90,3 +90,16 @@ func (s *Store) ListInAppMessages(ctx context.Context, p domain.Principal, appID
 	}
 	return out, rows.Err()
 }
+
+func (s *Store) GetProfileIDBySubject(ctx context.Context, tenantID, appID, subject string) (string, error) {
+	var profileID string
+	err := s.pool.QueryRow(ctx, `
+		SELECT id FROM profiles
+		WHERE tenant_id = $1 AND app_id = $2 AND (external_id = $3 OR anonymous_id = $3)
+		LIMIT 1
+	`, tenantID, appID, subject).Scan(&profileID)
+	if err == pgx.ErrNoRows {
+		return "", ports.ErrNotFound
+	}
+	return profileID, err
+}

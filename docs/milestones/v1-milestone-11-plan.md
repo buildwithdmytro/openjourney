@@ -404,13 +404,14 @@ model). No new npm dep; framework-free.
    — done: validateTemplate checks in_app requires title OR body OR html; preview renders title/body for in_app; campaign branches already exist from 16.2.1
 
 ### Milestone 16.3 — Client SDK contract: public inbox fetch + report
-1. [ ] **`SignInAppToken` + inbox fetch** (Recipe 6.54): `SignInAppToken`/`VerifyInAppToken`
+1. [x] **`SignInAppToken` + inbox fetch** (Recipe 6.54): `SignInAppToken`/`VerifyInAppToken`
    (`publicguard.go`, mirror `SignFormToken:107`); public `GET /v1/messages/inbox` (bare mux,
    `server.go:194`) — anon inbox via `messages:read` key + `anonymous_id`, known inbox via token —
    bounded, rate-limited (`IPRateLimiter`).
    *Done when:* an anon subject fetches only its own inbox; a valid token fetches the bound `external_id`
    inbox; a public key + arbitrary `external_id` **without** a token cannot read another user's inbox
    (IDOR blocked); an expired/forged token is rejected; tests cover each.
+   — done: SignInAppToken/VerifyInAppToken added to publicguard.go (HMAC-SHA256); public GET /v1/messages/inbox endpoint with anon/token auth; IDOR protection via subject binding in token; 7 tests verify token signing/expiry/forgery/subject binding; GetProfileIDBySubject store method; IPRateLimiter applied; go build/test all pass
 2. [ ] **Report → events**: public `POST /v1/messages/{id}/{impression,click,dismiss}` resolves the
    message, emits `message.impression|clicked|dismissed` via `AcceptEvents`, rate-limited + token/anon
    bound to the message's subject.

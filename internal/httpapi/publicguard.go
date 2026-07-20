@@ -18,6 +18,8 @@ import (
 var (
 	ErrInvalidFormToken = errors.New("invalid form token")
 	ErrExpiredFormToken = errors.New("expired form token")
+	ErrInvalidInAppToken = errors.New("invalid in-app token")
+	ErrExpiredInAppToken = errors.New("expired in-app token")
 )
 
 // IPRateLimiter is a deterministic, in-memory token bucket keyed by client IP.
@@ -157,6 +159,70 @@ func VerifyFormToken(token, expectedFormID string, expectedVersion int, secret [
 		return out, ErrExpiredFormToken
 	}
 	return FormToken{FormID: fields[0], Version: version, ExpiresAt: expiresAt}, nil
+}
+
+type InAppToken struct {
+	TenantID  string
+	AppID     string
+	Subject   string
+	ExpiresAt time.Time
+}
+
+// SignInAppToken creates a compact URL-safe token binding a subject (external_id)
+// to a tenant and app for known-subject inbox access.
+func SignInAppToken(tenantID, appID, subject string, expiresAt time.Time, secret []byte) (string, error) {
+	if strings.TrimSpace(tenantID) == "" || strings.TrimSpace(appID) == "" || strings.TrimSpace(subject) == "" || len(secret) == 0 || expiresAt.IsZero() {
+		return "", ErrInvalidInAppToken
+	}
+	payload := strings.Join([]string{tenantID, appID, subject, strconv.FormatInt(expiresAt.Unix(), 10)}, "|")
+	mac := hmac.New(sha256.New, secret)
+	_, _ = mac.Write([]byte(payload))
+	full := payload + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	return base64.RawURLEncoding.EncodeToString([]byte(full)), nil
+}
+
+// VerifyInAppToken validates the signature, expected tenant/app binding, and expiry.
+// now is injected so expiry behavior remains unit-testable.
+func VerifyInAppToken(token, expectedTenantID, expectedAppID string, secret []byte, now time.Time) (InAppToken, error) {
+	var out InAppToken
+	if token == "" || strings.TrimSpace(expectedTenantID) == "" || strings.TrimSpace(expectedAppID) == "" || len(secret) == 0 {
+		return out, ErrInvalidInAppToken
+	}
+	full, err := base64.RawURLEncoding.DecodeString(token)
+	if err != nil {
+		return out, ErrInvalidInAppToken
+	}
+	parts := strings.Split(string(full), ".")
+	if len(parts) != 2 {
+		return out, ErrInvalidInAppToken
+	}
+	payload := parts[0]
+	signature, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return out, ErrInvalidInAppToken
+	}
+	mac := hmac.New(sha256.New, secret)
+	_, _ = mac.Write([]byte(payload))
+	if !hmac.Equal(signature, mac.Sum(nil)) {
+		return out, ErrInvalidInAppToken
+	}
+	fields := strings.Split(payload, "|")
+	if len(fields) != 4 || fields[0] != expectedTenantID || fields[1] != expectedAppID {
+		return out, ErrInvalidInAppToken
+	}
+	subject := fields[2]
+	if strings.TrimSpace(subject) == "" {
+		return out, ErrInvalidInAppToken
+	}
+	expiresUnix, err := strconv.ParseInt(fields[3], 10, 64)
+	if err != nil || expiresUnix <= 0 {
+		return out, ErrInvalidInAppToken
+	}
+	expiresAt := time.Unix(expiresUnix, 0)
+	if !now.Before(expiresAt) {
+		return out, ErrExpiredInAppToken
+	}
+	return InAppToken{TenantID: fields[0], AppID: fields[1], Subject: subject, ExpiresAt: expiresAt}, nil
 }
 
 type CaptchaRequest struct {

@@ -197,6 +197,8 @@ func (s *Server) buildMux() http.Handler {
 	mux.HandleFunc("GET /a/{blobKey}", s.serveAsset)
 	mux.HandleFunc("GET /p/{slug}", s.serveLandingPage)
 	mux.HandleFunc("POST /f/{formId}", s.submitPublicForm)
+	mux.HandleFunc("GET /v1/messages/inbox", s.fetchInbox)
+	mux.HandleFunc("POST /v1/messages/{id}/{action}", s.reportMessageEngagement)
 	mux.HandleFunc("POST /v1/callbacks/ses", s.handleSESCallback)
 	mux.HandleFunc("POST /v1/callbacks/sms/{provider}", s.handleSMSCallback)
 	mux.HandleFunc("POST /v1/callbacks/push/{provider}", s.handlePushCallback)
