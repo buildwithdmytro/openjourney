@@ -17,7 +17,7 @@ import { oidcConfigured, restoreOIDCSession, signIn, signOut } from "./auth";
 import { staticColors, defaultAccentColor, defaultBackgroundColor } from "./tokens";
 import { useTheme } from "./useTheme";
 import { useForm } from "./useForm";
-import { Skeleton, Spinner, ToastProvider, useToast, ConfirmDialog, Field, Input, Select, Textarea } from "./components";
+import { Skeleton, Spinner, ToastProvider, useToast, ConfirmDialog, Field, Input, Select, Textarea, JsonField } from "./components";
 import { message } from "./errors";
 
 const Journeys = lazy(() => import("./sections/Journeys"));
@@ -384,6 +384,7 @@ function Schemas({ apiKey }: { apiKey: string }) {
   const [version, setVersion] = useState(1);
   const [definition, setDefinition] = useState('{"type":"object","properties":{}}');
   const [error, setError] = useState("");
+  const [definitionError, setDefinitionError] = useState<string | undefined>();
   async function refresh() {
     try { setItems(await listSchemas(apiBase, apiKey)); setError(""); }
     catch (cause) { setError(message(cause)); }
@@ -395,7 +396,7 @@ function Schemas({ apiKey }: { apiKey: string }) {
       await createSchema(apiBase, apiKey, {
         event_type: eventType, version, compatibility: "backward", schema: JSON.parse(definition),
       });
-      setEventType(""); setVersion(version + 1); await refresh();
+      setEventType(""); setVersion(version + 1); setDefinitionError(undefined); await refresh();
     } catch (cause) { setError(message(cause)); }
   }
   return <section className="stack">
@@ -404,8 +405,8 @@ function Schemas({ apiKey }: { apiKey: string }) {
         placeholder="product.viewed" required /></label>
       <label>Version<input type="number" min="1" value={version}
         onChange={(e) => setVersion(Number(e.target.value))} required /></label>
-      <label className="full">JSON Schema<textarea value={definition}
-        onChange={(e) => setDefinition(e.target.value)} rows={7} /></label>
+      <label className="full">JSON Schema</label><JsonField value={definition}
+        onChange={(e) => setDefinition((e.target as HTMLTextAreaElement).value)} onBlur={() => {}} rows={7} error={definitionError} />
       <button disabled={!apiKey}>Register schema</button>
     </form><ErrorMessage value={error} /></article>
     <article className="card"><div className="eyebrow">Registered schemas</div>
@@ -793,9 +794,8 @@ function Segments({ apiKey }: { apiKey: string }) {
               <option value="archived">archived</option>
             </Select>
           </Field>
-          <Field id="segment-dsl" label="DSL Definition (JSON)" error={form.getError("dsl")}>
-            <Textarea name="dsl" value={form.values.dsl} onChange={form.handleChange} onBlur={form.handleBlur} rows={7} />
-          </Field>
+          <label className="field-label">DSL Definition (JSON)</label>
+          <JsonField name="dsl" value={form.values.dsl} onChange={form.handleChange} onBlur={form.handleBlur} rows={7} error={form.getError("dsl")} />
           <fieldset className="full score-condition"><legend>Score condition (optional)</legend><div className="score-condition-fields"><label>Model<select name="scoreModel" value={form.values.scoreModel} onChange={form.handleChange}><option value="">Use JSON DSL</option>{scoringModels.map(model => <option key={model.id} value={model.id}>{model.name}</option>)}</select></label><label>Score name<input name="scoreName" value={form.values.scoreName} onChange={form.handleChange} placeholder="purchase_propensity" /></label><label>Operator<select name="scoreOperator" value={form.values.scoreOperator} onChange={form.handleChange}><option value="greater_than">greater than</option><option value="less_than">less than</option><option value="equals">equals</option></select></label><label>Value<input type="number" step="any" name="scoreValue" value={form.values.scoreValue} onChange={form.handleChange} /></label></div><p className="field-help">Selecting a model writes a parameterized score leaf into the segment DSL.</p></fieldset>
           <div className="form-actions full">
             <button type="submit" disabled={!apiKey || !form.isValid}>{editingSegment ? "Update Segment" : "Create Segment"}</button>

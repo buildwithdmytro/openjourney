@@ -406,10 +406,11 @@ fake-store unit test + postgres integration test (the M10/M11 template).
    *Done when:* an invalid field shows an inline message tied to the input (`aria-describedby`), submit is
    gated on validity, and the imperative `throw` validation is replaced; tests assert the inline message.
    — done: useForm.ts hook created with 9 tests passing; Campaigns and Segments refactored to use Field + form validation; validation errors tied to input via aria-describedby; submit buttons gated on form.isValid; 197 total tests passing
-2. [ ] **Guarded JSON editor**: a `JsonField` primitive (validate-on-blur, inline error, format button)
+2. [x] **Guarded JSON editor**: a `JsonField` primitive (validate-on-blur, inline error, format button)
    replacing the raw JSON `<textarea>` in Segments DSL (`App.tsx:723`), Schemas, and Scoring.
    *Done when:* invalid JSON shows an inline error without throwing/blanking the form; valid JSON
    round-trips; a format button pretty-prints; tests cover invalid + valid.
+   — done: JsonField.tsx created with 13 tests covering valid/invalid JSON, blur validation, format button, and inline errors; Segments DSL, Schemas, and Scoring.tsx updated to use JsonField; all 210 tests passing
 
 ### Milestone 17.6 — App shell, IA & command palette
 1. [ ] **Extract AppShell/Sidebar/PageHeader** (Recipe 6.66): move `App.tsx:252-306` into components;

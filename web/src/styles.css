@@ -95,6 +95,16 @@ button:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2
 .textarea:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 .textarea[aria-invalid="true"] { border-color: var(--color-danger); }
 
+.json-field-wrapper { display: grid; gap: 7px; position: relative; }
+.json-field { width: 100%; border: 1px solid var(--color-border-default); border-radius: var(--radius-md); padding: 10px 40px 10px 12px; font: 13px var(--font-mono); resize: vertical; }
+.json-field:focus { border-color: var(--color-accent); box-shadow: var(--shadow-inset); }
+.json-field:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.json-field[aria-invalid="true"] { border-color: var(--color-danger); }
+.json-format-btn { position: absolute; top: 10px; right: 10px; padding: 6px 12px; background: var(--color-accent); color: var(--color-surface-inverse); border: none; border-radius: var(--radius-sm); font-size: 12px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
+.json-format-btn:hover:not(:disabled) { opacity: 0.9; }
+.json-format-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.json-format-btn:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+
 .field { display: grid; gap: 7px; font-size: 13px; font-weight: 650; }
 .field-label { display: flex; align-items: center; gap: 4px; }
 .required { color: var(--color-danger); }

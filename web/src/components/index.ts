@@ -6,6 +6,8 @@ export { default as Select } from "./Select";
 export type { SelectProps } from "./Select";
 export { default as Textarea } from "./Textarea";
 export type { TextareaProps } from "./Textarea";
+export { default as JsonField } from "./JsonField";
+export type { JsonFieldProps } from "./JsonField";
 export { default as Field } from "./Field";
 export type { FieldProps } from "./Field";
 export { default as Icon } from "./Icon";
