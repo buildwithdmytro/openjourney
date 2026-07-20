@@ -529,9 +529,9 @@ winner by `identity_namespaces.priority` + policy version.
 4. [x] **Run the suite**: `go build ./... && go vet ./... && go test ./...`, `go mod tidy` (**MUST show no new
    dependency**), `cd web && npm run typecheck && npm run build && npm test`.
    *Done when:* all green and `git diff go.mod go.sum web/package.json` is empty of additions. — done: all green (go build/vet/test 497 passed, typecheck/build/test 33 passed, no new dependencies in go.mod/go.sum/package.json).
-5. **Audit doc** `docs/milestones/v1-milestone-10-audit.md` in the M2–M9 table format, one row per task with
+5. [x] **Audit doc** `docs/milestones/v1-milestone-10-audit.md` in the M2–M9 table format, one row per task with
    evidence (file:line + test name).
-   *Done when:* the doc exists with a row per `15.x` task and its verifying test.
+   *Done when:* the doc exists with a row per `15.x` task and its verifying test. — done: 26-row audit table per M2–M9 format; each 15.0–15.12 task mapped to evidence file:line + test name.
 
 ## 7. Carry-over hazards & invariants
 
