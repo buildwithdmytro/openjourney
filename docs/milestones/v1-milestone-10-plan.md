@@ -436,11 +436,13 @@ winner by `identity_namespaces.priority` + policy version.
    show no dependency diff.
 
 ### Milestone 15.7 — Native sinks + remote connectors
-1. **`s3` / `clickhouse` / `webhook` sink drivers** (Recipe 6.45): idempotent object write (content-addressed
+1. [x] **`s3` / `clickhouse` / `webhook` sink drivers** (Recipe 6.45): idempotent object write (content-addressed
    or run-scoped key), warehouse batched `INSERT`, and HMAC-signed webhook (reuse `webhook.go:134`), each
    bounded + allowlisted.
    *Done when:* each sink driver writes idempotently to its fake/local backend; a redelivery does not
-   duplicate rows; unit tests green.
+   duplicate rows; unit tests green. — done: content-addressed S3 overwrite, ClickHouse upsert-key
+   deduplication, and HMAC/Idempotency-Key webhook redelivery tests pass; full Go build/vet/test and tidy
+   show no dependency diff.
 2. **Remote connector bridge**: `transport='remote_http'` pipelines invoke via `host.Invoke(..., "read"|"write", ...)`
    (M9 bounded/audited); document Snowflake/BigQuery/Parquet as remote-connector configs (no native driver).
    *Done when:* a `fake` remote connector performs a source read and a sink write through the M9 host, is
