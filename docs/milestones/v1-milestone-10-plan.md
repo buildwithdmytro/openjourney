@@ -381,11 +381,11 @@ winner by `identity_namespaces.priority` + policy version.
    concurrency tests cover one-job scheduling and SKIP LOCKED behavior.
 
 ### Milestone 15.3 — Object-storage source (S3 / CSV / JSONL → events)
-1. **`s3` source driver** (Recipe 6.45, `minio-go`): list/stream objects by prefix, parse CSV/JSONL,
+1. [x] **`s3` source driver** (Recipe 6.45, `minio-go`): list/stream objects by prefix, parse CSV/JSONL,
    cursor = `<object_key>:<row>`; config `endpoint`/`bucket`/`prefix` + `access_key_ref`/`secret_key_ref`;
    egress pinned + allowlisted.
    *Done when:* the driver reads a fixture bucket (fake/minio) into rows deterministically with a resumable
-   cursor; unit test green.
+   cursor; unit test green. — done: MinIO-backed S3 driver with guarded endpoint/ref validation and deterministic CSV/JSONL cursor-resume test passes; full Go build/vet/test and tidy show no dependency diff.
 2. **`warehouse.sync` source executor** (Recipe 6.48): map rows → `domain.Event` per the pipeline mapping,
    deterministic idempotency key, `AcceptEvents` batched to `max_batch_size`, quarantine rejects to object
    storage, write a `connector_runs` row (running → terminal).

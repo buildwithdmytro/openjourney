@@ -28,13 +28,14 @@ func NewRegistry(drivers map[string]ConnectorDriver, fallback ConnectorDriver) *
 	return &Registry{drivers: drivers, fallback: fallback}
 }
 
-// DefaultRegistry registers only the deterministic fake until native drivers
-// are installed by the process boot path.
+// Native drivers are registered here once so every process uses the same
+// governed connector port. S3 constructs its MinIO client from *_ref config
+// at read time, keeping credentials out of connector definitions.
 func DefaultRegistry() *Registry {
 	fake := NewFakeDriver()
 	stub := &unimplementedDriver{}
 	return NewRegistry(map[string]ConnectorDriver{
-		"fake": fake, "s3": stub, "clickhouse": stub, "kafka": stub, "webhook": stub,
+		"fake": fake, "s3": NewS3Driver(), "clickhouse": stub, "kafka": stub, "webhook": stub,
 	}, fake)
 }
 
