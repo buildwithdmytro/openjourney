@@ -440,11 +440,12 @@ model). No new npm dep; framework-free.
    the subscription endpoint; a `404`/`410` marks the token invalid for cleanup; `go mod tidy` shows no
    new dep; unit test green (against a fake receiver).
    — done: WebPushProfile.BuildRequest creates VAPID JWT (RFC 8292, stdlib crypto/ecdsa P-256) with empty body; IsInvalidToken maps 404/410; registry.go:39 registers "webpush"; comprehensive tests verify JWT structure, VAPID auth, invalid-token cleanup, and no new dependencies; go build/vet pass
-2. [ ] **Web subscription registration + wake→fetch contract**: accept `platform='web',
+2. [x] **Web subscription registration + wake→fetch contract**: accept `platform='web',
    provider='webpush'` device tokens (`device_tokens.go:11`), the subscription endpoint stored on the
    token; document the wake→`fetchInbox` flow.
    *Done when:* a web subscription registers; a push wake signal is dispatched through the existing push
    path (state machine unchanged) and its Service Worker fetches content from the inbox edge; test green.
+   — done: test_DeviceTokensCRUDIntegration / "web push subscription registration" verifies registration; WebPushAdapter registered in DefaultRegistry routes through existing push path; sdk/javascript/sw-webpush.example.js reference Service Worker fetches inbox and reports engagement; docs/web-push-wake-fetch-contract.md documents full flow; go build/vet pass
 
 ### Milestone 16.6 — Content cards + lifecycle
 1. [ ] **Card model + fetch ordering**: `message_type` variants (`modal`/`banner`/`fullscreen`/`card`),

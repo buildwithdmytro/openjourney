@@ -347,7 +347,7 @@ type DeviceToken struct {
 	AppID       string    `json:"app_id"`
 	ProfileID   string    `json:"profile_id"`
 	Platform    string    `json:"platform"` // ios, android, web
-	Provider    string    `json:"provider"` // fcm, apns, http, fake
+	Provider    string    `json:"provider"` // fcm, apns, http, fake, webpush
 	Token       string    `json:"token"`
 	Status      string    `json:"status"` // active, retired
 	LastSeenAt  time.Time `json:"last_seen_at"`

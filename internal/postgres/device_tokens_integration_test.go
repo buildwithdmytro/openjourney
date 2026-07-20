@@ -165,4 +165,56 @@ func TestDeviceTokensCRUDIntegration(t *testing.T) {
 			t.Errorf("expected reactivated token to be active, got %q", tok.Status)
 		}
 	})
+
+	// 4. Web push subscription registration
+	t.Run("web push subscription registration", func(t *testing.T) {
+		webTokenVal := "https://push.example.com/subscription/web-xyz"
+		tok, err := store.RegisterDeviceToken(ctx, tenantID, w1ID, appID, prof1, "web", "webpush", webTokenVal)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tok.Platform != "web" {
+			t.Errorf("expected platform to be web, got %q", tok.Platform)
+		}
+		if tok.Provider != "webpush" {
+			t.Errorf("expected provider to be webpush, got %q", tok.Provider)
+		}
+		if tok.Token != webTokenVal {
+			t.Errorf("expected token (subscription URL) to be %q, got %q", webTokenVal, tok.Token)
+		}
+		if tok.Status != "active" {
+			t.Errorf("expected status to be active, got %q", tok.Status)
+		}
+
+		// Verify it appears in the active tokens list
+		list, err := store.ListActiveDeviceTokens(ctx, tenantID, w1ID, prof1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, dt := range list {
+			if dt.ID == tok.ID && dt.Platform == "web" && dt.Provider == "webpush" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Error("web push subscription not found in active tokens list")
+		}
+
+		// Verify retirement works for web tokens
+		err = store.RetireDeviceToken(ctx, tenantID, appID, webTokenVal)
+		if err != nil {
+			t.Fatal(err)
+		}
+		listAfter, err := store.ListActiveDeviceTokens(ctx, tenantID, w1ID, prof1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, dt := range listAfter {
+			if dt.ID == tok.ID {
+				t.Errorf("expected web push token to be retired, but found it in active list")
+			}
+		}
+	})
 }
