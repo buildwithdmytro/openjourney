@@ -371,6 +371,7 @@ type InAppMessage struct {
 	Categories        []string        `json:"categories"`
 	StartAt           time.Time       `json:"start_at"`
 	ExpiresAt         *time.Time      `json:"expires_at,omitempty"`
+	DisplayRule       json.RawMessage `json:"display_rule,omitempty"`
 	IdempotencyKey    *string         `json:"idempotency_key,omitempty"`
 	Status            string          `json:"status"` // pending, delivered, displayed, clicked, dismissed, expired
 	DeliveredAt       *time.Time      `json:"delivered_at,omitempty"`

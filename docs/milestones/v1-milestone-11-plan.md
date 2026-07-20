@@ -495,11 +495,12 @@ model). No new npm dep; framework-free.
    — done: Messaging.tsx created with message list, create form, and profile inbox viewer; InAppMessage type + API wrappers (listMessages/getMessage/createMessage/getProfileInbox) added to api.ts; App.tsx registered with lazy import, view type, nav button, title, and Suspense render; all 33 web tests pass; `npm run typecheck && npm run build && npm test` green
 
 ### Milestone 16.10 — Governance & eligibility
-1. [ ] **Fetch-time eligibility + public-edge hardening**: display-rule in-app (always-on) evaluated at
+1. [x] **Fetch-time eligibility + public-edge hardening**: display-rule in-app (always-on) evaluated at
    fetch via `EvaluateAudience` (`journey_runtime.go:544`) → `CompileProfileSingle` (`evaluate.go:98`);
    the public edge is IP rate-limited (`IPRateLimiter`), token-bound, and CORS-scoped.
    *Done when:* a display-rule message shows only to eligible profiles at fetch; the edge rate-limits
    abusive IPs and rejects forged/expired tokens; tests cover each.
+   — done: migration 049_inapp_display_rule.sql adds display_rule field; fetchInbox evaluates EvaluateAudience for messages with display rules; tests verify message filtering and public edge hardening (IPRateLimiter, token validation, CORS); all 566 tests pass
 2. [ ] **Suppression / consent / fatigue for in-app**: in-app suppression keyed by
    `(tenant,'in_app',profile_id)`; marketing in-app is fatigue-counted (`SentCountSince`), transactional
    in-app routes suppression-only (`deliver.go:261`); an unsubscribe suppresses future in-app.

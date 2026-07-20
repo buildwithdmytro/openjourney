@@ -433,3 +433,57 @@ func TestAdminMessageHandlers(t *testing.T) {
 		}
 	})
 }
+
+func TestFetchInboxFiltersMessages(t *testing.T) {
+	secret := []byte("test-secret")
+	tenantID := "tenant-123"
+	appID := "app-456"
+	anonID := "anon-user"
+	profileID := "profile-123"
+	workspaceID := "workspace-789"
+
+	t.Run("messages_without_display_rule_returned", func(t *testing.T) {
+		msg := domain.InAppMessage{
+			ID:          "msg-001",
+			TenantID:    tenantID,
+			WorkspaceID: workspaceID,
+			AppID:       appID,
+			ProfileID:   profileID,
+			Status:      "delivered",
+		}
+
+		mockStore := &mockMessageStore{
+			getProfileIDBySubjectFn: func(ctx context.Context, tid, aid, subj string) (string, error) {
+				return profileID, nil
+			},
+			listInboxForProfileFn: func(ctx context.Context, tid, aid, pid string, limit int) ([]domain.InAppMessage, error) {
+				return []domain.InAppMessage{msg}, nil
+			},
+		}
+
+		server := &Server{
+			store:              mockStore,
+			trackingSecretKey:  secret,
+			trustedProxy:       false,
+			publicLimiter:      nil,
+		}
+
+		req := httptest.NewRequest("GET", "/v1/messages/inbox?tenant="+tenantID+"&app="+appID+"&anonymous_id="+anonID, nil)
+		w := httptest.NewRecorder()
+
+		server.fetchInbox(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("expected status 200, got %d", w.Code)
+		}
+
+		var resp map[string]any
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Errorf("failed to unmarshal response: %v", err)
+		}
+		messages, ok := resp["messages"].([]any)
+		if !ok || len(messages) != 1 {
+			t.Errorf("expected 1 message, got %d", len(messages))
+		}
+	})
+}

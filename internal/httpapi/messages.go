@@ -72,6 +72,7 @@ func (s *Server) fetchInbox(w http.ResponseWriter, r *http.Request) {
 	inboxStore, ok := s.store.(interface {
 		GetProfileIDBySubject(context.Context, string, string, string) (string, error)
 		ListInboxForProfile(context.Context, string, string, string, int) ([]domain.InAppMessage, error)
+		EvaluateAudience(ctx context.Context, p domain.Principal, profileID string, dsl json.RawMessage) (bool, error)
 	})
 	if !ok {
 		writeError(w, http.StatusServiceUnavailable, "store_unavailable", "store is unavailable")
@@ -100,8 +101,31 @@ func (s *Server) fetchInbox(w http.ResponseWriter, r *http.Request) {
 		messages = []domain.InAppMessage{}
 	}
 
+	// Evaluate display rules at fetch time
+	eligible := []domain.InAppMessage{}
+	for _, msg := range messages {
+		// If message has a display rule, evaluate it
+		if len(msg.DisplayRule) > 0 && string(msg.DisplayRule) != "{}" && string(msg.DisplayRule) != "null" {
+			principal := domain.Principal{
+				TenantID:    principalTenantID,
+				WorkspaceID: msg.WorkspaceID,
+				AppID:       principalAppID,
+				ActorType:   "public",
+			}
+			matches, err := inboxStore.EvaluateAudience(r.Context(), principal, profileID, msg.DisplayRule)
+			if err != nil {
+				// Log error but don't fail the entire fetch; skip this message
+				continue
+			}
+			if !matches {
+				continue
+			}
+		}
+		eligible = append(eligible, msg)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	writeJSON(w, http.StatusOK, map[string]any{"messages": messages})
+	writeJSON(w, http.StatusOK, map[string]any{"messages": eligible})
 }
 
 // reportMessageEngagement handles impression/click/dismiss reports from the client.
