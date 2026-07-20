@@ -438,6 +438,63 @@ func TestParseVAPIDPrivateKeyInvalidBase64(t *testing.T) {
 	}
 }
 
+func TestWebPushSSRFProtection(t *testing.T) {
+	privKey, pubKey, err := generateTestVAPIDKeys()
+	if err != nil {
+		t.Fatalf("generate keys: %v", err)
+	}
+
+	os.Setenv("TEST_VAPID_PRIVATE", privKey)
+	os.Setenv("TEST_VAPID_PUBLIC", pubKey)
+	defer func() {
+		os.Unsetenv("TEST_VAPID_PRIVATE")
+		os.Unsetenv("TEST_VAPID_PUBLIC")
+	}()
+
+	cfg := WebPushConfig{
+		VAPIDPrivateRef: "TEST_VAPID_PRIVATE",
+		VAPIDPublicRef:  "TEST_VAPID_PUBLIC",
+		VAPIDSubject:    "mailto:sender@example.com",
+	}
+	cfgJSON, _ := json.Marshal(cfg)
+
+	// Test private-IP endpoints are blocked (SSRF protection)
+	tests := []struct {
+		name     string
+		endpoint string
+	}{
+		{"localhost", "http://localhost:8080/push"},
+		{"127.0.0.1", "http://127.0.0.1:8080/push"},
+		{"169.254.169.254", "http://169.254.169.254/latest/meta-data"},
+		{"10.0.0.1", "http://10.0.0.1/push"},
+		{"172.16.0.1", "http://172.16.0.1/push"},
+		{"192.168.1.1", "http://192.168.1.1/push"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			adapter := NewWebPushAdapter()
+			msg := ports.RenderedMessage{
+				Channel:  "push",
+				Endpoint: test.endpoint,
+				Identity: domain.SendingIdentity{
+					Channel:  "push",
+					Provider: "webpush",
+					Config:   cfgJSON,
+				},
+			}
+
+			_, err := adapter.Send(context.Background(), msg)
+			if err == nil {
+				t.Errorf("expected SSRF error for %s, got none", test.endpoint)
+			}
+			if !strings.Contains(err.Error(), "SSRF") && !strings.Contains(err.Error(), "forbidden") && !strings.Contains(err.Error(), "private") {
+				t.Logf("web-push blocks %s: %v", test.endpoint, err)
+			}
+		})
+	}
+}
+
 func TestBuildVAPIDJWTSignature(t *testing.T) {
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {

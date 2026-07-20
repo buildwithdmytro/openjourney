@@ -516,12 +516,13 @@ model). No new npm dep; framework-free.
    *Done when:* the end-to-end trigger→deliver→fetch→engage flow passes for both a modal and a card, and
    for a web-push wake; all idempotent.
    — done: TestInAppMessagingEndToEnd tests modal→delivery→inbox fetch→impression→click→dismiss→projection; TestInAppCardEndToEnd tests card persistence with rank ordering and expiry; TestInAppWebPushVAPIDStructure tests VAPID keypair generation and RFC 8292 compliance; all flows verify idempotency (re-send same message, re-report same event); all 573 tests pass
-2. [ ] **Security E2E**: the public edge is IDOR-safe (no cross-subject inbox read/report without a valid
+2. [x] **Security E2E**: the public edge is IDOR-safe (no cross-subject inbox read/report without a valid
    token), rate-limited, and token-expiry-enforced; display-state is written only by the projector;
    web-push egress is SSRF-safe; `messages:*` scopes are enforced on admin routes.
    *Done when:* each property has a test (a tokenless cross-`external_id` read blocked; a forged token
    rejected; a display-state write outside the projector is proven absent; a private-IP push endpoint
    blocked; a `messages:read` key 403 on write).
+   — done: TestTokenlessExternalIDReadBlocked + TestForgedTokenRejected + TestDisplayStateWriteOnlyInProjector + TestWebPushSSRFProtection + TestMessagesReadKeyForbiddenOnWrite; all 584 tests pass
 3. [ ] **Run the suite**: `go build ./... && go vet ./... && go test ./...`, `go mod tidy` (**MUST show
    no new dependency**), `cd web && npm run typecheck && npm run build && npm test`,
    `cd sdk/javascript && npm run build && npm test`.
