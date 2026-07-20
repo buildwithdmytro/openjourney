@@ -323,11 +323,12 @@ fake-store unit test + postgres integration test (the M10/M11 template).
    — done: ClientOptions now requires tenant and app params; fetchInbox and reportEngagement send tenant, app, and external_id (in token mode); 4 new unit tests verify param transmission; README documents text/sanitized-only rendering contract and required params; npm test all green (18 passing)
 
 ### Milestone 17.1 — Design tokens & app-wide theming
-1. [ ] **Token layer** (Recipe 6.58): `web/src/tokens.css` with the `:root` color/space/radius/shadow/
+1. [x] **Token layer** (Recipe 6.58): `web/src/tokens.css` with the `:root` color/space/radius/shadow/
    typography/motion variables; imported at `main.tsx:4`; `styles.css` swept so the accent (`#6f5cff` ×13)
    and core literals use `var(--…)`.
    *Done when:* `npm run typecheck && npm run build && npm test` green; no hex literal remains in
    component `.tsx`; the app is visually unchanged in light mode (existing tests pass unmodified).
+   — done: tokens.css created with light/dark palettes and CSS custom properties; styles.css swept to use var(--...); App.tsx and Journeys.tsx hardcoded colors replaced with token references; all 33 tests passing, 0 hex literals in .tsx files
 2. [ ] **Global theming** (Recipe 6.60): `useTheme` hook (OS default + persisted + `data-theme` on
    `documentElement`); `tokens.css` dark palette; a theme toggle in the shell; Reports refactored to
    consume the global hook.

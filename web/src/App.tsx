@@ -14,6 +14,7 @@ import {
   listJourneys, createJourney, Journey, listScoringModels, ScoringModel,
 } from "./api";
 import { oidcConfigured, restoreOIDCSession, signIn, signOut } from "./auth";
+import { staticColors, defaultAccentColor, defaultBackgroundColor } from "./tokens";
 
 const Journeys = lazy(() => import("./sections/Journeys"));
 const Experiments = lazy(() => import("./sections/Experiments"));
@@ -223,9 +224,9 @@ export function App() {
           <ErrorMessage value={loginError} />
           
           <div style={{ margin: "24px 0", display: "flex", alignItems: "center", gap: "10px" }}>
-            <div style={{ flex: 1, height: "1px", background: "#e8ebef" }} />
-            <span style={{ fontSize: "11px", color: "#6c7787", fontWeight: "bold" }}>OR USE API KEY</span>
-            <div style={{ flex: 1, height: "1px", background: "#e8ebef" }} />
+            <div style={{ flex: 1, height: "1px", background: "var(--color-border-light)" }} />
+            <span style={{ fontSize: "11px", color: "var(--color-ink-muted)", fontWeight: "bold" }}>OR USE API KEY</span>
+            <div style={{ flex: 1, height: "1px", background: "var(--color-border-light)" }} />
           </div>
           
           <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
@@ -239,12 +240,12 @@ export function App() {
                 setCredentialSource("manual");
                 setAPIKey(manualKey.trim());
               }
-            }} disabled={!manualKey.trim()} style={{ width: "100%", background: "#101b2b" }}>
+            }} disabled={!manualKey.trim()} style={{ width: "100%", background: "var(--color-surface-muted)" }}>
               Use API Key
             </button>
-            
+
             {oidcConfigured && (
-              <button onClick={() => void signIn()} style={{ width: "100%", background: "#e9edf2", color: "#344156" }}>
+              <button onClick={() => void signIn()} style={{ width: "100%", background: "var(--color-surface-subtle)", color: "var(--color-ink)" }}>
                 Sign in with OIDC
               </button>
             )}
@@ -265,7 +266,7 @@ export function App() {
           ))}
         </nav>
         <div style={{ marginTop: "auto", padding: "16px 0 0 0", borderTop: "1px solid rgba(255,255,255,0.1)", display: "flex", flexDirection: "column" }}>
-          <button className="secondary small" onClick={() => void handleSignOut()} style={{ width: "100%", background: "transparent", border: "1px solid rgba(255,255,255,0.2)", color: "#dfe7f0", padding: "8px", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: "bold" }}>
+          <button className="secondary small" onClick={() => void handleSignOut()} style={{ width: "100%", background: "transparent", border: "1px solid rgba(255,255,255,0.2)", color: "var(--color-ink-muted)", padding: "8px", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: "bold" }}>
             Sign out
           </button>
         </div>
@@ -855,8 +856,8 @@ const defaultEmailComposer: EmailComposer = {
   message: "Thanks for joining us. We’re glad you’re here.",
   buttonLabel: "Get started",
   buttonURL: "https://example.com",
-  accentColor: "#6f5cff",
-  backgroundColor: "#f4f6f8",
+  accentColor: defaultAccentColor,
+  backgroundColor: defaultBackgroundColor,
 };
 
 function escapeTemplateText(value: string): string {
@@ -880,8 +881,8 @@ function parseComposerHTML(html: string): EmailComposer | null {
     message,
     buttonLabel: button?.textContent || "",
     buttonURL: button?.getAttribute("href") || "",
-    accentColor: root.dataset.accent || "#6f5cff",
-    backgroundColor: root.dataset.background || "#f4f6f8",
+    accentColor: root.dataset.accent || defaultAccentColor,
+    backgroundColor: root.dataset.background || defaultBackgroundColor,
   };
 }
 
@@ -1128,7 +1129,7 @@ function Templates({ apiKey }: { apiKey: string }) {
             </div>
             <iframe id="preview-iframe" title="Template preview" sandbox="allow-same-origin"
               srcDoc={preview?.body || editing.html_template || "<p>Start writing to preview your email.</p>"}
-              style={{ width: "100%", height: "480px", border: "none", background: "#fff" }} />
+              style={{ width: "100%", height: "480px", border: "none", background: "var(--color-surface-default)" }} />
           </div>
         )}
       </div>
@@ -1647,20 +1648,22 @@ export function Campaigns({ apiKey }: { apiKey: string }) {
   const getTemplateName = (id: string) => templates.find(t => t.id === id)?.name || id;
 
   const getStatusStyle = (s: Campaign["status"]) => {
+    const isDark = document.documentElement.dataset.theme === "dark";
+    const colors = isDark ? staticColors.dark : staticColors.light;
     switch (s) {
       case "completed":
-        return { background: "#e9f8f1", color: "#187d56" };
+        return { background: colors.successBg, color: colors.success };
       case "sending":
       case "building":
-        return { background: "#e8f0fe", color: "#1a73e8" };
+        return { background: colors.infoBg, color: colors.info };
       case "scheduled":
-        return { background: "#fff8df", color: "#b06000" };
+        return { background: colors.warnBg, color: colors.warn };
       case "paused":
-        return { background: "#f1f3f4", color: "#5f6368" };
+        return { background: colors.neutralBg, color: colors.neutral };
       case "failed":
-        return { background: "#fff0f0", color: "#a93838" };
+        return { background: colors.dangerBg, color: colors.danger };
       default: // draft
-        return { background: "#f8f9fa", color: "#202124", border: "1px solid #dadce0" };
+        return { background: colors.defaultBg, color: colors.default, border: `1px solid ${colors.defaultBorder}` };
     }
   };
 
@@ -1755,7 +1758,7 @@ export function Campaigns({ apiKey }: { apiKey: string }) {
                           <button className="secondary" style={{ padding: "4px 8px", fontSize: "12px" }} onClick={() => startEdit(c)}>Edit</button>
                           <a className="report-link" href={`#reports?type=campaign&id=${encodeURIComponent(c.id)}`}>Report</a>
                           {c.status === "draft" && (
-                            <button style={{ padding: "4px 8px", fontSize: "12px", background: "#48bd8b", color: "white" }} onClick={() => handleLaunchNow(c)}>Launch</button>
+                            <button style={{ padding: "4px 8px", fontSize: "12px", background: "var(--color-success-light)", color: "white" }} onClick={() => handleLaunchNow(c)}>Launch</button>
                           )}
                         </div>
                       </td>

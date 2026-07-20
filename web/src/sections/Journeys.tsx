@@ -42,6 +42,7 @@ import {
   JourneyMessageIntent,
   EventSchema,
 } from "../api";
+import { journeyColors } from "../tokens";
 
 const apiBase = import.meta.env.VITE_API_BASE_URL || "/api";
 
@@ -121,8 +122,8 @@ const getNodeStyle = (type: string, selected: boolean) => {
     fontSize: "12px",
     fontWeight: "bold" as const,
     border: "2px solid #ccc",
-    background: "#fff",
-    color: "#222",
+    background: journeyColors.white,
+    color: journeyColors.black,
     boxShadow: selected ? "0 0 8px rgba(26, 115, 232, 0.6)" : "none",
     width: 230,
     textAlign: "left" as const,
@@ -130,19 +131,19 @@ const getNodeStyle = (type: string, selected: boolean) => {
   };
   switch (type) {
     case "entry":
-      return { ...base, borderColor: "#187d56", background: "#e9f8f1", color: "#187d56" };
+      return { ...base, borderColor: journeyColors.successBorder, background: journeyColors.successBg, color: journeyColors.successText };
     case "exit":
-      return { ...base, borderColor: "#d93025", background: "#fce8e6", color: "#c5221f" };
+      return { ...base, borderColor: journeyColors.errorBorder, background: journeyColors.errorBg, color: journeyColors.errorText };
     case "message":
-      return { ...base, borderColor: "#1a73e8", background: "#e8f0fe", color: "#1a73e8" };
+      return { ...base, borderColor: journeyColors.infoBorder, background: journeyColors.infoBg, color: journeyColors.infoText };
     case "wait_event":
-      return { ...base, borderColor: "#af52de", background: "#f5ecfc", color: "#af52de" };
+      return { ...base, borderColor: journeyColors.purpleBorder, background: journeyColors.purpleBg, color: journeyColors.purpleText };
     case "condition":
     case "split":
     case "ai_decision":
-      return { ...base, borderColor: "#e27220", background: "#fef3eb", color: "#e27220" };
+      return { ...base, borderColor: journeyColors.orangeBorder, background: journeyColors.orangeBg, color: journeyColors.orangeText };
     default:
-      return { ...base, borderColor: "#5f6368", background: "#f1f3f4", color: "#5f6368" };
+      return { ...base, borderColor: journeyColors.neutralBorder, background: journeyColors.neutralBg, color: journeyColors.neutralText };
   }
 };
 
@@ -1137,7 +1138,7 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
         </nav>
 
         <ErrorMessage value={error} />
-        {successMsg && <div style={{ color: "#187d56", background: "#e9f8f1", padding: "10px", borderRadius: "5px", fontWeight: "bold" }}>{successMsg}</div>}
+        {successMsg && <div style={{ color: journeyColors.successText, background: journeyColors.successBg, padding: "10px", borderRadius: "5px", fontWeight: "bold" }}>{successMsg}</div>}
 
         {validationErrors.length > 0 && (
           <div className="journey-validation" role="alert">
@@ -1216,7 +1217,7 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
                   deleteKeyCode={null}
                   fitView
                 >
-                  <Background color="#d9ddea" gap={24} size={1} />
+                  <Background color={journeyColors.canvasGridColor} gap={24} size={1} />
                   <Controls />
                   <MiniMap />
                 </ReactFlow>
@@ -1283,8 +1284,8 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
                           onClick={handlePauseToggle}
                           disabled={saving}
                           style={{
-                            background: activeVersion.status === "paused" ? "#187d56" : "#e27220",
-                            color: "#fff",
+                            background: activeVersion.status === "paused" ? journeyColors.successBorder : journeyColors.orangeBorder,
+                            color: journeyColors.white,
                             border: "none",
                             padding: "8px 16px",
                             borderRadius: "5px",
@@ -1309,10 +1310,10 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
                   ) : (
                     <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
                       {dlqSteps.map((s) => (
-                        <div key={s.id} className="key-row" style={{ padding: "10px", background: "#fdf6f6", border: "1px solid #f5c6cb", borderRadius: "5px" }}>
+                        <div key={s.id} className="key-row" style={{ padding: "10px", background: journeyColors.errorMessageBg, border: `1px solid ${journeyColors.errorMessageBorder}`, borderRadius: "5px" }}>
                           <div>
                             <strong>Step DLQ · Node: {s.node_id} ({s.kind})</strong>
-                            <div style={{ fontSize: "11px", color: "#721c24", marginTop: "4px" }}>
+                            <div style={{ fontSize: "11px", color: journeyColors.errorMessageText, marginTop: "4px" }}>
                               Run: {s.run_id} · Attempts: {s.attempts} · Error: {s.error_message || "no error info"}
                             </div>
                           </div>
@@ -1320,10 +1321,10 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
                         </div>
                       ))}
                       {dlqIntents.map((i) => (
-                        <div key={i.id} className="key-row" style={{ padding: "10px", background: "#fdf6f6", border: "1px solid #f5c6cb", borderRadius: "5px" }}>
+                        <div key={i.id} className="key-row" style={{ padding: "10px", background: journeyColors.errorMessageBg, border: `1px solid ${journeyColors.errorMessageBorder}`, borderRadius: "5px" }}>
                           <div>
                             <strong>Intent DLQ · Node: {i.node_id} (Message: {i.channel})</strong>
-                            <div style={{ fontSize: "11px", color: "#721c24", marginTop: "4px" }}>
+                            <div style={{ fontSize: "11px", color: journeyColors.errorMessageText, marginTop: "4px" }}>
                               Run: {i.run_id} · Attempts: {i.attempts} · Endpoint: {i.endpoint} · Error: {i.error_message || "no error info"}
                             </div>
                           </div>
@@ -1360,7 +1361,7 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
                         </thead>
                         <tbody>
                           {runs.map((r) => (
-                            <tr key={r.id} style={{ background: selectedRun?.id === r.id ? "#f1f3f4" : "transparent" }}>
+                            <tr key={r.id} style={{ background: selectedRun?.id === r.id ? journeyColors.selectedRowBg : "transparent" }}>
                               <td>
                                 <div style={{ fontWeight: "bold", fontSize: "12px" }}>{r.id.slice(0, 8)}...</div>
                                 <div style={{ fontSize: "10px", color: "var(--muted)" }}>Ext: {r.subject_external_id}</div>
@@ -1407,7 +1408,7 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
                       <div style={{ display: "flex", flexDirection: "column", gap: "1rem", position: "relative", paddingLeft: "10px", borderLeft: "2px solid #e8eaed" }}>
                         {transitions.map((t, idx) => (
                           <div key={t.id || idx} style={{ position: "relative", fontSize: "12px" }}>
-                            <div style={{ position: "absolute", left: "-15px", top: "4px", width: "8px", height: "8px", borderRadius: "50%", background: "#1a73e8" }} />
+                            <div style={{ position: "absolute", left: "-15px", top: "4px", width: "8px", height: "8px", borderRadius: "50%", background: journeyColors.dotBg }} />
                             <div style={{ fontWeight: "bold" }}>
                               {t.from_node ? `Node ${t.from_node}` : "Start"} &rarr; {t.to_node ? `Node ${t.to_node}` : "End"}
                             </div>
@@ -1415,7 +1416,7 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
                               {t.node_type} · Outcome: <strong>{t.outcome}</strong>
                             </div>
                             {t.detail && Object.keys(t.detail).length > 0 && (
-                              <pre style={{ fontSize: "9px", margin: "4px 0 0", padding: "4px", background: "#f8f9fa", borderRadius: "3px", overflowX: "auto" }}>
+                              <pre style={{ fontSize: "9px", margin: "4px 0 0", padding: "4px", background: journeyColors.codeBg, borderRadius: "3px", overflowX: "auto" }}>
                                 {JSON.stringify(t.detail, null, 2)}
                               </pre>
                             )}
@@ -1489,7 +1490,7 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
 function ErrorMessage({ value }: { value: string }) {
   if (!value) return null;
   return (
-    <div style={{ color: "#a93838", background: "#fff0f0", padding: "10px", borderRadius: "5px", border: "1px solid #dadce0" }}>
+    <div style={{ color: journeyColors.danger, background: journeyColors.dangerBg, padding: "10px", borderRadius: "5px", border: `1px solid ${journeyColors.errorAlertBorder}` }}>
       {value}
     </div>
   );
