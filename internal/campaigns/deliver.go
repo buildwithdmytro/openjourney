@@ -158,6 +158,8 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 			if identity.ID == "" {
 				identity = domain.SendingIdentity{Channel: "push", Provider: matchingToken.Provider, MaxSendRate: 10}
 			}
+		} else if selectedTemplate.Channel == "in_app" {
+			identity = domain.SendingIdentity{Channel: "in_app", Provider: "inapp", MaxSendRate: 10}
 		} else {
 			if selectedTemplate.SendingIdentityID != nil && *selectedTemplate.SendingIdentityID != "" {
 				identity, err = store.GetSendingIdentity(ctx, p, *selectedTemplate.SendingIdentityID)

@@ -388,13 +388,14 @@ model). No new npm dep; framework-free.
    — done: InAppAdapter.Send inserts via CreateInAppMessage with idempotency key; inherits tenant/workspace from identity and app_id from profile; returns created message ID; go build/vet pass
 
 ### Milestone 16.2 — Triggered delivery integration (journey + campaign → in-app)
-1. [ ] **Journey in-app send**: add an `in_app` branch to the endpoint switch (`nodes.go:650-679`,
+1. [x] **Journey in-app send**: add an `in_app` branch to the endpoint switch (`nodes.go:650-679`,
    `endpoint=profile_id`); a journey `MessageConfig{Channel:"in_app"}` resolves the `inapp` identity
    (lazy get-or-create) and delivers through `journey.DeliverNext` (`deliver.go:35`) unchanged; the send
    goes through `policy.Evaluate` and emits `message.sent` (fatigue).
    *Done when:* a published journey with an in-app message node delivers a row to the target profile,
    respects suppression/consent/fatigue, and is fatigue-counted; a suppressed profile gets no row;
    integration test green.
+   — done: added in_app branch to nodes.go:673 endpoint resolution, journey/deliver.go:129 identity resolution; campaigns/dispatch.go:101-109 recipient resolution; campaigns/deliver.go:141-142 identity resolution; all 104 journey+campaign tests pass
 2. [ ] **Campaign in-app send + template validation**: add the `in_app` branch at `dispatch.go:100` and
    the deliver-side identity branch (`deliver.go:131`); add `in_app` template validation/preview
    (`internal/httpapi/templates.go:176-240`) requiring title/body/content.

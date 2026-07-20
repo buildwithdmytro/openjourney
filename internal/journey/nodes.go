@@ -668,6 +668,8 @@ func (n *Node) execute(ctx context.Context, store ports.Store, run *domain.Journ
 			for _, tok := range tokens {
 				endpoints = append(endpoints, tok.Token)
 			}
+		} else if channel == "in_app" {
+			endpoints = append(endpoints, run.ProfileID)
 		} else {
 			if ep, ok := attrs[channel].(string); ok && ep != "" {
 				endpoints = append(endpoints, ep)

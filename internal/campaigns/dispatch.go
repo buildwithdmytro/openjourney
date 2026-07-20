@@ -97,6 +97,13 @@ func DispatchNext(ctx context.Context, store ports.Store, blobStore BlobStore) (
 				})
 			}
 		}
+	} else if template.Channel == "in_app" {
+		for _, pID := range profileIDs {
+			recipients = append(recipients, domain.Recipient{
+				ProfileID: pID,
+				Endpoint:  pID,
+			})
+		}
 	} else {
 		profileEmails, err := store.GetProfileEmails(ctx, camp.TenantID, profileIDs)
 		if err != nil {
