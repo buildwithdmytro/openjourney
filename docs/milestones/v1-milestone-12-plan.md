@@ -306,12 +306,13 @@ fake-store unit test + postgres integration test (the M10/M11 template).
    *Done when:* a test proves a replayed impression does not move `displayed_at`, and an impression
    arriving after a click does not regress `status`; the click/dismiss cases stay idempotent.
    — done: store.go:691-692 add displayed_at IS NULL AND clicked_at IS NULL guards; TestImpressionProjectionIdempotency + TestImpressionProjectionMonotonicity + TestClickDismissIdempotency verify properties
-5. [ ] **Admin create validates the target profile's tenant/app (review finding #4).** `createAdminMessage`
+5. [x] **Admin create validates the target profile's tenant/app (review finding #4).** `createAdminMessage`
    (`internal/httpapi/messages.go`) trusts `input.ProfileID`; verify the profile exists under
    `principal.TenantID`/`WorkspaceID`/`input.AppID` (e.g. via `GetProfileByIDSystem`) before insert, so a
    foreign profile id cannot create a mis-scoped `inapp_messages` row.
    *Done when:* a create with a profile id not under the caller's tenant/app is rejected (404/422); a
    valid same-tenant profile still succeeds; test covers both.
+   — done: createAdminMessage validates profile via GetProfileByID before insert; foreign profile rejected with 422 validation_error; test covers both cases (create_admin_message_with_valid_profile + create_admin_message_with_foreign_profile)
 6. [ ] **SDK render contract + required params (review finding #5 + SDK mismatch).** Document (and enforce
    in the SDK) that `inapp_messages.content.html` is rendered as text/sanitized-only — never injected via
    `innerHTML`/`dangerouslySetInnerHTML` — to preclude a future stored-XSS path; and fix

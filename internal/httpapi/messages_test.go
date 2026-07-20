@@ -23,6 +23,7 @@ type mockMessageStore struct {
 	createInAppMessageFn    func(ctx context.Context, tenantID, workspaceID, appID, profileID string, msg domain.InAppMessage) (domain.InAppMessage, error)
 	listInAppMessagesFn     func(ctx context.Context, p domain.Principal, appID string) ([]domain.InAppMessage, error)
 	listInboxForProfileFn   func(ctx context.Context, tenantID, appID, profileID string, limit int) ([]domain.InAppMessage, error)
+	getProfileByIDFn        func(ctx context.Context, tenantID, appID, profileID string) (domain.Profile, error)
 }
 
 func (m *mockMessageStore) GetProfileIDBySubject(ctx context.Context, tenantID, appID, subject string, byExternalID bool) (string, error) {
@@ -65,6 +66,13 @@ func (m *mockMessageStore) ListInboxForProfile(ctx context.Context, tenantID, ap
 		return m.listInboxForProfileFn(ctx, tenantID, appID, profileID, limit)
 	}
 	return []domain.InAppMessage{}, nil
+}
+
+func (m *mockMessageStore) GetProfileByID(ctx context.Context, tenantID, appID, profileID string) (domain.Profile, error) {
+	if m.getProfileByIDFn != nil {
+		return m.getProfileByIDFn(ctx, tenantID, appID, profileID)
+	}
+	return domain.Profile{}, postgres.ErrNotFound
 }
 
 func TestSignInAppToken(t *testing.T) {
@@ -309,8 +317,14 @@ func TestAdminMessageHandlers(t *testing.T) {
 	profileID := "profile-001"
 	messageID := "msg-123"
 
-	t.Run("create_admin_message", func(t *testing.T) {
+	t.Run("create_admin_message_with_valid_profile", func(t *testing.T) {
 		mockStore := &mockMessageStore{
+			getProfileByIDFn: func(ctx context.Context, tid, aid, pid string) (domain.Profile, error) {
+				if tid == tenantID && aid == appID && pid == profileID {
+					return domain.Profile{ID: profileID}, nil
+				}
+				return domain.Profile{}, postgres.ErrNotFound
+			},
 			createInAppMessageFn: func(ctx context.Context, tid, wid, aid, pid string, msg domain.InAppMessage) (domain.InAppMessage, error) {
 				result := msg
 				result.ID = messageID
@@ -345,6 +359,52 @@ func TestAdminMessageHandlers(t *testing.T) {
 
 		if w.Code != http.StatusCreated {
 			t.Errorf("expected status 201, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("create_admin_message_with_foreign_profile", func(t *testing.T) {
+		mockStore := &mockMessageStore{
+			getProfileByIDFn: func(ctx context.Context, tid, aid, pid string) (domain.Profile, error) {
+				// Only return the profile if it's under the correct tenant/app
+				if tid == tenantID && aid == appID && pid == profileID {
+					return domain.Profile{ID: profileID}, nil
+				}
+				return domain.Profile{}, postgres.ErrNotFound
+			},
+		}
+
+		server := &Server{store: mockStore}
+
+		// Try to create a message for a profile in a different tenant
+		body, _ := json.Marshal(map[string]any{
+			"app_id":      appID,
+			"profile_id":  "foreign-profile",
+			"message_type": "modal",
+			"content":     json.RawMessage(`{"title":"Test"}`),
+		})
+
+		req := httptest.NewRequest("POST", "/v1/messages", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(context.WithValue(req.Context(), principalKey{}, domain.Principal{
+			TenantID:    tenantID,
+			WorkspaceID: workspaceID,
+		}))
+
+		w := httptest.NewRecorder()
+		server.createAdminMessage(w, req)
+
+		if w.Code != http.StatusUnprocessableEntity {
+			t.Errorf("expected status 422, got %d: %s", w.Code, w.Body.String())
+		}
+
+		// Verify the error message
+		var resp map[string]any
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err == nil {
+			if msg, ok := resp["message"].(string); ok {
+				if !strings.Contains(msg, "profile not found") {
+					t.Errorf("expected 'profile not found' error, got: %s", msg)
+				}
+			}
 		}
 	})
 
@@ -566,6 +626,12 @@ func TestFetchInboxRejectsExternalIDSmuggledViaAnonymousID(t *testing.T) {
 func TestCreateAdminMessageCannotForgeDisplayState(t *testing.T) {
 	var captured domain.InAppMessage
 	mockStore := &mockMessageStore{
+		getProfileByIDFn: func(ctx context.Context, tid, aid, pid string) (domain.Profile, error) {
+			if tid == "tenant-1" && aid == "app-1" && pid == "profile-1" {
+				return domain.Profile{ID: "profile-1"}, nil
+			}
+			return domain.Profile{}, postgres.ErrNotFound
+		},
 		createInAppMessageFn: func(ctx context.Context, tid, wid, aid, pid string, msg domain.InAppMessage) (domain.InAppMessage, error) {
 			captured = msg
 			msg.ID = "msg-1"

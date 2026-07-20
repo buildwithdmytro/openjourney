@@ -310,6 +310,26 @@ func (s *Server) createAdminMessage(w http.ResponseWriter, r *http.Request) {
 	input.TenantID = principal.TenantID
 	input.WorkspaceID = principal.WorkspaceID
 
+	// Validate that the profile exists under the caller's tenant/app
+	profileStore, ok := s.store.(interface {
+		GetProfileByID(context.Context, string, string, string) (domain.Profile, error)
+		CreateInAppMessage(context.Context, string, string, string, string, domain.InAppMessage) (domain.InAppMessage, error)
+	})
+	if !ok {
+		writeError(w, http.StatusServiceUnavailable, "store_unavailable", "store is unavailable")
+		return
+	}
+
+	_, err := profileStore.GetProfileByID(r.Context(), principal.TenantID, input.AppID, input.ProfileID)
+	if errors.Is(err, postgres.ErrNotFound) {
+		writeError(w, http.StatusUnprocessableEntity, "validation_error", "profile not found under your tenant/app")
+		return
+	}
+	if err != nil {
+		internalError(w, err, "validate profile", principal)
+		return
+	}
+
 	// Display-state is projector-only: the admin create path must not forge
 	// engagement. Force a safe delivered baseline and clear every engagement
 	// timestamp; only the message.* ProjectEvent cases advance displayed/clicked/
@@ -322,9 +342,7 @@ func (s *Server) createAdminMessage(w http.ResponseWriter, r *http.Request) {
 	input.DismissedAt = nil
 
 	// Create the message
-	res, err := s.store.(interface {
-		CreateInAppMessage(context.Context, string, string, string, string, domain.InAppMessage) (domain.InAppMessage, error)
-	}).CreateInAppMessage(r.Context(), principal.TenantID, principal.WorkspaceID, input.AppID, input.ProfileID, input)
+	res, err := profileStore.CreateInAppMessage(r.Context(), principal.TenantID, principal.WorkspaceID, input.AppID, input.ProfileID, input)
 	if err != nil {
 		internalError(w, err, "create in-app message", principal)
 		return
