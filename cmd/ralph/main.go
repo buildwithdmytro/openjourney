@@ -560,10 +560,15 @@ func invoke(parent context.Context, cfg config, provider, mission, taskID string
 	cmd := providerCommand(ctx, cfg, provider, mission)
 	cmd.Dir = cfg.root
 	var codexOutput *codexStream
-	if provider == "codex" {
+	var claudeOutput *claudeStream
+	switch provider {
+	case "codex":
 		codexOutput = &codexStream{log: stdoutFile, display: os.Stdout}
 		cmd.Stdout = codexOutput
-	} else {
+	case "claude":
+		claudeOutput = &claudeStream{log: stdoutFile, display: os.Stdout}
+		cmd.Stdout = claudeOutput
+	default:
 		cmd.Stdout = io.MultiWriter(os.Stdout, stdoutFile)
 	}
 	cmd.Stderr = io.MultiWriter(os.Stderr, stderrFile)
@@ -575,6 +580,13 @@ func invoke(parent context.Context, cfg config, provider, mission, taskID string
 		result.CachedInputTokens = codexOutput.usage.CachedInputTokens
 		result.OutputTokens = codexOutput.usage.OutputTokens
 		result.ReasoningOutputTokens = codexOutput.usage.ReasoningOutputTokens
+	}
+	if claudeOutput != nil {
+		claudeOutput.flush()
+		result.TokenUsageAvailable = claudeOutput.foundUsage
+		result.InputTokens = claudeOutput.usage.InputTokens
+		result.CachedInputTokens = claudeOutput.usage.CachedInputTokens
+		result.OutputTokens = claudeOutput.usage.OutputTokens
 	}
 	result.Duration = time.Since(started)
 	if err == nil {
@@ -600,9 +612,13 @@ func providerCommand(ctx context.Context, cfg config, provider, mission string) 
 		return cmd
 	case "claude":
 		// Claude Code non-interactive print mode with full autonomy for the loop
-		// (trusted checkout). The mission goes on stdin so a long prompt never hits
-		// argv limits; cmd.Dir (set by invoke) scopes it to the repo root.
-		cmd := exec.CommandContext(ctx, "claude", "--print", "--model", cfg.claudeModel, "--dangerously-skip-permissions")
+		// (trusted checkout). --output-format stream-json (requires --verbose) emits
+		// one JSON event per line as work happens, so invoke can display assistant
+		// text + tool activity LIVE instead of a single silent blob at the end (plain
+		// --print text mode buffers all output until completion). The mission goes on
+		// stdin so a long prompt never hits argv limits; cmd.Dir (set by invoke)
+		// scopes it to the repo root.
+		cmd := exec.CommandContext(ctx, "claude", "--print", "--model", cfg.claudeModel, "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions")
 		cmd.Stdin = strings.NewReader(mission)
 		return cmd
 	default:
@@ -659,6 +675,94 @@ func (s *codexStream) consume(line []byte) {
 		s.usage.CachedInputTokens += event.Usage.CachedInputTokens
 		s.usage.OutputTokens += event.Usage.OutputTokens
 		s.usage.ReasoningOutputTokens += event.Usage.ReasoningOutputTokens
+	}
+}
+
+// claudeStream parses Claude Code's `--output-format stream-json` output (one
+// JSON event per line): it echoes assistant text and tool activity to display as
+// it arrives — so a long task shows live progress instead of one silent blob at
+// the end — while writing the raw stream to log, and captures the final token
+// usage from the terminal `result` event.
+type claudeStream struct {
+	log     io.Writer
+	display io.Writer
+	pending []byte
+	usage   struct {
+		InputTokens       int64
+		CachedInputTokens int64
+		OutputTokens      int64
+	}
+	foundUsage bool
+}
+
+func (s *claudeStream) Write(p []byte) (int, error) {
+	if _, err := s.log.Write(p); err != nil {
+		return 0, err
+	}
+	s.pending = append(s.pending, p...)
+	for {
+		newline := bytes.IndexByte(s.pending, '\n')
+		if newline < 0 {
+			break
+		}
+		s.consume(s.pending[:newline])
+		s.pending = s.pending[newline+1:]
+	}
+	return len(p), nil
+}
+
+func (s *claudeStream) flush() {
+	if len(s.pending) > 0 {
+		s.consume(s.pending)
+		s.pending = nil
+	}
+}
+
+func (s *claudeStream) consume(line []byte) {
+	var event struct {
+		Type    string `json:"type"`
+		Message *struct {
+			Content []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+				Name string `json:"name"`
+			} `json:"content"`
+		} `json:"message"`
+		Usage *struct {
+			InputTokens          int64 `json:"input_tokens"`
+			CacheReadInputTokens int64 `json:"cache_read_input_tokens"`
+			OutputTokens         int64 `json:"output_tokens"`
+		} `json:"usage"`
+	}
+	if json.Unmarshal(line, &event) != nil {
+		return
+	}
+	switch event.Type {
+	case "assistant":
+		if event.Message == nil {
+			return
+		}
+		for _, block := range event.Message.Content {
+			switch block.Type {
+			case "text":
+				if strings.TrimSpace(block.Text) != "" {
+					fmt.Fprintln(s.display, block.Text)
+				}
+			case "tool_use":
+				if block.Name != "" {
+					fmt.Fprintf(s.display, "[tool] %s\n", block.Name)
+				}
+			}
+		}
+	case "result":
+		// The terminal result event carries cumulative usage; assistant events
+		// carry incremental usage, so read totals only here to avoid double count.
+		if event.Usage != nil {
+			s.foundUsage = true
+			s.usage.InputTokens += event.Usage.InputTokens
+			s.usage.CachedInputTokens += event.Usage.CacheReadInputTokens
+			s.usage.OutputTokens += event.Usage.OutputTokens
+		}
 	}
 }
 

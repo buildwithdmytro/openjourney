@@ -100,6 +100,31 @@ func TestCodexStreamCapturesUsageAndDisplaysAgentMessage(t *testing.T) {
 	}
 }
 
+func TestClaudeStreamDisplaysLiveOutputAndCapturesUsage(t *testing.T) {
+	var log bytes.Buffer
+	var display bytes.Buffer
+	stream := &claudeStream{log: &log, display: &display}
+	input := `{"type":"assistant","message":{"content":[{"type":"text","text":"working on 16.1.1"},{"type":"tool_use","name":"Edit"}]}}` + "\n" +
+		`{"type":"result","subtype":"success","usage":{"input_tokens":200,"cache_read_input_tokens":150,"output_tokens":40}}` + "\n"
+	// split mid-line to prove the newline framing reassembles across writes
+	if _, err := stream.Write([]byte(input[:50])); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stream.Write([]byte(input[50:])); err != nil {
+		t.Fatal(err)
+	}
+	stream.flush()
+	if log.String() != input {
+		t.Fatalf("raw log changed: %q", log.String())
+	}
+	if display.String() != "working on 16.1.1\n[tool] Edit\n" {
+		t.Fatalf("display = %q", display.String())
+	}
+	if !stream.foundUsage || stream.usage.InputTokens != 200 || stream.usage.CachedInputTokens != 150 || stream.usage.OutputTokens != 40 {
+		t.Fatalf("usage = %#v, found=%t", stream.usage, stream.foundUsage)
+	}
+}
+
 func TestProviderCommandsAreFreshAndUseLockedModels(t *testing.T) {
 	cfg := config{root: "/repo", codexModel: "gpt-5.6-luna", antigravityModel: "Gemini 3.5 Flash (Medium)", claudeModel: "haiku", attemptTimeout: 2 * time.Hour}
 	codex := providerCommand(context.Background(), cfg, "codex", "mission")
@@ -116,6 +141,11 @@ func TestProviderCommandsAreFreshAndUseLockedModels(t *testing.T) {
 	joined = strings.Join(claude.Args, " ")
 	if !strings.Contains(joined, "claude --print --model haiku") || !strings.Contains(joined, "--dangerously-skip-permissions") {
 		t.Fatalf("unexpected Claude command: %s", joined)
+	}
+	// stream-json (+ required --verbose) is what makes Claude log live instead of
+	// emitting one silent blob at the end; keep them wired.
+	if !strings.Contains(joined, "--output-format stream-json") || !strings.Contains(joined, "--verbose") {
+		t.Fatalf("Claude must stream live output: %s", joined)
 	}
 	if claude.Stdin == nil {
 		t.Fatal("Claude mission must be passed on stdin")
