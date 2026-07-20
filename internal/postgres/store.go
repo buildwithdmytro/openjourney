@@ -35,6 +35,7 @@ var ErrIdempotencyConflict = errors.New("idempotency key reused with different e
 
 type Store struct {
 	pool             *pgxpool.Pool
+	blobs            ports.BlobStore
 	schemaMu         sync.RWMutex
 	schemaCache      map[string]*schemas.Validator
 	schemaCacheKnown map[string]bool
@@ -66,6 +67,10 @@ func (s *Store) SetTrustedPublisherKeys(keys map[string]any) {
 }
 
 func (s *Store) Close() { s.pool.Close() }
+
+// SetBlobStore supplies the immutable object store used for reversible identity
+// merge snapshots. Identity state is still changed only by ProjectEvent.
+func (s *Store) SetBlobStore(blobs ports.BlobStore) { s.blobs = blobs }
 
 func (s *Store) Ready(ctx context.Context) error { return s.pool.Ping(ctx) }
 
@@ -459,7 +464,7 @@ func (s *Store) ProjectEvent(ctx context.Context, event domain.AcceptedEvent) er
 	var conversionSourceType, conversionVariant string
 	if event.Type != "message.bounced" && event.Type != "message.complained" {
 		var err error
-		profileID, err = resolveIdentity(ctx, tx, event)
+		profileID, err = s.resolveIdentity(ctx, tx, event)
 		if err == nil && profileID == "" {
 			profileID, err = ensureProfile(ctx, tx, event)
 		}
@@ -654,25 +659,7 @@ func (s *Store) ProjectEvent(ctx context.Context, event domain.AcceptedEvent) er
 			return err
 		}
 		if sourceID != profileID {
-			if _, err := tx.Exec(ctx, `UPDATE profiles target SET
-				attributes=source.attributes || target.attributes,
-				version=target.version+1,updated_at=now()
-				FROM profiles source WHERE target.id=$1 AND source.id=$2`, profileID, sourceID); err != nil {
-				return err
-			}
-			if _, err := tx.Exec(ctx, "UPDATE consent_ledger SET profile_id=$1 WHERE profile_id=$2", profileID, sourceID); err != nil {
-				return err
-			}
-			if _, err := tx.Exec(ctx, "UPDATE identity_aliases SET profile_id=$1 WHERE profile_id=$2", profileID, sourceID); err != nil {
-				return err
-			}
-			if _, err := tx.Exec(ctx, `INSERT INTO identity_merges
-				(tenant_id,app_id,source_profile_id,target_profile_id,source_event_id)
-				VALUES($1,$2,$3,$4,$5) ON CONFLICT(source_event_id) DO NOTHING`,
-				event.Principal.TenantID, event.Principal.AppID, sourceID, profileID, event.ID); err != nil {
-				return err
-			}
-			if _, err := tx.Exec(ctx, "DELETE FROM profiles WHERE id=$1", sourceID); err != nil {
+			if err := s.mergeProfiles(ctx, tx, event, sourceID, profileID); err != nil {
 				return err
 			}
 		}
@@ -774,17 +761,24 @@ func ensureProfile(ctx context.Context, tx pgx.Tx, event domain.AcceptedEvent) (
 	return id, err
 }
 
-// resolveIdentity finds an existing live profile from namespaced keys before
-// ensureProfile creates a new subject. All mutations remain in ProjectEvent;
-// this helper is deliberately read-only and only returns the projector target.
-func resolveIdentity(ctx context.Context, tx pgx.Tx, event domain.AcceptedEvent) (string, error) {
+// resolveIdentity finds existing live profiles from namespaced keys before
+// ensureProfile creates a new subject. Any conflict mutation remains inside
+// ProjectEvent's transaction.
+func (s *Store) resolveIdentity(ctx context.Context, tx pgx.Tx, event domain.AcceptedEvent) (string, error) {
 	keys := identityKeys(event)
 	if len(keys) == 0 {
 		return "", nil
 	}
+	type candidate struct {
+		profileID string
+		priority  int
+		namespace string
+	}
+	candidates := make([]candidate, 0, len(keys))
+	seen := make(map[string]bool)
 	for _, key := range keys {
-		var profileID string
-		err := tx.QueryRow(ctx, `SELECT ia.profile_id
+		var c candidate
+		err := tx.QueryRow(ctx, `SELECT ia.profile_id, n.priority, ia.namespace
 			FROM identity_aliases ia
 			JOIN identity_namespaces n ON n.tenant_id=ia.tenant_id
 				AND n.app_id=ia.app_id AND n.namespace=ia.namespace
@@ -792,16 +786,167 @@ func resolveIdentity(ctx context.Context, tx pgx.Tx, event domain.AcceptedEvent)
 			WHERE ia.tenant_id=$1 AND ia.app_id=$2 AND ia.namespace=$3 AND ia.value=$4
 			ORDER BY n.priority ASC, ia.profile_id ASC
 			LIMIT 1 FOR UPDATE OF p`, event.Principal.TenantID, event.Principal.AppID,
-			key.namespace, key.value).Scan(&profileID)
+			key.namespace, key.value).Scan(&c.profileID, &c.priority, &c.namespace)
 		if errors.Is(err, pgx.ErrNoRows) {
 			continue
 		}
 		if err != nil {
 			return "", err
 		}
-		return profileID, nil
+		if !seen[c.profileID] {
+			seen[c.profileID] = true
+			candidates = append(candidates, c)
+		}
 	}
-	return "", nil
+	if len(candidates) == 0 {
+		return "", nil
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].priority != candidates[j].priority {
+			return candidates[i].priority < candidates[j].priority
+		}
+		return candidates[i].profileID < candidates[j].profileID
+	})
+	winner := candidates[0].profileID
+	for _, loser := range candidates[1:] {
+		if err := s.mergeProfiles(ctx, tx, event, loser.profileID, winner); err != nil {
+			return "", err
+		}
+	}
+	return winner, nil
+}
+
+type identityMergeSnapshot struct {
+	Profile struct {
+		ID          string          `json:"id"`
+		ExternalID  *string         `json:"external_id"`
+		AnonymousID *string         `json:"anonymous_id"`
+		Attributes  json.RawMessage `json:"attributes"`
+		Version     int64           `json:"version"`
+		UpdatedAt   time.Time       `json:"updated_at"`
+	} `json:"profile"`
+	Aliases []struct {
+		Namespace     string  `json:"namespace"`
+		Value         string  `json:"value"`
+		SourceEventID *string `json:"source_event_id"`
+	} `json:"aliases"`
+	Consents []struct {
+		Channel       string          `json:"channel"`
+		Topic         string          `json:"topic"`
+		State         string          `json:"state"`
+		OccurredAt    time.Time       `json:"occurred_at"`
+		Evidence      json.RawMessage `json:"evidence"`
+		SourceEventID string          `json:"source_event_id"`
+	} `json:"consents"`
+}
+
+func (s *Store) mergeProfiles(ctx context.Context, tx pgx.Tx, event domain.AcceptedEvent, sourceID, targetID string) error {
+	if sourceID == targetID {
+		return nil
+	}
+	var snapshot identityMergeSnapshot
+	if err := tx.QueryRow(ctx, `SELECT id, external_id, anonymous_id, attributes, version, updated_at
+		FROM profiles WHERE id=$1 AND tenant_id=$2 AND app_id=$3 FOR UPDATE`, sourceID,
+		event.Principal.TenantID, event.Principal.AppID).Scan(&snapshot.Profile.ID,
+		&snapshot.Profile.ExternalID, &snapshot.Profile.AnonymousID, &snapshot.Profile.Attributes,
+		&snapshot.Profile.Version, &snapshot.Profile.UpdatedAt); err != nil {
+		return err
+	}
+	aliasRows, err := tx.Query(ctx, `SELECT namespace, value, source_event_id FROM identity_aliases
+		WHERE tenant_id=$1 AND app_id=$2 AND profile_id=$3 ORDER BY namespace, value`,
+		event.Principal.TenantID, event.Principal.AppID, sourceID)
+	if err != nil {
+		return err
+	}
+	for aliasRows.Next() {
+		var namespace, value string
+		var sourceEventID *string
+		if err := aliasRows.Scan(&namespace, &value, &sourceEventID); err != nil {
+			aliasRows.Close()
+			return err
+		}
+		snapshot.Aliases = append(snapshot.Aliases, struct {
+			Namespace     string  `json:"namespace"`
+			Value         string  `json:"value"`
+			SourceEventID *string `json:"source_event_id"`
+		}{namespace, value, sourceEventID})
+	}
+	if err := aliasRows.Err(); err != nil {
+		aliasRows.Close()
+		return err
+	}
+	aliasRows.Close()
+	consentRows, err := tx.Query(ctx, `SELECT channel, topic, state, occurred_at, evidence, source_event_id
+		FROM consent_ledger WHERE tenant_id=$1 AND app_id=$2 AND profile_id=$3 ORDER BY channel, topic, occurred_at, source_event_id`,
+		event.Principal.TenantID, event.Principal.AppID, sourceID)
+	if err != nil {
+		return err
+	}
+	for consentRows.Next() {
+		var channel, topic, state, sourceEventID string
+		var occurredAt time.Time
+		var evidence json.RawMessage
+		if err := consentRows.Scan(&channel, &topic, &state, &occurredAt, &evidence, &sourceEventID); err != nil {
+			consentRows.Close()
+			return err
+		}
+		snapshot.Consents = append(snapshot.Consents, struct {
+			Channel       string          `json:"channel"`
+			Topic         string          `json:"topic"`
+			State         string          `json:"state"`
+			OccurredAt    time.Time       `json:"occurred_at"`
+			Evidence      json.RawMessage `json:"evidence"`
+			SourceEventID string          `json:"source_event_id"`
+		}{channel, topic, state, occurredAt, evidence, sourceEventID})
+	}
+	if err := consentRows.Err(); err != nil {
+		consentRows.Close()
+		return err
+	}
+	consentRows.Close()
+	data, err := json.Marshal(snapshot)
+	if err != nil {
+		return err
+	}
+	key := fmt.Sprintf("identity-merges/%s/%s/%s/%s.json", event.Principal.TenantID, event.Principal.AppID, event.ID, sourceID)
+	if s.blobs == nil {
+		return errors.New("identity merge snapshot blob store is not configured")
+	}
+	if err := s.blobs.Put(ctx, key, data, "application/json"); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE profiles target SET
+		attributes=source.attributes || target.attributes,
+		version=target.version+1,updated_at=now()
+		FROM profiles source WHERE target.id=$1 AND source.id=$2`, targetID, sourceID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE consent_ledger SET profile_id=$1
+		WHERE profile_id=$2`, targetID, sourceID); err != nil {
+		return err
+	}
+	// Avoid unique alias conflicts while retaining the source aliases in the snapshot.
+	if _, err := tx.Exec(ctx, `DELETE FROM identity_aliases source
+		WHERE source.profile_id=$1 AND EXISTS (
+			SELECT 1 FROM identity_aliases target
+			WHERE target.profile_id=$2 AND target.namespace=source.namespace AND target.value=source.value)`, sourceID, targetID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE identity_aliases SET profile_id=$1
+		WHERE profile_id=$2`, targetID, sourceID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE profiles SET merged_into=$1, external_id=NULL, anonymous_id=NULL,
+		version=version+1,updated_at=now() WHERE id=$2`, targetID, sourceID); err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO identity_merges
+		(tenant_id,app_id,source_profile_id,target_profile_id,source_event_id,policy_version,
+		 winner_policy,reversible,reversal_ref,actor_user_id,actor_type)
+		VALUES($1,$2,$3,$4,$5,'v1', 'v1', true, $6, NULLIF($7,'')::uuid, $8)
+		ON CONFLICT(source_event_id) DO NOTHING`, event.Principal.TenantID, event.Principal.AppID,
+		sourceID, targetID, event.ID, key, event.Principal.UserID, event.Principal.ActorType)
+	return err
 }
 
 type identityKey struct {

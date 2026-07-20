@@ -467,12 +467,13 @@ winner by `identity_namespaces.priority` + policy version.
 	build/vet/test and tidy pass with no dependency diff (DB integration skips when OPENJOURNEY_TEST_DATABASE_URL is unset).
 
 ### Milestone 15.9 — Deterministic merge policy + reversible provenance
-1. **Deterministic merge**: on a resolution conflict, pick the winner by `identity_namespaces.priority` +
+1. [x] **Deterministic merge**: on a resolution conflict, pick the winner by `identity_namespaces.priority` +
    policy version, apply a deterministic attribute conflict rule, tombstone the loser (`profiles.merged_into`),
    snapshot pre-merge state to `identity_merges.reversal_ref` (blob), re-point aliases/consent — **no
-   hard-delete** (replace the `store.go:611` merge's `DELETE`).
-   *Done when:* the same two profiles merge to the same winner regardless of arrival order; the loser is
-   tombstoned + snapshotted (not deleted); provenance records source/winner/policy/actor/timestamp; test green.
+   hard-delete** (replace the `store.go:611` merge's `DELETE`). — done: deterministic namespace-priority
+   conflict merging snapshots and tombstones losers, repoints aliases/consent, and
+   `TestIdentityMergeIsDeterministicAndReversibleBySnapshot` verifies provenance; full Go build/vet/test and
+   tidy pass with no dependency diff.
 2. **`identity.unmerge` command + identify/merge/unmerge HTTP**: an `identity.unmerge` `ProjectEvent` case that
    restores the tombstoned profile from `reversal_ref` and marks `undone_at`; event-sourced
    `POST /v1/identity/{identify,merge,unmerge}` endpoints (emit events, human-actor gate on merge/unmerge).

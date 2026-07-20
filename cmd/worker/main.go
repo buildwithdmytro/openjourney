@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/buildwithdmytro/openjourney/internal/blob"
 	"github.com/buildwithdmytro/openjourney/internal/config"
 	"github.com/buildwithdmytro/openjourney/internal/postgres"
 	"github.com/buildwithdmytro/openjourney/internal/projector"
@@ -41,6 +42,12 @@ func main() {
 		os.Exit(1)
 	}
 	defer store.Close()
+	blobs, err := blob.NewMinIO(ctx, cfg.S3Endpoint, cfg.S3AccessKey, cfg.S3SecretKey, cfg.S3Bucket, cfg.S3UseTLS)
+	if err != nil {
+		slog.Error("open object store", "error", err)
+		os.Exit(1)
+	}
+	store.SetBlobStore(blobs)
 
 	processed, err := projector.DrainWithOptions(ctx, store, maxItems, watch, projector.Options{
 		AfterClaimDelay: afterClaimDelay,
