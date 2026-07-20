@@ -1492,6 +1492,59 @@ func TestTemplatePreviewPush(t *testing.T) {
 	}
 }
 
+func TestTemplatePreviewInApp(t *testing.T) {
+	store := &fakeStore{scopes: []string{"templates:read", "profiles:read"}}
+	server := New(store, 75)
+
+	store.getTemplateFunc = func(id string) (domain.Template, error) {
+		titleTmpl := "Welcome {{ profile.attributes.first_name }}!"
+		bodyTmpl := "Check out this exclusive offer."
+		return domain.Template{
+			ID:            id,
+			Name:          "InApp Template",
+			Channel:       "in_app",
+			TitleTemplate: &titleTmpl,
+			BodyTemplate:  &bodyTmpl,
+			Version:       1,
+		}, nil
+	}
+
+	store.getProfileFunc = func(externalID string) (domain.Profile, error) {
+		return domain.Profile{
+			ID:         "prof-456",
+			ExternalID: externalID,
+			Attributes: json.RawMessage(`{"first_name": "Alice"}`),
+		}, nil
+	}
+
+	bodyJSON := `{"external_id":"user-789"}`
+	previewReq := httptest.NewRequest(http.MethodPost, "/v1/templates/tmpl-inapp/preview", strings.NewReader(bodyJSON))
+	previewReq.Header.Set("Authorization", "Bearer test-key")
+	previewReq.Header.Set("Content-Type", "application/json")
+	previewRes := httptest.NewRecorder()
+
+	server.ServeHTTP(previewRes, previewReq)
+	if previewRes.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", previewRes.Code, previewRes.Body.String())
+	}
+
+	var resp struct {
+		Title string `json:"title"`
+		Body  string `json:"body"`
+	}
+
+	if err := json.Unmarshal(previewRes.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if resp.Title != "Welcome Alice!" {
+		t.Errorf("expected title 'Welcome Alice!', got %q", resp.Title)
+	}
+	if resp.Body != "Check out this exclusive offer." {
+		t.Errorf("expected body 'Check out this exclusive offer.', got %q", resp.Body)
+	}
+}
+
 func TestSMSCallbackTwilioSignature(t *testing.T) {
 	store := &fakeStore{}
 	server := New(store, 75)

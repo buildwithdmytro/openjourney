@@ -144,6 +144,33 @@ func TestTemplatesIntegration(t *testing.T) {
 		t.Errorf("expected push template version bump to 2, got %d", updatedPushTmpl.Version)
 	}
 
+	// 5. Test InApp Templates
+	inappTitleTmpl := "Card for {{ profile.attributes.name }}"
+	inappBodyTmpl := "Click to learn more"
+	inappTmpl, err := store.CreateTemplate(ctx, p, domain.Template{
+		Name:          "InApp Template",
+		Channel:       "in_app",
+		TitleTemplate: &inappTitleTmpl,
+		BodyTemplate:  &inappBodyTmpl,
+	})
+	if err != nil {
+		t.Fatalf("create in_app template: %v", err)
+	}
+
+	fetchedInAppTmpl, err := store.GetTemplate(ctx, p, inappTmpl.ID)
+	if err != nil {
+		t.Fatalf("get in_app template: %v", err)
+	}
+	if fetchedInAppTmpl.Channel != "in_app" {
+		t.Errorf("expected channel in_app, got %s", fetchedInAppTmpl.Channel)
+	}
+	if fetchedInAppTmpl.TitleTemplate == nil || *fetchedInAppTmpl.TitleTemplate != inappTitleTmpl {
+		t.Errorf("expected TitleTemplate %q, got %v", inappTitleTmpl, fetchedInAppTmpl.TitleTemplate)
+	}
+	if fetchedInAppTmpl.BodyTemplate == nil || *fetchedInAppTmpl.BodyTemplate != inappBodyTmpl {
+		t.Errorf("expected BodyTemplate %q, got %v", inappBodyTmpl, fetchedInAppTmpl.BodyTemplate)
+	}
+
 	// Clean up
 	_, _ = store.pool.Exec(ctx, "DELETE FROM tenants WHERE id=$1", tenantID)
 }
