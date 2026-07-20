@@ -284,13 +284,14 @@ fake-store unit test + postgres integration test (the M10/M11 template).
    *Done when:* `TestFetchInboxRejectsExternalIDSmuggledViaAnonymousID` passes (attack blocked, email
    token path works); a forged/expired token is rejected; the edge is IP rate-limited. (Re-fix if regressed.)
    — done: TestFetchInboxRejectsExternalIDSmuggledViaAnonymousID passes, GetProfileIDBySubject pins to one column, VerifyInAppToken splits on LAST `.`, publicLimiter enforces IP rate-limiting, TestForgedTokenRejected passes
-2. [ ] **Verify display-state is projector-only + web-push SSRF-safe.** Confirm `createAdminMessage`
+2. [x] **Verify display-state is projector-only + web-push SSRF-safe.** Confirm `createAdminMessage`
    (`internal/httpapi/messages.go`) clamps to a delivered baseline (no forged `status`/`*_at`) so
    `inapp_messages` display-state is written ONLY by the `message.*` `ProjectEvent` cases; and the
    `webpush` provider dials through the SSRF-guarded transport (a private-IP subscription endpoint is
    refused, per review verified-safe).
    *Done when:* `TestCreateAdminMessageCannotForgeDisplayState` passes; a grep confirms no display-state
    writer outside `ProjectEvent`; a private-IP push endpoint is blocked by a test.
+   — done: TestCreateAdminMessageCannotForgeDisplayState passes, display-state only written in ProjectEvent cases (message.impression/clicked/dismissed), TestWebPushSSRFProtection blocks 169.254.169.254 and other private IPs
 3. [ ] **Verify scopes enforced + no new dependency (M11).** `messages:read`/`messages:write` guard the
    admin routes (a `messages:read` key is 403 on write); no dependency was added across M11.
    *Done when:* the scope-enforcement test passes and `git diff` shows no additions to `go.mod`/`go.sum`/
