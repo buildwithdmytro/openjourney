@@ -358,10 +358,11 @@ fake-store unit test + postgres integration test (the M10/M11 template).
    *Done when:* `Icon` renders named glyphs; a labeled icon exposes an accessible name; no icon dependency
    added; test asserts both modes.
    — done: Icon.tsx with 12 glyphs; 12 tests passing (decorative mode with aria-hidden, labeled mode with aria-label and role="img", size support, ref forwarding); no dependency added
-3. [ ] **Badge/Card/DataTable**: consolidate the `.pill` status variants into `<Badge kind>`, `.card`
+3. [x] **Badge/Card/DataTable**: consolidate the `.pill` status variants into `<Badge kind>`, `.card`
    into `<Card>`, and the repeated table markup into `<DataTable>`.
    *Done when:* `Badge` covers the existing status variants (draft/published/active/paused/waiting…); a
    section adopts `Card`/`DataTable`/`Badge` with no visual regression; tests green.
+   — done: Badge.tsx with 12 kinds + 12 tests, Card.tsx/DataTable.tsx with 5 tests each; Governance.tsx migrated to use Card and DataTable; 115 tests passing, no visual regression
 
 ### Milestone 17.3 — Shared UX-state primitives
 1. [ ] **Spinner + Skeleton** (Recipe 6.61): the first CSS `@keyframes`, reduced-motion-guarded; used in

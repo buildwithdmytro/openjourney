@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { AIActivity, AIBudget, AIProviderConfig, FieldClassification, getAIBudget, listAIActivity, listAIProviders, listFieldClassifications, saveAIProvider, saveFieldClassification } from "../api";
-import { Button, Field, Input, Select, Textarea } from "../components";
+import { Button, Card, DataTable, Field, Input, Select, Textarea } from "../components";
 
 const blankProvider: Partial<AIProviderConfig> = { provider: "fake", status: "active", is_default: true, monthly_budget_cents: 0, endpoint_allowlist: [] };
 function message(error: unknown) { return error instanceof Error ? error.message : "Request failed"; }
@@ -16,7 +16,7 @@ export default function Governance({ apiKey, baseURL }: { apiKey: string; baseUR
   async function saveField(e: FormEvent) { e.preventDefault(); setSaving(true); setError(""); try { await saveFieldClassification(baseURL, apiKey, field); setField({ entity_type: "profile", classification: "internal", send_to_model: "redact" }); await load(); } catch (e) { setError(message(e)); } finally { setSaving(false); } }
   return (
     <section className="stack governance-view">
-      <article className="card">
+      <Card variant="article">
         <div className="eyebrow">Provider and budget</div>
         <h2>AI governance settings</h2>
         <p className="muted">Secrets are managed by the server and are never displayed here.</p>
@@ -77,8 +77,8 @@ export default function Governance({ apiKey, baseURL }: { apiKey: string; baseUR
             {budget.usage.input_tokens + budget.usage.output_tokens} tokens
           </p>
         )}
-      </article>
-      <article className="card">
+      </Card>
+      <Card variant="article">
         <div className="eyebrow">Permission-aware egress</div>
         <h2>Field classifications</h2>
         <form className="governance-form" onSubmit={saveField}>
@@ -138,55 +138,30 @@ export default function Governance({ apiKey, baseURL }: { apiKey: string; baseUR
           </Field>
           <Button disabled={saving}>Add classification</Button>
         </form>
-        <table>
-          <thead>
-            <tr>
-              <th>Entity</th>
-              <th>Field</th>
-              <th>Classification</th>
-              <th>Model action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {classifications.map(c => (
-              <tr key={c.id}>
-                <td>{c.entity_type}</td>
-                <td>{c.field_path}</td>
-                <td>{c.classification}</td>
-                <td>{c.send_to_model}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </article>
-      <article className="card">
+        <DataTable
+          headers={["Entity", "Field", "Classification", "Model action"]}
+          rows={classifications.map(c => [
+            c.entity_type,
+            c.field_path,
+            c.classification,
+            c.send_to_model,
+          ])}
+        />
+      </Card>
+      <Card variant="article">
         <div className="eyebrow">Append-only audit</div>
         <h2>AI activity</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Action</th>
-              <th>Provider/model</th>
-              <th>Decision</th>
-              <th>Cost</th>
-              <th>When</th>
-            </tr>
-          </thead>
-          <tbody>
-            {activity.map(a => (
-              <tr key={a.id}>
-                <td>{a.action}</td>
-                <td>
-                  {a.provider}/{a.model}
-                </td>
-                <td>{a.policy_decision}</td>
-                <td>{a.cost_cents}¢</td>
-                <td>{new Date(a.created_at).toLocaleString()}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </article>
+        <DataTable
+          headers={["Action", "Provider/model", "Decision", "Cost", "When"]}
+          rows={activity.map(a => [
+            a.action,
+            `${a.provider}/${a.model}`,
+            a.policy_decision,
+            `${a.cost_cents}¢`,
+            new Date(a.created_at).toLocaleString(),
+          ])}
+        />
+      </Card>
       {error && (
         <p className="error" role="alert">
           {error}
