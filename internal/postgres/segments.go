@@ -10,9 +10,43 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/buildwithdmytro/openjourney/internal/audience"
+	"github.com/buildwithdmytro/openjourney/internal/connector"
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 	"github.com/jackc/pgx/v5"
 )
+
+// MaterializeConnectorRows is the read-only reverse-ETL projection. The
+// audience compiler validates identifiers and keeps all audience values
+// parameterized; this method only scans the resulting rows for a sink.
+func (s *Store) MaterializeConnectorRows(ctx context.Context, p domain.Principal, dsl json.RawMessage, fields []string) ([]connector.Row, error) {
+	node, err := audience.Parse(dsl)
+	if err != nil {
+		return nil, fmt.Errorf("audience DSL: %w", err)
+	}
+	query, args, err := audience.CompileProfileRows(node, fields)
+	if err != nil {
+		return nil, err
+	}
+	args = append([]any{p.TenantID, p.WorkspaceID}, args...)
+	rows, err := s.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	fieldRows := make([]connector.Row, 0)
+	for rows.Next() {
+		values, err := rows.Values()
+		if err != nil {
+			return nil, err
+		}
+		item := make(connector.Row, len(fields))
+		for i, field := range fields {
+			item[field] = values[i]
+		}
+		fieldRows = append(fieldRows, item)
+	}
+	return fieldRows, rows.Err()
+}
 
 func (s *Store) CreateSegment(ctx context.Context, p domain.Principal, seg domain.Segment) (domain.Segment, error) {
 	if seg.Name == "" {

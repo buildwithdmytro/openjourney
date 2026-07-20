@@ -112,6 +112,25 @@ func (f *FakeDriver) Write(ctx context.Context, cfg map[string]any, rows []Row) 
 	if f.WriteErr != nil {
 		return 0, f.WriteErr
 	}
-	f.Writes = append(f.Writes, rows...)
-	return len(rows), nil
+	keyField := "external_id"
+	if configured, ok := cfg["upsert_key"].(string); ok && configured != "" {
+		keyField = configured
+	}
+	written := 0
+	for _, row := range rows {
+		key, _ := row[keyField]
+		found := false
+		for i, old := range f.Writes {
+			if key != nil && old[keyField] == key {
+				f.Writes[i] = row
+				found = true
+				break
+			}
+		}
+		if !found {
+			f.Writes = append(f.Writes, row)
+			written++
+		}
+	}
+	return written, nil
 }

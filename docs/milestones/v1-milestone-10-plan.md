@@ -415,11 +415,13 @@ winner by `identity_namespaces.priority` + policy version.
    `CompileProfileRows` validates mapped fields, projects profile attributes with parameterized audience/
    consent filters, and `TestCompileProfileRows` proves suppression SQL and unsafe-field rejection; full
    Go build/vet/test and tidy pass with no dependency diff.
-2. **`reverse_etl.run` executor**: materialize rows via the projection, call the sink driver `Write`
+2. [x] **`reverse_etl.run` executor**: materialize rows via the projection, call the sink driver `Write`
    (upsert-keyed, bounded, per-connector budget/rate), write a `connector_runs` row; schedulable.
    *Done when:* an audience materializes and pushes rows to a `fake` sink; a second run with unchanged
    membership is an idempotent upsert (no dupes at the sink); it never writes OpenJourney source tables;
-   integration test green.
+   integration test green. — done: parameterized audience materialization, bounded idempotent fake-sink
+   upserts, append-only run auditing, and `TestReverseETLIsIdempotentAndReadOnly` pass; full Go build/vet/test
+   and tidy show no dependency diff.
 
 ### Milestone 15.6 — Currents-style event-stream export
 1. **Event-stream export** (Recipe 6.50): add export outbox topic(s) (`exports.events.v1`) as a second

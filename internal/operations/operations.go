@@ -48,6 +48,13 @@ type ConnectorStore interface {
 	AcceptEvents(context.Context, domain.Principal, []domain.Event) ([]string, error)
 }
 
+// ReverseETLStore deliberately exposes only a read projection for OpenJourney
+// data.  Sink execution must not acquire a profile/source-table write path.
+type ReverseETLStore interface {
+	ConnectorStore
+	MaterializeConnectorRows(context.Context, domain.Principal, json.RawMessage, []string) ([]connector.Row, error)
+}
+
 type AIGenerationStore interface {
 	GetAIGenerationJob(context.Context, string) (domain.AIGenerationJob, error)
 	GetPromptVersion(context.Context, domain.Principal, string) (domain.PromptVersion, error)
@@ -209,9 +216,134 @@ func execute(ctx context.Context, store Store, blobs ports.BlobStore, gateway AI
 			}
 		}
 		return executeWarehouseSync(ctx, cs, blobs, job)
+	case "reverse_etl.run":
+		rs, ok := store.(ReverseETLStore)
+		if !ok {
+			return errors.New("operation store does not support reverse-ETL")
+		}
+		job := reverseETLInput{RequestID: input.RequestID, TenantID: input.TenantID, WorkspaceID: input.WorkspaceID, AppID: input.AppID, PipelineID: input.PipelineID}
+		if len(input.Input) > 0 {
+			if err := json.Unmarshal(input.Input, &job); err != nil {
+				return fmt.Errorf("reverse_etl.run input: %w", err)
+			}
+		}
+		return executeReverseETL(ctx, rs, blobs, job)
 	default:
 		return fmt.Errorf("unsupported operation type %q", jobType)
 	}
+}
+
+type reverseETLInput struct {
+	RequestID   string `json:"request_id"`
+	TenantID    string `json:"tenant_id"`
+	WorkspaceID string `json:"workspace_id"`
+	AppID       string `json:"app_id"`
+	PipelineID  string `json:"pipeline_id"`
+}
+
+func executeReverseETL(ctx context.Context, store ReverseETLStore, blobs ports.BlobStore, job reverseETLInput) error {
+	return executeReverseETLWithRegistry(ctx, store, blobs, job, connector.DefaultRegistry())
+}
+
+func executeReverseETLWithRegistry(ctx context.Context, store ReverseETLStore, blobs ports.BlobStore, job reverseETLInput, registry *connector.Registry) error {
+	if job.PipelineID == "" {
+		return errors.New("reverse_etl.run requires pipeline_id")
+	}
+	p := domain.Principal{TenantID: job.TenantID, WorkspaceID: job.WorkspaceID, AppID: job.AppID, ActorType: "connector"}
+	pipeline, err := store.GetConnectorPipeline(ctx, p, job.PipelineID)
+	if err != nil {
+		return err
+	}
+	if pipeline.CurrentVersionID == nil {
+		return errors.New("connector pipeline has no published version")
+	}
+	version, err := store.GetConnectorPipelineVersion(ctx, p, *pipeline.CurrentVersionID)
+	if err != nil {
+		return err
+	}
+	cfg, err := store.GetExtensionConfig(ctx, p, pipeline.ConnectorExtensionID)
+	if err != nil {
+		return err
+	}
+	resolved, err := extension.ResolveConfigMap(cfg.Config)
+	if err != nil {
+		return fmt.Errorf("connector config: %w", err)
+	}
+	var mapping map[string]any
+	if err := json.Unmarshal(version.Mapping, &mapping); err != nil {
+		return fmt.Errorf("pipeline mapping: %w", err)
+	}
+	fields, err := mappedFields(mapping)
+	if err != nil {
+		return err
+	}
+	dsl := mapping["audience_dsl"]
+	if dsl == nil {
+		dsl = mapping["audience"]
+	}
+	dslBytes, err := json.Marshal(dsl)
+	if err != nil || len(dslBytes) == 0 || string(dslBytes) == "null" {
+		return errors.New("reverse-ETL mapping requires audience_dsl")
+	}
+	rows, err := store.MaterializeConnectorRows(ctx, p, dslBytes, fields)
+	run := domain.ConnectorRun{TenantID: job.TenantID, WorkspaceID: job.WorkspaceID, AppID: pipeline.AppID, PipelineID: pipeline.ID, PipelineVersionID: version.ID, JobType: "reverse_etl.run", Status: "running", StartedAt: time.Now().UTC()}
+	if err := store.RecordConnectorRun(ctx, run); err != nil {
+		return err
+	}
+	if err != nil {
+		return finishReverseETL(ctx, store, run, err)
+	}
+	if registry == nil {
+		return finishReverseETL(ctx, store, run, errors.New("connector registry is required"))
+	}
+	driver := registry.For(stringValue(resolved, "driver"))
+	batchSize := 100
+	if n, ok := resolved["max_batch_size"].(float64); ok && n >= 1 && n <= 1000 {
+		batchSize = int(n)
+	}
+	for start := 0; start < len(rows); start += batchSize {
+		end := start + batchSize
+		if end > len(rows) {
+			end = len(rows)
+		}
+		written, writeErr := driver.Write(ctx, resolved, rows[start:end])
+		if writeErr != nil {
+			return finishReverseETL(ctx, store, run, writeErr)
+		}
+		run.RowsOut += int64(written)
+	}
+	run.RowsIn = int64(len(rows))
+	run.Status = "succeeded"
+	finished := time.Now().UTC()
+	run.FinishedAt = &finished
+	return store.RecordConnectorRun(ctx, run)
+}
+
+func mappedFields(mapping map[string]any) ([]string, error) {
+	raw, ok := mapping["fields"].([]any)
+	if !ok || len(raw) == 0 {
+		return nil, errors.New("reverse-ETL mapping requires fields")
+	}
+	fields := make([]string, 0, len(raw))
+	for _, item := range raw {
+		field, ok := item.(string)
+		if !ok || field == "" {
+			return nil, errors.New("reverse-ETL fields must be strings")
+		}
+		fields = append(fields, field)
+	}
+	return fields, nil
+}
+
+func finishReverseETL(ctx context.Context, store ReverseETLStore, run domain.ConnectorRun, operationErr error) error {
+	run.Status = "failed"
+	run.Error = operationErr.Error()
+	finished := time.Now().UTC()
+	run.FinishedAt = &finished
+	if err := store.RecordConnectorRun(ctx, run); err != nil {
+		return fmt.Errorf("%v; record connector failure: %w", operationErr, err)
+	}
+	return operationErr
 }
 
 type warehouseSyncInput struct {
