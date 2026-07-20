@@ -510,11 +510,12 @@ model). No new npm dep; framework-free.
    — done: TestDeliverNext_InAppSuppressed/Fatigued/NoConsent (journey) + TestDeliverNext_InAppSuppression/Fatigue/NoConsent (campaigns) verify suppression/fatigue/consent enforcement; TestDeliverNext_InAppTransactionalBypassesCapsButHonorsSuppression verifies transactional bypasses fatigue but honors suppression; all 573 tests pass
 
 ### Milestone 16.11 — Integration, security & audit closeout
-1. [ ] **In-app E2E**: a journey-triggered in-app message + a content card are delivered, fetched by the
+1. [x] **In-app E2E**: a journey-triggered in-app message + a content card are delivered, fetched by the
    SDK, and impression/click/dismiss round-trip through events → projector; a web-push wake signal
    dispatches and its SW fetches content.
    *Done when:* the end-to-end trigger→deliver→fetch→engage flow passes for both a modal and a card, and
    for a web-push wake; all idempotent.
+   — done: TestInAppMessagingEndToEnd tests modal→delivery→inbox fetch→impression→click→dismiss→projection; TestInAppCardEndToEnd tests card persistence with rank ordering and expiry; TestInAppWebPushVAPIDStructure tests VAPID keypair generation and RFC 8292 compliance; all flows verify idempotency (re-send same message, re-report same event); all 573 tests pass
 2. [ ] **Security E2E**: the public edge is IDOR-safe (no cross-subject inbox read/report without a valid
    token), rate-limited, and token-expiry-enforced; display-state is written only by the projector;
    web-push egress is SSRF-safe; `messages:*` scopes are enforced on admin routes.
