@@ -486,9 +486,10 @@ fake-store unit test + postgres integration test (the M10/M11 template).
    confirm `git diff web/package.json web/package-lock.json go.mod go.sum` is empty of additions.
    *Done when:* all green and no dependency additions.
    — done: web tests 273 passing, sdk/javascript tests 18 passing, go tests 589 passing in 47 packages, no dependency additions
-3. [ ] **Audit doc** `docs/milestones/v1-milestone-12-audit.md` in the M2–M11 table format, one row per
+3. [x] **Audit doc** `docs/milestones/v1-milestone-12-audit.md` in the M2–M11 table format, one row per
    `17.x` task with evidence (file:line + test name).
    *Done when:* the doc exists with a row per task and its verifying test.
+   — done: v1-milestone-12-audit.md created with 49 rows (17.0.1–17.10.3) documenting requirements, evidence, and completion status; all tasks complete
 
 ## 7. Carry-over hazards & invariants
 
