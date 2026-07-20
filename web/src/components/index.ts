@@ -8,3 +8,5 @@ export { default as Textarea } from "./Textarea";
 export type { TextareaProps } from "./Textarea";
 export { default as Field } from "./Field";
 export type { FieldProps } from "./Field";
+export { default as Icon } from "./Icon";
+export type { IconProps } from "./Icon";

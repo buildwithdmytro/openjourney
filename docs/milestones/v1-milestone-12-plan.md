@@ -352,11 +352,12 @@ fake-store unit test + postgres integration test (the M10/M11 template).
    one section (e.g. `Governance.tsx`) is migrated to them with its existing tests **unchanged and green**.
    **Checkpoint:** primitives exist, are keyboard/label-correct, and drop into a real section with no test churn.
    — done: Button/Input/Select/Textarea/Field primitives in web/src/components/; 37 component tests passing; Field wires htmlFor/id/aria-describedby/aria-invalid; Governance.tsx migrated with unchanged passing tests (79 total tests green); focus-visible styles present
-2. [ ] **Icon set**: an in-repo inline-SVG `Icon` component with the ~12 glyphs the app needs (search,
+2. [x] **Icon set**: an in-repo inline-SVG `Icon` component with the ~12 glyphs the app needs (search,
    close, check, chevron, plus, trash, warn, info, menu, external, sun, moon); decorative→`aria-hidden`,
    labeled→`role="img"`+`aria-label`.
    *Done when:* `Icon` renders named glyphs; a labeled icon exposes an accessible name; no icon dependency
    added; test asserts both modes.
+   — done: Icon.tsx with 12 glyphs; 12 tests passing (decorative mode with aria-hidden, labeled mode with aria-label and role="img", size support, ref forwarding); no dependency added
 3. [ ] **Badge/Card/DataTable**: consolidate the `.pill` status variants into `<Badge kind>`, `.card`
    into `<Card>`, and the repeated table markup into `<DataTable>`.
    *Done when:* `Badge` covers the existing status variants (draft/published/active/paused/waiting…); a
