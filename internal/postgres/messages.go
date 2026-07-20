@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 	"github.com/buildwithdmytro/openjourney/internal/ports"
@@ -102,4 +103,47 @@ func (s *Store) GetProfileIDBySubject(ctx context.Context, tenantID, appID, subj
 		return "", ports.ErrNotFound
 	}
 	return profileID, err
+}
+
+func (s *Store) ExpireInAppMessages(ctx context.Context, tenantID string, limit int) error {
+	if limit <= 0 {
+		limit = 1000
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, tenant_id FROM inapp_messages
+		WHERE tenant_id = $1 AND expires_at IS NOT NULL AND expires_at <= now()
+		  AND status != 'expired' AND status != 'dismissed'
+		LIMIT $2
+	`, tenantID, limit)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	var events []domain.Event
+	for rows.Next() {
+		var msgID string
+		if err := rows.Scan(&msgID, &tenantID); err != nil {
+			return err
+		}
+		payload, err := json.Marshal(map[string]string{"message_id": msgID})
+		if err != nil {
+			return err
+		}
+		events = append(events, domain.Event{
+			Type:    "message.expire",
+			Payload: payload,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	if len(events) > 0 {
+		_, err = s.AcceptEvents(ctx, domain.Principal{
+			TenantID:  tenantID,
+			ActorType: "service",
+		}, events)
+	}
+	return err
 }

@@ -503,3 +503,205 @@ func TestCardFetchExcludesOutOfWindow(t *testing.T) {
 		t.Fatalf("expected 1 message in inbox, got %d", len(inbox))
 	}
 }
+
+func TestRepeatedImpressionsUpdateTimestamp(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	p, tenantID := setupTestTenant(t, ctx, store)
+	profileID := testUUID(tenantID + "-msg-repeat-profile")
+	if _, err := store.pool.Exec(ctx, `INSERT INTO profiles(id,tenant_id,workspace_id,app_id,external_id,attributes) VALUES($1,$2,$3,$4,'repeat-user','{}')`, profileID, p.TenantID, p.WorkspaceID, p.AppID); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Now().UTC()
+	msgContent := json.RawMessage(`{"title":"Card"}`)
+	key := "repeat-impression-msg"
+	msg, err := store.CreateInAppMessage(ctx, p.TenantID, p.WorkspaceID, p.AppID, profileID, domain.InAppMessage{
+		MessageType:    "card",
+		Content:        msgContent,
+		Rank:           5,
+		StartAt:        now,
+		IdempotencyKey: &key,
+		Status:         "delivered",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// First impression
+	payload1, _ := json.Marshal(map[string]string{"message_id": msg.ID})
+	_, err = store.AcceptEvents(ctx, domain.Principal{TenantID: p.TenantID, ActorType: "public"}, []domain.Event{
+		{Type: "message.impression", Payload: payload1},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify first impression set displayed_at
+	updated1, err := store.GetInAppMessage(ctx, p.TenantID, msg.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated1.DisplayedAt == nil {
+		t.Fatal("expected displayed_at to be set after first impression")
+	}
+	if updated1.Status != "displayed" {
+		t.Fatalf("expected status 'displayed', got '%s'", updated1.Status)
+	}
+	firstTimestamp := *updated1.DisplayedAt
+
+	// Wait and send second impression
+	time.Sleep(100 * time.Millisecond)
+	payload2, _ := json.Marshal(map[string]string{"message_id": msg.ID})
+	_, err = store.AcceptEvents(ctx, domain.Principal{TenantID: p.TenantID, ActorType: "public"}, []domain.Event{
+		{Type: "message.impression", Payload: payload2},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify second impression updated displayed_at
+	updated2, err := store.GetInAppMessage(ctx, p.TenantID, msg.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated2.DisplayedAt == nil {
+		t.Fatal("expected displayed_at to be set after second impression")
+	}
+	if updated2.Status != "displayed" {
+		t.Fatalf("expected status 'displayed', got '%s'", updated2.Status)
+	}
+	secondTimestamp := *updated2.DisplayedAt
+
+	if firstTimestamp.After(secondTimestamp) {
+		t.Fatalf("expected second timestamp to be after first, got first=%v second=%v", firstTimestamp, secondTimestamp)
+	}
+
+	// Dismiss and verify no more impressions are recorded
+	dismissPayload, _ := json.Marshal(map[string]string{"message_id": msg.ID})
+	_, err = store.AcceptEvents(ctx, domain.Principal{TenantID: p.TenantID, ActorType: "public"}, []domain.Event{
+		{Type: "message.dismissed", Payload: dismissPayload},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dismissed, err := store.GetInAppMessage(ctx, p.TenantID, msg.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dismissed.Status != "dismissed" {
+		t.Fatalf("expected status 'dismissed', got '%s'", dismissed.Status)
+	}
+	dismissedTimestamp := *dismissed.DisplayedAt
+
+	// Try another impression - should not update displayed_at
+	time.Sleep(100 * time.Millisecond)
+	payload3, _ := json.Marshal(map[string]string{"message_id": msg.ID})
+	_, err = store.AcceptEvents(ctx, domain.Principal{TenantID: p.TenantID, ActorType: "public"}, []domain.Event{
+		{Type: "message.impression", Payload: payload3},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	afterDismissal, err := store.GetInAppMessage(ctx, p.TenantID, msg.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterDismissal.Status != "dismissed" {
+		t.Fatalf("expected status to remain 'dismissed', got '%s'", afterDismissal.Status)
+	}
+	if !dismissedTimestamp.Equal(*afterDismissal.DisplayedAt) {
+		t.Fatal("expected displayed_at to not change after dismissal")
+	}
+}
+
+func TestExpireInAppMessages(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	p, tenantID := setupTestTenant(t, ctx, store)
+	profileID := testUUID(tenantID + "-msg-expire-profile")
+	if _, err := store.pool.Exec(ctx, `INSERT INTO profiles(id,tenant_id,workspace_id,app_id,external_id,attributes) VALUES($1,$2,$3,$4,'expire-user','{}')`, profileID, p.TenantID, p.WorkspaceID, p.AppID); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Now().UTC()
+	msgContent := json.RawMessage(`{"title":"Card"}`)
+
+	// Create an expired card (expires_at in the past)
+	expiredKey := "expired-msg"
+	expiredCard, err := store.CreateInAppMessage(ctx, p.TenantID, p.WorkspaceID, p.AppID, profileID, domain.InAppMessage{
+		MessageType:    "card",
+		Content:        msgContent,
+		Rank:           5,
+		StartAt:        now.Add(-2 * time.Hour),
+		ExpiresAt:      &now,
+		IdempotencyKey: &expiredKey,
+		Status:         "delivered",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a valid (not expired) card
+	validKey := "valid-msg"
+	futureExpire := now.Add(1 * time.Hour)
+	_, err = store.CreateInAppMessage(ctx, p.TenantID, p.WorkspaceID, p.AppID, profileID, domain.InAppMessage{
+		MessageType:    "card",
+		Content:        msgContent,
+		Rank:           10,
+		StartAt:        now,
+		ExpiresAt:      &futureExpire,
+		IdempotencyKey: &validKey,
+		Status:         "delivered",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Run the expiry sweep
+	if err := store.ExpireInAppMessages(ctx, p.TenantID, 100); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify expired card is marked as expired
+	expiredAfter, err := store.GetInAppMessage(ctx, p.TenantID, expiredCard.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if expiredAfter.Status != "expired" {
+		t.Fatalf("expected status 'expired', got '%s'", expiredAfter.Status)
+	}
+
+	// Verify it's excluded from inbox fetch
+	inbox, err := store.ListInboxForProfile(ctx, p.TenantID, p.AppID, profileID, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inbox) != 1 {
+		t.Fatalf("expected 1 message in inbox after expiry, got %d", len(inbox))
+	}
+}

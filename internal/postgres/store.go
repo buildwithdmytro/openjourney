@@ -688,7 +688,7 @@ func (s *Store) ProjectEvent(ctx context.Context, event domain.AcceptedEvent) er
 		}
 		_, err = tx.Exec(ctx, `UPDATE inapp_messages
 			SET displayed_at=now(), status='displayed', updated_at=now()
-			WHERE id=$1 AND tenant_id=$2 AND displayed_at IS NULL`,
+			WHERE id=$1 AND tenant_id=$2 AND dismissed_at IS NULL`,
 			body.MessageID, event.Principal.TenantID)
 		if err != nil {
 			return err
@@ -723,6 +723,23 @@ func (s *Store) ProjectEvent(ctx context.Context, event domain.AcceptedEvent) er
 		_, err = tx.Exec(ctx, `UPDATE inapp_messages
 			SET dismissed_at=now(), status='dismissed', updated_at=now()
 			WHERE id=$1 AND tenant_id=$2 AND dismissed_at IS NULL`,
+			body.MessageID, event.Principal.TenantID)
+		if err != nil {
+			return err
+		}
+	case "message.expire":
+		var body struct {
+			MessageID string `json:"message_id"`
+		}
+		if err := json.Unmarshal(event.Payload, &body); err != nil {
+			return err
+		}
+		if body.MessageID == "" {
+			return errors.New("message.expire payload requires message_id")
+		}
+		_, err = tx.Exec(ctx, `UPDATE inapp_messages
+			SET status='expired', updated_at=now()
+			WHERE id=$1 AND tenant_id=$2 AND status != 'expired'`,
 			body.MessageID, event.Principal.TenantID)
 		if err != nil {
 			return err
