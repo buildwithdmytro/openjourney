@@ -401,10 +401,11 @@ fake-store unit test + postgres integration test (the M10/M11 template).
    — done: ConfirmDialog.tsx created (14 component tests passing); App.tsx: revoke API key, retire device token, discard DLQ item all use ConfirmDialog; Templates.tsx: composer mode switch uses ConfirmDialog; Journeys.tsx: close editor uses ConfirmDialog; Extensions.tsx: enable/disable extension uses ConfirmDialog; 188 total tests green; grep confirms no window.confirm remains
 
 ### Milestone 17.5 — Form validation & structured entry
-1. [ ] **useForm + inline validation** (Recipe 6.64): field-level errors + disabled-until-valid applied
+1. [x] **useForm + inline validation** (Recipe 6.64): field-level errors + disabled-until-valid applied
    to Campaigns (`App.tsx:1666`) and Segments (`App.tsx:723`) via `Field`.
    *Done when:* an invalid field shows an inline message tied to the input (`aria-describedby`), submit is
    gated on validity, and the imperative `throw` validation is replaced; tests assert the inline message.
+   — done: useForm.ts hook created with 9 tests passing; Campaigns and Segments refactored to use Field + form validation; validation errors tied to input via aria-describedby; submit buttons gated on form.isValid; 197 total tests passing
 2. [ ] **Guarded JSON editor**: a `JsonField` primitive (validate-on-blur, inline error, format button)
    replacing the raw JSON `<textarea>` in Segments DSL (`App.tsx:723`), Schemas, and Scoring.
    *Done when:* invalid JSON shows an inline error without throwing/blanking the form; valid JSON

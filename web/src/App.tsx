@@ -16,7 +16,8 @@ import {
 import { oidcConfigured, restoreOIDCSession, signIn, signOut } from "./auth";
 import { staticColors, defaultAccentColor, defaultBackgroundColor } from "./tokens";
 import { useTheme } from "./useTheme";
-import { Skeleton, Spinner, ToastProvider, useToast, ConfirmDialog } from "./components";
+import { useForm } from "./useForm";
+import { Skeleton, Spinner, ToastProvider, useToast, ConfirmDialog, Field, Input, Select, Textarea } from "./components";
 import { message } from "./errors";
 
 const Journeys = lazy(() => import("./sections/Journeys"));
@@ -650,19 +651,36 @@ function Segments({ apiKey }: { apiKey: string }) {
   const { push: pushToast } = useToast();
   const [items, setItems] = useState<Segment[]>([]);
   const [editingSegment, setEditingSegment] = useState<Segment | null>(null);
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [type, setType] = useState<"static" | "dynamic" | "snapshot">("dynamic");
-  const [status, setStatus] = useState<"draft" | "active" | "archived">("draft");
-  const [dsl, setDsl] = useState("{}");
+
+  const form = useForm({
+    initialValues: {
+      name: "",
+      description: "",
+      type: "dynamic" as "static" | "dynamic" | "snapshot",
+      status: "draft" as "draft" | "active" | "archived",
+      dsl: "{}",
+      scoreModel: "",
+      scoreName: "",
+      scoreOperator: "greater_than",
+      scoreValue: 0,
+    },
+    validate: {
+      name: (value) => (!value ? "Name is required" : undefined),
+      dsl: (value) => {
+        try {
+          JSON.parse(value);
+          return undefined;
+        } catch (e) {
+          return "Invalid DSL JSON: " + (e as Error).message;
+        }
+      },
+    },
+  });
+
   const [memberProfileID, setMemberProfileID] = useState("");
   const [membership, setMembership] = useState<"include" | "exclude">("include");
   const [error, setError] = useState("");
   const [scoringModels, setScoringModels] = useState<ScoringModel[]>([]);
-  const [scoreModel, setScoreModel] = useState("");
-  const [scoreName, setScoreName] = useState("");
-  const [scoreOperator, setScoreOperator] = useState("greater_than");
-  const [scoreValue, setScoreValue] = useState(0);
 
   async function refresh() {
     try {
@@ -680,24 +698,18 @@ function Segments({ apiKey }: { apiKey: string }) {
 
   async function handleCreate(event: FormEvent) {
     event.preventDefault();
+    if (!form.isValid) return;
     try {
-      let parsedDSL = {};
-      try {
-        parsedDSL = JSON.parse(dsl);
-      } catch (e) {
-        throw new Error("Invalid DSL JSON: " + (e as Error).message);
-      }
-      if (scoreModel) parsedDSL = { type: "score", model: scoreModel, score_name: scoreName, operator: scoreOperator, value: scoreValue };
+      let parsedDSL = JSON.parse(form.values.dsl);
+      if (form.values.scoreModel) parsedDSL = { type: "score", model: form.values.scoreModel, score_name: form.values.scoreName, operator: form.values.scoreOperator, value: form.values.scoreValue };
       await createSegment(apiBase, apiKey, {
-        name,
-        description,
-        type,
-        status,
+        name: form.values.name,
+        description: form.values.description,
+        type: form.values.type,
+        status: form.values.status,
         dsl: parsedDSL,
       });
-      setName("");
-      setDescription("");
-      setDsl("{}");
+      form.reset();
       await refresh();
     } catch (cause) {
       setError(message(cause));
@@ -706,26 +718,19 @@ function Segments({ apiKey }: { apiKey: string }) {
 
   async function handleUpdate(event: FormEvent) {
     event.preventDefault();
-    if (!editingSegment) return;
+    if (!editingSegment || !form.isValid) return;
     try {
-      let parsedDSL = {};
-      try {
-        parsedDSL = JSON.parse(dsl);
-      } catch (e) {
-        throw new Error("Invalid DSL JSON: " + (e as Error).message);
-      }
-      if (scoreModel) parsedDSL = { type: "score", model: scoreModel, score_name: scoreName, operator: scoreOperator, value: scoreValue };
+      let parsedDSL = JSON.parse(form.values.dsl);
+      if (form.values.scoreModel) parsedDSL = { type: "score", model: form.values.scoreModel, score_name: form.values.scoreName, operator: form.values.scoreOperator, value: form.values.scoreValue };
       await updateSegment(apiBase, apiKey, editingSegment.id, {
-        name,
-        description,
-        type,
-        status,
+        name: form.values.name,
+        description: form.values.description,
+        type: form.values.type,
+        status: form.values.status,
         dsl: parsedDSL,
       });
       setEditingSegment(null);
-      setName("");
-      setDescription("");
-      setDsl("{}");
+      form.reset();
       await refresh();
     } catch (cause) {
       setError(message(cause));
@@ -749,14 +754,18 @@ function Segments({ apiKey }: { apiKey: string }) {
 
   function startEdit(seg: Segment) {
     setEditingSegment(seg);
-    setName(seg.name);
-    setDescription(seg.description || "");
-    setType(seg.type);
-    setStatus(seg.status);
-    setDsl(JSON.stringify(seg.dsl, null, 2));
+    form.setValue("name", seg.name);
+    form.setValue("description", seg.description || "");
+    form.setValue("type", seg.type);
+    form.setValue("status", seg.status);
+    form.setValue("dsl", JSON.stringify(seg.dsl, null, 2));
     const score = seg.dsl as { type?: string; model?: string; score_name?: string; operator?: string; value?: number };
-    setScoreModel(score.type === "score" ? score.model || "" : ""); setScoreName(score.type === "score" ? score.score_name || "" : "");
-    setScoreOperator(score.type === "score" ? score.operator || "greater_than" : "greater_than"); setScoreValue(score.type === "score" ? Number(score.value || 0) : 0);
+    form.setValue("scoreModel", score.type === "score" ? score.model || "" : "");
+    form.setValue("scoreName", score.type === "score" ? score.score_name || "" : "");
+    form.setValue("scoreOperator", score.type === "score" ? score.operator || "greater_than" : "greater_than");
+    form.setValue("scoreValue", score.type === "score" ? Number(score.value || 0) : 0);
+    form.touch("name");
+    form.touch("dsl");
   }
 
   return (
@@ -764,37 +773,35 @@ function Segments({ apiKey }: { apiKey: string }) {
       <article className="card">
         <h2>{editingSegment ? "Edit segment" : "Create segment"}</h2>
         <form onSubmit={editingSegment ? handleUpdate : handleCreate} className="schema-form">
-          <label>Name
-            <input value={name} onChange={(e) => setName(e.target.value)} required placeholder="SaaS Purchasers" />
-          </label>
-          <label>Description
-            <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Customers who bought SaaS subscription" />
-          </label>
-          <label>Type
-            <select value={type} onChange={(e) => setType(e.target.value as any)}>
+          <Field id="segment-name" label="Name" error={form.getError("name")} required>
+            <Input name="name" value={form.values.name} onChange={form.handleChange} onBlur={form.handleBlur} placeholder="SaaS Purchasers" />
+          </Field>
+          <Field id="segment-description" label="Description">
+            <Input name="description" value={form.values.description} onChange={form.handleChange} onBlur={form.handleBlur} placeholder="Customers who bought SaaS subscription" />
+          </Field>
+          <Field id="segment-type" label="Type">
+            <Select name="type" value={form.values.type} onChange={form.handleChange} onBlur={form.handleBlur}>
               <option value="dynamic">dynamic</option>
               <option value="static">static</option>
               <option value="snapshot">snapshot</option>
-            </select>
-          </label>
-          <label>Status
-            <select value={status} onChange={(e) => setStatus(e.target.value as any)}>
+            </Select>
+          </Field>
+          <Field id="segment-status" label="Status">
+            <Select name="status" value={form.values.status} onChange={form.handleChange} onBlur={form.handleBlur}>
               <option value="draft">draft</option>
               <option value="active">active</option>
               <option value="archived">archived</option>
-            </select>
-          </label>
-          <label className="full">DSL Definition (JSON)
-            <textarea value={dsl} onChange={(e) => setDsl(e.target.value)} rows={7} />
-          </label>
-          <fieldset className="full score-condition"><legend>Score condition (optional)</legend><div className="score-condition-fields"><label>Model<select value={scoreModel} onChange={e => setScoreModel(e.target.value)}><option value="">Use JSON DSL</option>{scoringModels.map(model => <option key={model.id} value={model.id}>{model.name}</option>)}</select></label><label>Score name<input value={scoreName} onChange={e => setScoreName(e.target.value)} placeholder="purchase_propensity" /></label><label>Operator<select value={scoreOperator} onChange={e => setScoreOperator(e.target.value)}><option value="greater_than">greater than</option><option value="less_than">less than</option><option value="equals">equals</option></select></label><label>Value<input type="number" step="any" value={scoreValue} onChange={e => setScoreValue(Number(e.target.value))} /></label></div><p className="field-help">Selecting a model writes a parameterized score leaf into the segment DSL.</p></fieldset>
+            </Select>
+          </Field>
+          <Field id="segment-dsl" label="DSL Definition (JSON)" error={form.getError("dsl")}>
+            <Textarea name="dsl" value={form.values.dsl} onChange={form.handleChange} onBlur={form.handleBlur} rows={7} />
+          </Field>
+          <fieldset className="full score-condition"><legend>Score condition (optional)</legend><div className="score-condition-fields"><label>Model<select name="scoreModel" value={form.values.scoreModel} onChange={form.handleChange}><option value="">Use JSON DSL</option>{scoringModels.map(model => <option key={model.id} value={model.id}>{model.name}</option>)}</select></label><label>Score name<input name="scoreName" value={form.values.scoreName} onChange={form.handleChange} placeholder="purchase_propensity" /></label><label>Operator<select name="scoreOperator" value={form.values.scoreOperator} onChange={form.handleChange}><option value="greater_than">greater than</option><option value="less_than">less than</option><option value="equals">equals</option></select></label><label>Value<input type="number" step="any" name="scoreValue" value={form.values.scoreValue} onChange={form.handleChange} /></label></div><p className="field-help">Selecting a model writes a parameterized score leaf into the segment DSL.</p></fieldset>
           <div className="form-actions full">
-            <button disabled={!apiKey}>{editingSegment ? "Update Segment" : "Create Segment"}</button>
+            <button type="submit" disabled={!apiKey || !form.isValid}>{editingSegment ? "Update Segment" : "Create Segment"}</button>
             {editingSegment && <button type="button" className="secondary" onClick={() => {
               setEditingSegment(null);
-              setName("");
-              setDescription("");
-              setDsl("{}");
+              form.reset();
             }}>Cancel</button>}
           </div>
         </form>
@@ -1570,12 +1577,21 @@ export function Campaigns({ apiKey }: { apiKey: string }) {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null);
 
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [segmentId, setSegmentId] = useState("");
-  const [templateId, setTemplateId] = useState("");
-  const [status, setStatus] = useState<Campaign["status"]>("draft");
-  const [scheduledAt, setScheduledAt] = useState("");
+  const form = useForm({
+    initialValues: {
+      name: "",
+      description: "",
+      segmentId: "",
+      templateId: "",
+      status: "draft" as Campaign["status"],
+      scheduledAt: "",
+    },
+    validate: {
+      name: (value) => (!value ? "Name is required" : undefined),
+      segmentId: (value) => (!value ? "Segment is required" : undefined),
+      templateId: (value) => (!value ? "Template is required" : undefined),
+    },
+  });
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1606,23 +1622,21 @@ export function Campaigns({ apiKey }: { apiKey: string }) {
 
   async function handleCreate(event: FormEvent) {
     event.preventDefault();
+    if (!form.isValid) return;
     setSaving(true);
     setError("");
     try {
-      if (!segmentId) throw new Error("Segment is required");
-      if (!templateId) throw new Error("Template is required");
-
       const payload: Partial<Campaign> = {
-        name,
-        description: description || undefined,
-        segment_id: segmentId,
-        template_id: templateId,
-        status,
-        scheduled_at: status === "scheduled" ? (scheduledAt ? new Date(scheduledAt).toISOString() : new Date().toISOString()) : undefined,
+        name: form.values.name,
+        description: form.values.description || undefined,
+        segment_id: form.values.segmentId,
+        template_id: form.values.templateId,
+        status: form.values.status,
+        scheduled_at: form.values.status === "scheduled" ? (form.values.scheduledAt ? new Date(form.values.scheduledAt).toISOString() : new Date().toISOString()) : undefined,
       };
 
       await createCampaign(apiBase, apiKey, payload);
-      resetForm();
+      form.reset();
       await load();
     } catch (cause) {
       setError(message(cause));
@@ -1633,24 +1647,21 @@ export function Campaigns({ apiKey }: { apiKey: string }) {
 
   async function handleUpdate(event: FormEvent) {
     event.preventDefault();
-    if (!editingCampaign) return;
+    if (!editingCampaign || !form.isValid) return;
     setSaving(true);
     setError("");
     try {
-      if (!segmentId) throw new Error("Segment is required");
-      if (!templateId) throw new Error("Template is required");
-
       const payload: Partial<Campaign> = {
-        name,
-        description: description || undefined,
-        segment_id: segmentId,
-        template_id: templateId,
-        status,
-        scheduled_at: status === "scheduled" ? (scheduledAt ? new Date(scheduledAt).toISOString() : new Date().toISOString()) : null as any,
+        name: form.values.name,
+        description: form.values.description || undefined,
+        segment_id: form.values.segmentId,
+        template_id: form.values.templateId,
+        status: form.values.status,
+        scheduled_at: form.values.status === "scheduled" ? (form.values.scheduledAt ? new Date(form.values.scheduledAt).toISOString() : new Date().toISOString()) : null as any,
       };
 
       await updateCampaign(apiBase, apiKey, editingCampaign.id, payload);
-      resetForm();
+      form.reset();
       await load();
     } catch (cause) {
       setError(message(cause));
@@ -1675,11 +1686,7 @@ export function Campaigns({ apiKey }: { apiKey: string }) {
 
   function startEdit(c: Campaign) {
     setEditingCampaign(c);
-    setName(c.name);
-    setDescription(c.description || "");
-    setSegmentId(c.segment_id);
-    setTemplateId(c.template_id);
-    setStatus(c.status);
+    let scheduledAtStr = "";
     if (c.scheduled_at) {
       const d = new Date(c.scheduled_at);
       const year = d.getFullYear();
@@ -1687,20 +1694,22 @@ export function Campaigns({ apiKey }: { apiKey: string }) {
       const day = String(d.getDate()).padStart(2, "0");
       const hours = String(d.getHours()).padStart(2, "0");
       const minutes = String(d.getMinutes()).padStart(2, "0");
-      setScheduledAt(`${year}-${month}-${day}T${hours}:${minutes}`);
-    } else {
-      setScheduledAt("");
+      scheduledAtStr = `${year}-${month}-${day}T${hours}:${minutes}`;
     }
+    form.setValue("name", c.name);
+    form.setValue("description", c.description || "");
+    form.setValue("segmentId", c.segment_id);
+    form.setValue("templateId", c.template_id);
+    form.setValue("status", c.status);
+    form.setValue("scheduledAt", scheduledAtStr);
+    form.touch("name");
+    form.touch("segmentId");
+    form.touch("templateId");
   }
 
   function resetForm() {
     setEditingCampaign(null);
-    setName("");
-    setDescription("");
-    setSegmentId("");
-    setTemplateId("");
-    setStatus("draft");
-    setScheduledAt("");
+    form.reset();
   }
 
   const getSegmentName = (id: string) => segments.find(s => s.id === id)?.name || id;
@@ -1732,45 +1741,44 @@ export function Campaigns({ apiKey }: { apiKey: string }) {
         <article className="card" style={{ height: "fit-content" }}>
           <h2>{editingCampaign ? "Edit Campaign" : "Create Campaign"}</h2>
           <form onSubmit={editingCampaign ? handleUpdate : handleCreate} className="schema-form" style={{ gridTemplateColumns: "1fr" }}>
-            <label>Name
-              <input value={name} onChange={e => setName(e.target.value)} required placeholder="Summer Discount Promo" />
-            </label>
-            <label>Description
-              <input value={description} onChange={e => setDescription(e.target.value)} placeholder="Send discount to SaaS users" />
-            </label>
-            <label>Segment
-              <select value={segmentId} onChange={e => setSegmentId(e.target.value)} required>
+            <Field id="campaign-name" label="Name" error={form.getError("name")} required>
+              <Input name="name" value={form.values.name} onChange={form.handleChange} onBlur={form.handleBlur} placeholder="Summer Discount Promo" />
+            </Field>
+            <Field id="campaign-description" label="Description">
+              <Input name="description" value={form.values.description} onChange={form.handleChange} onBlur={form.handleBlur} placeholder="Send discount to SaaS users" />
+            </Field>
+            <Field id="campaign-segment" label="Segment" error={form.getError("segmentId")} required>
+              <Select name="segmentId" value={form.values.segmentId} onChange={form.handleChange} onBlur={form.handleBlur}>
                 <option value="">-- Select Segment --</option>
                 {segments.map(s => (
                   <option key={s.id} value={s.id}>{s.name} ({s.type})</option>
                 ))}
-              </select>
-            </label>
-            <label>Template
-              <select value={templateId} onChange={e => setTemplateId(e.target.value)} required>
+              </Select>
+            </Field>
+            <Field id="campaign-template" label="Template" error={form.getError("templateId")} required>
+              <Select name="templateId" value={form.values.templateId} onChange={form.handleChange} onBlur={form.handleBlur}>
                 <option value="">-- Select Template --</option>
                 {templates.map(t => (
                   <option key={t.id} value={t.id}>{t.name} ({t.channel})</option>
                 ))}
-              </select>
-            </label>
-            <label>Status
-              <select value={status} onChange={e => setStatus(e.target.value as any)}>
+              </Select>
+            </Field>
+            <Field id="campaign-status" label="Status">
+              <Select name="status" value={form.values.status} onChange={form.handleChange} onBlur={form.handleBlur}>
                 <option value="draft">Draft</option>
                 <option value="scheduled">Scheduled</option>
                 <option value="paused">Paused</option>
                 <option value="archived">Archived</option>
-              </select>
-            </label>
-            {status === "scheduled" && (
-              <label>Schedule Time (Local)
-                <input type="datetime-local" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)} />
-                <span style={{ fontSize: "11px", color: "var(--muted)", marginTop: "2px" }}>Leave blank to run immediately upon scheduling.</span>
-              </label>
+              </Select>
+            </Field>
+            {form.values.status === "scheduled" && (
+              <Field id="campaign-scheduled-at" label="Schedule Time (Local)" help="Leave blank to run immediately upon scheduling.">
+                <Input type="datetime-local" name="scheduledAt" value={form.values.scheduledAt} onChange={form.handleChange} onBlur={form.handleBlur} />
+              </Field>
             )}
             <div className="form-actions" style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
-              <button type="submit" disabled={saving || !segmentId || !templateId || !name}>{saving ? "Saving..." : (editingCampaign ? "Update Campaign" : "Create Campaign")}</button>
-              {(editingCampaign || name || segmentId || templateId) && (
+              <button type="submit" disabled={saving || !form.isValid}>{saving ? "Saving..." : (editingCampaign ? "Update Campaign" : "Create Campaign")}</button>
+              {(editingCampaign || form.values.name || form.values.segmentId || form.values.templateId) && (
                 <button type="button" className="secondary" onClick={resetForm}>Cancel</button>
               )}
             </div>
