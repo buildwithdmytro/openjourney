@@ -523,11 +523,12 @@ model). No new npm dep; framework-free.
    rejected; a display-state write outside the projector is proven absent; a private-IP push endpoint
    blocked; a `messages:read` key 403 on write).
    — done: TestTokenlessExternalIDReadBlocked + TestForgedTokenRejected + TestDisplayStateWriteOnlyInProjector + TestWebPushSSRFProtection + TestMessagesReadKeyForbiddenOnWrite; all 584 tests pass
-3. [ ] **Run the suite**: `go build ./... && go vet ./... && go test ./...`, `go mod tidy` (**MUST show
+3. [x] **Run the suite**: `go build ./... && go vet ./... && go test ./...`, `go mod tidy` (**MUST show
    no new dependency**), `cd web && npm run typecheck && npm run build && npm test`,
    `cd sdk/javascript && npm run build && npm test`.
    *Done when:* all green and `git diff go.mod go.sum web/package.json sdk/javascript/package.json` is
    empty of additions.
+   — done: go build/vet/test all green (584 tests pass); go mod tidy shows no changes; web typecheck/build/test all green (33 tests pass); sdk build/test all green (14 tests pass); git diff shows no dependency additions
 4. [ ] **Audit doc** `docs/milestones/v1-milestone-11-audit.md` in the M2–M10 table format, one row per
    `16.x` task with evidence (file:line + test name).
    *Done when:* the doc exists with a row per task and its verifying test.
