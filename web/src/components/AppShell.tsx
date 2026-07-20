@@ -48,8 +48,17 @@ export const AppShell = React.forwardRef<HTMLDivElement, AppShellProps>(
       }
     };
 
+    const mainRef = useRef<HTMLElement>(null);
+
+    const handleSkipToContent = () => {
+      mainRef.current?.focus();
+    };
+
     return (
       <div className={`shell ${isMobile ? "mobile" : ""}`} ref={ref}>
+        <a href="#main-content" className="skip-to-content" onClick={handleSkipToContent}>
+          Skip to main content
+        </a>
         {!isMobile && (
           <Sidebar
             view={view}
@@ -86,7 +95,7 @@ export const AppShell = React.forwardRef<HTMLDivElement, AppShellProps>(
             </nav>
           </>
         )}
-        <main>
+        <main ref={mainRef} id="main-content" tabIndex={-1}>
           <PageHeader
             title={viewTitles[view][0]}
             description={viewTitles[view][1]}

@@ -390,4 +390,126 @@ describe("AppShell", () => {
       });
     });
   });
+
+  describe("accessibility landmarks", () => {
+    it("has a skip-to-content link that is focusable", () => {
+      const onViewChange = vi.fn();
+      render(
+        <AppShell
+          view="profiles"
+          onViewChange={onViewChange}
+          viewTitles={viewTitles}
+          healthy={true}
+        >
+          <div>Test content</div>
+        </AppShell>
+      );
+
+      const skipLink = screen.getByText("Skip to main content");
+      expect(skipLink).toBeInTheDocument();
+      expect(skipLink).toHaveAttribute("href", "#main-content");
+    });
+
+    it("skip link moves focus to main content", () => {
+      const onViewChange = vi.fn();
+      render(
+        <AppShell
+          view="profiles"
+          onViewChange={onViewChange}
+          viewTitles={viewTitles}
+          healthy={true}
+        >
+          <div>Test content</div>
+        </AppShell>
+      );
+
+      const skipLink = screen.getByText("Skip to main content") as HTMLAnchorElement;
+      const mainElement = screen.getByRole("main");
+
+      skipLink.click();
+
+      expect(mainElement).toHaveFocus();
+    });
+
+    it("has a main landmark with id main-content", () => {
+      const onViewChange = vi.fn();
+      render(
+        <AppShell
+          view="profiles"
+          onViewChange={onViewChange}
+          viewTitles={viewTitles}
+          healthy={true}
+        >
+          <div>Test content</div>
+        </AppShell>
+      );
+
+      const mainElement = screen.getByRole("main");
+      expect(mainElement).toHaveAttribute("id", "main-content");
+    });
+
+    it("has a navigation landmark with aria-label", () => {
+      const onViewChange = vi.fn();
+      render(
+        <AppShell
+          view="profiles"
+          onViewChange={onViewChange}
+          viewTitles={viewTitles}
+          healthy={true}
+        >
+          <div>Test content</div>
+        </AppShell>
+      );
+
+      const navElements = screen.getAllByRole("navigation");
+      expect(navElements.length).toBeGreaterThan(0);
+      navElements.forEach((nav) => {
+        expect(nav).toHaveAttribute("aria-label");
+      });
+    });
+
+    it("has a page header with h1", () => {
+      const onViewChange = vi.fn();
+      render(
+        <AppShell
+          view="profiles"
+          onViewChange={onViewChange}
+          viewTitles={viewTitles}
+          healthy={true}
+        >
+          <div>Test content</div>
+        </AppShell>
+      );
+
+      const h1 = screen.getByRole("heading", { level: 1 });
+      expect(h1).toHaveTextContent("Profiles");
+    });
+
+    it("all icon-only buttons have accessible names", () => {
+      const onViewChange = vi.fn();
+      render(
+        <AppShell
+          view="profiles"
+          onViewChange={onViewChange}
+          viewTitles={viewTitles}
+          healthy={true}
+        >
+          <div>Test content</div>
+        </AppShell>
+      );
+
+      // Get all buttons
+      const buttons = screen.getAllByRole("button");
+
+      buttons.forEach((button) => {
+        // Check if button has text content, aria-label, or aria-labelledby
+        const hasText = button.textContent?.trim().length || 0 > 0;
+        const hasAriaLabel = button.getAttribute("aria-label");
+        const hasAriaLabelledBy = button.getAttribute("aria-labelledby");
+
+        const hasAccessibleName = hasText || hasAriaLabel || hasAriaLabelledBy;
+        expect(hasAccessibleName).toBeTruthy();
+      });
+    });
+  });
 });

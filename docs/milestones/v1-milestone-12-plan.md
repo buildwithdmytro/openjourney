@@ -467,10 +467,11 @@ fake-store unit test + postgres integration test (the M10/M11 template).
    *Done when:* the keyboard journeys are tested green (`toHaveFocus`); `ScopeSelector` exposes the ARIA
    combobox contract and is keyboard-operable; tests assert `aria-expanded` toggling.
    — done: ScopeSelector extracted to web/src/components/ScopeSelector.tsx with full combobox ARIA (aria-expanded, aria-haspopup="listbox", role="option" on items); Esc closes dropdown; arrow keys navigate options with visual focus indicator; 6 new tests + 4 new focus-management tests (ConfirmDialog/AppShell drawer focus-restore); 267 tests passing
-2. [ ] **Skip-link + landmark/name audit**: add a skip-to-content link; verify a single `main`/`h1` and
+2. [x] **Skip-link + landmark/name audit**: add a skip-to-content link; verify a single `main`/`h1` and
    labeled `nav` landmark; ensure every icon-only button has an accessible name.
    *Done when:* the skip link moves focus to `main`; landmarks are unique and labeled; a test asserts
    every interactive control has an accessible name (`getByRole(..., {name})`); tests green.
+   — done: skip-to-content link added to AppShell with handleSkipToContent, main element has id="main-content" and tabIndex={-1}, PageHeader has h1, nav elements have aria-label, 6 new tests verify skip link focus, landmarks, and accessible names for all buttons; 273 tests passing
 
 ### Milestone 17.10 — Integration & audit closeout
 1. [ ] **Adoption sweep**: migrate any remaining sections to the primitives; de-inline the login screen +
