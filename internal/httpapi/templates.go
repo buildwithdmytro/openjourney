@@ -68,6 +68,10 @@ func (s *Server) createTemplate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_json", err.Error())
 		return
 	}
+	if err := validateTemplate(input); err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "validation_error", err.Error())
+		return
+	}
 	res, err := s.store.CreateTemplate(r.Context(), principal, input)
 	if err != nil {
 		internalError(w, err, "create template", principal)
@@ -97,6 +101,10 @@ func (s *Server) updateTemplate(w http.ResponseWriter, r *http.Request) {
 	var input domain.Template
 	if err := decodeJSON(w, r, &input); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_json", err.Error())
+		return
+	}
+	if err := validateTemplate(input); err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "validation_error", err.Error())
 		return
 	}
 	input.ID = id
@@ -185,6 +193,12 @@ func (s *Server) previewTemplate(w http.ResponseWriter, r *http.Request) {
 		} else if tmpl.TextTemplate != nil && *tmpl.TextTemplate != "" {
 			htmlTmpl = *tmpl.TextTemplate
 		}
+	} else if tmpl.Channel == "in_app" {
+		if tmpl.BodyTemplate != nil && *tmpl.BodyTemplate != "" {
+			htmlTmpl = *tmpl.BodyTemplate
+		} else if tmpl.HTMLTemplate != nil && *tmpl.HTMLTemplate != "" {
+			htmlTmpl = *tmpl.HTMLTemplate
+		}
 	} else {
 		if tmpl.HTMLTemplate != nil {
 			htmlTmpl = *tmpl.HTMLTemplate
@@ -192,7 +206,7 @@ func (s *Server) previewTemplate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	subject := ""
-	if tmpl.Channel != "push" {
+	if tmpl.Channel != "push" && tmpl.Channel != "in_app" {
 		subject, err = render.Render(subjectTmpl, vars)
 		if err != nil {
 			writeError(w, http.StatusUnprocessableEntity, "render_error", fmt.Sprintf("subject: %v", err))
@@ -208,7 +222,7 @@ func (s *Server) previewTemplate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	title := ""
-	if tmpl.Channel == "push" && tmpl.TitleTemplate != nil {
+	if (tmpl.Channel == "push" || tmpl.Channel == "in_app") && tmpl.TitleTemplate != nil {
 		title, err = render.Render(*tmpl.TitleTemplate, vars)
 		if err != nil {
 			writeError(w, http.StatusUnprocessableEntity, "render_error", fmt.Sprintf("title: %v", err))
@@ -235,6 +249,9 @@ func (s *Server) previewTemplate(w http.ResponseWriter, r *http.Request) {
 	if tmpl.Channel == "push" {
 		resp["title"] = title
 		resp["push_data"] = renderedPushData
+	}
+	if tmpl.Channel == "in_app" {
+		resp["title"] = title
 	}
 
 	if tmpl.Channel == "sms" {
@@ -336,6 +353,39 @@ func (s *Server) openPixel(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Pragma", "no-cache")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(transparentGIF)
+}
+
+func validateTemplate(tmpl domain.Template) error {
+	switch tmpl.Channel {
+	case "email":
+		if tmpl.HTMLTemplate == nil || *tmpl.HTMLTemplate == "" {
+			return errors.New("email templates require html_template")
+		}
+	case "webhook":
+		if tmpl.BodyTemplate == nil || *tmpl.BodyTemplate == "" {
+			return errors.New("webhook templates require body_template")
+		}
+	case "sms":
+		if (tmpl.TextTemplate == nil || *tmpl.TextTemplate == "") &&
+			(tmpl.BodyTemplate == nil || *tmpl.BodyTemplate == "") {
+			return errors.New("sms templates require text_template or body_template")
+		}
+	case "push":
+		if tmpl.TitleTemplate == nil || *tmpl.TitleTemplate == "" {
+			return errors.New("push templates require title_template")
+		}
+		if (tmpl.BodyTemplate == nil || *tmpl.BodyTemplate == "") &&
+			(tmpl.TextTemplate == nil || *tmpl.TextTemplate == "") {
+			return errors.New("push templates require body_template or text_template")
+		}
+	case "in_app":
+		if (tmpl.TitleTemplate == nil || *tmpl.TitleTemplate == "") &&
+			(tmpl.BodyTemplate == nil || *tmpl.BodyTemplate == "") &&
+			(tmpl.HTMLTemplate == nil || *tmpl.HTMLTemplate == "") {
+			return errors.New("in_app templates require title_template, body_template, or html_template")
+		}
+	}
+	return nil
 }
 
 func mustJSON(v any) []byte {

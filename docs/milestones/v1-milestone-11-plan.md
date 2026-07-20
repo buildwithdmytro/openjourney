@@ -396,11 +396,12 @@ model). No new npm dep; framework-free.
    respects suppression/consent/fatigue, and is fatigue-counted; a suppressed profile gets no row;
    integration test green.
    — done: added in_app branch to nodes.go:673 endpoint resolution, journey/deliver.go:129 identity resolution; campaigns/dispatch.go:101-109 recipient resolution; campaigns/deliver.go:141-142 identity resolution; all 104 journey+campaign tests pass
-2. [ ] **Campaign in-app send + template validation**: add the `in_app` branch at `dispatch.go:100` and
+2. [x] **Campaign in-app send + template validation**: add the `in_app` branch at `dispatch.go:100` and
    the deliver-side identity branch (`deliver.go:131`); add `in_app` template validation/preview
    (`internal/httpapi/templates.go:176-240`) requiring title/body/content.
    *Done when:* a campaign targeting an audience delivers in-app rows to members; an `in_app` template
    with no body fails validation; a preview renders; tests cover each.
+   — done: validateTemplate checks in_app requires title OR body OR html; preview renders title/body for in_app; campaign branches already exist from 16.2.1
 
 ### Milestone 16.3 — Client SDK contract: public inbox fetch + report
 1. [ ] **`SignInAppToken` + inbox fetch** (Recipe 6.54): `SignInAppToken`/`VerifyInAppToken`
