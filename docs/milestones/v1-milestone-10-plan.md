@@ -354,12 +354,12 @@ winner by `identity_namespaces.priority` + policy version.
    `rbac.go` accepts the three new scopes; `go test ./internal/postgres/...` green. — done: 043 migration,
    connector scopes, terminal connector-job handling, and integration assertions added; full Go build/vet/test
    and tidy pass with no dependency diff (DB integration skipped because OPENJOURNEY_TEST_DATABASE_URL is unset).
-2. **Driver registry + ports + store** (Recipe 6.45): `internal/connector/registry.go` (`ConnectorDriver`
+2. [x] **Driver registry + ports + store** (Recipe 6.45): `internal/connector/registry.go` (`ConnectorDriver`
    interface, `DefaultRegistry` with `fake` + stubs, `For`, `Register`), a `RegisterNativeConnectors`/remote
    bridge (mirror `extension/channel.go:111`), and `ports.Store` + `internal/postgres` methods for pipelines
    (`CreateConnectorPipeline`, `ListConnectorPipelines`, `GetConnectorPipeline`).
    *Done when:* the registry resolves `fake` and falls back for unknown; a pipeline round-trips through the
-   store; unit tests green.
+   store; unit tests green. — done: fake/fallback registry test and PostgreSQL pipeline create/get/list round-trip integration test pass; full Go build/vet/test and tidy show no dependency diff (DB integration skips when OPENJOURNEY_TEST_DATABASE_URL is unset).
 3. **Pipeline HTTP + freeze** (Recipe 6.46): routes `GET/POST /v1/connectors/pipelines`,
    `POST /v1/connectors/pipelines/{id}/publish`, `PUT .../{id}` guarded by `connectors:read`/`connectors:write`
    (`server.go:216` style); publish freezes the mapping definition (canonical JSON → sha256 → `blobs.Put` →

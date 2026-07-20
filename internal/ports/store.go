@@ -83,6 +83,9 @@ type Store interface {
 	GetCompany(context.Context, domain.Principal, string) (domain.Company, error)
 	UpdateCompany(context.Context, domain.Principal, domain.Company, []domain.CompanyMember) (domain.Company, error)
 	ListCompanies(context.Context, domain.Principal) ([]domain.Company, error)
+	CreateConnectorPipeline(context.Context, domain.Principal, domain.ConnectorPipeline) (domain.ConnectorPipeline, error)
+	ListConnectorPipelines(context.Context, domain.Principal) ([]domain.ConnectorPipeline, error)
+	GetConnectorPipeline(context.Context, domain.Principal, string) (domain.ConnectorPipeline, error)
 
 	CreateSendingIdentity(context.Context, domain.Principal, domain.SendingIdentity) (domain.SendingIdentity, error)
 	GetSendingIdentity(context.Context, domain.Principal, string) (domain.SendingIdentity, error)

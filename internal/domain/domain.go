@@ -1171,6 +1171,24 @@ type ExtensionGrant struct {
 	GrantedAt   time.Time `json:"granted_at"`
 }
 
+type ConnectorPipeline struct {
+	ID                      string     `json:"id"`
+	TenantID                string     `json:"tenant_id"`
+	WorkspaceID             string     `json:"workspace_id"`
+	AppID                   string     `json:"app_id"`
+	ConnectorExtensionID    string     `json:"connector_extension_id"`
+	Name                    string     `json:"name"`
+	Direction               string     `json:"direction"`
+	Status                  string     `json:"status"`
+	CurrentVersionID        *string    `json:"current_version_id,omitempty"`
+	ScheduleEnabled         bool       `json:"schedule_enabled"`
+	ScheduleIntervalSeconds *int       `json:"schedule_interval_seconds,omitempty"`
+	NextRunAt               *time.Time `json:"next_run_at,omitempty"`
+	LastRunAt               *time.Time `json:"last_run_at,omitempty"`
+	CreatedAt               time.Time  `json:"created_at"`
+	UpdatedAt               time.Time  `json:"updated_at"`
+}
+
 type ExtensionActivity struct {
 	ID               string    `json:"id"`
 	TenantID         string    `json:"tenant_id"`
