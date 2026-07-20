@@ -17,7 +17,7 @@ import { oidcConfigured, restoreOIDCSession, signIn, signOut } from "./auth";
 import { staticColors, defaultAccentColor, defaultBackgroundColor } from "./tokens";
 import { useTheme } from "./useTheme";
 import { useForm } from "./useForm";
-import { Skeleton, Spinner, ToastProvider, useToast, ConfirmDialog, Field, Input, Select, Textarea, JsonField } from "./components";
+import { Skeleton, Spinner, ToastProvider, useToast, ConfirmDialog, Field, Input, Select, Textarea, JsonField, AppShell } from "./components";
 import { message } from "./errors";
 
 const Journeys = lazy(() => import("./sections/Journeys"));
@@ -267,34 +267,16 @@ export function App() {
 
   return (
     <ToastProvider>
-      <div className="shell">
-        <aside>
-          <div className="brand"><span>O</span> OpenJourney</div>
-          <nav aria-label="Primary">
-            {(["profiles", "segments", "scoring", "acquisition", "templates", "campaigns", "journeys", "experiments", "reports", "messaging", "copilots", "governance", "extensions", "connectors", "suppressions", "sender-identities", "device-tokens", "schemas", "api-keys", "privacy", "access", "operations", "audit"] as View[]).map((item) => (
-              <button key={item} className={view === item ? "active" : ""}
-                onClick={() => setView(item)}>{viewTitles[item][0]}</button>
-            ))}
-          </nav>
-          <div style={{ marginTop: "auto", padding: "16px 0 0 0", borderTop: "1px solid rgba(255,255,255,0.1)", display: "flex", flexDirection: "column", gap: "8px" }}>
-            <button className="secondary small" onClick={() => toggleTheme()} style={{ width: "100%", background: "transparent", border: "1px solid rgba(255,255,255,0.2)", color: "var(--color-ink-muted)", padding: "8px", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: "bold" }}>
-              {theme === "light" ? "Dark" : "Light"} mode
-            </button>
-            <button className="secondary small" onClick={() => void handleSignOut()} style={{ width: "100%", background: "transparent", border: "1px solid rgba(255,255,255,0.2)", color: "var(--color-ink-muted)", padding: "8px", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: "bold" }}>
-              Sign out
-            </button>
-          </div>
-          <div className={`health ${healthy ? "up" : ""}`} style={{ marginTop: "16px" }}>
-            <i /> API {healthy === null ? "checking" : healthy ? "ready" : "unavailable"}
-          </div>
-        </aside>
-        <main>
-          <header>
-            <p>Platform kernel</p>
-            <h1>{viewTitles[view][0]}</h1>
-            <span>{viewTitles[view][1]}</span>
-          </header>
-          <UIErrorBoundary resetKey={view}>
+      <AppShell
+        view={view}
+        onViewChange={setView}
+        viewTitles={viewTitles}
+        healthy={healthy}
+        theme={theme}
+        onThemeToggle={toggleTheme}
+        onSignOut={() => void handleSignOut()}
+      >
+        <UIErrorBoundary resetKey={view}>
           {view === "profiles" && <Profiles apiKey={apiKey} />}
           {view === "segments" && <Segments apiKey={apiKey} />}
           {view === "scoring" && <Suspense fallback={<SuspenseLoader />}><Scoring apiKey={apiKey} baseURL={apiBase} /></Suspense>}
@@ -322,9 +304,8 @@ export function App() {
           {view === "access" && <Access apiKey={apiKey} />}
           {view === "operations" && <Operations apiKey={apiKey} />}
           {view === "audit" && <Audit apiKey={apiKey} />}
-          </UIErrorBoundary>
-        </main>
-      </div>
+        </UIErrorBoundary>
+      </AppShell>
     </ToastProvider>
   );
 }

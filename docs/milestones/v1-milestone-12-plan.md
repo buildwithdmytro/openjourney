@@ -413,10 +413,11 @@ fake-store unit test + postgres integration test (the M10/M11 template).
    — done: JsonField.tsx created with 13 tests covering valid/invalid JSON, blur validation, format button, and inline errors; Segments DSL, Schemas, and Scoring.tsx updated to use JsonField; all 210 tests passing
 
 ### Milestone 17.6 — App shell, IA & command palette
-1. [ ] **Extract AppShell/Sidebar/PageHeader** (Recipe 6.66): move `App.tsx:252-306` into components;
+1. [x] **Extract AppShell/Sidebar/PageHeader** (Recipe 6.66): move `App.tsx:252-306` into components;
    behavior identical.
    *Done when:* the shell is a component, `App.tsx` is thinner, all 22 views still render and route via
    hash; the full `App.test.tsx` passes unmodified.
+   — done: AppShell.tsx, Sidebar.tsx, PageHeader.tsx components created in web/src/components/; App.tsx refactored to use AppShell; all 210 tests passing; theme toggle and nav still work identically
 2. [ ] **Grouped navigation**: group the 22 flat views (`App.tsx:49,257-260`) into labeled categories
    (e.g. Overview · Audiences · Messaging · AI · Data · Governance · Settings) with accessible section
    headers and active state.

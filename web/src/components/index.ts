@@ -34,3 +34,6 @@ export { default as Modal } from "./Modal";
 export type { ModalProps } from "./Modal";
 export { default as ConfirmDialog } from "./ConfirmDialog";
 export type { ConfirmDialogProps } from "./ConfirmDialog";
+export { AppShell } from "./AppShell";
+export { Sidebar } from "./Sidebar";
+export { PageHeader } from "./PageHeader";

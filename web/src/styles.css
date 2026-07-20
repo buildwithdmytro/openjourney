@@ -12,6 +12,8 @@ aside { background: var(--color-surface-muted); color: var(--color-ink-muted); p
 .brand { font-weight: 750; font-size: 18px; padding: 0 8px var(--space-3xl); letter-spacing: -.02em; }
 .brand span { display: inline-grid; place-items: center; width: 30px; height: 30px; margin-right: var(--space-sm); border-radius: var(--radius-md); background: var(--color-accent); color: white; }
 nav { display: grid; gap: 5px; }
+.nav-group-label { color: var(--color-ink-muted); text-align: left; padding: 10px 12px; font-size: 11px; font-weight: 750; text-transform: uppercase; letter-spacing: .1em; margin-top: 14px; }
+.nav-group-label:first-of-type { margin-top: 0; }
 nav button { color: var(--color-ink-subtle); text-align: left; padding: 10px 12px; border-radius: var(--radius-md); display: flex; justify-content: space-between; background: transparent; }
 nav button:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
 nav button.active { color: white; background: rgba(255, 255, 255, 0.1); }
