@@ -25,6 +25,9 @@ describe("Acquisition", () => {
     fireEvent.change(screen.getByLabelText("Field 1 type"), { target: { value: "email" } });
     fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/v1/forms"), expect.objectContaining({ method: "POST" })));
+    // The publish button is gated on the saved draft id; wait for it to enable so
+    // the click cannot race the setForm(saved) re-render (flaky under suite load).
+    await waitFor(() => expect((screen.getByRole("button", { name: "Publish version" }) as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(screen.getByRole("button", { name: "Publish version" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/v1/forms/form-1/publish"), expect.objectContaining({ method: "POST" })));
   });
@@ -48,6 +51,9 @@ describe("Acquisition", () => {
     fireEvent.change(screen.getByLabelText("Public slug"), { target: { value: "launch" } });
     fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/v1/pages"), expect.objectContaining({ method: "POST" })));
+    // The publish button is gated on the saved draft id; wait for it to enable so
+    // the click cannot race the setPage(saved) re-render (flaky under suite load).
+    await waitFor(() => expect((screen.getByRole("button", { name: "Publish version" }) as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(screen.getByRole("button", { name: "Publish version" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/v1/pages/page-1/publish"), expect.objectContaining({ method: "POST" })));
   });

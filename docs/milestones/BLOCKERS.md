@@ -1,3 +1,6 @@
 # Blockers
 
-- 15.12.4 — `cd web && npm test` is not green: `src/sections/Acquisition.test.tsx` fails “round-trips a landing page draft and publishes it” because the test expects `/v1/pages/page-1/publish`, while the current component emits only the draft `/api/v1/pages` request. Resolve the pre-existing Acquisition route/test mismatch, then rerun the full closeout suite.
+_No active blockers._
+
+Resolved:
+- 15.12.4 — the `Acquisition > round-trips a landing page draft and publishes it` web test was **flaky**, not a real defect: the "Publish version" click could race the `setPage(saved)` re-render that enables the button, so under full-suite load the publish request was sometimes never issued (~50% under parallel-worker load). Fixed by waiting for the button to enable before clicking (both the form and page publish tests). Resolved on branch `phase10`.
