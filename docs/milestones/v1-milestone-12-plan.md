@@ -313,13 +313,14 @@ fake-store unit test + postgres integration test (the M10/M11 template).
    *Done when:* a create with a profile id not under the caller's tenant/app is rejected (404/422); a
    valid same-tenant profile still succeeds; test covers both.
    — done: createAdminMessage validates profile via GetProfileByID before insert; foreign profile rejected with 422 validation_error; test covers both cases (create_admin_message_with_valid_profile + create_admin_message_with_foreign_profile)
-6. [ ] **SDK render contract + required params (review finding #5 + SDK mismatch).** Document (and enforce
+6. [x] **SDK render contract + required params (review finding #5 + SDK mismatch).** Document (and enforce
    in the SDK) that `inapp_messages.content.html` is rendered as text/sanitized-only — never injected via
    `innerHTML`/`dangerouslySetInnerHTML` — to preclude a future stored-XSS path; and fix
    `sdk/javascript` `fetchInbox`/`reportEngagement` to send the server-required `tenant`/`app` params (and
    `external_id` in token mode) so identified-user calls don't 400.
    *Done when:* the SDK sends the required params (unit test), a known-subject fetch/report succeeds
    end-to-end against the edge, and the text/sanitized-only render contract is documented in the SDK README.
+   — done: ClientOptions now requires tenant and app params; fetchInbox and reportEngagement send tenant, app, and external_id (in token mode); 4 new unit tests verify param transmission; README documents text/sanitized-only rendering contract and required params; npm test all green (18 passing)
 
 ### Milestone 17.1 — Design tokens & app-wide theming
 1. [ ] **Token layer** (Recipe 6.58): `web/src/tokens.css` with the `:root` color/space/radius/shadow/

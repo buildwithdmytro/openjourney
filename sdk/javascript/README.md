@@ -18,6 +18,8 @@ import { OpenJourney } from '@openjourney/browser';
 const oj = new OpenJourney({
   endpoint: 'https://api.example.com',
   apiKey: 'pk_web_your_public_key',
+  tenant: 'your_tenant_id',
+  app: 'your_app_id',
 });
 ```
 
@@ -189,6 +191,8 @@ This approach avoids payload encryption complexity while ensuring your app stays
 type ClientOptions = {
   endpoint: string;           // OpenJourney API endpoint
   apiKey: string;             // Public API key
+  tenant: string;             // Tenant ID (required)
+  app: string;                // Application ID (required)
   batchSize?: number;         // Event batch size (default 25, max 75)
   flushIntervalMs?: number;   // Flush interval in ms (default 10000)
   storage?: Storage;          // localStorage or custom impl (default: localStorage)
@@ -276,6 +280,18 @@ type InAppMessage = {
   clicked_at?: string | null;
   dismissed_at?: string | null;
 };
+```
+
+### Message Content Rendering
+
+The `content` field may contain an `html` property. **Important:** This HTML must be rendered as **text-only, never as HTML**. Do not use `innerHTML` or `dangerouslySetInnerHTML` to render `content.html`. Instead, treat it as plain text to prevent XSS attacks:
+
+```javascript
+// ❌ WRONG - Never do this
+element.innerHTML = message.content.html;
+
+// ✅ CORRECT - Render as text
+element.textContent = message.content.html;
 ```
 
 ## Error Handling

@@ -21,6 +21,8 @@ describe("OpenJourney", () => {
     const client = new OpenJourney({
       endpoint: "https://events.example.test",
       apiKey: "key",
+      tenant: "tenant-1",
+      app: "app-1",
       storage,
       fetch: request,
       flushIntervalMs: 0,
@@ -47,7 +49,7 @@ describe("OpenJourney", () => {
   it("restores queued events after a new client instance", () => {
     const storage = new MemoryStorage();
     const options = {
-      endpoint: "https://events.example.test", apiKey: "key", storage,
+      endpoint: "https://events.example.test", apiKey: "key", tenant: "tenant-1", app: "app-1", storage,
       fetch: vi.fn(), flushIntervalMs: 0, randomUUID: () => "anonymous",
     };
     const first = new OpenJourney(options);
@@ -64,6 +66,8 @@ describe("OpenJourney", () => {
     const client = new OpenJourney({
       endpoint: "https://events.example.test",
       apiKey: "key",
+      tenant: "tenant-1",
+      app: "app-1",
       storage: new MemoryStorage(),
       fetch: request,
       flushIntervalMs: 0,
@@ -92,6 +96,8 @@ describe("OpenJourney", () => {
     const client = new OpenJourney({
       endpoint: "https://events.example.test",
       apiKey: "key",
+      tenant: "tenant-1",
+      app: "app-1",
       storage: new MemoryStorage(),
       fetch: vi.fn(),
       flushIntervalMs: 0,
@@ -112,6 +118,8 @@ describe("OpenJourney", () => {
     const client = new OpenJourney({
       endpoint: "https://events.example.test",
       apiKey: "key",
+      tenant: "tenant-1",
+      app: "app-1",
       storage: new MemoryStorage(),
       fetch: request,
       flushIntervalMs: 0,
@@ -141,6 +149,8 @@ describe("OpenJourney", () => {
     const client = new OpenJourney({
       endpoint: "https://events.example.test",
       apiKey: "public-key",
+      tenant: "tenant-1",
+      app: "app-1",
       storage: new MemoryStorage(),
       fetch: request,
       flushIntervalMs: 0,
@@ -150,7 +160,7 @@ describe("OpenJourney", () => {
     const messages = await client.fetchInbox();
     expect(messages).toEqual(mockMessages);
     expect(request).toHaveBeenCalledWith(
-      expect.stringContaining("/v1/messages/inbox?anonymous_id=anon-1"),
+      expect.stringContaining("/v1/messages/inbox?tenant=tenant-1&app=app-1&anonymous_id=anon-1"),
       expect.objectContaining({
         method: "GET",
         headers: expect.objectContaining({ Authorization: "Bearer public-key" }),
@@ -170,6 +180,8 @@ describe("OpenJourney", () => {
     const client = new OpenJourney({
       endpoint: "https://events.example.test",
       apiKey: "public-key",
+      tenant: "tenant-1",
+      app: "app-1",
       storage: new MemoryStorage(),
       fetch: request,
       flushIntervalMs: 0,
@@ -179,7 +191,7 @@ describe("OpenJourney", () => {
     const messages = await client.fetchInbox("signed-token-abc");
     expect(messages).toHaveLength(1);
     expect(request).toHaveBeenCalledWith(
-      expect.stringContaining("/v1/messages/inbox?token=signed-token-abc"),
+      expect.stringContaining("/v1/messages/inbox?tenant=tenant-1&app=app-1&token=signed-token-abc&external_id=user-1"),
       expect.any(Object),
     );
     client.destroy();
@@ -190,6 +202,8 @@ describe("OpenJourney", () => {
     const client = new OpenJourney({
       endpoint: "https://events.example.test",
       apiKey: "public-key",
+      tenant: "tenant-1",
+      app: "app-1",
       storage: new MemoryStorage(),
       fetch: request,
       flushIntervalMs: 0,
@@ -211,6 +225,8 @@ describe("OpenJourney", () => {
     const client = new OpenJourney({
       endpoint: "https://events.example.test",
       apiKey: "public-key",
+      tenant: "tenant-1",
+      app: "app-1",
       storage: new MemoryStorage(),
       fetch: request,
       flushIntervalMs: 0,
@@ -219,7 +235,7 @@ describe("OpenJourney", () => {
 
     await client.reportImpression("msg-1");
     expect(request).toHaveBeenCalledWith(
-      expect.stringContaining("/v1/messages/msg-1/impression?anonymous_id=anon-1"),
+      expect.stringContaining("/v1/messages/msg-1/impression?tenant=tenant-1&app=app-1&anonymous_id=anon-1"),
       expect.objectContaining({
         method: "POST",
         headers: expect.objectContaining({ Authorization: "Bearer public-key" }),
@@ -237,6 +253,8 @@ describe("OpenJourney", () => {
     const client = new OpenJourney({
       endpoint: "https://events.example.test",
       apiKey: "public-key",
+      tenant: "tenant-1",
+      app: "app-1",
       storage: new MemoryStorage(),
       fetch: request,
       flushIntervalMs: 0,
@@ -245,7 +263,7 @@ describe("OpenJourney", () => {
     client.identify("user-1");
     await client.reportClick("msg-1", "signed-token");
     expect(request).toHaveBeenCalledWith(
-      expect.stringContaining("/v1/messages/msg-1/click?token=signed-token"),
+      expect.stringContaining("/v1/messages/msg-1/click?tenant=tenant-1&app=app-1&token=signed-token&external_id=user-1"),
       expect.any(Object),
     );
     client.destroy();
@@ -261,6 +279,8 @@ describe("OpenJourney", () => {
     const client = new OpenJourney({
       endpoint: "https://events.example.test",
       apiKey: "public-key",
+      tenant: "tenant-1",
+      app: "app-1",
       storage: new MemoryStorage(),
       fetch: request,
       flushIntervalMs: 0,
@@ -269,7 +289,7 @@ describe("OpenJourney", () => {
 
     await client.reportDismiss("msg-1");
     expect(request).toHaveBeenCalledWith(
-      expect.stringContaining("/v1/messages/msg-1/dismiss?anonymous_id=anon-1"),
+      expect.stringContaining("/v1/messages/msg-1/dismiss?tenant=tenant-1&app=app-1&anonymous_id=anon-1"),
       expect.objectContaining({
         method: "POST",
         body: "{}",
@@ -283,6 +303,8 @@ describe("OpenJourney", () => {
     const client = new OpenJourney({
       endpoint: "https://events.example.test",
       apiKey: "public-key",
+      tenant: "tenant-1",
+      app: "app-1",
       storage: new MemoryStorage(),
       fetch: request,
       flushIntervalMs: 0,
@@ -304,6 +326,8 @@ describe("OpenJourney", () => {
     const client = new OpenJourney({
       endpoint: "https://events.example.test",
       apiKey: "invalid-key",
+      tenant: "tenant-1",
+      app: "app-1",
       storage: new MemoryStorage(),
       fetch: request,
       flushIntervalMs: 0,
@@ -321,12 +345,144 @@ describe("OpenJourney", () => {
     const client = new OpenJourney({
       endpoint: "https://events.example.test",
       apiKey: "public-key",
+      tenant: "tenant-1",
+      app: "app-1",
       storage: new MemoryStorage(),
       fetch: request,
       flushIntervalMs: 0,
     });
 
     await expect(client.reportImpression("nonexistent")).rejects.toThrow("message not found");
+    client.destroy();
+  });
+
+  it("sends required tenant and app params in fetchInbox", async () => {
+    const request = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ messages: [] }),
+    });
+    const client = new OpenJourney({
+      endpoint: "https://events.example.test",
+      apiKey: "public-key",
+      tenant: "tenant-123",
+      app: "app-456",
+      storage: new MemoryStorage(),
+      fetch: request,
+      flushIntervalMs: 0,
+    });
+
+    await client.fetchInbox();
+    expect(request).toHaveBeenCalledWith(
+      expect.stringContaining("tenant=tenant-123"),
+      expect.any(Object),
+    );
+    expect(request).toHaveBeenCalledWith(
+      expect.stringContaining("app=app-456"),
+      expect.any(Object),
+    );
+    client.destroy();
+  });
+
+  it("sends external_id in fetchInbox with token for identified user", async () => {
+    const request = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ messages: [] }),
+    });
+    const client = new OpenJourney({
+      endpoint: "https://events.example.test",
+      apiKey: "public-key",
+      tenant: "tenant-123",
+      app: "app-456",
+      storage: new MemoryStorage(),
+      fetch: request,
+      flushIntervalMs: 0,
+    });
+
+    client.identify("user-789");
+    await client.fetchInbox("signed-token");
+    expect(request).toHaveBeenCalledWith(
+      expect.stringContaining("tenant=tenant-123"),
+      expect.any(Object),
+    );
+    expect(request).toHaveBeenCalledWith(
+      expect.stringContaining("app=app-456"),
+      expect.any(Object),
+    );
+    expect(request).toHaveBeenCalledWith(
+      expect.stringContaining("external_id=user-789"),
+      expect.any(Object),
+    );
+    expect(request).toHaveBeenCalledWith(
+      expect.stringContaining("token=signed-token"),
+      expect.any(Object),
+    );
+    client.destroy();
+  });
+
+  it("sends required tenant and app params in reportEngagement", async () => {
+    const request = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({}),
+    });
+    const client = new OpenJourney({
+      endpoint: "https://events.example.test",
+      apiKey: "public-key",
+      tenant: "tenant-123",
+      app: "app-456",
+      storage: new MemoryStorage(),
+      fetch: request,
+      flushIntervalMs: 0,
+    });
+
+    await client.reportImpression("msg-1");
+    expect(request).toHaveBeenCalledWith(
+      expect.stringContaining("tenant=tenant-123"),
+      expect.any(Object),
+    );
+    expect(request).toHaveBeenCalledWith(
+      expect.stringContaining("app=app-456"),
+      expect.any(Object),
+    );
+    client.destroy();
+  });
+
+  it("sends external_id in reportEngagement with token for identified user", async () => {
+    const request = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({}),
+    });
+    const client = new OpenJourney({
+      endpoint: "https://events.example.test",
+      apiKey: "public-key",
+      tenant: "tenant-123",
+      app: "app-456",
+      storage: new MemoryStorage(),
+      fetch: request,
+      flushIntervalMs: 0,
+    });
+
+    client.identify("user-789");
+    await client.reportClick("msg-1", "signed-token");
+    expect(request).toHaveBeenCalledWith(
+      expect.stringContaining("tenant=tenant-123"),
+      expect.any(Object),
+    );
+    expect(request).toHaveBeenCalledWith(
+      expect.stringContaining("app=app-456"),
+      expect.any(Object),
+    );
+    expect(request).toHaveBeenCalledWith(
+      expect.stringContaining("external_id=user-789"),
+      expect.any(Object),
+    );
+    expect(request).toHaveBeenCalledWith(
+      expect.stringContaining("token=signed-token"),
+      expect.any(Object),
+    );
     client.destroy();
   });
 });

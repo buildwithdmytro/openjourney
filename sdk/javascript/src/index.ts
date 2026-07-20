@@ -32,6 +32,8 @@ export type InAppMessage = {
 export type ClientOptions = {
   endpoint: string;
   apiKey: string;
+  tenant: string;
+  app: string;
   batchSize?: number;
   flushIntervalMs?: number;
   storage?: Storage;
@@ -46,6 +48,8 @@ const ANONYMOUS_KEY = "openjourney:anonymous-id:v1";
 export class OpenJourney {
   private readonly endpoint: string;
   private readonly apiKey: string;
+  private readonly tenant: string;
+  private readonly app: string;
   private readonly batchSize: number;
   private readonly storage?: Storage;
   private readonly request: typeof globalThis.fetch;
@@ -58,11 +62,13 @@ export class OpenJourney {
   private flushing?: Promise<void>;
 
   constructor(options: ClientOptions) {
-    if (!options.endpoint || !options.apiKey) {
-      throw new Error("endpoint and apiKey are required");
+    if (!options.endpoint || !options.apiKey || !options.tenant || !options.app) {
+      throw new Error("endpoint, apiKey, tenant, and app are required");
     }
     this.endpoint = options.endpoint.replace(/\/$/, "");
     this.apiKey = options.apiKey;
+    this.tenant = options.tenant;
+    this.app = options.app;
     this.batchSize = Math.max(1, Math.min(options.batchSize ?? 25, 75));
     this.storage = options.storage ?? globalThis.localStorage;
     this.request = options.fetch ?? globalThis.fetch.bind(globalThis);
@@ -160,25 +166,30 @@ export class OpenJourney {
   }
 
   async fetchInbox(token?: string): Promise<InAppMessage[]> {
-    let searchParams = "";
-    let authHeader = `Bearer ${this.apiKey}`;
-
     if (this.externalID && !token) {
       throw new Error(
         "identified user requires a token from the server; pass SignInAppToken to fetchInbox(token)",
       );
     }
 
+    const params = new URLSearchParams({
+      tenant: this.tenant,
+      app: this.app,
+    });
+
     if (token) {
-      searchParams = `?token=${encodeURIComponent(token)}`;
+      params.set("token", token);
+      if (this.externalID) {
+        params.set("external_id", this.externalID);
+      }
     } else {
-      searchParams = `?anonymous_id=${encodeURIComponent(this.anonymousID)}`;
+      params.set("anonymous_id", this.anonymousID);
     }
 
-    const response = await this.request(`${this.endpoint}/v1/messages/inbox${searchParams}`, {
+    const response = await this.request(`${this.endpoint}/v1/messages/inbox?${params}`, {
       method: "GET",
       headers: {
-        Authorization: authHeader,
+        Authorization: `Bearer ${this.apiKey}`,
         "Content-Type": "application/json",
       },
     });
@@ -218,9 +229,6 @@ export class OpenJourney {
       throw new Error("messageId is required");
     }
 
-    let searchParams = "";
-    let authHeader = `Bearer ${this.apiKey}`;
-
     if (this.externalID && !token) {
       throw new Error(
         `identified user requires a token from the server for engagement report; pass SignInAppToken to report${
@@ -229,18 +237,26 @@ export class OpenJourney {
       );
     }
 
+    const params = new URLSearchParams({
+      tenant: this.tenant,
+      app: this.app,
+    });
+
     if (token) {
-      searchParams = `?token=${encodeURIComponent(token)}`;
+      params.set("token", token);
+      if (this.externalID) {
+        params.set("external_id", this.externalID);
+      }
     } else {
-      searchParams = `?anonymous_id=${encodeURIComponent(this.anonymousID)}`;
+      params.set("anonymous_id", this.anonymousID);
     }
 
     const response = await this.request(
-      `${this.endpoint}/v1/messages/${encodeURIComponent(messageId)}/${action}${searchParams}`,
+      `${this.endpoint}/v1/messages/${encodeURIComponent(messageId)}/${action}?${params}`,
       {
         method: "POST",
         headers: {
-          Authorization: authHeader,
+          Authorization: `Bearer ${this.apiKey}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({}),
