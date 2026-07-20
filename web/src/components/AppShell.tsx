@@ -1,6 +1,7 @@
-import React, { ReactNode } from "react";
+import React, { ReactNode, useEffect, useState } from "react";
 import { Sidebar } from "./Sidebar";
 import { PageHeader } from "./PageHeader";
+import { CommandPalette } from "./CommandPalette";
 
 type View = "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "copilots" | "governance" | "extensions" | "connectors" | "suppressions" | "sender-identities" | "device-tokens" | "acquisition" | "messaging";
 
@@ -17,6 +18,22 @@ interface AppShellProps {
 
 export const AppShell = React.forwardRef<HTMLDivElement, AppShellProps>(
   ({ view, onViewChange, viewTitles, healthy, children, theme, onThemeToggle, onSignOut }, ref) => {
+    const [paletteOpen, setPaletteOpen] = useState(false);
+
+    useEffect(() => {
+      const handleKeydown = (event: KeyboardEvent) => {
+        if ((event.metaKey || event.ctrlKey) && event.key === "k") {
+          event.preventDefault();
+          setPaletteOpen(true);
+        }
+      };
+
+      document.addEventListener("keydown", handleKeydown);
+      return () => {
+        document.removeEventListener("keydown", handleKeydown);
+      };
+    }, []);
+
     return (
       <div className="shell" ref={ref}>
         <Sidebar
@@ -35,6 +52,12 @@ export const AppShell = React.forwardRef<HTMLDivElement, AppShellProps>(
           />
           {children}
         </main>
+        <CommandPalette
+          isOpen={paletteOpen}
+          onClose={() => setPaletteOpen(false)}
+          onNavigate={onViewChange}
+          currentView={view}
+        />
       </div>
     );
   }

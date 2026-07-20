@@ -37,3 +37,5 @@ export type { ConfirmDialogProps } from "./ConfirmDialog";
 export { AppShell } from "./AppShell";
 export { Sidebar } from "./Sidebar";
 export { PageHeader } from "./PageHeader";
+export { CommandPalette } from "./CommandPalette";
+export type { CommandPaletteProps } from "./CommandPalette";

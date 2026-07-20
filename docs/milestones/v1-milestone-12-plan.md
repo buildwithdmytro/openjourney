@@ -424,10 +424,11 @@ fake-store unit test + postgres integration test (the M10/M11 template).
    *Done when:* the nav renders grouped sections with headers; keyboard navigation reaches every item;
    the active view is programmatically determinable; tests assert grouping + active state.
    — done: Sidebar.tsx has 6 groups (Audiences, Messaging, AI & Insights, Data, Admin, Settings) with styled headers; 18 tests in Sidebar.test.tsx verify grouping, active state, keyboard nav, and accessibility; all 228 tests green
-3. [ ] **Command palette** (Recipe 6.65): ⌘K/Ctrl-K opens a searchable palette over all views + common
+3. [x] **Command palette** (Recipe 6.65): ⌘K/Ctrl-K opens a searchable palette over all views + common
    actions, built on `Modal`, keyboard-first.
    *Done when:* ⌘K opens the palette, typing filters, ↑/↓ selects, Enter navigates, Esc closes; a test
    drives it entirely by keyboard.
+   — done: CommandPalette.tsx component with all 22 views, keyboard-driven filtering/navigation, 13 component tests passing; AppShell listens for ⌘K/Ctrl-K; AppShell.test.tsx verifies Cmd+K and Ctrl+K open palette, keyboard navigation works; 246 total tests passing, build green
 
 ### Milestone 17.7 — Mobile & responsive
 1. [ ] **Collapsible mobile nav**: turn the sidebar into a hamburger/off-canvas drawer ≤760px (replacing
