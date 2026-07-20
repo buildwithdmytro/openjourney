@@ -147,3 +147,61 @@ func (s *Store) PublishConnectorPipeline(ctx context.Context, p domain.Principal
 	}
 	return out, nil
 }
+
+// ClaimDueConnectorPipeline atomically leases one due pipeline and enqueues
+// its operation. The row lock is held until both the schedule advance and job
+// insert commit, so concurrent scheduler workers cannot enqueue the same run.
+func (s *Store) ClaimDueConnectorPipeline(ctx context.Context) (bool, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback(ctx)
+
+	var pipelineID, tenantID, workspaceID, appID, direction string
+	var intervalSeconds int
+	err = tx.QueryRow(ctx, `SELECT id,tenant_id,workspace_id,app_id,direction,schedule_interval_seconds
+		FROM connector_pipelines
+		WHERE status='enabled' AND schedule_enabled
+		  AND schedule_interval_seconds > 0 AND next_run_at <= now()
+		ORDER BY next_run_at,id
+		FOR UPDATE SKIP LOCKED LIMIT 1`).Scan(
+		&pipelineID, &tenantID, &workspaceID, &appID, &direction, &intervalSeconds)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+
+	jobType := map[string]string{
+		"source": "warehouse.sync",
+		"sink":   "reverse_etl.run",
+		"export": "export.replay",
+	}[direction]
+	if jobType == "" {
+		return false, fmt.Errorf("unsupported connector pipeline direction %q", direction)
+	}
+	payload, err := json.Marshal(map[string]string{
+		"pipeline_id":  pipelineID,
+		"tenant_id":    tenantID,
+		"workspace_id": workspaceID,
+		"app_id":       appID,
+	})
+	if err != nil {
+		return false, err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE connector_pipelines
+		SET next_run_at=now()+($2 * interval '1 second'), updated_at=now()
+		WHERE id=$1`, pipelineID, intervalSeconds); err != nil {
+		return false, err
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO operation_jobs(tenant_id,workspace_id,job_type,payload)
+		VALUES($1,$2,$3,$4)`, tenantID, workspaceID, jobType, payload); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return true, nil
+}

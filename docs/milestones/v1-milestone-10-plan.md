@@ -371,12 +371,14 @@ winner by `identity_namespaces.priority` + policy version.
    tidy pass with no dependency diff.
 
 ### Milestone 15.2 — Leased scheduler (recurring runs)
-1. **Scheduler drain + worker** (Recipe 6.47): `internal/scheduler` claims due pipelines
+1. [x] **Scheduler drain + worker** (Recipe 6.47): `internal/scheduler` claims due pipelines
    (`schedule_enabled AND next_run_at <= now() FOR UPDATE SKIP LOCKED`), advances `next_run_at` by
    `schedule_interval_seconds`, and enqueues the direction's job (`warehouse.sync`/`reverse_etl.run`);
    `cmd/scheduler/main.go` copied from `cmd/operations/main.go` (`-watch` loop, restart-friendly).
    *Done when:* a due pipeline enqueues exactly one job and its `next_run_at` advances; two concurrent
-   scheduler instances never double-enqueue (SKIP LOCKED); a test proves both.
+   scheduler instances never double-enqueue (SKIP LOCKED); a test proves both. — done: atomic
+   PostgreSQL claim/advance/enqueue plus restart-friendly scheduler worker; unit and PostgreSQL
+   concurrency tests cover one-job scheduling and SKIP LOCKED behavior.
 
 ### Milestone 15.3 — Object-storage source (S3 / CSV / JSONL → events)
 1. **`s3` source driver** (Recipe 6.45, `minio-go`): list/stream objects by prefix, parse CSV/JSONL,
