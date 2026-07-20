@@ -21,6 +21,17 @@ export type EventSchema = {
   id: string; event_type: string; version: number; schema: Record<string, unknown>;
   status: string; compatibility: "none" | "backward"; created_at: string;
 };
+export type ConnectorPipeline = {
+  id: string; tenant_id: string; workspace_id: string; app_id: string; connector_extension_id: string;
+  name: string; direction: "source" | "sink" | "export"; status: "draft" | "enabled" | "disabled";
+  current_version_id?: string; schedule_enabled: boolean; schedule_interval_seconds?: number;
+  next_run_at?: string; last_run_at?: string; created_at: string; updated_at: string;
+};
+export type ConnectorRun = {
+  id: string; pipeline_id: string; job_type: string; status: "running" | "succeeded" | "failed" | "dead";
+  cursor?: string; rows_in: number; rows_out: number; rows_rejected: number; reject_blob_key?: string;
+  error?: string; started_at: string; finished_at?: string;
+};
 export type APIKey = {
   id: string; name: string; scopes: string[]; expires_at?: string; revoked_at?: string; last_used_at?: string; created_at: string;
 };
@@ -113,6 +124,30 @@ export async function listSchemas(baseURL: string, apiKey: string): Promise<Even
 export async function createSchema(baseURL: string, apiKey: string,
   input: Omit<EventSchema, "id" | "status" | "created_at">): Promise<EventSchema> {
   return requestJSON(baseURL, apiKey, "/v1/schemas", { method: "POST", body: JSON.stringify(input) });
+}
+export async function listConnectorPipelines(baseURL: string, apiKey: string): Promise<ConnectorPipeline[]> {
+  return (await requestJSON<{ pipelines: ConnectorPipeline[] | null }>(baseURL, apiKey, "/v1/connectors/pipelines")).pipelines ?? [];
+}
+export async function createConnectorPipeline(baseURL: string, apiKey: string, input: Partial<ConnectorPipeline>): Promise<ConnectorPipeline> {
+  return requestJSON(baseURL, apiKey, "/v1/connectors/pipelines", { method: "POST", body: JSON.stringify(input) });
+}
+export async function updateConnectorPipeline(baseURL: string, apiKey: string, id: string, input: Partial<ConnectorPipeline>): Promise<ConnectorPipeline> {
+  return requestJSON(baseURL, apiKey, `/v1/connectors/pipelines/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(input) });
+}
+export async function publishConnectorPipeline(baseURL: string, apiKey: string, id: string, mapping: Record<string, unknown>): Promise<unknown> {
+  return requestJSON(baseURL, apiKey, `/v1/connectors/pipelines/${encodeURIComponent(id)}/publish`, { method: "POST", body: JSON.stringify({ mapping }) });
+}
+export async function listConnectorRuns(baseURL: string, apiKey: string, pipelineID: string): Promise<ConnectorRun[]> {
+  return (await requestJSON<{ runs: ConnectorRun[] | null }>(baseURL, apiKey, `/v1/connectors/pipelines/${encodeURIComponent(pipelineID)}/runs`)).runs ?? [];
+}
+export async function identifyIdentity(baseURL: string, apiKey: string, input: Record<string, unknown>): Promise<unknown> {
+  return requestJSON(baseURL, apiKey, "/v1/identity/identify", { method: "POST", body: JSON.stringify(input) });
+}
+export async function mergeIdentity(baseURL: string, apiKey: string, input: Record<string, unknown>): Promise<unknown> {
+  return requestJSON(baseURL, apiKey, "/v1/identity/merge", { method: "POST", body: JSON.stringify(input) });
+}
+export async function unmergeIdentity(baseURL: string, apiKey: string, input: Record<string, unknown>): Promise<unknown> {
+  return requestJSON(baseURL, apiKey, "/v1/identity/unmerge", { method: "POST", body: JSON.stringify(input) });
 }
 export async function listAPIKeys(baseURL: string, apiKey: string): Promise<APIKey[]> {
   return (await requestJSON<{ api_keys: APIKey[] | null }>(baseURL, apiKey, "/v1/api-keys")).api_keys ?? [];

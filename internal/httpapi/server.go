@@ -137,6 +137,7 @@ func (s *Server) buildMux() http.Handler {
 	mux.Handle("GET /v1/connectors/pipelines", s.authenticate("connectors:read", http.HandlerFunc(s.listConnectorPipelines)))
 	mux.Handle("POST /v1/connectors/pipelines", s.authenticate("connectors:write", http.HandlerFunc(s.createConnectorPipeline)))
 	mux.Handle("GET /v1/connectors/pipelines/{id}", s.authenticate("connectors:read", http.HandlerFunc(s.getConnectorPipeline)))
+	mux.Handle("GET /v1/connectors/pipelines/{id}/runs", s.authenticate("connectors:read", http.HandlerFunc(s.listConnectorRuns)))
 	mux.Handle("PUT /v1/connectors/pipelines/{id}", s.authenticate("connectors:write", http.HandlerFunc(s.updateConnectorPipeline)))
 	mux.Handle("POST /v1/connectors/pipelines/{id}/publish", s.authenticate("connectors:write", http.HandlerFunc(s.publishConnectorPipeline)))
 	mux.Handle("POST /v1/connectors/runs/{id}/replay", s.authenticate("connectors:run", http.HandlerFunc(s.replayConnectorRun)))

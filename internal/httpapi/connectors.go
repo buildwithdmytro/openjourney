@@ -37,6 +37,19 @@ func (s *Server) getConnectorPipeline(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+func (s *Server) listConnectorRuns(w http.ResponseWriter, r *http.Request) {
+	p := principalFrom(r)
+	items, err := s.store.ListConnectorRuns(r.Context(), p, r.PathValue("id"))
+	if err != nil {
+		internalError(w, err, "list connector runs", p)
+		return
+	}
+	if items == nil {
+		items = []domain.ConnectorRun{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"runs": items})
+}
+
 func (s *Server) createConnectorPipeline(w http.ResponseWriter, r *http.Request) {
 	p := principalFrom(r)
 	var input domain.ConnectorPipeline

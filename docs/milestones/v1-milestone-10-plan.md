@@ -496,12 +496,14 @@ winner by `identity_namespaces.priority` + policy version.
    the controls, with full Go build/vet/test and tidy showing no dependency diff.
 
 ### Milestone 15.11 — UI (Connectors)
-1. **Connectors section**: a `web/src/sections/Connectors.tsx` (list connectors, create source/sink/export
+1. [x] **Connectors section**: a `web/src/sections/Connectors.tsx` (list connectors, create source/sink/export
    pipelines, edit mapping, toggle schedule, view run history + reject counts) + an identity merge/unmerge
    viewer; `web/src/api.ts` client block (mirror `api.ts:423-434`) + `App.tsx` wiring (lazy import, `View`
    type, `viewTitles`, nav, render branch). No new npm dependency; theme-aware.
    *Done when:* `cd web && npm run typecheck && npm run build && npm test` green; the section lists pipelines,
-   creates one, and shows run history end-to-end against the API.
+   creates one, and shows run history end-to-end against the API. — done: Connectors section/API wiring,
+   tenant-scoped run-history endpoint, identity command controls, and `Connectors.test.tsx` pass with full
+   web typecheck/build/test plus Go build/vet/test and tidy showing no dependency diff.
 
 ### Milestone 15.12 — Integration, security & audit closeout
 1. **Data round-trip E2E**: an object-storage source ingests rows → events → profiles; a replay of the same

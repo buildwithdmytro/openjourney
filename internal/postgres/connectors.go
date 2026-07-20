@@ -72,6 +72,28 @@ func (s *Store) GetConnectorPipeline(ctx context.Context, p domain.Principal, id
 	return out, err
 }
 
+func (s *Store) ListConnectorRuns(ctx context.Context, p domain.Principal, pipelineID string) ([]domain.ConnectorRun, error) {
+	rows, err := s.pool.Query(ctx, `SELECT id,tenant_id,workspace_id,app_id,pipeline_id,pipeline_version_id,
+		job_type,status,cursor,rows_in,rows_out,rows_rejected,COALESCE(reject_blob_key,''),COALESCE(error,''),started_at,finished_at
+		FROM connector_runs WHERE tenant_id=$1 AND workspace_id=$2 AND pipeline_id=$3 ORDER BY started_at DESC LIMIT 100`,
+		p.TenantID, p.WorkspaceID, pipelineID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.ConnectorRun
+	for rows.Next() {
+		var run domain.ConnectorRun
+		if err := rows.Scan(&run.ID, &run.TenantID, &run.WorkspaceID, &run.AppID, &run.PipelineID,
+			&run.PipelineVersionID, &run.JobType, &run.Status, &run.Cursor, &run.RowsIn, &run.RowsOut,
+			&run.RowsRejected, &run.RejectBlobKey, &run.Error, &run.StartedAt, &run.FinishedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, run)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) GetConnectorPipelineVersion(ctx context.Context, p domain.Principal, id string) (domain.ConnectorPipelineVersion, error) {
 	var out domain.ConnectorPipelineVersion
 	err := s.pool.QueryRow(ctx, `SELECT v.id,v.pipeline_id,v.version,v.mapping_key,v.mapping,v.definition_sha,v.created_by_user_id,v.created_at
