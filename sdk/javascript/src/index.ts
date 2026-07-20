@@ -15,6 +15,20 @@ export type OpenJourneyEvent = {
   payload: Record<string, unknown>;
 };
 
+export type InAppMessage = {
+  id: string;
+  message_type: "modal" | "banner" | "fullscreen" | "card";
+  content: Record<string, unknown>;
+  status: string;
+  rank: number;
+  categories: string[];
+  start_at: string;
+  expires_at?: string | null;
+  displayed_at?: string | null;
+  clicked_at?: string | null;
+  dismissed_at?: string | null;
+};
+
 export type ClientOptions = {
   endpoint: string;
   apiKey: string;
@@ -143,6 +157,108 @@ export class OpenJourney {
       { channel, state, topic: options.topic ?? "marketing", evidence: options.evidence ?? {} },
       { classification: "restricted", consentContext: options.evidence },
     );
+  }
+
+  async fetchInbox(token?: string): Promise<InAppMessage[]> {
+    let searchParams = "";
+    let authHeader = `Bearer ${this.apiKey}`;
+
+    if (this.externalID && !token) {
+      throw new Error(
+        "identified user requires a token from the server; pass SignInAppToken to fetchInbox(token)",
+      );
+    }
+
+    if (token) {
+      searchParams = `?token=${encodeURIComponent(token)}`;
+    } else {
+      searchParams = `?anonymous_id=${encodeURIComponent(this.anonymousID)}`;
+    }
+
+    const response = await this.request(`${this.endpoint}/v1/messages/inbox${searchParams}`, {
+      method: "GET",
+      headers: {
+        Authorization: authHeader,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new Error("Unauthorized: invalid or expired token");
+      }
+      if (response.status === 403) {
+        throw new Error("Forbidden: access to inbox denied");
+      }
+      throw new Error(`fetchInbox failed (${response.status})`);
+    }
+
+    const data = await response.json();
+    return (data.messages ?? []) as InAppMessage[];
+  }
+
+  async reportImpression(messageId: string, token?: string): Promise<void> {
+    await this.reportEngagement(messageId, "impression", token);
+  }
+
+  async reportClick(messageId: string, token?: string): Promise<void> {
+    await this.reportEngagement(messageId, "click", token);
+  }
+
+  async reportDismiss(messageId: string, token?: string): Promise<void> {
+    await this.reportEngagement(messageId, "dismiss", token);
+  }
+
+  private async reportEngagement(
+    messageId: string,
+    action: "impression" | "click" | "dismiss",
+    token?: string,
+  ): Promise<void> {
+    if (!messageId.trim()) {
+      throw new Error("messageId is required");
+    }
+
+    let searchParams = "";
+    let authHeader = `Bearer ${this.apiKey}`;
+
+    if (this.externalID && !token) {
+      throw new Error(
+        `identified user requires a token from the server for engagement report; pass SignInAppToken to report${
+          action.charAt(0).toUpperCase() + action.slice(1)
+        }(messageId, token)`,
+      );
+    }
+
+    if (token) {
+      searchParams = `?token=${encodeURIComponent(token)}`;
+    } else {
+      searchParams = `?anonymous_id=${encodeURIComponent(this.anonymousID)}`;
+    }
+
+    const response = await this.request(
+      `${this.endpoint}/v1/messages/${encodeURIComponent(messageId)}/${action}${searchParams}`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: authHeader,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({}),
+      },
+    );
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new Error("Unauthorized: invalid or expired token");
+      }
+      if (response.status === 403) {
+        throw new Error("Forbidden: access denied");
+      }
+      if (response.status === 404) {
+        throw new Error(`message not found (${messageId})`);
+      }
+      throw new Error(`report engagement failed (${response.status})`);
+    }
   }
 
   async flush(): Promise<void> {

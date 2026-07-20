@@ -474,11 +474,12 @@ model). No new npm dep; framework-free.
    — done: validateTemplate checks in_app requires title/body/html; previewTemplate renders Liquid for in_app; TestTemplatePreviewInApp and templates_integration_test InApp section verify creation/validation/preview; all 564 tests pass
 
 ### Milestone 16.8 — Browser SDK + reference Service Worker
-1. [ ] **SDK inbox client** (Recipe 6.57): extend `sdk/javascript/src/index.ts` with `fetchInbox`,
+1. [x] **SDK inbox client** (Recipe 6.57): extend `sdk/javascript/src/index.ts` with `fetchInbox`,
    `reportImpression`/`reportClick`/`reportDismiss`, reusing the durable `anonymous_id`/`identify`
    machinery (`index.ts:29-30,66`); no new npm dep.
    *Done when:* `cd sdk/javascript && npm run build && npm test` green; the SDK fetches an inbox and
    reports engagement against a stubbed edge.
+   — done: InAppMessage type added to index.ts:17-26; fetchInbox/reportImpression/reportClick/reportDismiss methods added with token support for identified users; 9 new test cases cover anonymous/identified fetch/report/auth/errors; npm run build && npm test all pass (14/14 tests)
 2. [ ] **Reference web-push Service Worker**: `sdk/javascript/sw-webpush.example.js` — a `push` handler
    that shows a notification then `fetchInbox`es content (wake-signal model), plus subscription helper.
    *Done when:* the example SW registers a subscription and, on a wake push, fetches and surfaces inbox

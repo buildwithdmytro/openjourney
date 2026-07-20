@@ -126,4 +126,207 @@ describe("OpenJourney", () => {
     expect(parsed.events).toHaveLength(2);
     client.destroy();
   });
+
+  it("fetches anonymous inbox without token", async () => {
+    let sequence = 0;
+    const mockMessages = [
+      { id: "msg-1", message_type: "modal", status: "delivered", rank: 1 },
+      { id: "msg-2", message_type: "card", status: "delivered", rank: 0 },
+    ];
+    const request = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ messages: mockMessages }),
+    });
+    const client = new OpenJourney({
+      endpoint: "https://events.example.test",
+      apiKey: "public-key",
+      storage: new MemoryStorage(),
+      fetch: request,
+      flushIntervalMs: 0,
+      randomUUID: () => `anon-${++sequence}`,
+    });
+
+    const messages = await client.fetchInbox();
+    expect(messages).toEqual(mockMessages);
+    expect(request).toHaveBeenCalledWith(
+      expect.stringContaining("/v1/messages/inbox?anonymous_id=anon-1"),
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({ Authorization: "Bearer public-key" }),
+      }),
+    );
+    client.destroy();
+  });
+
+  it("fetches inbox with token for identified user", async () => {
+    const request = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        messages: [{ id: "msg-1", message_type: "modal", status: "delivered" }],
+      }),
+    });
+    const client = new OpenJourney({
+      endpoint: "https://events.example.test",
+      apiKey: "public-key",
+      storage: new MemoryStorage(),
+      fetch: request,
+      flushIntervalMs: 0,
+    });
+
+    client.identify("user-1");
+    const messages = await client.fetchInbox("signed-token-abc");
+    expect(messages).toHaveLength(1);
+    expect(request).toHaveBeenCalledWith(
+      expect.stringContaining("/v1/messages/inbox?token=signed-token-abc"),
+      expect.any(Object),
+    );
+    client.destroy();
+  });
+
+  it("requires token for identified user to fetch inbox", async () => {
+    const request = vi.fn();
+    const client = new OpenJourney({
+      endpoint: "https://events.example.test",
+      apiKey: "public-key",
+      storage: new MemoryStorage(),
+      fetch: request,
+      flushIntervalMs: 0,
+    });
+
+    client.identify("user-1");
+    await expect(client.fetchInbox()).rejects.toThrow("identified user requires a token");
+    expect(request).not.toHaveBeenCalled();
+    client.destroy();
+  });
+
+  it("reports impression on anonymous message", async () => {
+    let sequence = 0;
+    const request = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({}),
+    });
+    const client = new OpenJourney({
+      endpoint: "https://events.example.test",
+      apiKey: "public-key",
+      storage: new MemoryStorage(),
+      fetch: request,
+      flushIntervalMs: 0,
+      randomUUID: () => `anon-${++sequence}`,
+    });
+
+    await client.reportImpression("msg-1");
+    expect(request).toHaveBeenCalledWith(
+      expect.stringContaining("/v1/messages/msg-1/impression?anonymous_id=anon-1"),
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ Authorization: "Bearer public-key" }),
+      }),
+    );
+    client.destroy();
+  });
+
+  it("reports click with token for identified user", async () => {
+    const request = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({}),
+    });
+    const client = new OpenJourney({
+      endpoint: "https://events.example.test",
+      apiKey: "public-key",
+      storage: new MemoryStorage(),
+      fetch: request,
+      flushIntervalMs: 0,
+    });
+
+    client.identify("user-1");
+    await client.reportClick("msg-1", "signed-token");
+    expect(request).toHaveBeenCalledWith(
+      expect.stringContaining("/v1/messages/msg-1/click?token=signed-token"),
+      expect.any(Object),
+    );
+    client.destroy();
+  });
+
+  it("reports dismiss on message", async () => {
+    let sequence = 0;
+    const request = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({}),
+    });
+    const client = new OpenJourney({
+      endpoint: "https://events.example.test",
+      apiKey: "public-key",
+      storage: new MemoryStorage(),
+      fetch: request,
+      flushIntervalMs: 0,
+      randomUUID: () => `anon-${++sequence}`,
+    });
+
+    await client.reportDismiss("msg-1");
+    expect(request).toHaveBeenCalledWith(
+      expect.stringContaining("/v1/messages/msg-1/dismiss?anonymous_id=anon-1"),
+      expect.objectContaining({
+        method: "POST",
+        body: "{}",
+      }),
+    );
+    client.destroy();
+  });
+
+  it("requires token for identified user to report engagement", async () => {
+    const request = vi.fn();
+    const client = new OpenJourney({
+      endpoint: "https://events.example.test",
+      apiKey: "public-key",
+      storage: new MemoryStorage(),
+      fetch: request,
+      flushIntervalMs: 0,
+    });
+
+    client.identify("user-1");
+    await expect(client.reportImpression("msg-1")).rejects.toThrow("identified user requires a token");
+    await expect(client.reportClick("msg-1")).rejects.toThrow("identified user requires a token");
+    await expect(client.reportDismiss("msg-1")).rejects.toThrow("identified user requires a token");
+    expect(request).not.toHaveBeenCalled();
+    client.destroy();
+  });
+
+  it("handles 401 unauthorized on inbox fetch", async () => {
+    const request = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+    });
+    const client = new OpenJourney({
+      endpoint: "https://events.example.test",
+      apiKey: "invalid-key",
+      storage: new MemoryStorage(),
+      fetch: request,
+      flushIntervalMs: 0,
+    });
+
+    await expect(client.fetchInbox()).rejects.toThrow("Unauthorized");
+    client.destroy();
+  });
+
+  it("handles 404 not found on engagement report", async () => {
+    const request = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+    });
+    const client = new OpenJourney({
+      endpoint: "https://events.example.test",
+      apiKey: "public-key",
+      storage: new MemoryStorage(),
+      fetch: request,
+      flushIntervalMs: 0,
+    });
+
+    await expect(client.reportImpression("nonexistent")).rejects.toThrow("message not found");
+    client.destroy();
+  });
 });
