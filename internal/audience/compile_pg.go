@@ -19,6 +19,46 @@ func CompileProfile(node Node) (string, []any, error) {
 	return sql, args, nil
 }
 
+// CompileProfileRows compiles an audience into a projection suitable for a
+// reverse-ETL sink. Column names are configuration supplied identifiers, so
+// they are validated before being interpolated into the SELECT list. Values
+// used by the audience expression (and consent ledger) remain parameters.
+func CompileProfileRows(node Node, fields []string) (string, []any, error) {
+	if len(fields) == 0 {
+		return "", nil, fmt.Errorf("reverse-ETL projection requires at least one field")
+	}
+
+	columns := make([]string, 0, len(fields))
+	seen := make(map[string]struct{}, len(fields))
+	for _, field := range fields {
+		if !fieldSafetyRegex.MatchString(field) {
+			return "", nil, fmt.Errorf("unsafe or invalid mapped profile field name: %s", field)
+		}
+		if _, ok := seen[field]; ok {
+			return "", nil, fmt.Errorf("duplicate mapped profile field: %s", field)
+		}
+		seen[field] = struct{}{}
+
+		switch field {
+		case "id", "external_id", "anonymous_id", "created_at", "updated_at":
+			columns = append(columns, field)
+		default:
+			columns = append(columns, fmt.Sprintf("attributes->>'%s' AS %s", field, field))
+		}
+	}
+
+	args := make([]any, 0)
+	expr, err := compileProfileNode(node, &args)
+	if err != nil {
+		return "", nil, err
+	}
+	if expr == "" {
+		expr = "TRUE"
+	}
+	return fmt.Sprintf("SELECT %s FROM profiles WHERE tenant_id=$1 AND workspace_id=$2 AND (%s)",
+		strings.Join(columns, ", "), expr), args, nil
+}
+
 func compileProfileNode(node Node, args *[]any) (string, error) {
 	switch n := node.(type) {
 	case *And:
@@ -85,6 +125,24 @@ func compileProfileNode(node Node, args *[]any) (string, error) {
 		default:
 			return "", fmt.Errorf("unsupported profile operator: %s", n.Operator)
 		}
+
+	case *Consent:
+		// Consent is correlated to the profile's app so this compiler can keep
+		// the existing tenant/workspace parameter contract while still using
+		// the latest consent row for reverse-ETL suppression decisions.
+		*args = append(*args, n.Channel, n.Topic, n.State)
+		channelPlaceholder := fmt.Sprintf("$%d", len(*args))
+		topicPlaceholder := fmt.Sprintf("$%d", len(*args)+1)
+		statePlaceholder := fmt.Sprintf("$%d", len(*args)+2)
+		return fmt.Sprintf(`id IN (
+			SELECT latest.profile_id FROM (
+				SELECT DISTINCT ON (cl.profile_id) cl.profile_id, cl.state
+				FROM consent_ledger cl
+				WHERE cl.tenant_id = profiles.tenant_id AND cl.app_id = profiles.app_id
+					AND cl.channel = %s AND cl.topic = %s
+				ORDER BY cl.profile_id, cl.occurred_at DESC
+			) latest WHERE latest.state = %s
+		)`, channelPlaceholder, topicPlaceholder, statePlaceholder), nil
 
 	case *Score:
 		if n.Model == "" {

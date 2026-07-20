@@ -408,10 +408,13 @@ winner by `identity_namespaces.priority` + policy version.
    dependency diff.
 
 ### Milestone 15.5 — Reverse-ETL sink (audience → sink)
-1. **`CompileProfileRows` projection** (Recipe 6.49): widen `internal/audience/compile_pg.go` to select
+1. [x] **`CompileProfileRows` projection** (Recipe 6.49): widen `internal/audience/compile_pg.go` to select
    mapped fields (each via `fieldSafetyRegex`), suppression-aware via `CompileConsent`.
    *Done when:* a compiled query returns the mapped columns for members of an audience and excludes
-   suppressed profiles; a field name failing the regex is rejected; unit test green.
+   suppressed profiles; a field name failing the regex is rejected; unit test green. — done:
+   `CompileProfileRows` validates mapped fields, projects profile attributes with parameterized audience/
+   consent filters, and `TestCompileProfileRows` proves suppression SQL and unsafe-field rejection; full
+   Go build/vet/test and tidy pass with no dependency diff.
 2. **`reverse_etl.run` executor**: materialize rows via the projection, call the sink driver `Write`
    (upsert-keyed, bounded, per-connector budget/rate), write a `connector_runs` row; schedulable.
    *Done when:* an audience materializes and pushes rows to a `fake` sink; a second run with unchanged

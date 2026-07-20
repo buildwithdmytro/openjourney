@@ -3,6 +3,7 @@ package audience
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -101,6 +102,30 @@ func TestCompileProfile(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestCompileProfileRows(t *testing.T) {
+	node := &And{Conditions: []Node{
+		&ProfileAttribute{Field: "country", Operator: "equals", Value: "US"},
+		&Consent{Channel: "email", Topic: "marketing", State: "subscribed"},
+	}}
+	sql, args, err := CompileProfileRows(node, []string{"external_id", "email", "plan"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(sql, "SELECT external_id, attributes->>'email' AS email, attributes->>'plan' AS plan FROM profiles") {
+		t.Fatalf("projection does not contain mapped fields: %s", sql)
+	}
+	if !strings.Contains(sql, "FROM consent_ledger") || !strings.Contains(sql, "latest.state = $6") {
+		t.Fatalf("projection is not consent-aware: %s", sql)
+	}
+	if len(args) != 4 || args[0] != "US" || args[1] != "email" || args[2] != "marketing" || args[3] != "subscribed" {
+		t.Fatalf("unexpected parameterization: %v", args)
+	}
+
+	if _, _, err := CompileProfileRows(node, []string{"external_id", "email' OR TRUE --"}); err == nil {
+		t.Fatal("unsafe mapped field was accepted")
 	}
 }
 
