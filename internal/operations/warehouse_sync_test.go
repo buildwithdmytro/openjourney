@@ -19,11 +19,12 @@ func (s *sourceBlobStore) Get(context.Context, string) ([]byte, error) { return 
 func (s *sourceBlobStore) Delete(context.Context, string) error        { return nil }
 
 type sourceStore struct {
-	pipeline domain.ConnectorPipeline
-	version  domain.ConnectorPipelineVersion
-	config   domain.ExtensionConfig
-	events   []domain.Event
-	runs     []domain.ConnectorRun
+	pipeline  domain.ConnectorPipeline
+	version   domain.ConnectorPipelineVersion
+	config    domain.ExtensionConfig
+	events    []domain.Event
+	runs      []domain.ConnectorRun
+	acceptErr error
 }
 
 func (s *sourceStore) GetConnectorPipeline(context.Context, domain.Principal, string) (domain.ConnectorPipeline, error) {
@@ -40,6 +41,9 @@ func (s *sourceStore) RecordConnectorRun(_ context.Context, run domain.Connector
 	return nil
 }
 func (s *sourceStore) AcceptEvents(_ context.Context, _ domain.Principal, events []domain.Event) ([]string, error) {
+	if s.acceptErr != nil {
+		return nil, s.acceptErr
+	}
 	ids := make([]string, 0, len(events))
 	for _, event := range events {
 		seen := false
@@ -55,6 +59,16 @@ func (s *sourceStore) AcceptEvents(_ context.Context, _ domain.Principal, events
 		}
 	}
 	return ids, nil
+}
+
+type committingDriver struct {
+	*connector.FakeDriver
+	commits int
+}
+
+func (d *committingDriver) Commit(context.Context, []connector.Row) error {
+	d.commits++
+	return nil
 }
 
 func TestWarehouseSyncIsEventSourcedAndIdempotent(t *testing.T) {
@@ -87,6 +101,32 @@ func TestWarehouseSyncIsEventSourcedAndIdempotent(t *testing.T) {
 	}
 	if store.events[0].IdempotencyKey != "extension:3:object.csv:0:0" {
 		t.Fatalf("idempotency key=%q", store.events[0].IdempotencyKey)
+	}
+}
+
+func TestWarehouseSyncCommitsStreamOnlyAfterAcceptEvents(t *testing.T) {
+	driver := &committingDriver{FakeDriver: &connector.FakeDriver{Rows: []connector.Row{{"email": "a@example.com"}}}}
+	registry := connector.NewRegistry(map[string]connector.ConnectorDriver{"kafka": driver}, driver)
+	mapping, _ := json.Marshal(map[string]any{"event_type": "profile.updated", "external_id": "email"})
+	config, _ := json.Marshal(map[string]any{"driver": "kafka"})
+	store := &sourceStore{
+		pipeline: domain.ConnectorPipeline{ID: "pipeline", AppID: "app", ConnectorExtensionID: "extension", CurrentVersionID: stringPtr("version")},
+		version:  domain.ConnectorPipelineVersion{ID: "version", Version: 1, Mapping: mapping},
+		config:   domain.ExtensionConfig{Config: config},
+	}
+	if err := executeWarehouseSyncWithRegistry(context.Background(), store, &sourceBlobStore{values: map[string][]byte{}}, warehouseSyncInput{PipelineID: "pipeline"}, registry); err != nil {
+		t.Fatal(err)
+	}
+	if driver.commits != 1 {
+		t.Fatalf("commits=%d, want one commit after acceptance", driver.commits)
+	}
+	driver.commits = 0
+	store.acceptErr = context.DeadlineExceeded
+	if err := executeWarehouseSyncWithRegistry(context.Background(), store, &sourceBlobStore{values: map[string][]byte{}}, warehouseSyncInput{PipelineID: "pipeline"}, registry); err != nil {
+		t.Fatal(err)
+	}
+	if driver.commits != 0 {
+		t.Fatal("stream records were committed after AcceptEvents failed")
 	}
 }
 

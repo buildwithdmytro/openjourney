@@ -269,6 +269,7 @@ func executeWarehouseSyncWithRegistry(ctx context.Context, store ConnectorStore,
 		return err
 	}
 	valid, rejected := makeSourceEvents(rows, resolved, pipeline.ConnectorExtensionID, version.Version, job.Cursor)
+	commit := true
 	batchSize := 75
 	if configured, ok := resolved["max_batch_size"].(float64); ok && configured >= 1 && configured <= 1000 {
 		batchSize = int(configured)
@@ -280,11 +281,19 @@ func executeWarehouseSyncWithRegistry(ctx context.Context, store ConnectorStore,
 		}
 		ids, acceptErr := store.AcceptEvents(ctx, p, valid[start:end])
 		if acceptErr != nil {
+			commit = false
 			for row := start; row < end; row++ {
 				rejected = append(rejected, reject{Row: row, Error: acceptErr.Error()})
 			}
 		} else {
 			run.RowsOut += int64(len(ids))
+		}
+	}
+	if commit {
+		if committer, ok := driver.(connector.Committer); ok {
+			if err := committer.Commit(ctx, rows); err != nil {
+				return fmt.Errorf("commit source records: %w", err)
+			}
 		}
 	}
 	run.RowsRejected = int64(len(rejected))

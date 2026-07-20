@@ -400,10 +400,12 @@ winner by `identity_namespaces.priority` + policy version.
    idempotent; integration test (or a fake-backed unit test) green. — done: bounded parameterized ClickHouse
    source driver with SSRF/allowlist and `*_ref` validation; deterministic watermark/cursor and unsafe-query
    tests pass; full Go build/vet/test and tidy show no dependency diff.
-2. **`kafka` cloud event-stream source** (Recipe 6.45, `franz-go`): a bounded consumer that maps stream
+2. [x] **`kafka` cloud event-stream source** (Recipe 6.45, `franz-go`): a bounded consumer that maps stream
    records → events, committing offsets only after `AcceptEvents` succeeds (at-least-once, idempotent).
    *Done when:* consumed records become accepted events exactly once per idempotency key even on redelivery;
-   test green.
+   test green. — done: bounded franz-go source with SSRF-guarded broker dialing and post-AcceptEvents manual
+   commit; redelivery/commit-order and private-broker tests pass; full Go build/vet/test and tidy show no
+   dependency diff.
 
 ### Milestone 15.5 — Reverse-ETL sink (audience → sink)
 1. **`CompileProfileRows` projection** (Recipe 6.49): widen `internal/audience/compile_pg.go` to select

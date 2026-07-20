@@ -15,6 +15,12 @@ type ConnectorDriver interface {
 	Write(ctx context.Context, cfg map[string]any, rows []Row) (int, error)
 }
 
+// Committer is implemented by streaming source drivers. A caller must invoke
+// it only after the rows returned by Read have been durably accepted.
+type Committer interface {
+	Commit(context.Context, []Row) error
+}
+
 type Registry struct {
 	mu       sync.RWMutex
 	drivers  map[string]ConnectorDriver
@@ -35,7 +41,7 @@ func DefaultRegistry() *Registry {
 	fake := NewFakeDriver()
 	stub := &unimplementedDriver{}
 	return NewRegistry(map[string]ConnectorDriver{
-		"fake": fake, "s3": NewS3Driver(), "clickhouse": NewClickHouseDriver(), "kafka": stub, "webhook": stub,
+		"fake": fake, "s3": NewS3Driver(), "clickhouse": NewClickHouseDriver(), "kafka": NewKafkaDriver(), "webhook": stub,
 	}, fake)
 }
 
