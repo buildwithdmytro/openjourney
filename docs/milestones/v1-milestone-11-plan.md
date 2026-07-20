@@ -529,9 +529,10 @@ model). No new npm dep; framework-free.
    *Done when:* all green and `git diff go.mod go.sum web/package.json sdk/javascript/package.json` is
    empty of additions.
    — done: go build/vet/test all green (584 tests pass); go mod tidy shows no changes; web typecheck/build/test all green (33 tests pass); sdk build/test all green (14 tests pass); git diff shows no dependency additions
-4. [ ] **Audit doc** `docs/milestones/v1-milestone-11-audit.md` in the M2–M10 table format, one row per
+4. [x] **Audit doc** `docs/milestones/v1-milestone-11-audit.md` in the M2–M10 table format, one row per
    `16.x` task with evidence (file:line + test name).
    *Done when:* the doc exists with a row per task and its verifying test.
+   — done: v1-milestone-11-audit.md created with 36 rows (16.0.1–16.0.4, 16.1.1–16.1.3, 16.2.1–16.2.2, 16.3.1–16.3.2, 16.4.1, 16.5.1–16.5.2, 16.6.1–16.6.2, 16.7.1–16.7.2, 16.8.1–16.8.2, 16.9.1, 16.10.1–16.10.2, 16.11.1–16.11.4) plus summary closure statement
 
 ## 7. Carry-over hazards & invariants
 
