@@ -17,6 +17,7 @@ import { oidcConfigured, restoreOIDCSession, signIn, signOut } from "./auth";
 import { staticColors, defaultAccentColor, defaultBackgroundColor } from "./tokens";
 import { useTheme } from "./useTheme";
 import { Skeleton, Spinner } from "./components";
+import { message } from "./errors";
 
 const Journeys = lazy(() => import("./sections/Journeys"));
 const Experiments = lazy(() => import("./sections/Experiments"));
@@ -851,10 +852,6 @@ function ErrorMessage({ value }: { value: string }) {
 
 function formatDate(value?: string): string {
   return value ? new Date(value).toLocaleString() : "";
-}
-
-function message(cause: unknown): string {
-  return cause instanceof Error ? cause.message : "The operation failed";
 }
 
 // ─── Templates ───────────────────────────────────────────────────────────────

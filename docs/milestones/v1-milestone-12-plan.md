@@ -375,10 +375,11 @@ fake-store unit test + postgres integration test (the M10/M11 template).
    *Done when:* empty lists render a consistent `EmptyState` with a CTA where relevant; a test asserts the
    CTA is reachable by role; the ad-hoc `muted` empties in the migrated sections are gone.
    — done: EmptyState.tsx with icon/title/description/cta props; 7 component tests passing; Connectors.tsx, Extensions.tsx, and Scoring.tsx migrated (3 sections); CTA button tested via getByRole and fireEvent.click; 138 total tests green
-3. [ ] **ErrorState + retry + centralized errors**: `<ErrorState onRetry>` generalizing `ErrorMessage`
+3. [x] **ErrorState + retry + centralized errors**: `<ErrorState onRetry>` generalizing `ErrorMessage`
    (`App.tsx:830`); centralize the duplicated `message()`/`errorMessage()` into `web/src/errors.ts`.
    *Done when:* a failed fetch shows a retry control that re-runs the loader; `errors.ts` is imported
    (not copy-pasted) in the migrated sections; tests cover the retry path.
+   — done: ErrorState.tsx component created with title/description/onRetry props; web/src/errors.ts centralizes message()/errorMessage() helpers; Connectors.tsx migrated to use ErrorState with retry callback; 6 ErrorState tests + 2 errors.ts tests passing; 147 total tests green
 4. [ ] **Toast system** (Recipe 6.62): `ToastProvider` + `useToast()`; replace `alert()` (`App.tsx:701`)
    and ephemeral inline `.success` strings in 3+ sections.
    *Done when:* an action fires an auto-dismissing toast in a live region; `alert()` is gone; a test
