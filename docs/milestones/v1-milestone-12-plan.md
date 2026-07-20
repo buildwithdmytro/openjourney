@@ -276,13 +276,14 @@ fake-store unit test + postgres integration test (the M10/M11 template).
 > `TestCreateAdminMessageCannotForgeDisplayState`. Tasks `17.0.1`–`17.0.3` VERIFY those properties hold
 > (run the tests, confirm, mark done; fix only if regressed). Tasks `17.0.4`–`17.0.6` are the residual
 > lower-severity findings still open.
-1. [ ] **Verify inbox edge is IDOR-safe (fixed in `bd12506`).** Confirm `GetProfileIDBySubject`
+1. [x] **Verify inbox edge is IDOR-safe (fixed in `bd12506`).** Confirm `GetProfileIDBySubject`
    (`internal/postgres/messages.go`) pins the lookup to the ONE authenticated column (`byExternalID`) —
    never `external_id OR anonymous_id` — so a tokenless `anonymous_id` param cannot smuggle a victim's
    `external_id`; and `VerifyInAppToken` (`publicguard.go`) splits on the LAST `.` so dotted (email)
    subjects verify.
    *Done when:* `TestFetchInboxRejectsExternalIDSmuggledViaAnonymousID` passes (attack blocked, email
    token path works); a forged/expired token is rejected; the edge is IP rate-limited. (Re-fix if regressed.)
+   — done: TestFetchInboxRejectsExternalIDSmuggledViaAnonymousID passes, GetProfileIDBySubject pins to one column, VerifyInAppToken splits on LAST `.`, publicLimiter enforces IP rate-limiting, TestForgedTokenRejected passes
 2. [ ] **Verify display-state is projector-only + web-push SSRF-safe.** Confirm `createAdminMessage`
    (`internal/httpapi/messages.go`) clamps to a delivered baseline (no forged `status`/`*_at`) so
    `inapp_messages` display-state is written ONLY by the `message.*` `ProjectEvent` cases; and the
