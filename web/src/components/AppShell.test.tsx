@@ -36,6 +36,21 @@ beforeEach(() => {
   const modalRoot = document.createElement("div");
   modalRoot.id = "modal-root";
   document.body.appendChild(modalRoot);
+
+  // Default to desktop viewport (not mobile)
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn().mockImplementation((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }))
+  );
 });
 
 afterEach(() => {
@@ -43,6 +58,7 @@ afterEach(() => {
   if (modalRoot) {
     modalRoot.remove();
   }
+  vi.unstubAllGlobals();
 });
 
 describe("AppShell", () => {
@@ -156,6 +172,185 @@ describe("AppShell", () => {
 
     await waitFor(() => {
       expect(screen.queryByPlaceholderText(/search views/i)).not.toBeInTheDocument();
+    });
+  });
+
+  describe("mobile navigation", () => {
+    beforeEach(() => {
+      vi.stubGlobal("matchMedia", vi.fn().mockImplementation((query: string) => ({
+        matches: query === "(max-width: 760px)",
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })));
+    });
+
+    it("shows menu button on mobile viewport", async () => {
+      const onViewChange = vi.fn();
+      render(
+        <AppShell
+          view="profiles"
+          onViewChange={onViewChange}
+          viewTitles={viewTitles}
+          healthy={true}
+        >
+          <div>Test content</div>
+        </AppShell>
+      );
+
+      await waitFor(() => {
+        const menuButton = screen.getByTestId("mobile-menu-button");
+        expect(menuButton).toBeInTheDocument();
+        expect(menuButton).toHaveAttribute("aria-label", "Open navigation menu");
+      });
+    });
+
+    it("toggles mobile nav drawer with menu button", async () => {
+      const onViewChange = vi.fn();
+      render(
+        <AppShell
+          view="profiles"
+          onViewChange={onViewChange}
+          viewTitles={viewTitles}
+          healthy={true}
+        >
+          <div>Test content</div>
+        </AppShell>
+      );
+
+      await waitFor(() => {
+        const menuButton = screen.getByTestId("mobile-menu-button");
+        expect(menuButton).toBeInTheDocument();
+      });
+
+      const menuButton = screen.getByTestId("mobile-menu-button");
+      fireEvent.click(menuButton);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("mobile-nav-drawer")).toBeInTheDocument();
+        expect(menuButton).toHaveAttribute("aria-expanded", "true");
+      });
+
+      fireEvent.click(menuButton);
+
+      await waitFor(() => {
+        expect(screen.queryByTestId("mobile-nav-drawer")).not.toBeInTheDocument();
+        expect(menuButton).toHaveAttribute("aria-expanded", "false");
+      });
+    });
+
+    it("closes mobile nav drawer with Esc key (focus trap)", async () => {
+      const onViewChange = vi.fn();
+      render(
+        <AppShell
+          view="profiles"
+          onViewChange={onViewChange}
+          viewTitles={viewTitles}
+          healthy={true}
+        >
+          <div>Test content</div>
+        </AppShell>
+      );
+
+      await waitFor(() => {
+        const menuButton = screen.getByTestId("mobile-menu-button");
+        expect(menuButton).toBeInTheDocument();
+      });
+
+      const menuButton = screen.getByTestId("mobile-menu-button");
+      fireEvent.click(menuButton);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("mobile-nav-drawer")).toBeInTheDocument();
+      });
+
+      fireEvent.keyDown(document, { key: "Escape" });
+
+      await waitFor(() => {
+        expect(screen.queryByTestId("mobile-nav-drawer")).not.toBeInTheDocument();
+      });
+    });
+
+    it("closes mobile nav drawer when a view is selected", async () => {
+      const onViewChange = vi.fn();
+      render(
+        <AppShell
+          view="profiles"
+          onViewChange={onViewChange}
+          viewTitles={viewTitles}
+          healthy={true}
+        >
+          <div>Test content</div>
+        </AppShell>
+      );
+
+      await waitFor(() => {
+        const menuButton = screen.getByTestId("mobile-menu-button");
+        expect(menuButton).toBeInTheDocument();
+      });
+
+      const menuButton = screen.getByTestId("mobile-menu-button");
+      fireEvent.click(menuButton);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("mobile-nav-drawer")).toBeInTheDocument();
+      });
+
+      const schemasButton = screen.getByRole("button", { name: /Event schemas/i });
+      fireEvent.click(schemasButton);
+
+      await waitFor(() => {
+        expect(screen.queryByTestId("mobile-nav-drawer")).not.toBeInTheDocument();
+        expect(onViewChange).toHaveBeenCalledWith("schemas");
+      });
+    });
+
+    it("traps focus within mobile nav drawer", async () => {
+      const onViewChange = vi.fn();
+      const { container } = render(
+        <AppShell
+          view="profiles"
+          onViewChange={onViewChange}
+          viewTitles={viewTitles}
+          healthy={true}
+        >
+          <div>Test content</div>
+        </AppShell>
+      );
+
+      await waitFor(() => {
+        const menuButton = screen.getByTestId("mobile-menu-button");
+        expect(menuButton).toBeInTheDocument();
+      });
+
+      const menuButton = screen.getByTestId("mobile-menu-button");
+      fireEvent.click(menuButton);
+
+      await waitFor(() => {
+        const drawer = screen.getByTestId("mobile-nav-drawer");
+        expect(drawer).toBeInTheDocument();
+      });
+
+      const drawer = screen.getByTestId("mobile-nav-drawer");
+      const focusableElements = Array.from(
+        drawer.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')
+      ) as HTMLElement[];
+
+      if (focusableElements.length > 0) {
+        const lastElement = focusableElements[focusableElements.length - 1];
+        lastElement.focus();
+        expect(document.activeElement).toBe(lastElement);
+
+        fireEvent.keyDown(document, { key: "Tab", shiftKey: false });
+
+        await waitFor(() => {
+          expect(document.activeElement).toBe(focusableElements[0]);
+        });
+      }
     });
   });
 });

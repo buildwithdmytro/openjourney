@@ -431,11 +431,12 @@ fake-store unit test + postgres integration test (the M10/M11 template).
    — done: CommandPalette.tsx component with all 22 views, keyboard-driven filtering/navigation, 13 component tests passing; AppShell listens for ⌘K/Ctrl-K; AppShell.test.tsx verifies Cmd+K and Ctrl+K open palette, keyboard navigation works; 246 total tests passing, build green
 
 ### Milestone 17.7 — Mobile & responsive
-1. [ ] **Collapsible mobile nav**: turn the sidebar into a hamburger/off-canvas drawer ≤760px (replacing
+1. [x] **Collapsible mobile nav**: turn the sidebar into a hamburger/off-canvas drawer ≤760px (replacing
    the stuck 2-col grid, `styles.css:294`), with focus trap + Esc + backdrop, reusing the Modal focus
    utilities.
    *Done when:* below the breakpoint the nav is a toggled drawer (trapped focus, Esc closes); above it is
    the sidebar; a test asserts the toggle and the trapped-focus behavior.
+   — done: useMediaQuery + useFocusTrap hooks created; AppShell adds mobile nav drawer at ≤760px with hamburger button; 5 new tests verify toggle, Esc-close, view-select close, and focus trap; 251/251 tests green
 2. [ ] **Journey builder narrow-viewport story**: a graceful fallback for the desktop-locked builder
    (`styles.css:210` `min-width:900px`) — a read-only/scrollable summary or an explicit "best viewed on a
    larger screen" affordance instead of silent horizontal scroll.
