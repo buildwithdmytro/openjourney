@@ -347,12 +347,13 @@ model). No new npm dep; framework-free.
    *Done when:* a ClickHouse sink whose host rebinds to `169.254.169.254`/private IP after validation is
    refused at dial; a second batch to the same sink succeeds (no "connection closed"); tests cover both.
    — done: DialContext guard added at sinks.go:204; defer Close() removed; TestClickHouseSinkConnectionReuse verifies reuse
-3. [ ] **Scheduler in-flight guard (finding 5).** `ClaimDueConnectorPipeline`
+3. [x] **Scheduler in-flight guard (finding 5).** `ClaimDueConnectorPipeline`
    (`internal/postgres/connectors.go:223`) skips a due pipeline that already has an unfinished run before
    advancing `next_run_at` (add `AND NOT EXISTS (SELECT 1 FROM connector_runs r WHERE r.pipeline_id=
    connector_pipelines.id AND r.status='running')`, or an equivalent queued/running job guard).
    *Done when:* a pipeline whose run outlives its interval does not accumulate overlapping jobs (one
    in-flight at a time); the SKIP-LOCKED single-tick property still holds; a test proves both.
+   — done: added NOT EXISTS guard to ClaimDueConnectorPipeline SELECT query; TestSchedulerSkipsInFlightPipelineRuns verifies no overlap
 4. [ ] **Native connector raw-secret rejection + config redaction (finding 7).** Reject non-`_ref`
    credential keys (`access_key`/`secret_key`/`password`/`hmac_secret`/…) for `s3`/`clickhouse`/`kafka`/
    `webhook` transports at `UpsertExtensionConfig` (`internal/postgres/extensions.go:386`, mirror the

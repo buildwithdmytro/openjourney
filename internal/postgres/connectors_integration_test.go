@@ -257,3 +257,73 @@ func TestClaimDueConnectorPipelineEnqueuesOnce(t *testing.T) {
 		t.Fatalf("next_run_at did not advance: %s", nextRun)
 	}
 }
+
+func TestSchedulerSkipsInFlightPipelineRuns(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	key := fmt.Sprintf("scheduler-inflight-%d", time.Now().UnixNano())
+	if err := store.EnsureDevelopmentTenant(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	p, err := store.Authenticate(ctx, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ext, err := store.CreateExtension(ctx, p, domain.Extension{Name: "inflight-connector-" + key, Publisher: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	interval := 60
+	pipeline, err := store.CreateConnectorPipeline(ctx, p, domain.ConnectorPipeline{
+		AppID: p.AppID, ConnectorExtensionID: ext.ID, Name: "inflight-pipeline-" + key,
+		Direction: "source", Status: "enabled", ScheduleEnabled: true,
+		ScheduleIntervalSeconds: &interval,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.pool.Exec(ctx, `UPDATE connector_pipelines SET status='enabled', next_run_at=now()-interval '1 second' WHERE id=$1`, pipeline.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	var versionID string
+	if err := store.pool.QueryRow(ctx, `INSERT INTO connector_pipeline_versions(pipeline_id,version,mapping_key,mapping,definition_sha)
+		VALUES($1,1,'connectors/test.json','{}'::jsonb,'test') RETURNING id`, pipeline.ID).Scan(&versionID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.pool.Exec(ctx, `UPDATE connector_pipelines SET current_version_id=$2 WHERE id=$1`, pipeline.ID, versionID); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := store.pool.Exec(ctx, `INSERT INTO connector_runs(tenant_id,workspace_id,app_id,pipeline_id,pipeline_version_id,job_type,status)
+		VALUES($1,$2,$3,$4,$5,'warehouse.sync','running')`, p.TenantID, p.WorkspaceID, p.AppID, pipeline.ID, versionID); err != nil {
+		t.Fatal(err)
+	}
+
+	found, err := store.ClaimDueConnectorPipeline(ctx)
+	if err != nil {
+		t.Fatalf("claim due pipeline: %v", err)
+	}
+	if found {
+		t.Fatal("scheduler claimed a pipeline with an in-flight run, want skipped")
+	}
+
+	var jobs int
+	if err := store.pool.QueryRow(ctx, `SELECT count(*) FROM operation_jobs WHERE workspace_id=$1 AND job_type='warehouse.sync' AND payload->>'pipeline_id'=$2`, p.WorkspaceID, pipeline.ID).Scan(&jobs); err != nil {
+		t.Fatal(err)
+	}
+	if jobs != 0 {
+		t.Fatalf("enqueued %d jobs when pipeline in-flight, want 0", jobs)
+	}
+}

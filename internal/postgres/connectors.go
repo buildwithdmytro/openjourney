@@ -233,6 +233,7 @@ func (s *Store) ClaimDueConnectorPipeline(ctx context.Context) (bool, error) {
 		FROM connector_pipelines
 		WHERE status='enabled' AND schedule_enabled
 		  AND schedule_interval_seconds > 0 AND next_run_at <= now()
+		  AND NOT EXISTS (SELECT 1 FROM connector_runs r WHERE r.pipeline_id=connector_pipelines.id AND r.status='running')
 		ORDER BY next_run_at,id
 		FOR UPDATE SKIP LOCKED LIMIT 1`).Scan(
 		&pipelineID, &tenantID, &workspaceID, &appID, &direction, &intervalSeconds)
