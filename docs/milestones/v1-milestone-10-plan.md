@@ -394,10 +394,12 @@ winner by `identity_namespaces.priority` + policy version.
    — done: `warehouse.sync` maps bounded driver pages into batched `AcceptEvents`, writes append-only running/terminal `connector_runs`, quarantines rejected rows, and `TestWarehouseSyncIsEventSourcedAndIdempotent` proves replay deduplication; full Go build/vet/test and tidy pass with no dependency diff.
 
 ### Milestone 15.4 — Warehouse & cloud-stream sources
-1. **`clickhouse` source driver** (Recipe 6.45, `clickhouse-go`): a bounded parameterized `SELECT` with a
+1. [x] **`clickhouse` source driver** (Recipe 6.45, `clickhouse-go`): a bounded parameterized `SELECT` with a
    watermark cursor (e.g. `updated_at > $cursor`), rows → events via the executor.
    *Done when:* a ClickHouse source run ingests rows past a watermark and advances the cursor; re-run is
-   idempotent; integration test (or a fake-backed unit test) green.
+   idempotent; integration test (or a fake-backed unit test) green. — done: bounded parameterized ClickHouse
+   source driver with SSRF/allowlist and `*_ref` validation; deterministic watermark/cursor and unsafe-query
+   tests pass; full Go build/vet/test and tidy show no dependency diff.
 2. **`kafka` cloud event-stream source** (Recipe 6.45, `franz-go`): a bounded consumer that maps stream
    records → events, committing offsets only after `AcceptEvents` succeeds (at-least-once, idempotent).
    *Done when:* consumed records become accepted events exactly once per idempotency key even on redelivery;

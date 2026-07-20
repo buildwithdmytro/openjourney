@@ -35,7 +35,7 @@ func DefaultRegistry() *Registry {
 	fake := NewFakeDriver()
 	stub := &unimplementedDriver{}
 	return NewRegistry(map[string]ConnectorDriver{
-		"fake": fake, "s3": NewS3Driver(), "clickhouse": stub, "kafka": stub, "webhook": stub,
+		"fake": fake, "s3": NewS3Driver(), "clickhouse": NewClickHouseDriver(), "kafka": stub, "webhook": stub,
 	}, fake)
 }
 
