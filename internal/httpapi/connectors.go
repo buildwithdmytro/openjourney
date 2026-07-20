@@ -130,3 +130,12 @@ func (s *Server) publishConnectorPipeline(w http.ResponseWriter, r *http.Request
 	}
 	writeJSON(w, http.StatusCreated, out)
 }
+
+func (s *Server) replayConnectorRun(w http.ResponseWriter, r *http.Request) {
+	jobID, err := s.store.ReplayConnectorRun(r.Context(), principalFrom(r), r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "connector_replay_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]string{"job_id": jobID})
+}

@@ -90,6 +90,7 @@ type Store interface {
 	UpdateConnectorPipeline(context.Context, domain.Principal, domain.ConnectorPipeline) (domain.ConnectorPipeline, error)
 	PublishConnectorPipeline(context.Context, domain.Principal, string, string, string, json.RawMessage, string) (domain.ConnectorPipelineVersion, error)
 	RecordConnectorRun(context.Context, domain.ConnectorRun) error
+	ReplayConnectorRun(context.Context, domain.Principal, string) (string, error)
 
 	CreateSendingIdentity(context.Context, domain.Principal, domain.SendingIdentity) (domain.SendingIdentity, error)
 	GetSendingIdentity(context.Context, domain.Principal, string) (domain.SendingIdentity, error)

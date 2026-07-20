@@ -27,6 +27,23 @@ type sourceStore struct {
 	acceptErr error
 }
 
+type governedSourceStore struct {
+	*sourceStore
+	budget     int64
+	activities []domain.ExtensionActivity
+}
+
+func (s *governedSourceStore) GetExtensionInvocationCountLastMin(context.Context, string, string, string) (int, error) {
+	return len(s.activities), nil
+}
+func (s *governedSourceStore) GetExtensionBudgetUsage(context.Context, string, string, string, string) (int64, error) {
+	return s.budget, nil
+}
+func (s *governedSourceStore) RecordExtensionActivity(_ context.Context, _ domain.Principal, activity domain.ExtensionActivity) (domain.ExtensionActivity, error) {
+	s.activities = append(s.activities, activity)
+	return activity, nil
+}
+
 func (s *sourceStore) GetConnectorPipeline(context.Context, domain.Principal, string) (domain.ConnectorPipeline, error) {
 	return s.pipeline, nil
 }
@@ -127,6 +144,45 @@ func TestWarehouseSyncCommitsStreamOnlyAfterAcceptEvents(t *testing.T) {
 	}
 	if driver.commits != 0 {
 		t.Fatal("stream records were committed after AcceptEvents failed")
+	}
+}
+
+func TestWarehouseSyncDisabledPipelineIsRefusedAndAudited(t *testing.T) {
+	fake := connector.NewFakeDriver()
+	registry := connector.NewRegistry(map[string]connector.ConnectorDriver{"fake": fake}, fake)
+	mapping, _ := json.Marshal(map[string]any{"external_id": "email"})
+	config, _ := json.Marshal(map[string]any{"driver": "fake"})
+	store := &sourceStore{
+		pipeline: domain.ConnectorPipeline{ID: "pipeline", AppID: "app", ConnectorExtensionID: "extension", Status: "disabled", CurrentVersionID: stringPtr("version")},
+		version:  domain.ConnectorPipelineVersion{ID: "version", Version: 1, Mapping: mapping},
+		config:   domain.ExtensionConfig{ExtensionID: "extension", Config: config},
+	}
+	err := executeWarehouseSyncWithRegistry(context.Background(), store, &sourceBlobStore{values: map[string][]byte{}}, warehouseSyncInput{PipelineID: "pipeline"}, registry)
+	if err == nil || len(store.runs) != 2 || store.runs[1].Status != "failed" {
+		t.Fatalf("err=%v runs=%+v", err, store.runs)
+	}
+	if len(fake.Writes) != 0 {
+		t.Fatal("disabled pipeline reached driver")
+	}
+}
+
+func TestWarehouseSyncBudgetDenialIsAudited(t *testing.T) {
+	fake := connector.NewFakeDriver()
+	fake.Rows = []connector.Row{{"email": "a@example.com"}}
+	registry := connector.NewRegistry(map[string]connector.ConnectorDriver{"fake": fake}, fake)
+	mapping, _ := json.Marshal(map[string]any{"external_id": "email"})
+	config, _ := json.Marshal(map[string]any{"driver": "fake"})
+	store := &governedSourceStore{sourceStore: &sourceStore{
+		pipeline: domain.ConnectorPipeline{ID: "pipeline", AppID: "app", ConnectorExtensionID: "extension", Status: "draft", CurrentVersionID: stringPtr("version")},
+		version:  domain.ConnectorPipelineVersion{ID: "version", Version: 1, Mapping: mapping},
+		config:   domain.ExtensionConfig{ExtensionID: "extension", MonthlyBudgetCents: 1, Config: config},
+	}, budget: 1}
+	err := executeWarehouseSyncWithRegistry(context.Background(), store, &sourceBlobStore{values: map[string][]byte{}}, warehouseSyncInput{PipelineID: "pipeline"}, registry)
+	if err == nil || len(store.runs) != 2 || store.runs[1].Status != "failed" || len(store.activities) != 1 || store.activities[0].PolicyDecision != "denied_budget" {
+		t.Fatalf("err=%v runs=%+v activities=%+v", err, store.runs, store.activities)
+	}
+	if len(fake.Rows) != 1 {
+		t.Fatal("budget denial altered source rows")
 	}
 }
 

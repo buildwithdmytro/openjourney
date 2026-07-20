@@ -483,13 +483,17 @@ winner by `identity_namespaces.priority` + policy version.
    identity HTTP command tests pass; full Go build/vet/test and tidy show no dependency diff.
 
 ### Milestone 15.10 — Governance: runs audit, budget/rate, kill switch, quarantine
-1. **Connector governance**: every source/sink/export run writes an append-only `connector_runs` row on every
+1. [x] **Connector governance**: every source/sink/export run writes an append-only `connector_runs` row on every
    path (running → succeeded/failed/dead); per-pipeline/connector budget + rate + kill switch reuse the M9
    extension governance (`host.go` circuit breaker + `extension_configs` limits); reject-quarantine + a replay
    control (re-run a failed run's rejected rows).
    *Done when:* a disabled connector's pipeline run is refused + audited; exceeding a per-connector budget is
    `denied_budget` + audited; a run's rejected rows can be replayed; `connector_runs` rejects UPDATE/DELETE;
-   tests cover each.
+   tests cover each. — done: native source/sink/export paths now record running/terminal append-only audits,
+   enforce disabled/budget/rate gates with extension activity decisions, and expose rejected-run replay via
+   `POST /v1/connectors/runs/{id}/replay`; `TestWarehouseSyncDisabledPipelineIsRefusedAndAudited`,
+   `TestWarehouseSyncBudgetDenialIsAudited`, and the PostgreSQL append-only/replay integration test cover
+   the controls, with full Go build/vet/test and tidy showing no dependency diff.
 
 ### Milestone 15.11 — UI (Connectors)
 1. **Connectors section**: a `web/src/sections/Connectors.tsx` (list connectors, create source/sink/export

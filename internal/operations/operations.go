@@ -73,6 +73,70 @@ type ExtensionInvoker interface {
 	InvokeWithScope(context.Context, domain.Principal, string, string, string, json.RawMessage) (json.RawMessage, string, error)
 }
 
+// connectorGovernance is implemented by the PostgreSQL store. Keeping this
+// optional preserves the small in-memory stores used by executor tests while
+// ensuring native drivers use the same limits and audit table as the M9 host.
+type connectorGovernance interface {
+	GetExtensionInvocationCountLastMin(context.Context, string, string, string) (int, error)
+	GetExtensionBudgetUsage(context.Context, string, string, string, string) (int64, error)
+	RecordExtensionActivity(context.Context, domain.Principal, domain.ExtensionActivity) (domain.ExtensionActivity, error)
+}
+
+type terminalConnectorError struct{ err error }
+
+func (e *terminalConnectorError) Error() string           { return e.err.Error() }
+func (e *terminalConnectorError) Unwrap() error           { return e.err }
+func (e *terminalConnectorError) TerminalOperation() bool { return true }
+
+func connectorRunFailure(ctx context.Context, store interface {
+	RecordConnectorRun(context.Context, domain.ConnectorRun) error
+}, run domain.ConnectorRun, err error) error {
+	run.Status = "failed"
+	run.Error = err.Error()
+	finished := time.Now().UTC()
+	run.FinishedAt = &finished
+	if recordErr := store.RecordConnectorRun(ctx, run); recordErr != nil {
+		return fmt.Errorf("%v; record connector failure: %w", err, recordErr)
+	}
+	return err
+}
+
+func governNativeConnectorCall(ctx context.Context, store any, p domain.Principal, cfg domain.ExtensionConfig, version int, invocation string) error {
+	gov, ok := store.(connectorGovernance)
+	if !ok {
+		return nil
+	}
+	decision := "allowed"
+	var denial error
+	if cfg.RatePerMin > 0 {
+		count, err := gov.GetExtensionInvocationCountLastMin(ctx, p.TenantID, p.WorkspaceID, cfg.ExtensionID)
+		if err != nil {
+			return err
+		}
+		if count >= cfg.RatePerMin {
+			decision, denial = "denied_rate", extension.ErrRateLimitExceeded
+		}
+	}
+	if denial == nil && cfg.MonthlyBudgetCents > 0 {
+		usage, err := gov.GetExtensionBudgetUsage(ctx, p.TenantID, p.WorkspaceID, cfg.ExtensionID, time.Now().UTC().Format("2006-01"))
+		if err != nil {
+			return err
+		}
+		if usage >= cfg.MonthlyBudgetCents {
+			decision, denial = "denied_budget", extension.ErrBudgetExceeded
+		}
+	}
+	activity := domain.ExtensionActivity{TenantID: p.TenantID, WorkspaceID: p.WorkspaceID, ExtensionID: cfg.ExtensionID,
+		ExtensionVersion: version, Kind: "connector", Invocation: invocation, PolicyDecision: decision}
+	if _, err := gov.RecordExtensionActivity(ctx, p, activity); err != nil {
+		return err
+	}
+	if denial != nil {
+		return &terminalConnectorError{err: denial}
+	}
+	return nil
+}
+
 func Drain(ctx context.Context, store Store, blobs ports.BlobStore, maxItems int, watch bool) (int, error) {
 	return DrainWithGateway(ctx, store, blobs, nil, maxItems, watch)
 }
@@ -261,8 +325,48 @@ func execute(ctx context.Context, store Store, blobs ports.BlobStore, gateway AI
 		if input.PipelineID == "" {
 			return errors.New("export.replay requires pipeline_id")
 		}
-		_, err := cs.ReplayExportEvents(ctx, input.TenantID, input.WorkspaceID, input.AppID, input.PipelineID, from, to)
-		return err
+		runStore, ok := store.(ConnectorStore)
+		if !ok {
+			return errors.New("operation store does not support connector run auditing")
+		}
+		p := domain.Principal{TenantID: input.TenantID, WorkspaceID: input.WorkspaceID, AppID: input.AppID, ActorType: "connector"}
+		pipeline, err := runStore.GetConnectorPipeline(ctx, p, input.PipelineID)
+		if err != nil {
+			return err
+		}
+		if pipeline.CurrentVersionID == nil {
+			return errors.New("connector pipeline has no published version")
+		}
+		version, err := runStore.GetConnectorPipelineVersion(ctx, p, *pipeline.CurrentVersionID)
+		if err != nil {
+			return err
+		}
+		cfg, err := runStore.GetExtensionConfig(ctx, p, pipeline.ConnectorExtensionID)
+		if err != nil {
+			return err
+		}
+		run := domain.ConnectorRun{TenantID: input.TenantID, WorkspaceID: input.WorkspaceID, AppID: pipeline.AppID, PipelineID: pipeline.ID, PipelineVersionID: version.ID, JobType: "export.replay", Status: "running", StartedAt: time.Now().UTC()}
+		if err := runStore.RecordConnectorRun(ctx, run); err != nil {
+			return err
+		}
+		if pipeline.Status == "disabled" {
+			return connectorRunFailure(ctx, runStore, run, &terminalConnectorError{err: errors.New("connector pipeline is disabled")})
+		}
+		if cfg.Status == "disabled" {
+			return connectorRunFailure(ctx, runStore, run, &terminalConnectorError{err: extension.ErrExtensionConfigDisabled})
+		}
+		if err := governNativeConnectorCall(ctx, store, p, cfg, version.Version, "replay"); err != nil {
+			return connectorRunFailure(ctx, runStore, run, err)
+		}
+		count, err := cs.ReplayExportEvents(ctx, input.TenantID, input.WorkspaceID, input.AppID, input.PipelineID, from, to)
+		if err != nil {
+			return connectorRunFailure(ctx, runStore, run, err)
+		}
+		run.RowsOut = int64(count)
+		run.Status = "succeeded"
+		finished := time.Now().UTC()
+		run.FinishedAt = &finished
+		return runStore.RecordConnectorRun(ctx, run)
 	default:
 		return fmt.Errorf("unsupported operation type %q", jobType)
 	}
@@ -308,17 +412,27 @@ func executeReverseETLWithRegistryAndInvoker(ctx context.Context, store ReverseE
 	if err != nil {
 		return err
 	}
+	run := domain.ConnectorRun{TenantID: job.TenantID, WorkspaceID: job.WorkspaceID, AppID: pipeline.AppID, PipelineID: pipeline.ID, PipelineVersionID: version.ID, JobType: "reverse_etl.run", Status: "running", StartedAt: time.Now().UTC()}
+	if err := store.RecordConnectorRun(ctx, run); err != nil {
+		return err
+	}
 	resolved, err := extension.ResolveConfigMap(cfg.Config)
 	if err != nil {
-		return fmt.Errorf("connector config: %w", err)
+		return connectorRunFailure(ctx, store, run, fmt.Errorf("connector config: %w", err))
+	}
+	if pipeline.Status == "disabled" {
+		return connectorRunFailure(ctx, store, run, &terminalConnectorError{err: errors.New("connector pipeline is disabled")})
+	}
+	if cfg.Status == "disabled" {
+		return connectorRunFailure(ctx, store, run, &terminalConnectorError{err: extension.ErrExtensionConfigDisabled})
 	}
 	var mapping map[string]any
 	if err := json.Unmarshal(version.Mapping, &mapping); err != nil {
-		return fmt.Errorf("pipeline mapping: %w", err)
+		return connectorRunFailure(ctx, store, run, fmt.Errorf("pipeline mapping: %w", err))
 	}
 	fields, err := mappedFields(mapping)
 	if err != nil {
-		return err
+		return connectorRunFailure(ctx, store, run, err)
 	}
 	dsl := mapping["audience_dsl"]
 	if dsl == nil {
@@ -326,13 +440,9 @@ func executeReverseETLWithRegistryAndInvoker(ctx context.Context, store ReverseE
 	}
 	dslBytes, err := json.Marshal(dsl)
 	if err != nil || len(dslBytes) == 0 || string(dslBytes) == "null" {
-		return errors.New("reverse-ETL mapping requires audience_dsl")
+		return connectorRunFailure(ctx, store, run, errors.New("reverse-ETL mapping requires audience_dsl"))
 	}
 	rows, err := store.MaterializeConnectorRows(ctx, p, dslBytes, fields)
-	run := domain.ConnectorRun{TenantID: job.TenantID, WorkspaceID: job.WorkspaceID, AppID: pipeline.AppID, PipelineID: pipeline.ID, PipelineVersionID: version.ID, JobType: "reverse_etl.run", Status: "running", StartedAt: time.Now().UTC()}
-	if err := store.RecordConnectorRun(ctx, run); err != nil {
-		return err
-	}
 	if err != nil {
 		return finishReverseETL(ctx, store, run, err)
 	}
@@ -354,6 +464,11 @@ func executeReverseETLWithRegistryAndInvoker(ctx context.Context, store ReverseE
 		end := start + batchSize
 		if end > len(rows) {
 			end = len(rows)
+		}
+		if !remoteConnector(resolved) {
+			if err := governNativeConnectorCall(ctx, store, p, cfg, version.Version, "write"); err != nil {
+				return finishReverseETL(ctx, store, run, err)
+			}
 		}
 		written, writeErr := driver.Write(ctx, resolved, rows[start:end])
 		if writeErr != nil {
@@ -436,33 +551,45 @@ func executeWarehouseSyncWithRegistryAndInvoker(ctx context.Context, store Conne
 	if err != nil {
 		return err
 	}
+	run := domain.ConnectorRun{TenantID: job.TenantID, WorkspaceID: job.WorkspaceID, AppID: pipeline.AppID, PipelineID: pipeline.ID, PipelineVersionID: version.ID, JobType: "warehouse.sync", Status: "running", Cursor: job.Cursor, StartedAt: time.Now().UTC()}
+	if err := store.RecordConnectorRun(ctx, run); err != nil {
+		return err
+	}
 	resolved, err := extension.ResolveConfigMap(cfg.Config)
 	if err != nil {
-		return fmt.Errorf("connector config: %w", err)
+		return connectorRunFailure(ctx, store, run, fmt.Errorf("connector config: %w", err))
+	}
+	if pipeline.Status == "disabled" {
+		return connectorRunFailure(ctx, store, run, &terminalConnectorError{err: errors.New("connector pipeline is disabled")})
+	}
+	if cfg.Status == "disabled" {
+		return connectorRunFailure(ctx, store, run, &terminalConnectorError{err: extension.ErrExtensionConfigDisabled})
 	}
 	var mapping map[string]any
 	if err := json.Unmarshal(version.Mapping, &mapping); err != nil {
-		return fmt.Errorf("pipeline mapping: %w", err)
+		return connectorRunFailure(ctx, store, run, fmt.Errorf("pipeline mapping: %w", err))
 	}
 	resolved["mapping"] = mapping
 	if registry == nil {
-		return errors.New("connector registry is required")
+		return connectorRunFailure(ctx, store, run, errors.New("connector registry is required"))
 	}
 	driver := registry.For(stringValue(resolved, "driver"))
 	if remoteConnector(resolved) {
 		if invoker == nil {
-			return errors.New("remote connector requires extension host")
+			return connectorRunFailure(ctx, store, run, errors.New("remote connector requires extension host"))
 		}
 		driver = connector.NewRemoteDriver(invoker, p, pipeline.ConnectorExtensionID)
 	}
+	if !remoteConnector(resolved) {
+		if err := governNativeConnectorCall(ctx, store, p, cfg, version.Version, "read"); err != nil {
+			return connectorRunFailure(ctx, store, run, err)
+		}
+	}
 	rows, nextCursor, err := driver.Read(ctx, resolved, job.Cursor)
 	if err != nil {
-		return err
+		return connectorRunFailure(ctx, store, run, err)
 	}
-	run := domain.ConnectorRun{TenantID: job.TenantID, WorkspaceID: job.WorkspaceID, AppID: pipeline.AppID, PipelineID: pipeline.ID, PipelineVersionID: version.ID, JobType: "warehouse.sync", Status: "running", Cursor: job.Cursor, RowsIn: int64(len(rows)), StartedAt: time.Now().UTC()}
-	if err := store.RecordConnectorRun(ctx, run); err != nil {
-		return err
-	}
+	run.RowsIn = int64(len(rows))
 	valid, rejected := makeSourceEvents(rows, resolved, pipeline.ConnectorExtensionID, version.Version, job.Cursor)
 	commit := true
 	batchSize := 75
@@ -487,7 +614,7 @@ func executeWarehouseSyncWithRegistryAndInvoker(ctx context.Context, store Conne
 	if commit {
 		if committer, ok := driver.(connector.Committer); ok {
 			if err := committer.Commit(ctx, rows); err != nil {
-				return fmt.Errorf("commit source records: %w", err)
+				return connectorRunFailure(ctx, store, run, fmt.Errorf("commit source records: %w", err))
 			}
 		}
 	}
@@ -499,7 +626,7 @@ func executeWarehouseSyncWithRegistryAndInvoker(ctx context.Context, store Conne
 		data, _ := json.Marshal(rejected)
 		run.RejectBlobKey = fmt.Sprintf("connectors/%s/%s/rejected/%s.json", job.TenantID, pipeline.ID, nextCursor)
 		if err := blobs.Put(ctx, run.RejectBlobKey, data, "application/json"); err != nil {
-			return err
+			return connectorRunFailure(ctx, store, run, err)
 		}
 	}
 	run.Status = "succeeded"

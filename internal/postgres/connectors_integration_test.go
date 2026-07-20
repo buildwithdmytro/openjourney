@@ -124,6 +124,61 @@ func TestConnectorPipelineStoreRoundTrip(t *testing.T) {
 	}
 }
 
+func TestConnectorRunsAreAppendOnlyAndRejectedRunsCanReplay(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	key := fmt.Sprintf("connector-run-%d", time.Now().UnixNano())
+	if err := store.EnsureDevelopmentTenant(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	p, err := store.Authenticate(ctx, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ext, err := store.CreateExtension(ctx, p, domain.Extension{Name: "run-connector-" + key, Publisher: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pipeline, err := store.CreateConnectorPipeline(ctx, p, domain.ConnectorPipeline{AppID: p.AppID, ConnectorExtensionID: ext.ID, Name: "run-pipeline-" + key, Direction: "source"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var versionID string
+	if err := store.pool.QueryRow(ctx, `INSERT INTO connector_pipeline_versions(pipeline_id,version,mapping_key,mapping,definition_sha)
+		VALUES($1,1,'connectors/test.json','{}'::jsonb,'test') RETURNING id`, pipeline.ID).Scan(&versionID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.pool.Exec(ctx, `UPDATE connector_pipelines SET current_version_id=$2 WHERE id=$1`, pipeline.ID, versionID); err != nil {
+		t.Fatal(err)
+	}
+	var runID string
+	if err := store.pool.QueryRow(ctx, `INSERT INTO connector_runs(tenant_id,workspace_id,app_id,pipeline_id,pipeline_version_id,job_type,status,cursor,reject_blob_key)
+		VALUES($1,$2,$3,$4,$5,'warehouse.sync','failed','object.csv:0','connectors/rejected.json') RETURNING id`, p.TenantID, p.WorkspaceID, p.AppID, pipeline.ID, versionID).Scan(&runID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.pool.Exec(ctx, `UPDATE connector_runs SET error='mutated' WHERE id=$1`, runID); err == nil {
+		t.Fatal("connector_runs accepted UPDATE")
+	}
+	if _, err := store.pool.Exec(ctx, `DELETE FROM connector_runs WHERE id=$1`, runID); err == nil {
+		t.Fatal("connector_runs accepted DELETE")
+	}
+	jobID, err := store.ReplayConnectorRun(ctx, p, runID)
+	if err != nil || jobID == "" {
+		t.Fatalf("replay job=%q err=%v", jobID, err)
+	}
+}
+
 func TestClaimDueConnectorPipelineEnqueuesOnce(t *testing.T) {
 	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
 	if databaseURL == "" {

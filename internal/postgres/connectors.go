@@ -93,6 +93,32 @@ func (s *Store) RecordConnectorRun(ctx context.Context, run domain.ConnectorRun)
 	return err
 }
 
+// ReplayConnectorRun re-queues the source page identified by a failed run's
+// cursor. Source idempotency keys make this safe when the page contains rows
+// that were already accepted; the quarantined rows are retried after the
+// operator fixes the mapping or destination condition.
+func (s *Store) ReplayConnectorRun(ctx context.Context, p domain.Principal, runID string) (string, error) {
+	var tenantID, workspaceID, appID, pipelineID, cursor, rejectBlob string
+	err := s.pool.QueryRow(ctx, `SELECT tenant_id,workspace_id,app_id,pipeline_id,cursor,reject_blob_key
+		FROM connector_runs WHERE id=$1 AND tenant_id=$2 AND workspace_id=$3
+			AND status='failed' AND reject_blob_key IS NOT NULL`, runID, p.TenantID, p.WorkspaceID).
+		Scan(&tenantID, &workspaceID, &appID, &pipelineID, &cursor, &rejectBlob)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	if err != nil {
+		return "", err
+	}
+	payload, err := json.Marshal(map[string]any{"tenant_id": tenantID, "workspace_id": workspaceID, "app_id": appID, "pipeline_id": pipelineID, "cursor": cursor, "replay_run_id": runID, "reject_blob_key": rejectBlob})
+	if err != nil {
+		return "", err
+	}
+	var jobID string
+	err = s.pool.QueryRow(ctx, `INSERT INTO operation_jobs(tenant_id,workspace_id,job_type,payload)
+		VALUES($1,$2,'warehouse.sync',$3) RETURNING id`, tenantID, workspaceID, payload).Scan(&jobID)
+	return jobID, err
+}
+
 func (s *Store) UpdateConnectorPipeline(ctx context.Context, p domain.Principal, pipeline domain.ConnectorPipeline) (domain.ConnectorPipeline, error) {
 	if pipeline.Name == "" || pipeline.ConnectorExtensionID == "" {
 		return domain.ConnectorPipeline{}, errors.New("connector pipeline name and connector are required")
