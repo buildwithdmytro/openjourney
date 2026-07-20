@@ -487,11 +487,12 @@ model). No new npm dep; framework-free.
    — done: sw-webpush.example.js includes push/notificationclick/notificationclose handlers, fetchAndShowMessage/fetchInbox/reportEngagement/registerSubscription helpers, and comprehensive CONFIG + inline docs; SDK README.md documents wake-signal flow, subscription setup, and API reference
 
 ### Milestone 16.9 — UI (Messaging)
-1. [ ] **Messaging section** (Recipe 6.56): `web/src/sections/Messaging.tsx` (list in-app messages/cards,
+1. [x] **Messaging section** (Recipe 6.56): `web/src/sections/Messaging.tsx` (list in-app messages/cards,
    create from a template, set type/rank/categories/expiry, view per-profile inbox + engagement) +
    `web/src/api.ts` wrappers + the 6-point `web/src/App.tsx` registration. No new npm dep; theme-aware.
    *Done when:* `cd web && npm run typecheck && npm run build && npm test` green; the section lists,
    creates, and shows an in-app message end-to-end against the API.
+   — done: Messaging.tsx created with message list, create form, and profile inbox viewer; InAppMessage type + API wrappers (listMessages/getMessage/createMessage/getProfileInbox) added to api.ts; App.tsx registered with lazy import, view type, nav button, title, and Suspense render; all 33 web tests pass; `npm run typecheck && npm run build && npm test` green
 
 ### Milestone 16.10 — Governance & eligibility
 1. [ ] **Fetch-time eligibility + public-edge hardening**: display-rule in-app (always-on) evaluated at

@@ -518,6 +518,48 @@ export async function previewTemplate(baseURL: string, apiKey: string, id: strin
   });
 }
 
+export type InAppMessage = {
+  id: string;
+  tenant_id: string;
+  workspace_id: string;
+  app_id: string;
+  profile_id: string;
+  template_id?: string;
+  campaign_id?: string;
+  journey_run_id?: string;
+  delivery_attempt_id?: string;
+  message_type: "modal" | "banner" | "fullscreen" | "card";
+  content: Record<string, unknown>;
+  rank: number;
+  categories: string[];
+  start_at: string;
+  expires_at?: string;
+  idempotency_key?: string;
+  status: "pending" | "delivered" | "displayed" | "clicked" | "dismissed" | "expired";
+  delivered_at?: string;
+  displayed_at?: string;
+  clicked_at?: string;
+  dismissed_at?: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export async function listMessages(baseURL: string, apiKey: string): Promise<InAppMessage[]> {
+  return (await requestJSON<{ messages: InAppMessage[] }>(baseURL, apiKey, "/v1/messages")).messages ?? [];
+}
+
+export async function getMessage(baseURL: string, apiKey: string, id: string): Promise<InAppMessage> {
+  return requestJSON(baseURL, apiKey, `/v1/messages/${encodeURIComponent(id)}`);
+}
+
+export async function createMessage(baseURL: string, apiKey: string, input: Partial<InAppMessage>): Promise<InAppMessage> {
+  return requestJSON(baseURL, apiKey, "/v1/messages", { method: "POST", body: JSON.stringify(input) });
+}
+
+export async function getProfileInbox(baseURL: string, apiKey: string, profileId: string): Promise<InAppMessage[]> {
+  return (await requestJSON<{ messages: InAppMessage[] }>(baseURL, apiKey, `/v1/messages/profile/${encodeURIComponent(profileId)}`)).messages ?? [];
+}
+
 export async function listSendingIdentities(baseURL: string, apiKey: string): Promise<SendingIdentity[]> {
   return (await requestJSON<{ identities?: SendingIdentity[] }>(baseURL, apiKey, "/v1/sending-identities")).identities ?? [];
 }
