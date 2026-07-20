@@ -44,6 +44,7 @@ import {
 } from "../api";
 import { journeyColors } from "../tokens";
 import { ConfirmDialog } from "../components";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 
 const apiBase = import.meta.env.VITE_API_BASE_URL || "/api";
 
@@ -175,6 +176,7 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [isDirty, setIsDirty] = useState(false);
   const [confirmDiscardChanges, setConfirmDiscardChanges] = useState(false);
+  const isNarrowViewport = useMediaQuery("(max-width: 760px)");
   const undoHistory = useRef<Array<{ nodes: FlowNode[]; edges: FlowEdge[] }>>([]);
   const redoHistory = useRef<Array<{ nodes: FlowNode[]; edges: FlowEdge[] }>>([]);
   const selectInsertionEdge = useCallback((edgeID: string) => {
@@ -1132,6 +1134,11 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
         isDangerous={true}
       />
       <section className="journey-workspace">
+        {isNarrowViewport && (
+          <div style={{ padding: "12px 18px", backgroundColor: "var(--color-warn-bg)", borderBottom: "1px solid var(--color-warn)", color: "var(--color-warn-text)" }} role="alert">
+            <strong>This journey builder is best viewed on a larger screen.</strong> You can still view and edit this journey on a desktop or landscape tablet for the optimal experience.
+          </div>
+        )}
         <div className="journey-topbar">
           <div className="journey-title-block">
             <button onClick={closeEditor} className="icon-button" aria-label="Back to journeys">←</button>

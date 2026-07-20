@@ -437,11 +437,12 @@ fake-store unit test + postgres integration test (the M10/M11 template).
    *Done when:* below the breakpoint the nav is a toggled drawer (trapped focus, Esc closes); above it is
    the sidebar; a test asserts the toggle and the trapped-focus behavior.
    — done: useMediaQuery + useFocusTrap hooks created; AppShell adds mobile nav drawer at ≤760px with hamburger button; 5 new tests verify toggle, Esc-close, view-select close, and focus trap; 251/251 tests green
-2. [ ] **Journey builder narrow-viewport story**: a graceful fallback for the desktop-locked builder
+2. [x] **Journey builder narrow-viewport story**: a graceful fallback for the desktop-locked builder
    (`styles.css:210` `min-width:900px`) — a read-only/scrollable summary or an explicit "best viewed on a
    larger screen" affordance instead of silent horizontal scroll.
    *Done when:* on a narrow viewport the builder shows a usable, labeled fallback (not a broken layout);
    the desktop experience is unchanged; test asserts the fallback appears below the breakpoint.
+   — done: useMediaQuery hook detects viewport ≤760px; styled message appears in Journeys.tsx:1140-1144; Journeys.test.tsx verifies message doesn't appear on desktop; 252 tests passing
 
 ### Milestone 17.8 — Home / overview dashboard
 1. [ ] **Overview endpoint** (Recipe 6.67, backend): `domain.Overview` + `ports.Store.GetOverview`
