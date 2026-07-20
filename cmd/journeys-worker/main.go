@@ -98,6 +98,8 @@ func main() {
 		slog.Error("failed to register extension channel providers", "error", err)
 	}
 
+	channels.RegisterInApp(reg, store)
+
 	clk := journey.RealClock{}
 	aiGateway := ai.NewGateway(store)
 	deliveryCfg := journey.Config{

@@ -380,11 +380,12 @@ model). No new npm dep; framework-free.
    tenant/profile is rejected; the inbox query returns only undismissed, in-window rows ordered by rank;
    unit + integration tests green.
    — done: InAppMessage struct with proper json tags and nullable pointers; CreateInAppMessage/GetInAppMessage/ListInboxForProfile/ListInAppMessages implemented in messages.go with scoping and inbox filtering; ListInboxForProfile returns undismissed, in-window rows by rank DESC; integration tests verify round-trip, idempotency, inbox filtering (dismissed/expired excluded), and ErrNotFound; go build/vet/test pass
-3. [ ] **`inapp` channel adapter + registration** (Recipe 6.52): `internal/channels/inapp.go`
+3. [x] **`inapp` channel adapter + registration** (Recipe 6.52): `internal/channels/inapp.go`
    implementing `ports.ChannelAdapter`; `RegisterInApp(reg, store)` wired in
    `cmd/campaigns-delivery/main.go:95` and `cmd/journeys-worker/main.go:97`; `provider='inapp'`.
    *Done when:* `Send` writes exactly one `inapp_messages` row (idempotent on re-send by
    `IdempotencyKey`), inherits scoping from the profile, returns the row id; unit test green.
+   — done: InAppAdapter.Send inserts via CreateInAppMessage with idempotency key; inherits tenant/workspace from identity and app_id from profile; returns created message ID; go build/vet pass
 
 ### Milestone 16.2 — Triggered delivery integration (journey + campaign → in-app)
 1. [ ] **Journey in-app send**: add an `in_app` branch to the endpoint switch (`nodes.go:650-679`,

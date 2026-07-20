@@ -612,6 +612,16 @@ func (s *Store) GetProfileByIDSystem(ctx context.Context, tenantID, workspaceID,
 	return profile, err
 }
 
+func (s *Store) GetProfileAppID(ctx context.Context, tenantID, workspaceID, profileID string) (string, error) {
+	var appID string
+	err := s.pool.QueryRow(ctx, `SELECT app_id FROM profiles WHERE tenant_id=$1 AND workspace_id=$2 AND id=$3`,
+		tenantID, workspaceID, profileID).Scan(&appID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return appID, err
+}
+
 func (s *Store) IsProfileInSegment(ctx context.Context, p domain.Principal, segmentID string, profileID string) (bool, error) {
 	seg, err := s.GetSegment(ctx, p, segmentID)
 	if err != nil {

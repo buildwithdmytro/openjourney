@@ -1,6 +1,8 @@
 package channels
 
-import "github.com/buildwithdmytro/openjourney/internal/ports"
+import (
+	"github.com/buildwithdmytro/openjourney/internal/ports"
+)
 
 // Registry maps provider strings to their ChannelAdapter implementations.
 // Build it once per process (see NewRegistry / DefaultRegistry) and pass it to
@@ -57,4 +59,11 @@ func (r *Registry) For(provider string) ports.ChannelAdapter {
 // during program initialization (before any concurrent For calls).
 func (r *Registry) Register(provider string, adapter ports.ChannelAdapter) {
 	r.adapters[provider] = adapter
+}
+
+// RegisterInApp registers the in-app adapter with the given registry.
+// Call this in both workers after the store is created (mirror RegisterChannelProviders).
+func RegisterInApp(reg *Registry, store ports.Store) {
+	adapter := NewInAppAdapter(store)
+	reg.Register("inapp", adapter)
 }

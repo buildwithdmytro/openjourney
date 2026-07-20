@@ -21,6 +21,7 @@ type Store interface {
 	GetProfile(context.Context, domain.Principal, string) (domain.Profile, []domain.Consent, error)
 	GetProfileByID(ctx context.Context, tenantID, appID, profileID string) (domain.Profile, error)
 	GetProfileByIDSystem(ctx context.Context, tenantID, workspaceID, profileID string) (domain.Profile, error)
+	GetProfileAppID(ctx context.Context, tenantID, workspaceID, profileID string) (string, error)
 	CreateForm(context.Context, domain.Principal, domain.Form) (domain.Form, error)
 	GetForm(context.Context, domain.Principal, string) (domain.Form, error)
 	UpdateForm(context.Context, domain.Principal, domain.Form) (domain.Form, error)

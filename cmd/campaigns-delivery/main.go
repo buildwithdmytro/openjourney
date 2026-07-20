@@ -96,6 +96,8 @@ func main() {
 		slog.Error("failed to register extension channel providers", "error", err)
 	}
 
+	channels.RegisterInApp(reg, store)
+
 	deliveryCfg := campaigns.Config{
 		TrackingSecretKey: []byte(cfg.TrackingSecretKey),
 		TrackingBaseURL:   cfg.TrackingBaseURL,
