@@ -583,3 +583,116 @@ button.danger { color: var(--color-danger-text); background: var(--color-danger-
 .error-state-cta {
   margin-top: 8px;
 }
+
+@keyframes slideInUp {
+  from {
+    transform: translateY(12px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.toast-container {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  pointer-events: none;
+  z-index: 9999;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-default);
+  border: 1px solid var(--color-border-subtle);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  pointer-events: auto;
+  min-width: 280px;
+  max-width: 380px;
+  word-wrap: break-word;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .toast {
+    animation: slideInUp 0.3s ease-out;
+  }
+}
+
+.toast-message {
+  flex: 1;
+  font-size: 14px;
+  color: var(--color-ink);
+  line-height: 1.4;
+}
+
+.toast-close {
+  background: transparent;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-ink-muted);
+  border-radius: 4px;
+  transition: background-color 0.2s;
+  flex-shrink: 0;
+}
+
+.toast-close:hover {
+  background-color: var(--color-surface-muted);
+}
+
+.toast-close:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.toast-success {
+  border-color: var(--color-success);
+  background-color: var(--color-success-bg);
+}
+
+.toast-success .toast-message {
+  color: var(--color-success-text);
+}
+
+.toast-error {
+  border-color: var(--color-danger);
+  background-color: var(--color-danger-bg);
+}
+
+.toast-error .toast-message {
+  color: var(--color-danger-text);
+}
+
+.toast-warn {
+  border-color: var(--color-warn);
+  background-color: var(--color-warn-bg);
+}
+
+.toast-warn .toast-message {
+  color: var(--color-warn-text);
+}
+
+.toast-info {
+  border-color: var(--color-accent);
+  background-color: var(--color-surface-subtle);
+}
+
+.toast-info .toast-message {
+  color: var(--color-accent);
+}
+
+:root[data-theme="dark"] .toast {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}

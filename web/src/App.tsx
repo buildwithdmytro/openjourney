@@ -16,7 +16,7 @@ import {
 import { oidcConfigured, restoreOIDCSession, signIn, signOut } from "./auth";
 import { staticColors, defaultAccentColor, defaultBackgroundColor } from "./tokens";
 import { useTheme } from "./useTheme";
-import { Skeleton, Spinner } from "./components";
+import { Skeleton, Spinner, ToastProvider, useToast } from "./components";
 import { message } from "./errors";
 
 const Journeys = lazy(() => import("./sections/Journeys"));
@@ -265,64 +265,66 @@ export function App() {
   }
 
   return (
-    <div className="shell">
-      <aside>
-        <div className="brand"><span>O</span> OpenJourney</div>
-        <nav aria-label="Primary">
-          {(["profiles", "segments", "scoring", "acquisition", "templates", "campaigns", "journeys", "experiments", "reports", "messaging", "copilots", "governance", "extensions", "connectors", "suppressions", "sender-identities", "device-tokens", "schemas", "api-keys", "privacy", "access", "operations", "audit"] as View[]).map((item) => (
-            <button key={item} className={view === item ? "active" : ""}
-              onClick={() => setView(item)}>{viewTitles[item][0]}</button>
-          ))}
-        </nav>
-        <div style={{ marginTop: "auto", padding: "16px 0 0 0", borderTop: "1px solid rgba(255,255,255,0.1)", display: "flex", flexDirection: "column", gap: "8px" }}>
-          <button className="secondary small" onClick={() => toggleTheme()} style={{ width: "100%", background: "transparent", border: "1px solid rgba(255,255,255,0.2)", color: "var(--color-ink-muted)", padding: "8px", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: "bold" }}>
-            {theme === "light" ? "Dark" : "Light"} mode
-          </button>
-          <button className="secondary small" onClick={() => void handleSignOut()} style={{ width: "100%", background: "transparent", border: "1px solid rgba(255,255,255,0.2)", color: "var(--color-ink-muted)", padding: "8px", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: "bold" }}>
-            Sign out
-          </button>
-        </div>
-        <div className={`health ${healthy ? "up" : ""}`} style={{ marginTop: "16px" }}>
-          <i /> API {healthy === null ? "checking" : healthy ? "ready" : "unavailable"}
-        </div>
-      </aside>
-      <main>
-        <header>
-          <p>Platform kernel</p>
-          <h1>{viewTitles[view][0]}</h1>
-          <span>{viewTitles[view][1]}</span>
-        </header>
-        <UIErrorBoundary resetKey={view}>
-        {view === "profiles" && <Profiles apiKey={apiKey} />}
-        {view === "segments" && <Segments apiKey={apiKey} />}
-        {view === "scoring" && <Suspense fallback={<SuspenseLoader />}><Scoring apiKey={apiKey} baseURL={apiBase} /></Suspense>}
-        {view === "acquisition" && <Suspense fallback={<SuspenseLoader />}><Acquisition apiKey={apiKey} baseURL={apiBase} /></Suspense>}
-        {view === "templates" && <Templates apiKey={apiKey} />}
-        {view === "campaigns" && <Campaigns apiKey={apiKey} />}
-        {view === "journeys" && (
-          <Suspense fallback={<p role="status">Loading journey builder…</p>}>
-            <Journeys apiKey={apiKey} />
-          </Suspense>
-        )}
-        {view === "experiments" && <Suspense fallback={<p role="status">Loading experiments…</p>}><Experiments apiKey={apiKey} baseURL={apiBase} /></Suspense>}
-        {view === "reports" && <Suspense fallback={<p role="status">Loading reports…</p>}><Reports apiKey={apiKey} baseURL={apiBase} /></Suspense>}
-        {view === "messaging" && <Suspense fallback={<p role="status">Loading messaging…</p>}><Messaging apiKey={apiKey} baseURL={apiBase} /></Suspense>}
-        {view === "copilots" && <Suspense fallback={<p role="status">Loading AI copilots…</p>}><Copilots apiKey={apiKey} baseURL={apiBase} /></Suspense>}
-        {view === "governance" && <Suspense fallback={<p role="status">Loading AI governance…</p>}><Governance apiKey={apiKey} baseURL={apiBase} /></Suspense>}
-        {view === "extensions" && <Suspense fallback={<p role="status">Loading extensions…</p>}><Extensions apiKey={apiKey} baseURL={apiBase} /></Suspense>}
-        {view === "connectors" && <Suspense fallback={<p role="status">Loading connectors…</p>}><Connectors apiKey={apiKey} baseURL={apiBase} /></Suspense>}
-        {view === "suppressions" && <Suppressions apiKey={apiKey} />}
-        {view === "sender-identities" && <SenderIdentities apiKey={apiKey} />}
-        {view === "device-tokens" && <DeviceTokensInspector apiKey={apiKey} />}
-        {view === "schemas" && <Schemas apiKey={apiKey} />}
-        {view === "api-keys" && <APIKeys apiKey={apiKey} />}
-        {view === "privacy" && <Privacy apiKey={apiKey} />}
-        {view === "access" && <Access apiKey={apiKey} />}
-        {view === "operations" && <Operations apiKey={apiKey} />}
-        {view === "audit" && <Audit apiKey={apiKey} />}
-        </UIErrorBoundary>
-      </main>
-    </div>
+    <ToastProvider>
+      <div className="shell">
+        <aside>
+          <div className="brand"><span>O</span> OpenJourney</div>
+          <nav aria-label="Primary">
+            {(["profiles", "segments", "scoring", "acquisition", "templates", "campaigns", "journeys", "experiments", "reports", "messaging", "copilots", "governance", "extensions", "connectors", "suppressions", "sender-identities", "device-tokens", "schemas", "api-keys", "privacy", "access", "operations", "audit"] as View[]).map((item) => (
+              <button key={item} className={view === item ? "active" : ""}
+                onClick={() => setView(item)}>{viewTitles[item][0]}</button>
+            ))}
+          </nav>
+          <div style={{ marginTop: "auto", padding: "16px 0 0 0", borderTop: "1px solid rgba(255,255,255,0.1)", display: "flex", flexDirection: "column", gap: "8px" }}>
+            <button className="secondary small" onClick={() => toggleTheme()} style={{ width: "100%", background: "transparent", border: "1px solid rgba(255,255,255,0.2)", color: "var(--color-ink-muted)", padding: "8px", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: "bold" }}>
+              {theme === "light" ? "Dark" : "Light"} mode
+            </button>
+            <button className="secondary small" onClick={() => void handleSignOut()} style={{ width: "100%", background: "transparent", border: "1px solid rgba(255,255,255,0.2)", color: "var(--color-ink-muted)", padding: "8px", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: "bold" }}>
+              Sign out
+            </button>
+          </div>
+          <div className={`health ${healthy ? "up" : ""}`} style={{ marginTop: "16px" }}>
+            <i /> API {healthy === null ? "checking" : healthy ? "ready" : "unavailable"}
+          </div>
+        </aside>
+        <main>
+          <header>
+            <p>Platform kernel</p>
+            <h1>{viewTitles[view][0]}</h1>
+            <span>{viewTitles[view][1]}</span>
+          </header>
+          <UIErrorBoundary resetKey={view}>
+          {view === "profiles" && <Profiles apiKey={apiKey} />}
+          {view === "segments" && <Segments apiKey={apiKey} />}
+          {view === "scoring" && <Suspense fallback={<SuspenseLoader />}><Scoring apiKey={apiKey} baseURL={apiBase} /></Suspense>}
+          {view === "acquisition" && <Suspense fallback={<SuspenseLoader />}><Acquisition apiKey={apiKey} baseURL={apiBase} /></Suspense>}
+          {view === "templates" && <Templates apiKey={apiKey} />}
+          {view === "campaigns" && <Campaigns apiKey={apiKey} />}
+          {view === "journeys" && (
+            <Suspense fallback={<p role="status">Loading journey builder…</p>}>
+              <Journeys apiKey={apiKey} />
+            </Suspense>
+          )}
+          {view === "experiments" && <Suspense fallback={<p role="status">Loading experiments…</p>}><Experiments apiKey={apiKey} baseURL={apiBase} /></Suspense>}
+          {view === "reports" && <Suspense fallback={<p role="status">Loading reports…</p>}><Reports apiKey={apiKey} baseURL={apiBase} /></Suspense>}
+          {view === "messaging" && <Suspense fallback={<p role="status">Loading messaging…</p>}><Messaging apiKey={apiKey} baseURL={apiBase} /></Suspense>}
+          {view === "copilots" && <Suspense fallback={<p role="status">Loading AI copilots…</p>}><Copilots apiKey={apiKey} baseURL={apiBase} /></Suspense>}
+          {view === "governance" && <Suspense fallback={<p role="status">Loading AI governance…</p>}><Governance apiKey={apiKey} baseURL={apiBase} /></Suspense>}
+          {view === "extensions" && <Suspense fallback={<p role="status">Loading extensions…</p>}><Extensions apiKey={apiKey} baseURL={apiBase} /></Suspense>}
+          {view === "connectors" && <Suspense fallback={<p role="status">Loading connectors…</p>}><Connectors apiKey={apiKey} baseURL={apiBase} /></Suspense>}
+          {view === "suppressions" && <Suppressions apiKey={apiKey} />}
+          {view === "sender-identities" && <SenderIdentities apiKey={apiKey} />}
+          {view === "device-tokens" && <DeviceTokensInspector apiKey={apiKey} />}
+          {view === "schemas" && <Schemas apiKey={apiKey} />}
+          {view === "api-keys" && <APIKeys apiKey={apiKey} />}
+          {view === "privacy" && <Privacy apiKey={apiKey} />}
+          {view === "access" && <Access apiKey={apiKey} />}
+          {view === "operations" && <Operations apiKey={apiKey} />}
+          {view === "audit" && <Audit apiKey={apiKey} />}
+          </UIErrorBoundary>
+        </main>
+      </div>
+    </ToastProvider>
   );
 }
 
@@ -624,6 +626,7 @@ function Audit({ apiKey }: { apiKey: string }) {
 }
 
 function Segments({ apiKey }: { apiKey: string }) {
+  const { push: pushToast } = useToast();
   const [items, setItems] = useState<Segment[]>([]);
   const [editingSegment, setEditingSegment] = useState<Segment | null>(null);
   const [name, setName] = useState("");
@@ -717,7 +720,7 @@ function Segments({ apiKey }: { apiKey: string }) {
         { profile_id: memberProfileID, membership: membership }
       ]);
       setMemberProfileID("");
-      alert("Members updated successfully");
+      pushToast({ kind: "success", message: "Members updated successfully" });
     } catch (cause) {
       setError(message(cause));
     }
