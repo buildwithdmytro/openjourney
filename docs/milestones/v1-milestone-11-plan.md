@@ -420,13 +420,14 @@ model). No new npm dep; framework-free.
    — done: reportMessageEngagement handler at messages.go:107 validates action/params and verifies IDOR via profile check; creates message.impression/clicked/dismissed events with message_id payload; AcceptEvents called with public principal; domain.Event.Validate extended for message.* events; TestReportMessageEngagementWithValidToken/IDORProtection verify behavior; all httpapi tests pass (118 passed)
 
 ### Milestone 16.4 — Engagement projector (display-state) — CHECKPOINT
-1. [ ] **`message.*` ProjectEvent cases** (Recipe 6.55): add `message.impression`/`message.clicked`/
+1. [x] **`message.*` ProjectEvent cases** (Recipe 6.55): add `message.impression`/`message.clicked`/
    `message.dismissed` cases to the `ProjectEvent` switch (`store.go:456`) stamping
    `displayed_at`/`clicked_at`/`dismissed_at` + `status`, idempotent, tenant-scoped; nothing else writes
    display-state.
    *Done when:* reporting impression→click→dismiss on a delivered message advances its state and
    timestamps monotonically; a re-delivered/duplicate event does not regress state; a grep/assertion
    confirms no display-state write exists outside `ProjectEvent`; integration test green.
+   — done: added message.impression/clicked/dismissed cases to ProjectEvent switch at store.go:680-723; WHERE clause ensures idempotency by checking timestamp IS NULL; grep confirms no other UPDATE inapp_messages writes exist; TestMessageEngagementProjection verifies state advancement and idempotency
    **Checkpoint:** a journey-triggered in-app message is delivered (16.2), fetched by the SDK (16.3), and
    impression/click/dismiss round-trip (16.4).
 

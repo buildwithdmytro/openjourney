@@ -676,6 +676,57 @@ func (s *Store) ProjectEvent(ctx context.Context, event domain.AcceptedEvent) er
 		if err := s.unmergeProfile(ctx, tx, event); err != nil {
 			return err
 		}
+	case "message.impression":
+		var body struct {
+			MessageID string `json:"message_id"`
+		}
+		if err := json.Unmarshal(event.Payload, &body); err != nil {
+			return err
+		}
+		if body.MessageID == "" {
+			return errors.New("message.impression payload requires message_id")
+		}
+		_, err = tx.Exec(ctx, `UPDATE inapp_messages
+			SET displayed_at=now(), status='displayed', updated_at=now()
+			WHERE id=$1 AND tenant_id=$2 AND displayed_at IS NULL`,
+			body.MessageID, event.Principal.TenantID)
+		if err != nil {
+			return err
+		}
+	case "message.clicked":
+		var body struct {
+			MessageID string `json:"message_id"`
+		}
+		if err := json.Unmarshal(event.Payload, &body); err != nil {
+			return err
+		}
+		if body.MessageID == "" {
+			return errors.New("message.clicked payload requires message_id")
+		}
+		_, err = tx.Exec(ctx, `UPDATE inapp_messages
+			SET clicked_at=now(), status='clicked', updated_at=now()
+			WHERE id=$1 AND tenant_id=$2 AND clicked_at IS NULL`,
+			body.MessageID, event.Principal.TenantID)
+		if err != nil {
+			return err
+		}
+	case "message.dismissed":
+		var body struct {
+			MessageID string `json:"message_id"`
+		}
+		if err := json.Unmarshal(event.Payload, &body); err != nil {
+			return err
+		}
+		if body.MessageID == "" {
+			return errors.New("message.dismissed payload requires message_id")
+		}
+		_, err = tx.Exec(ctx, `UPDATE inapp_messages
+			SET dismissed_at=now(), status='dismissed', updated_at=now()
+			WHERE id=$1 AND tenant_id=$2 AND dismissed_at IS NULL`,
+			body.MessageID, event.Principal.TenantID)
+		if err != nil {
+			return err
+		}
 	}
 	if err := s.projectEngagementFact(ctx, tx, event, profileID); err != nil {
 		return fmt.Errorf("project engagement fact: %w", err)

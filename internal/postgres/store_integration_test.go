@@ -1501,6 +1501,181 @@ func TestExtensionsMigrationAndDefaultScopesIntegration_14_0_1(t *testing.T) {
 	}
 }
 
+func TestMessageEngagementProjection(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.pool.Exec(ctx, "TRUNCATE tenants CASCADE"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Setup
+	if err := store.EnsureDevelopmentTenant(ctx, "message-engagement-test"); err != nil {
+		t.Fatal(err)
+	}
+	principal, err := store.Authenticate(ctx, "message-engagement-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a profile and in-app message
+	var profileID string
+	err = store.pool.QueryRow(ctx, `
+		INSERT INTO profiles (tenant_id, app_id, external_id, created_at, updated_at)
+		VALUES ($1, $2, 'test-profile', now(), now())
+		RETURNING id
+	`, principal.TenantID, principal.AppID).Scan(&profileID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var messageID string
+	err = store.pool.QueryRow(ctx, `
+		INSERT INTO inapp_messages (tenant_id, workspace_id, app_id, profile_id, content, status)
+		VALUES ($1, $2, $3, $4, '{"title":"Test"}'::jsonb, 'delivered')
+		RETURNING id
+	`, principal.TenantID, principal.WorkspaceID, principal.AppID, profileID).Scan(&messageID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test 1: Report impression
+	var eventID1 string
+	err = store.pool.QueryRow(ctx, "SELECT gen_random_uuid()::text").Scan(&eventID1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	impressionEvent := domain.AcceptedEvent{
+		ID:        eventID1,
+		Type:      "message.impression",
+		Payload:   json.RawMessage(fmt.Sprintf(`{"message_id":"%s"}`, messageID)),
+		Principal: principal,
+	}
+	if err := store.ProjectEvent(ctx, impressionEvent); err != nil {
+		t.Fatalf("ProjectEvent impression: %v", err)
+	}
+
+	var displayedAt *time.Time
+	var status string
+	if err := store.pool.QueryRow(ctx, `
+		SELECT displayed_at, status FROM inapp_messages WHERE id=$1
+	`, messageID).Scan(&displayedAt, &status); err != nil {
+		t.Fatal(err)
+	}
+	if displayedAt == nil {
+		t.Error("displayed_at should be set after impression")
+	}
+	if status != "displayed" {
+		t.Errorf("status should be 'displayed', got %q", status)
+	}
+
+	// Test 2: Report click
+	var eventID2 string
+	err = store.pool.QueryRow(ctx, "SELECT gen_random_uuid()::text").Scan(&eventID2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clickedEvent := domain.AcceptedEvent{
+		ID:        eventID2,
+		Type:      "message.clicked",
+		Payload:   json.RawMessage(fmt.Sprintf(`{"message_id":"%s"}`, messageID)),
+		Principal: principal,
+	}
+	if err := store.ProjectEvent(ctx, clickedEvent); err != nil {
+		t.Fatalf("ProjectEvent clicked: %v", err)
+	}
+
+	var clickedAt *time.Time
+	if err := store.pool.QueryRow(ctx, `
+		SELECT clicked_at, status FROM inapp_messages WHERE id=$1
+	`, messageID).Scan(&clickedAt, &status); err != nil {
+		t.Fatal(err)
+	}
+	if clickedAt == nil {
+		t.Error("clicked_at should be set after click")
+	}
+	if status != "clicked" {
+		t.Errorf("status should be 'clicked', got %q", status)
+	}
+
+	// Test 3: Report dismiss
+	var eventID3 string
+	err = store.pool.QueryRow(ctx, "SELECT gen_random_uuid()::text").Scan(&eventID3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dismissedEvent := domain.AcceptedEvent{
+		ID:        eventID3,
+		Type:      "message.dismissed",
+		Payload:   json.RawMessage(fmt.Sprintf(`{"message_id":"%s"}`, messageID)),
+		Principal: principal,
+	}
+	if err := store.ProjectEvent(ctx, dismissedEvent); err != nil {
+		t.Fatalf("ProjectEvent dismissed: %v", err)
+	}
+
+	var dismissedAt *time.Time
+	if err := store.pool.QueryRow(ctx, `
+		SELECT dismissed_at, status FROM inapp_messages WHERE id=$1
+	`, messageID).Scan(&dismissedAt, &status); err != nil {
+		t.Fatal(err)
+	}
+	if dismissedAt == nil {
+		t.Error("dismissed_at should be set after dismiss")
+	}
+	if status != "dismissed" {
+		t.Errorf("status should be 'dismissed', got %q", status)
+	}
+
+	// Test 4: Idempotency - replay impression (should not change state)
+	originalDisplayedAt := displayedAt
+	time.Sleep(100 * time.Millisecond) // Ensure time passes
+	if err := store.ProjectEvent(ctx, impressionEvent); err != nil {
+		t.Fatalf("ProjectEvent impression replay: %v", err)
+	}
+
+	if err := store.pool.QueryRow(ctx, `
+		SELECT displayed_at, status FROM inapp_messages WHERE id=$1
+	`, messageID).Scan(&displayedAt, &status); err != nil {
+		t.Fatal(err)
+	}
+	if displayedAt.Unix() != originalDisplayedAt.Unix() {
+		t.Error("displayed_at should not change on replay (idempotent)")
+	}
+	if status != "dismissed" {
+		t.Errorf("status should still be 'dismissed' after replaying impression, got %q", status)
+	}
+
+	// Test 5: Idempotency - replay dismiss (should not change state)
+	originalDismissedAt := dismissedAt
+	time.Sleep(100 * time.Millisecond)
+	if err := store.ProjectEvent(ctx, dismissedEvent); err != nil {
+		t.Fatalf("ProjectEvent dismissed replay: %v", err)
+	}
+
+	if err := store.pool.QueryRow(ctx, `
+		SELECT dismissed_at, status FROM inapp_messages WHERE id=$1
+	`, messageID).Scan(&dismissedAt, &status); err != nil {
+		t.Fatal(err)
+	}
+	if dismissedAt.Unix() != originalDismissedAt.Unix() {
+		t.Error("dismissed_at should not change on replay (idempotent)")
+	}
+	if status != "dismissed" {
+		t.Errorf("status should still be 'dismissed' after replaying dismiss, got %q", status)
+	}
+}
+
 func TestMain(m *testing.M) {
 	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
 	if databaseURL != "" {
@@ -1509,9 +1684,7 @@ func TestMain(m *testing.M) {
 		store, err := Open(ctx, databaseURL)
 		if err == nil {
 			_ = store.Migrate(ctx)
-			_, _ = store.pool.Exec(ctx, `TRUNCATE tenants, workspaces, applications, api_keys, accepted_events, 
-				projection_jobs, profiles, segments, templates, campaigns, tenant_quotas, quota_windows, 
-				identity_aliases, journey_runs, journey_steps, journey_transitions, journey_message_intents CASCADE`)
+			_, _ = store.pool.Exec(ctx, `TRUNCATE tenants CASCADE`)
 			store.Close()
 		}
 	}
