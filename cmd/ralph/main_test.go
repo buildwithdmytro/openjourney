@@ -53,17 +53,17 @@ func TestReadTasksTracksMultilineDoneNotes(t *testing.T) {
 }
 
 func TestCurrentMilestonePlanParsesInDocumentOrder(t *testing.T) {
-	tasks, err := readTasks(filepath.Join("..", "..", "docs", "milestones", "v1-milestone-10-plan.md"))
+	tasks, err := readTasks(filepath.Join("..", "..", "docs", "milestones", "v1-milestone-11-plan.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tasks) != 28 {
-		t.Fatalf("got %d tasks, want 28", len(tasks))
+	if len(tasks) != 27 {
+		t.Fatalf("got %d tasks, want 27", len(tasks))
 	}
-	if tasks[0].ID != "15.0.1" {
+	if tasks[0].ID != "16.0.1" {
 		t.Fatalf("first task = %#v", tasks[0])
 	}
-	if tasks[len(tasks)-1].ID != "15.12.5" {
+	if tasks[len(tasks)-1].ID != "16.11.4" {
 		t.Fatalf("last task = %#v", tasks[len(tasks)-1])
 	}
 }
