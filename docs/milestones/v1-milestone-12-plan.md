@@ -418,11 +418,12 @@ fake-store unit test + postgres integration test (the M10/M11 template).
    *Done when:* the shell is a component, `App.tsx` is thinner, all 22 views still render and route via
    hash; the full `App.test.tsx` passes unmodified.
    — done: AppShell.tsx, Sidebar.tsx, PageHeader.tsx components created in web/src/components/; App.tsx refactored to use AppShell; all 210 tests passing; theme toggle and nav still work identically
-2. [ ] **Grouped navigation**: group the 22 flat views (`App.tsx:49,257-260`) into labeled categories
+2. [x] **Grouped navigation**: group the 22 flat views (`App.tsx:49,257-260`) into labeled categories
    (e.g. Overview · Audiences · Messaging · AI · Data · Governance · Settings) with accessible section
    headers and active state.
    *Done when:* the nav renders grouped sections with headers; keyboard navigation reaches every item;
    the active view is programmatically determinable; tests assert grouping + active state.
+   — done: Sidebar.tsx has 6 groups (Audiences, Messaging, AI & Insights, Data, Admin, Settings) with styled headers; 18 tests in Sidebar.test.tsx verify grouping, active state, keyboard nav, and accessibility; all 228 tests green
 3. [ ] **Command palette** (Recipe 6.65): ⌘K/Ctrl-K opens a searchable palette over all views + common
    actions, built on `Modal`, keyboard-first.
    *Done when:* ⌘K opens the palette, typing filters, ↑/↓ selects, Enter navigates, Esc closes; a test
