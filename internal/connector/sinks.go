@@ -187,14 +187,24 @@ func (s *ClickHouseSink) Write(ctx context.Context, cfg map[string]any, rows []R
 		if address == "" || database == "" || userRef == "" || passRef == "" || user == "" || pass == "" {
 			return 0, errors.New("ClickHouse sink requires endpoint, database, username_ref, and password_ref")
 		}
-		if err := validateClickHouseEndpoint(address, stringSlice(cfg["endpoint_allowlist"])); err != nil {
+		host := address
+		if parsed, err := url.Parse(address); err == nil && parsed.Host != "" {
+			host = parsed.Host
+		}
+		allow := stringSlice(cfg["endpoint_allowlist"])
+		allowed := false
+		for _, entry := range allow {
+			if strings.TrimRight(entry, "/") == host || strings.TrimRight(entry, "/") == address {
+				allowed = true
+			}
+		}
+		if err := validateClickHouseEndpoint(address, allow); err != nil {
 			return 0, err
 		}
-		conn, err := clickhouse.Open(&clickhouse.Options{Addr: []string{address}, Auth: clickhouse.Auth{Database: database, Username: user, Password: pass}, DialTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second})
+		conn, err := clickhouse.Open(&clickhouse.Options{Addr: []string{address}, Auth: clickhouse.Auth{Database: database, Username: user, Password: pass}, DialTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, DialContext: guardedClickHouseDial(host, allowed)})
 		if err != nil {
 			return 0, err
 		}
-		defer conn.Close()
 		s.conn = clickHouseExecAdapter{conn: conn}
 	}
 	if err := s.conn.Exec(ctx, query, args...); err != nil {

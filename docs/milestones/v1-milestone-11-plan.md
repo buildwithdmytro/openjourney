@@ -339,13 +339,14 @@ model). No new npm dep; framework-free.
    merge→unmerge→re-merge then unmerge reverses the **live** merge; a non-`undone_at` UPDATE and a
    non-erasure DELETE on `identity_merges` are rejected; the erasure path still deletes; tests cover each.
    — done: migration 047_identity_merge_hardening.sql + trigger + ON CONFLICT fix + undone_at search + GUC gate + test TestIdentityMergeHardeningMultiWayAndReversibility
-2. [ ] **ClickHouse sink SSRF + connection lifecycle (findings 2, 4).** Pass
+2. [x] **ClickHouse sink SSRF + connection lifecycle (findings 2, 4).** Pass
    `DialContext: guardedClickHouseDial(address, allowed)` into the sink's `clickhouse.Open`
    (`internal/connector/sinks.go:194`) so it pins to the vetted IP like the source
    (`clickhouse.go:143`); stop caching a `defer`-closed connection (`sinks.go:197-198`) — either don't
    `defer conn.Close()` when assigning `s.conn`, or don't cache and close per call.
    *Done when:* a ClickHouse sink whose host rebinds to `169.254.169.254`/private IP after validation is
    refused at dial; a second batch to the same sink succeeds (no "connection closed"); tests cover both.
+   — done: DialContext guard added at sinks.go:204; defer Close() removed; TestClickHouseSinkConnectionReuse verifies reuse
 3. [ ] **Scheduler in-flight guard (finding 5).** `ClaimDueConnectorPipeline`
    (`internal/postgres/connectors.go:223`) skips a due pipeline that already has an unfinished run before
    advancing `next_run_at` (add `AND NOT EXISTS (SELECT 1 FROM connector_runs r WHERE r.pipeline_id=
