@@ -387,10 +387,11 @@ fake-store unit test + postgres integration test (the M10/M11 template).
    — done: Toast.tsx component with auto-dismiss, ToastProvider.tsx context with useToast hook, 14 tests passing (Toast + ToastProvider), alert() at Segments.handleAddMember replaced with toast, App.tsx wrapped with ToastProvider, toast styles in styles.css with slideInUp animation guarded by prefers-reduced-motion, npm test green (161 passing)
 
 ### Milestone 17.4 — Modal & confirmation
-1. [ ] **Modal primitive** (Recipe 6.63): accessible `Modal` (portal, `role="dialog" aria-modal`, focus
+1. [x] **Modal primitive** (Recipe 6.63): accessible `Modal` (portal, `role="dialog" aria-modal`, focus
    trap, focus restore, Esc + backdrop close).
    *Done when:* opening traps Tab within the dialog, Esc closes it, focus returns to the trigger; tests
    assert the dialog role, Esc-close, and `toHaveFocus` on the restored trigger.
+   — done: Modal.tsx created with createPortal, focus trap, focus restoration, Esc and backdrop close; 10 tests passing (role, aria attributes, Esc-close, backdrop-click, focus-restoration)
 2. [ ] **ConfirmDialog everywhere**: replace every `window.confirm` (`App.tsx:1075,1170,1437`;
    `Journeys.tsx:388`) with `ConfirmDialog`, AND add confirmation to the unconfirmed destructive actions
    (revoke API key `App.tsx:433`, discard DLQ `App.tsx:579`, extension enable/disable).

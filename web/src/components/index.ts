@@ -28,3 +28,5 @@ export { default as Toast } from "./Toast";
 export type { ToastProps } from "./Toast";
 export { ToastProvider, useToast } from "./ToastProvider";
 export type { ToastMessage } from "./ToastProvider";
+export { default as Modal } from "./Modal";
+export type { ModalProps } from "./Modal";
