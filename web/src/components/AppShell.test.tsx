@@ -353,5 +353,41 @@ describe("AppShell", () => {
         });
       }
     });
+
+    it("restores focus to menu button when drawer closes", async () => {
+      const onViewChange = vi.fn();
+      render(
+        <AppShell
+          view="profiles"
+          onViewChange={onViewChange}
+          viewTitles={viewTitles}
+          healthy={true}
+        >
+          <div>Test content</div>
+        </AppShell>
+      );
+
+      await waitFor(() => {
+        const menuButton = screen.getByTestId("mobile-menu-button");
+        expect(menuButton).toBeInTheDocument();
+      });
+
+      const menuButton = screen.getByTestId("mobile-menu-button");
+      menuButton.focus();
+      expect(menuButton).toHaveFocus();
+
+      fireEvent.click(menuButton);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("mobile-nav-drawer")).toBeInTheDocument();
+      });
+
+      fireEvent.keyDown(document, { key: "Escape" });
+
+      await waitFor(() => {
+        expect(screen.queryByTestId("mobile-nav-drawer")).not.toBeInTheDocument();
+        expect(menuButton).toHaveFocus();
+      });
+    });
   });
 });

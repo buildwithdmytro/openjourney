@@ -460,12 +460,13 @@ fake-store unit test + postgres integration test (the M10/M11 template).
    — done: Overview.tsx section created with 6 cards showing profile/journey/campaign/delivery/message/connector counts with sparklines; added to App.tsx as default view; EmptyState shows for empty workspace; 259 tests passing; no dependencies added
 
 ### Milestone 17.9 — Accessibility hardening
-1. [ ] **Focus-management + ScopeSelector combobox**: assert Esc-to-close, focus-trap, and focus-restore
+1. [x] **Focus-management + ScopeSelector combobox**: assert Esc-to-close, focus-trap, and focus-restore
    across `Modal`/`ConfirmDialog`/`CommandPalette`/mobile-drawer via `toHaveFocus`; make `ScopeSelector`
    (`App.tsx:1770-1817`) a conformant combobox (`aria-expanded`/`aria-haspopup`/`role="listbox"`, Esc-to-
    close, ↑/↓ nav).
    *Done when:* the keyboard journeys are tested green (`toHaveFocus`); `ScopeSelector` exposes the ARIA
    combobox contract and is keyboard-operable; tests assert `aria-expanded` toggling.
+   — done: ScopeSelector extracted to web/src/components/ScopeSelector.tsx with full combobox ARIA (aria-expanded, aria-haspopup="listbox", role="option" on items); Esc closes dropdown; arrow keys navigate options with visual focus indicator; 6 new tests + 4 new focus-management tests (ConfirmDialog/AppShell drawer focus-restore); 267 tests passing
 2. [ ] **Skip-link + landmark/name audit**: add a skip-to-content link; verify a single `main`/`h1` and
    labeled `nav` landmark; ensure every icon-only button has an accessible name.
    *Done when:* the skip link moves focus to `main`; landmarks are unique and labeled; a test asserts

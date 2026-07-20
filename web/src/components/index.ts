@@ -39,3 +39,5 @@ export { Sidebar } from "./Sidebar";
 export { PageHeader } from "./PageHeader";
 export { CommandPalette } from "./CommandPalette";
 export type { CommandPaletteProps } from "./CommandPalette";
+export { default as ScopeSelector } from "./ScopeSelector";
+export type { ScopeSelectorProps } from "./ScopeSelector";

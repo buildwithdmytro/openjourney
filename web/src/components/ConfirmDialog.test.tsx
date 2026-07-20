@@ -269,6 +269,63 @@ describe("ConfirmDialog", () => {
     expect(confirmButton).toHaveClass("btn-primary");
   });
 
+  it("restores focus to trigger element on close", async () => {
+    const onClose = vi.fn();
+    const { rerender } = render(
+      <div>
+        <button id="trigger">Open Dialog</button>
+        <ConfirmDialog
+          isOpen={false}
+          onClose={onClose}
+          onConfirm={vi.fn()}
+          title="Delete item?"
+          message="This action cannot be undone."
+        />
+      </div>
+    );
+
+    const triggerButton = screen.getByRole("button", { name: "Open Dialog" });
+    triggerButton.focus();
+    expect(triggerButton).toHaveFocus();
+
+    // Open the dialog
+    rerender(
+      <div>
+        <button id="trigger">Open Dialog</button>
+        <ConfirmDialog
+          isOpen={true}
+          onClose={onClose}
+          onConfirm={vi.fn()}
+          title="Delete item?"
+          message="This action cannot be undone."
+        />
+      </div>
+    );
+
+    // First focusable element (Cancel button) should now have focus
+    const cancelButton = screen.getByRole("button", { name: "Cancel" });
+    expect(cancelButton).toHaveFocus();
+
+    // Close the dialog
+    rerender(
+      <div>
+        <button id="trigger">Open Dialog</button>
+        <ConfirmDialog
+          isOpen={false}
+          onClose={onClose}
+          onConfirm={vi.fn()}
+          title="Delete item?"
+          message="This action cannot be undone."
+        />
+      </div>
+    );
+
+    // Focus should be restored to trigger button
+    await waitFor(() => {
+      expect(triggerButton).toHaveFocus();
+    });
+  });
+
   it("still calls onClose even if onConfirm throws", async () => {
     const onConfirm = vi.fn(async () => {
       await new Promise((resolve) => setTimeout(resolve, 10));

@@ -17,7 +17,7 @@ import { oidcConfigured, restoreOIDCSession, signIn, signOut } from "./auth";
 import { staticColors, defaultAccentColor, defaultBackgroundColor } from "./tokens";
 import { useTheme } from "./useTheme";
 import { useForm } from "./useForm";
-import { Skeleton, Spinner, ToastProvider, useToast, ConfirmDialog, Field, Input, Select, Textarea, JsonField, AppShell } from "./components";
+import { Skeleton, Spinner, ToastProvider, useToast, ConfirmDialog, Field, Input, Select, Textarea, JsonField, AppShell, ScopeSelector } from "./components";
 import { message } from "./errors";
 
 const Overview = lazy(() => import("./sections/Overview"));
@@ -438,7 +438,7 @@ function APIKeys({ apiKey }: { apiKey: string }) {
     <article className="card"><form onSubmit={submit} className="single-action">
       <label>Name<input value={name} onChange={(e) => setName(e.target.value)}
         placeholder="Website ingestion" required /></label>
-      <label>Scopes<ScopeSelector selected={scopes} onChange={setScopes} /></label>
+      <label>Scopes<ScopeSelector selected={scopes} onChange={setScopes} availableScopes={AVAILABLE_SCOPES} /></label>
       <label>Expires at<input type="datetime-local" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} /></label>
       <button disabled={!apiKey}>Create scoped key</button>
     </form>
@@ -529,7 +529,7 @@ function Access({ apiKey }: { apiKey: string }) {
   return <section className="stack">
     <article className="card"><form onSubmit={addRole} className="schema-form">
       <label>Role name<input value={roleName} onChange={(e) => setRoleName(e.target.value)} required /></label>
-      <label>Permissions<ScopeSelector selected={permissions} onChange={setPermissions} /></label>
+      <label>Permissions<ScopeSelector selected={permissions} onChange={setPermissions} availableScopes={AVAILABLE_SCOPES} /></label>
       <button disabled={!apiKey}>Create role</button>
     </form></article>
     <article className="card"><form onSubmit={addUser} className="schema-form">
@@ -1826,53 +1826,3 @@ export function Campaigns({ apiKey }: { apiKey: string }) {
 }
 
 // Journeys component imported from sections/Journeys
-
-function ScopeSelector({ selected, onChange }: { selected: string[]; onChange: (scopes: string[]) => void }) {
-  const [open, setOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  const toggleScope = (scope: string) => {
-    if (selected.includes(scope)) {
-      onChange(selected.filter((s) => s !== scope));
-    } else {
-      onChange([...selected, scope]);
-    }
-  };
-
-  return (
-    <div className="scope-selector" ref={dropdownRef}>
-      <button
-        type="button"
-        className="scope-selector-btn"
-        onClick={() => setOpen(!open)}
-      >
-        {selected.length === 0 ? "Select scopes..." : selected.join(", ")}
-      </button>
-      {open && (
-        <div className="scope-selector-dropdown">
-          {AVAILABLE_SCOPES.map((scope) => (
-            <label key={scope} htmlFor={`scope-${scope}`} className="scope-option">
-              <input
-                id={`scope-${scope}`}
-                type="checkbox"
-                checked={selected.includes(scope)}
-                onChange={() => toggleScope(scope)}
-              />
-              <code>{scope}</code>
-            </label>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
