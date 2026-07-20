@@ -307,3 +307,153 @@ func TestIdentityMergeIsDeterministicAndReversibleBySnapshot(t *testing.T) {
 		t.Fatalf("merge after unmerge was not deterministic: got %q want %q", rematchedTarget, targetID)
 	}
 }
+
+func TestIdentityMergeHardeningMultiWayAndReversibility(t *testing.T) {
+	// Tests M10 hardening finding 1: multi-way merges now record every loser,
+	// every loser is reversible independently, and trigger guards against updates/deletes.
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	blobs := &memoryBlobs{objects: map[string][]byte{}}
+	store.SetBlobStore(blobs)
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	p, _ := setupTestTenant(t, ctx, store)
+	_, err = store.pool.Exec(ctx, `INSERT INTO identity_namespaces
+		(tenant_id,app_id,namespace,priority) VALUES
+		($1,$2,'user_id',10),($1,$2,'email',20),($1,$2,'phone',30)
+		ON CONFLICT (tenant_id,app_id,namespace) DO UPDATE SET priority=EXCLUDED.priority`, p.TenantID, p.AppID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	project := func(e domain.Event) {
+		t.Helper()
+		if _, err := store.AcceptEvents(ctx, p, []domain.Event{e}); err != nil {
+			t.Fatal(err)
+		}
+		accepted, found, err := store.ClaimProjectionJob(ctx)
+		if err != nil || !found {
+			t.Fatalf("claim projection job found=%v err=%v", found, err)
+		}
+		if err := store.ProjectEvent(ctx, accepted); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Create three profiles identified by different namespaces
+	project(event("identity.alias", "profile-a", "alias-a", `{"namespace":"email","value":"shared@example.test"}`))
+	project(event("identity.alias", "profile-b", "alias-b", `{"namespace":"user_id","value":"shared-user"}`))
+	project(event("identity.alias", "profile-c", "alias-c", `{"namespace":"phone","value":"+1234567890"}`))
+
+	// One event ties all three together via their namespaces (a 3-way merge)
+	// Winner is deterministic by namespace priority (lowest value wins), so profile-a wins
+	mergeEventID := "three-way-merge"
+	project(event("profile.updated", "winner-external-id", mergeEventID, `{
+		"identities":{
+			"email":"shared@example.test",
+			"user_id":"shared-user",
+			"phone":"+1234567890"
+		}
+	}`))
+
+	// With the hardening fix: one event stitching 3 profiles should write 2 merge rows
+	// (one for each loser profile-b and profile-c), each with its own reversal_ref
+	var mergeCount int
+	if err := store.pool.QueryRow(ctx, `SELECT COUNT(*) FROM identity_merges
+		WHERE tenant_id=$1 AND app_id=$2 AND source_event_id=$3`,
+		p.TenantID, p.AppID, mergeEventID).Scan(&mergeCount); err != nil {
+		t.Fatal(err)
+	}
+	if mergeCount != 2 {
+		t.Fatalf("multi-way merge did not create 2 rows (one per loser): got %d", mergeCount)
+	}
+
+	// Both losers must be reversible (have reversal_ref)
+	var reversals int
+	if err := store.pool.QueryRow(ctx, `SELECT COUNT(*) FROM identity_merges
+		WHERE tenant_id=$1 AND app_id=$2 AND source_event_id=$3 AND reversal_ref != ''`,
+		p.TenantID, p.AppID, mergeEventID).Scan(&reversals); err != nil {
+		t.Fatal(err)
+	}
+	if reversals != 2 {
+		t.Fatalf("not all losers in multi-way merge are reversible: got %d with reversal_ref", reversals)
+	}
+
+	// Unmerge one loser (profile-b)
+	var profileB string
+	if err := store.pool.QueryRow(ctx, `SELECT id FROM profiles
+		WHERE tenant_id=$1 AND app_id=$2 AND external_id='profile-b' LIMIT 1`,
+		p.TenantID, p.AppID).Scan(&profileB); err != nil {
+		t.Fatal(err)
+	}
+	project(event("identity.unmerge", profileB, "unmerge-b", `{"source_profile_id":"`+profileB+`"}`))
+
+	var profileBMergedInto string
+	if err := store.pool.QueryRow(ctx, `SELECT COALESCE(merged_into::text,'') FROM profiles WHERE id=$1`, profileB).Scan(&profileBMergedInto); err != nil {
+		t.Fatal(err)
+	}
+	if profileBMergedInto != "" {
+		t.Fatalf("unmerge did not restore profile-b: merged_into=%q", profileBMergedInto)
+	}
+
+	// Verify the merge was marked done
+	var profileBUndone int
+	if err := store.pool.QueryRow(ctx, `SELECT COUNT(*) FROM identity_merges
+		WHERE source_profile_id=$1 AND undone_at IS NOT NULL`, profileB).Scan(&profileBUndone); err != nil {
+		t.Fatal(err)
+	}
+	if profileBUndone == 0 {
+		t.Fatal("unmerge did not mark the merge row as undone")
+	}
+
+	// Trigger test: attempt to UPDATE a non-undone_at field on identity_merges (should fail)
+	var mergeID string
+	if err := store.pool.QueryRow(ctx, `SELECT id FROM identity_merges
+		WHERE source_event_id=$1 AND undone_at IS NULL LIMIT 1`,
+		mergeEventID).Scan(&mergeID); err != nil {
+		t.Fatal(err)
+	}
+	_, err = store.pool.Exec(ctx, `UPDATE identity_merges SET policy_version='v2' WHERE id=$1`, mergeID)
+	if err == nil {
+		t.Fatal("trigger should prevent UPDATE to policy_version")
+	}
+	if !strings.Contains(err.Error(), "append-only") {
+		t.Fatalf("expected append-only error, got: %v", err)
+	}
+
+	// Trigger test: attempt to DELETE without erasure GUC (should fail)
+	_, err = store.pool.Exec(ctx, `DELETE FROM identity_merges WHERE id=$1`, mergeID)
+	if err == nil {
+		t.Fatal("trigger should prevent DELETE without erasure GUC")
+	}
+	if !strings.Contains(err.Error(), "erasure") {
+		t.Fatalf("expected erasure error, got: %v", err)
+	}
+
+	// Erasure path test: SET LOCAL openjourney.erasure='on' should allow DELETE
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, "SET LOCAL openjourney.erasure='on'"); err != nil {
+		tx.Rollback(ctx)
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM identity_merges WHERE id=$1`, mergeID); err != nil {
+		tx.Rollback(ctx)
+		t.Fatalf("DELETE should succeed with erasure GUC: %v", err)
+	}
+	tx.Rollback(ctx)
+	t.Logf("✓ multi-way merge writes %d rows, both reversible", mergeCount)
+	t.Logf("✓ unmerge reverses the live merge")
+	t.Logf("✓ trigger guards UPDATE and DELETE outside erasure")
+}

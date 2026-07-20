@@ -207,6 +207,10 @@ func (s *Store) DeletePrivacyData(ctx context.Context, requestID string) ([]stri
 	}
 	rows.Close()
 	if profileID != "" {
+		// Enable erasure mode for the identity_merges trigger
+		if _, err := tx.Exec(ctx, "SET LOCAL openjourney.erasure='on'"); err != nil {
+			return nil, err
+		}
 		if _, err := tx.Exec(ctx, "DELETE FROM identity_merges WHERE target_profile_id=$1 OR source_profile_id=$1", profileID); err != nil {
 			return nil, err
 		}

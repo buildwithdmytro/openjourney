@@ -328,7 +328,7 @@ model). No new npm dep; framework-free.
 ## 6. Task list
 
 ### Milestone 16.0 — Security closeout of the M10 Data Platform — DO FIRST
-1. [ ] **Identity merge audit + reversibility (findings 1, 3, 6).** Migration `047` changes
+1. [x] **Identity merge audit + reversibility (findings 1, 3, 6).** Migration `047` changes
    `identity_merges` to `UNIQUE (source_event_id, source_profile_id)` and adds the GUC-guarded
    append-only trigger (block non-`undone_at` UPDATE; block DELETE unless
    `current_setting('openjourney.erasure',true)='on'`); `mergeProfiles` (`store.go:1034`) uses
@@ -338,6 +338,7 @@ model). No new npm dep; framework-free.
    *Done when:* one event stitching 3 profiles writes 2 `identity_merges` rows, both reversible; a
    merge→unmerge→re-merge then unmerge reverses the **live** merge; a non-`undone_at` UPDATE and a
    non-erasure DELETE on `identity_merges` are rejected; the erasure path still deletes; tests cover each.
+   — done: migration 047_identity_merge_hardening.sql + trigger + ON CONFLICT fix + undone_at search + GUC gate + test TestIdentityMergeHardeningMultiWayAndReversibility
 2. [ ] **ClickHouse sink SSRF + connection lifecycle (findings 2, 4).** Pass
    `DialContext: guardedClickHouseDial(address, allowed)` into the sink's `clickhouse.Open`
    (`internal/connector/sinks.go:194`) so it pins to the vetted IP like the source

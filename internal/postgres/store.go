@@ -726,13 +726,12 @@ func (s *Store) unmergeProfile(ctx context.Context, tx pgx.Tx, event domain.Acce
 		FROM identity_merges WHERE tenant_id=$1 AND app_id=$2 AND `
 	args := []any{event.Principal.TenantID, event.Principal.AppID}
 	if body.MergeID != "" {
-		query += "id=$3"
+		query += "id=$3 FOR UPDATE"
 		args = append(args, body.MergeID)
 	} else {
-		query += "source_profile_id=$3"
+		query += "source_profile_id=$3 AND undone_at IS NULL ORDER BY merged_at DESC LIMIT 1 FOR UPDATE"
 		args = append(args, body.SourceProfileID)
 	}
-	query += " FOR UPDATE"
 	if err := tx.QueryRow(ctx, query, args...).Scan(&mergeID, &sourceID, &targetID, &reversalRef, &undoneAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil // idempotent replay of an unknown/already-retired command
@@ -1035,7 +1034,7 @@ func (s *Store) mergeProfiles(ctx context.Context, tx pgx.Tx, event domain.Accep
 		(tenant_id,app_id,source_profile_id,target_profile_id,source_event_id,policy_version,
 		 winner_policy,reversible,reversal_ref,actor_user_id,actor_type)
 		VALUES($1,$2,$3,$4,$5,'v1', 'v1', true, $6, NULLIF($7,'')::uuid, $8)
-		ON CONFLICT(source_event_id) DO NOTHING`, event.Principal.TenantID, event.Principal.AppID,
+		ON CONFLICT (source_event_id, source_profile_id) DO NOTHING`, event.Principal.TenantID, event.Principal.AppID,
 		sourceID, targetID, event.ID, key, event.Principal.UserID, event.Principal.ActorType)
 	return err
 }
