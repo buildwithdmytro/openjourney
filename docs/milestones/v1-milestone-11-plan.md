@@ -364,12 +364,13 @@ model). No new npm dep; framework-free.
    — done: ValidateNativeConnectorConfig validates at UpsertExtensionConfig; RedactExtensionConfig redacts in GetExtensionConfig; tests verify rejection and redaction; all 513 tests pass
 
 ### Milestone 16.1 — In-app channel foundation: migration + store + adapter
-1. [ ] **Migration `048_inapp_messaging.sql`** (§2.2): widen the channel/provider/body-presence CHECKs
+1. [x] **Migration `048_inapp_messaging.sql`** (§2.2): widen the channel/provider/body-presence CHECKs
    (mirror `022`) to add `in_app`/`inapp`/`webpush`; create `inapp_messages` (+ inbox index +
    idempotency unique); add `messages:read`/`messages:write` to `rbac.go:12-29` **and** the re-declared
    `api_keys.scopes` DEFAULT array (copy `043:67-83`).
    *Done when:* migration applies cleanly; the CHECKs accept `in_app`/`inapp`/`webpush` and reject an
    unknown value; `rbac.go` accepts the two new scopes; `go test ./internal/postgres/...` green.
+   — done: 048_inapp_messaging.sql created with channel/provider/body-presence CHECKs widened; inapp_messages table with 61-col schema + inbox index; messages:read/write added to rbac.go allowedPermissions and api_keys DEFAULT array; go build/vet/test all green
 2. [ ] **Domain + store for `inapp_messages`**: `domain.InAppMessage` struct (`domain.go`, json tags,
    `*T` nullables); `ports.Store` methods `CreateInAppMessage`, `ListInboxForProfile`,
    `GetInAppMessage`, `ListInAppMessages` (admin); `internal/postgres/messages.go` implementing them
