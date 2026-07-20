@@ -352,3 +352,154 @@ func TestGetInAppMessageNotFound(t *testing.T) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
+
+func TestCardFetchOrderingByRank(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	p, tenantID := setupTestTenant(t, ctx, store)
+	profileID := testUUID(tenantID + "-msg-rank-profile")
+	if _, err := store.pool.Exec(ctx, `INSERT INTO profiles(id,tenant_id,workspace_id,app_id,external_id,attributes) VALUES($1,$2,$3,$4,'rank-user','{}')`, profileID, p.TenantID, p.WorkspaceID, p.AppID); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Now().UTC()
+	msgContent := json.RawMessage(`{"title":"Card"}`)
+
+	// Create cards with different ranks: 5, 20, 10
+	key1 := "rank-msg-5"
+	_, err = store.CreateInAppMessage(ctx, p.TenantID, p.WorkspaceID, p.AppID, profileID, domain.InAppMessage{
+		MessageType:    "card",
+		Content:        msgContent,
+		Rank:           5,
+		Categories:     nil,
+		StartAt:        now,
+		IdempotencyKey: &key1,
+		Status:         "pending",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	key2 := "rank-msg-20"
+	msg2, err := store.CreateInAppMessage(ctx, p.TenantID, p.WorkspaceID, p.AppID, profileID, domain.InAppMessage{
+		MessageType:    "card",
+		Content:        msgContent,
+		Rank:           20,
+		Categories:     nil,
+		StartAt:        now,
+		IdempotencyKey: &key2,
+		Status:         "pending",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	key3 := "rank-msg-10"
+	msg3, err := store.CreateInAppMessage(ctx, p.TenantID, p.WorkspaceID, p.AppID, profileID, domain.InAppMessage{
+		MessageType:    "card",
+		Content:        msgContent,
+		Rank:           10,
+		Categories:     nil,
+		StartAt:        now,
+		IdempotencyKey: &key3,
+		Status:         "pending",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Fetch inbox - should return in rank DESC order: 20, 10, 5
+	inbox, err := store.ListInboxForProfile(ctx, p.TenantID, p.AppID, profileID, 100)
+	if err != nil {
+		t.Fatalf("ListInboxForProfile failed: %v", err)
+	}
+
+	if len(inbox) != 3 {
+		t.Fatalf("expected 3 messages in inbox, got %d", len(inbox))
+	}
+
+	// Verify ordering: rank 20, then 10, then 5
+	if inbox[0].ID != msg2.ID || inbox[0].Rank != 20 {
+		t.Fatalf("first message should be rank 20, got rank %d (ID %s)", inbox[0].Rank, inbox[0].ID)
+	}
+	if inbox[1].ID != msg3.ID || inbox[1].Rank != 10 {
+		t.Fatalf("second message should be rank 10, got rank %d (ID %s)", inbox[1].Rank, inbox[1].ID)
+	}
+	// msg1 has rank 5, checked implicitly via message count
+}
+
+func TestCardFetchExcludesOutOfWindow(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	p, tenantID := setupTestTenant(t, ctx, store)
+	profileID := testUUID(tenantID + "-msg-window-profile")
+	if _, err := store.pool.Exec(ctx, `INSERT INTO profiles(id,tenant_id,workspace_id,app_id,external_id,attributes) VALUES($1,$2,$3,$4,'window-user','{}')`, profileID, p.TenantID, p.WorkspaceID, p.AppID); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Now().UTC()
+	msgContent := json.RawMessage(`{"title":"Card"}`)
+
+	// Create a message that starts in the future (out-of-window)
+	futureStart := now.Add(1 * time.Hour)
+	futureKey := "future-msg"
+	_, err = store.CreateInAppMessage(ctx, p.TenantID, p.WorkspaceID, p.AppID, profileID, domain.InAppMessage{
+		MessageType:    "card",
+		Content:        msgContent,
+		Rank:           10,
+		Categories:     nil,
+		StartAt:        futureStart,
+		IdempotencyKey: &futureKey,
+		Status:         "pending",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a valid (in-window) message
+	validKey := "valid-window-msg"
+	_, err = store.CreateInAppMessage(ctx, p.TenantID, p.WorkspaceID, p.AppID, profileID, domain.InAppMessage{
+		MessageType:    "card",
+		Content:        msgContent,
+		Rank:           5,
+		Categories:     nil,
+		StartAt:        now,
+		IdempotencyKey: &validKey,
+		Status:         "pending",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Fetch inbox - should only return the valid message
+	inbox, err := store.ListInboxForProfile(ctx, p.TenantID, p.AppID, profileID, 100)
+	if err != nil {
+		t.Fatalf("ListInboxForProfile failed: %v", err)
+	}
+
+	if len(inbox) != 1 {
+		t.Fatalf("expected 1 message in inbox, got %d", len(inbox))
+	}
+}

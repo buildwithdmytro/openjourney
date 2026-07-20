@@ -7,8 +7,6 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
-	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -106,11 +104,13 @@ func TestWebPushBuildRequestWithValidConfig(t *testing.T) {
 		t.Errorf("expected TTL=24, got %s", req.Header.Get("TTL"))
 	}
 
-	// Verify body is empty (wake signal)
-	body := make([]byte, 1024)
-	n, _ := req.Body.Read(body)
-	if n > 0 {
-		t.Errorf("expected empty body for wake signal, got %d bytes", n)
+	// Verify body is empty (wake signal) - for wake signals, body should be nil or http.NoBody
+	if req.Body != nil && req.Body != http.NoBody {
+		body := make([]byte, 1024)
+		n, _ := req.Body.Read(body)
+		if n > 0 {
+			t.Errorf("expected empty body for wake signal, got %d bytes", n)
+		}
 	}
 }
 

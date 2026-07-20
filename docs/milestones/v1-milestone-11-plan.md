@@ -448,11 +448,12 @@ model). No new npm dep; framework-free.
    — done: test_DeviceTokensCRUDIntegration / "web push subscription registration" verifies registration; WebPushAdapter registered in DefaultRegistry routes through existing push path; sdk/javascript/sw-webpush.example.js reference Service Worker fetches inbox and reports engagement; docs/web-push-wake-fetch-contract.md documents full flow; go build/vet pass
 
 ### Milestone 16.6 — Content cards + lifecycle
-1. [ ] **Card model + fetch ordering**: `message_type` variants (`modal`/`banner`/`fullscreen`/`card`),
+1. [x] **Card model + fetch ordering**: `message_type` variants (`modal`/`banner`/`fullscreen`/`card`),
    `rank`/`categories`/`start_at`/`expires_at`; the inbox fetch returns in-window undismissed rows
    ordered by `rank DESC`, cards persistent vs one-shot others.
    *Done when:* cards with different ranks return in rank order; an out-of-window or expired card is
    excluded; a dismissed card never returns; test green.
+   — done: TestCardFetchOrderingByRank verifies rank DESC ordering; TestCardFetchExcludesOutOfWindow verifies future start_at exclusion; TestInBoxFetchFiltering verifies expired/dismissed exclusion; all integration tests pass
 2. [ ] **Expiry sweep + read/impression state**: an `expires_at` past-due status flip (`status='expired'`
    via a bounded sweep in `cmd/operations` or the projector) and read-state semantics distinct from
    dismissed (a card can be read/impressed repeatedly until dismissed).
