@@ -215,7 +215,7 @@ func execute(ctx context.Context, store Store, blobs ports.BlobStore, gateway AI
 				return fmt.Errorf("warehouse.sync input: %w", err)
 			}
 		}
-		return executeWarehouseSync(ctx, cs, blobs, job)
+		return executeWarehouseSyncWithInvoker(ctx, cs, blobs, job, extensions)
 	case "reverse_etl.run":
 		rs, ok := store.(ReverseETLStore)
 		if !ok {
@@ -227,7 +227,7 @@ func execute(ctx context.Context, store Store, blobs ports.BlobStore, gateway AI
 				return fmt.Errorf("reverse_etl.run input: %w", err)
 			}
 		}
-		return executeReverseETL(ctx, rs, blobs, job)
+		return executeReverseETLWithInvoker(ctx, rs, blobs, job, extensions)
 	case "export.replay":
 		cs, ok := store.(interface {
 			ReplayExportEvents(context.Context, string, string, string, string, time.Time, time.Time) (int, error)
@@ -277,10 +277,18 @@ type reverseETLInput struct {
 }
 
 func executeReverseETL(ctx context.Context, store ReverseETLStore, blobs ports.BlobStore, job reverseETLInput) error {
-	return executeReverseETLWithRegistry(ctx, store, blobs, job, connector.DefaultRegistry())
+	return executeReverseETLWithInvoker(ctx, store, blobs, job, nil)
 }
 
 func executeReverseETLWithRegistry(ctx context.Context, store ReverseETLStore, blobs ports.BlobStore, job reverseETLInput, registry *connector.Registry) error {
+	return executeReverseETLWithRegistryAndInvoker(ctx, store, blobs, job, registry, nil)
+}
+
+func executeReverseETLWithInvoker(ctx context.Context, store ReverseETLStore, blobs ports.BlobStore, job reverseETLInput, invoker ExtensionInvoker) error {
+	return executeReverseETLWithRegistryAndInvoker(ctx, store, blobs, job, connector.DefaultRegistry(), invoker)
+}
+
+func executeReverseETLWithRegistryAndInvoker(ctx context.Context, store ReverseETLStore, blobs ports.BlobStore, job reverseETLInput, registry *connector.Registry, invoker ExtensionInvoker) error {
 	if job.PipelineID == "" {
 		return errors.New("reverse_etl.run requires pipeline_id")
 	}
@@ -332,6 +340,12 @@ func executeReverseETLWithRegistry(ctx context.Context, store ReverseETLStore, b
 		return finishReverseETL(ctx, store, run, errors.New("connector registry is required"))
 	}
 	driver := registry.For(stringValue(resolved, "driver"))
+	if remoteConnector(resolved) {
+		if invoker == nil {
+			return finishReverseETL(ctx, store, run, errors.New("remote connector requires extension host"))
+		}
+		driver = connector.NewRemoteDriver(invoker, p, pipeline.ConnectorExtensionID)
+	}
 	batchSize := 100
 	if n, ok := resolved["max_batch_size"].(float64); ok && n >= 1 && n <= 1000 {
 		batchSize = int(n)
@@ -391,10 +405,18 @@ type warehouseSyncInput struct {
 }
 
 func executeWarehouseSync(ctx context.Context, store ConnectorStore, blobs ports.BlobStore, job warehouseSyncInput) error {
-	return executeWarehouseSyncWithRegistry(ctx, store, blobs, job, connector.DefaultRegistry())
+	return executeWarehouseSyncWithInvoker(ctx, store, blobs, job, nil)
 }
 
 func executeWarehouseSyncWithRegistry(ctx context.Context, store ConnectorStore, blobs ports.BlobStore, job warehouseSyncInput, registry *connector.Registry) error {
+	return executeWarehouseSyncWithRegistryAndInvoker(ctx, store, blobs, job, registry, nil)
+}
+
+func executeWarehouseSyncWithInvoker(ctx context.Context, store ConnectorStore, blobs ports.BlobStore, job warehouseSyncInput, invoker ExtensionInvoker) error {
+	return executeWarehouseSyncWithRegistryAndInvoker(ctx, store, blobs, job, connector.DefaultRegistry(), invoker)
+}
+
+func executeWarehouseSyncWithRegistryAndInvoker(ctx context.Context, store ConnectorStore, blobs ports.BlobStore, job warehouseSyncInput, registry *connector.Registry, invoker ExtensionInvoker) error {
 	if job.PipelineID == "" {
 		return errors.New("warehouse.sync requires pipeline_id")
 	}
@@ -427,6 +449,12 @@ func executeWarehouseSyncWithRegistry(ctx context.Context, store ConnectorStore,
 		return errors.New("connector registry is required")
 	}
 	driver := registry.For(stringValue(resolved, "driver"))
+	if remoteConnector(resolved) {
+		if invoker == nil {
+			return errors.New("remote connector requires extension host")
+		}
+		driver = connector.NewRemoteDriver(invoker, p, pipeline.ConnectorExtensionID)
+	}
 	rows, nextCursor, err := driver.Read(ctx, resolved, job.Cursor)
 	if err != nil {
 		return err
@@ -479,6 +507,12 @@ func executeWarehouseSyncWithRegistry(ctx context.Context, store ConnectorStore,
 		run.Status = "failed"
 	}
 	return store.RecordConnectorRun(ctx, run)
+}
+
+func remoteConnector(cfg map[string]any) bool {
+	transport, _ := cfg["transport"].(string)
+	driver, _ := cfg["driver"].(string)
+	return transport == "remote_http" || driver == "remote_http"
 }
 
 type reject struct {

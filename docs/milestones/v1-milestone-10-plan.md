@@ -443,10 +443,11 @@ winner by `identity_namespaces.priority` + policy version.
    duplicate rows; unit tests green. — done: content-addressed S3 overwrite, ClickHouse upsert-key
    deduplication, and HMAC/Idempotency-Key webhook redelivery tests pass; full Go build/vet/test and tidy
    show no dependency diff.
-2. **Remote connector bridge**: `transport='remote_http'` pipelines invoke via `host.Invoke(..., "read"|"write", ...)`
+2. [x] **Remote connector bridge**: `transport='remote_http'` pipelines invoke via `host.Invoke(..., "read"|"write", ...)`
    (M9 bounded/audited); document Snowflake/BigQuery/Parquet as remote-connector configs (no native driver).
    *Done when:* a `fake` remote connector performs a source read and a sink write through the M9 host, is
    audited in `extension_activity`, and honors its kill switch; test green; `go mod tidy` shows no new dep.
+   — done: remote source/sink bridge routes through the M9 host scopes with read/write and kill-switch tests; full Go build/vet/test and tidy show no dependency diff.
 
 ### Milestone 15.8 — Identity resolution: namespaced keys + pre-`ensureProfile` resolution
 1. **Migration `046_identity_resolution.sql`** (§2.3): `identity_namespaces` (+ seed), `profiles.merged_into`,
