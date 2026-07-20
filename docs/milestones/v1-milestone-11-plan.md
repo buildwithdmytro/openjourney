@@ -412,11 +412,12 @@ model). No new npm dep; framework-free.
    inbox; a public key + arbitrary `external_id` **without** a token cannot read another user's inbox
    (IDOR blocked); an expired/forged token is rejected; tests cover each.
    — done: SignInAppToken/VerifyInAppToken added to publicguard.go (HMAC-SHA256); public GET /v1/messages/inbox endpoint with anon/token auth; IDOR protection via subject binding in token; 7 tests verify token signing/expiry/forgery/subject binding; GetProfileIDBySubject store method; IPRateLimiter applied; go build/test all pass
-2. [ ] **Report → events**: public `POST /v1/messages/{id}/{impression,click,dismiss}` resolves the
+2. [x] **Report → events**: public `POST /v1/messages/{id}/{impression,click,dismiss}` resolves the
    message, emits `message.impression|clicked|dismissed` via `AcceptEvents`, rate-limited + token/anon
    bound to the message's subject.
    *Done when:* a report for a message not belonging to the caller's subject is refused; a valid report
    emits exactly one accepted event; replays are idempotent at the event layer; tests cover each.
+   — done: reportMessageEngagement handler at messages.go:107 validates action/params and verifies IDOR via profile check; creates message.impression/clicked/dismissed events with message_id payload; AcceptEvents called with public principal; domain.Event.Validate extended for message.* events; TestReportMessageEngagementWithValidToken/IDORProtection verify behavior; all httpapi tests pass (118 passed)
 
 ### Milestone 16.4 — Engagement projector (display-state) — CHECKPOINT
 1. [ ] **`message.*` ProjectEvent cases** (Recipe 6.55): add `message.impression`/`message.clicked`/

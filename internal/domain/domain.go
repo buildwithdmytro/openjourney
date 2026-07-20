@@ -221,6 +221,14 @@ func (e Event) Validate(now time.Time) error {
 			strings.TrimSpace(body.Endpoint) == "" {
 			return errors.New("message.complained payload requires campaign_id and endpoint")
 		}
+	case "message.impression", "message.clicked", "message.dismissed":
+		var body struct {
+			MessageID string `json:"message_id"`
+		}
+		if err := json.Unmarshal(e.Payload, &body); err != nil ||
+			strings.TrimSpace(body.MessageID) == "" {
+			return errors.New("message engagement payload requires message_id")
+		}
 	}
 	return nil
 }
