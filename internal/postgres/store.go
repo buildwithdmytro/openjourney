@@ -459,7 +459,10 @@ func (s *Store) ProjectEvent(ctx context.Context, event domain.AcceptedEvent) er
 	var conversionSourceType, conversionVariant string
 	if event.Type != "message.bounced" && event.Type != "message.complained" {
 		var err error
-		profileID, err = ensureProfile(ctx, tx, event)
+		profileID, err = resolveIdentity(ctx, tx, event)
+		if err == nil && profileID == "" {
+			profileID, err = ensureProfile(ctx, tx, event)
+		}
 		if err != nil {
 			return err
 		}
@@ -622,6 +625,8 @@ func (s *Store) ProjectEvent(ctx context.Context, event domain.AcceptedEvent) er
 		if err := json.Unmarshal(event.Payload, &body); err != nil {
 			return err
 		}
+		body.Namespace = strings.TrimSpace(body.Namespace)
+		body.Value = normalizeIdentityValue(body.Namespace, body.Value)
 		_, err = tx.Exec(ctx, `INSERT INTO identity_aliases
 			(tenant_id,app_id,namespace,value,profile_id,source_event_id)
 			VALUES($1,$2,$3,$4,$5,$6)
@@ -710,7 +715,7 @@ func ensureProfile(ctx context.Context, tx pgx.Tx, event domain.AcceptedEvent) (
 		if event.AnonymousID != "" {
 			var anonymousProfileID string
 			err := tx.QueryRow(ctx, `SELECT id FROM profiles
-				WHERE tenant_id=$1 AND app_id=$2 AND anonymous_id=$3 FOR UPDATE`,
+				WHERE tenant_id=$1 AND app_id=$2 AND anonymous_id=$3 AND merged_into IS NULL FOR UPDATE`,
 				event.Principal.TenantID, event.Principal.AppID, event.AnonymousID).Scan(&anonymousProfileID)
 			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 				return "", err
@@ -745,7 +750,9 @@ func ensureProfile(ctx context.Context, tx pgx.Tx, event domain.AcceptedEvent) (
 						externalProfileID, anonymousProfileID); err != nil {
 						return "", err
 					}
-					if _, err := tx.Exec(ctx, "DELETE FROM profiles WHERE id=$1", anonymousProfileID); err != nil {
+					if _, err := tx.Exec(ctx, `UPDATE profiles SET merged_into=$1,
+						external_id=NULL,version=version+1,updated_at=now() WHERE id=$2`,
+						externalProfileID, anonymousProfileID); err != nil {
 						return "", err
 					}
 				}
@@ -765,6 +772,84 @@ func ensureProfile(ctx context.Context, tx pgx.Tx, event domain.AcceptedEvent) (
 		DO UPDATE SET updated_at=profiles.updated_at RETURNING id`,
 		event.Principal.TenantID, event.Principal.WorkspaceID, event.Principal.AppID, event.AnonymousID).Scan(&id)
 	return id, err
+}
+
+// resolveIdentity finds an existing live profile from namespaced keys before
+// ensureProfile creates a new subject. All mutations remain in ProjectEvent;
+// this helper is deliberately read-only and only returns the projector target.
+func resolveIdentity(ctx context.Context, tx pgx.Tx, event domain.AcceptedEvent) (string, error) {
+	keys := identityKeys(event)
+	if len(keys) == 0 {
+		return "", nil
+	}
+	for _, key := range keys {
+		var profileID string
+		err := tx.QueryRow(ctx, `SELECT ia.profile_id
+			FROM identity_aliases ia
+			JOIN identity_namespaces n ON n.tenant_id=ia.tenant_id
+				AND n.app_id=ia.app_id AND n.namespace=ia.namespace
+			JOIN profiles p ON p.id=ia.profile_id AND p.merged_into IS NULL
+			WHERE ia.tenant_id=$1 AND ia.app_id=$2 AND ia.namespace=$3 AND ia.value=$4
+			ORDER BY n.priority ASC, ia.profile_id ASC
+			LIMIT 1 FOR UPDATE OF p`, event.Principal.TenantID, event.Principal.AppID,
+			key.namespace, key.value).Scan(&profileID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return "", err
+		}
+		return profileID, nil
+	}
+	return "", nil
+}
+
+type identityKey struct {
+	namespace string
+	value     string
+}
+
+func identityKeys(event domain.AcceptedEvent) []identityKey {
+	var body map[string]any
+	if err := json.Unmarshal(event.Payload, &body); err != nil {
+		return nil
+	}
+	values := make(map[string]string)
+	for _, container := range []string{"identities", "identity"} {
+		if nested, ok := body[container].(map[string]any); ok {
+			for namespace, value := range nested {
+				if text, ok := value.(string); ok && strings.TrimSpace(text) != "" {
+					values[namespace] = normalizeIdentityValue(namespace, text)
+				}
+			}
+		}
+	}
+	for _, namespace := range []string{"email", "phone", "user_id"} {
+		if text, ok := body[namespace].(string); ok && strings.TrimSpace(text) != "" {
+			values[namespace] = normalizeIdentityValue(namespace, text)
+		}
+	}
+	if event.ExternalID != "" {
+		values["user_id"] = normalizeIdentityValue("user_id", event.ExternalID)
+	}
+	namespaces := make([]string, 0, len(values))
+	for namespace := range values {
+		namespaces = append(namespaces, namespace)
+	}
+	sort.Strings(namespaces)
+	keys := make([]identityKey, 0, len(namespaces))
+	for _, namespace := range namespaces {
+		keys = append(keys, identityKey{namespace: namespace, value: values[namespace]})
+	}
+	return keys
+}
+
+func normalizeIdentityValue(namespace, value string) string {
+	value = strings.TrimSpace(value)
+	if namespace == "email" || namespace == "phone" {
+		return strings.ToLower(value)
+	}
+	return value
 }
 
 func (s *Store) FailProjectionJob(ctx context.Context, eventID string, jobErr error) error {

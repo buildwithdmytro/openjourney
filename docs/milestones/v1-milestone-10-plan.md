@@ -455,13 +455,16 @@ winner by `identity_namespaces.priority` + policy version.
    *Done when:* migration applies; a merged profile can be tombstoned without deletion; CHECKs accept every
    written value. — done: 046 migration seeds namespaced defaults and adds reversible tombstone/provenance
    columns; TestIdentityResolutionMigrationSupportsDefaultsAndTombstones verifies migration and retention.
-2. **Namespaced resolution before `ensureProfile`** (Recipe 6.51): a `resolveIdentity(tx, event)` that resolves
+2. [x] **Namespaced resolution before `ensureProfile`** (Recipe 6.51): a `resolveIdentity(tx, event)` that resolves
    email/phone/user_id/custom via `identity_aliases`, generalizing the anon→known stitch (`store.go:687`) to
    any configured namespace; events arriving before identification associate to the anonymous subject and are
    re-pointed through audited identity edges on later identify.
-   *Done when:* two events with different namespaced keys resolving to the same subject land on one profile;
-   a pre-identification event is retro-associated on identify; nothing writes `profiles` outside the projector;
-   integration test green.
+	*Done when:* two events with different namespaced keys resolving to the same subject land on one profile;
+	a pre-identification event is retro-associated on identify; nothing writes `profiles` outside the projector;
+	integration test green. — done: projector pre-resolution supports configured email/phone/user_id/custom keys,
+	retro-associates anonymous events while retaining tombstones, and
+	`TestNamespacedIdentityResolutionPreEnsureProfileAndRetroAssociates` covers both flows; full Go
+	build/vet/test and tidy pass with no dependency diff (DB integration skips when OPENJOURNEY_TEST_DATABASE_URL is unset).
 
 ### Milestone 15.9 — Deterministic merge policy + reversible provenance
 1. **Deterministic merge**: on a resolution conflict, pick the winner by `identity_namespaces.priority` +
