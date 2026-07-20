@@ -450,10 +450,11 @@ winner by `identity_namespaces.priority` + policy version.
    — done: remote source/sink bridge routes through the M9 host scopes with read/write and kill-switch tests; full Go build/vet/test and tidy show no dependency diff.
 
 ### Milestone 15.8 — Identity resolution: namespaced keys + pre-`ensureProfile` resolution
-1. **Migration `046_identity_resolution.sql`** (§2.3): `identity_namespaces` (+ seed), `profiles.merged_into`,
+1. [x] **Migration `046_identity_resolution.sql`** (§2.3): `identity_namespaces` (+ seed), `profiles.merged_into`,
    `identity_merges` provenance columns, `identity_aliases` lookup index.
    *Done when:* migration applies; a merged profile can be tombstoned without deletion; CHECKs accept every
-   written value.
+   written value. — done: 046 migration seeds namespaced defaults and adds reversible tombstone/provenance
+   columns; TestIdentityResolutionMigrationSupportsDefaultsAndTombstones verifies migration and retention.
 2. **Namespaced resolution before `ensureProfile`** (Recipe 6.51): a `resolveIdentity(tx, event)` that resolves
    email/phone/user_id/custom via `identity_aliases`, generalizing the anon→known stitch (`store.go:687`) to
    any configured namespace; events arriving before identification associate to the anonymous subject and are
