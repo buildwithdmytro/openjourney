@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -333,23 +334,23 @@ func TestWebPushHTTPIntegration(t *testing.T) {
 		os.Unsetenv("TEST_VAPID_PUBLIC")
 	}()
 
-	// Create a test server that expects VAPID auth
+	// A server that asserts the VAPID request shape the profile builds, then 201s.
+	// We execute the profile-built request with a plain client on purpose: the
+	// production adapter's transport intentionally refuses loopback dials (SSRF
+	// guard), so a full NewWebPushAdapter().Send to an httptest server can never
+	// succeed — that guard is exercised separately via IsSafeURL/IsPrivateIP. This
+	// verifies BuildRequest + ParseResponse against a real round-trip.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
+		if r.Method != http.MethodPost {
 			t.Errorf("expected POST, got %s", r.Method)
 		}
-
-		auth := r.Header.Get("Authorization")
-		if !strings.HasPrefix(auth, "vapid t=") {
-			t.Errorf("expected VAPID Authorization header, got %s", auth)
+		if !strings.HasPrefix(r.Header.Get("Authorization"), "vapid t=") {
+			t.Errorf("expected VAPID Authorization header, got %q", r.Header.Get("Authorization"))
 		}
-
 		if r.Header.Get("TTL") == "" {
 			t.Error("expected TTL header")
 		}
-
 		w.WriteHeader(http.StatusCreated)
-		w.Write([]byte(`{}`))
 	}))
 	defer server.Close()
 
@@ -360,22 +361,27 @@ func TestWebPushHTTPIntegration(t *testing.T) {
 	}
 	cfgJSON, _ := json.Marshal(cfg)
 
-	identity := domain.SendingIdentity{
-		Channel:  "push",
-		Provider: "webpush",
-		Config:   cfgJSON,
-	}
-
 	msg := ports.RenderedMessage{
 		Channel:  "push",
 		Endpoint: server.URL,
-		Identity: identity,
+		Identity: domain.SendingIdentity{Channel: "push", Provider: "webpush", Config: cfgJSON},
 	}
 
-	adapter := NewWebPushAdapter()
-	providerID, err := adapter.Send(context.Background(), msg)
+	profile := &WebPushProfile{}
+	req, err := profile.BuildRequest(context.Background(), msg)
 	if err != nil {
-		t.Fatalf("Send failed: %v", err)
+		t.Fatalf("BuildRequest failed: %v", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("round-trip failed: %v", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+
+	providerID, err := profile.ParseResponse(resp, body)
+	if err != nil {
+		t.Fatalf("ParseResponse failed: %v", err)
 	}
 	if providerID == "" {
 		t.Error("expected non-empty provider ID")
@@ -474,7 +480,9 @@ func TestWebPush404IsInvalidToken(t *testing.T) {
 		os.Unsetenv("TEST_VAPID_PUBLIC")
 	}()
 
-	// Simulate 404 response (subscription no longer exists)
+	// A revoked subscription returns 404. Execute the profile-built request with a
+	// plain client (see TestWebPushHTTPIntegration for why not the guarded adapter)
+	// and assert the profile classifies 404 as an invalid token + a terminal error.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
@@ -487,26 +495,28 @@ func TestWebPush404IsInvalidToken(t *testing.T) {
 	}
 	cfgJSON, _ := json.Marshal(cfg)
 
-	identity := domain.SendingIdentity{
-		Channel:  "push",
-		Provider: "webpush",
-		Config:   cfgJSON,
-	}
-
 	msg := ports.RenderedMessage{
 		Channel:  "push",
 		Endpoint: server.URL,
-		Identity: identity,
+		Identity: domain.SendingIdentity{Channel: "push", Provider: "webpush", Config: cfgJSON},
 	}
 
-	adapter := NewWebPushAdapter()
-	_, err = adapter.Send(context.Background(), msg)
-	if err == nil {
-		t.Fatal("expected error for 404 response")
+	profile := &WebPushProfile{}
+	req, err := profile.BuildRequest(context.Background(), msg)
+	if err != nil {
+		t.Fatalf("BuildRequest failed: %v", err)
 	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("round-trip failed: %v", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
 
-	// Verify it's marked as invalid token
-	if !IsInvalidTokenError(err) {
-		t.Errorf("expected invalid token error, got %T: %v", err, err)
+	if !profile.IsInvalidToken(resp, body) {
+		t.Error("expected 404 to be classified as an invalid token")
+	}
+	if _, err := profile.ParseResponse(resp, body); err == nil {
+		t.Fatal("expected ParseResponse to error on 404")
 	}
 }
