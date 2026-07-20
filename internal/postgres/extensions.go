@@ -390,13 +390,23 @@ func (s *Store) UpsertExtensionConfig(ctx context.Context, p domain.Principal, c
 
 	// Ensure the parent extension exists and belongs to the workspace/tenant
 	var extExists bool
-	err := s.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM extensions WHERE tenant_id = $1 AND workspace_id = $2 AND id = $3)",
-		p.TenantID, p.WorkspaceID, cfg.ExtensionID).Scan(&extExists)
+	var transport string
+	err := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM extensions WHERE tenant_id = $1 AND workspace_id = $2 AND id = $3),
+		COALESCE(ev.transport, '')
+		FROM extensions e
+		LEFT JOIN extension_versions ev ON ev.id = e.current_version_id
+		WHERE e.tenant_id = $1 AND e.workspace_id = $2 AND e.id = $3`,
+		p.TenantID, p.WorkspaceID, cfg.ExtensionID).Scan(&extExists, &transport)
 	if err != nil {
 		return domain.ExtensionConfig{}, err
 	}
 	if !extExists {
 		return domain.ExtensionConfig{}, fmt.Errorf("extension not found: %s", cfg.ExtensionID)
+	}
+
+	// Validate that native connectors use secret references, not raw values
+	if err := extension.ValidateNativeConnectorConfig(transport, cfg.Config); err != nil {
+		return domain.ExtensionConfig{}, err
 	}
 
 	var out domain.ExtensionConfig
@@ -450,7 +460,23 @@ func (s *Store) GetExtensionConfig(ctx context.Context, p domain.Principal, exte
 	if err != nil {
 		return domain.ExtensionConfig{}, err
 	}
-	out.Config = json.RawMessage(outConfig)
+
+	// Redact raw secrets before returning
+	var configMap map[string]any
+	if len(outConfig) > 0 {
+		if err := json.Unmarshal(outConfig, &configMap); err != nil {
+			return domain.ExtensionConfig{}, err
+		}
+		configMap = extension.RedactExtensionConfig(configMap)
+		redactedBytes, err := json.Marshal(configMap)
+		if err != nil {
+			return domain.ExtensionConfig{}, err
+		}
+		out.Config = json.RawMessage(redactedBytes)
+	} else {
+		out.Config = json.RawMessage(outConfig)
+	}
+
 	out.EndpointAllowlist = outAllowlist
 	return out, nil
 }

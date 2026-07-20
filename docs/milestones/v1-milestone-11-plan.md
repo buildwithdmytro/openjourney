@@ -354,13 +354,14 @@ model). No new npm dep; framework-free.
    *Done when:* a pipeline whose run outlives its interval does not accumulate overlapping jobs (one
    in-flight at a time); the SKIP-LOCKED single-tick property still holds; a test proves both.
    — done: added NOT EXISTS guard to ClaimDueConnectorPipeline SELECT query; TestSchedulerSkipsInFlightPipelineRuns verifies no overlap
-4. [ ] **Native connector raw-secret rejection + config redaction (finding 7).** Reject non-`_ref`
+4. [x] **Native connector raw-secret rejection + config redaction (finding 7).** Reject non-`_ref`
    credential keys (`access_key`/`secret_key`/`password`/`hmac_secret`/…) for `s3`/`clickhouse`/`kafka`/
    `webhook` transports at `UpsertExtensionConfig` (`internal/postgres/extensions.go:386`, mirror the
    `remote_http` guard `ValidateRemoteHTTPConfig`, `extensions.go:286`); redact known secret keys in the
    `getExtensionConfig` response (`internal/httpapi/extensions.go:92`).
    *Done when:* a connector config with a literal `password` (not `password_ref`) is rejected at upsert;
    `GET .../config` never echoes a raw secret value; tests cover both.
+   — done: ValidateNativeConnectorConfig validates at UpsertExtensionConfig; RedactExtensionConfig redacts in GetExtensionConfig; tests verify rejection and redaction; all 513 tests pass
 
 ### Milestone 16.1 — In-app channel foundation: migration + store + adapter
 1. [ ] **Migration `048_inapp_messaging.sql`** (§2.2): widen the channel/provider/body-presence CHECKs

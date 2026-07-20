@@ -33,3 +33,43 @@ func validateResolvedRemoteHMAC(config map[string]any) error {
 	}
 	return nil
 }
+
+// ValidateNativeConnectorConfig enforces that native connectors use secret references, not raw values.
+func ValidateNativeConnectorConfig(transport string, rawConfig json.RawMessage) error {
+	switch transport {
+	case "s3", "clickhouse", "kafka", "webhook":
+		// These transports support credential references
+	default:
+		return nil
+	}
+
+	var config map[string]any
+	if len(rawConfig) == 0 || json.Unmarshal(rawConfig, &config) != nil {
+		return nil // Empty config is allowed
+	}
+
+	rawSecretKeys := []string{"access_key", "secret_key", "password", "hmac_secret"}
+	for _, key := range rawSecretKeys {
+		if _, present := config[key]; present {
+			return fmt.Errorf("%s config must use %s_ref, not raw %s", transport, key, key)
+		}
+	}
+	return nil
+}
+
+// RedactExtensionConfig removes raw secret values from config before returning to client.
+func RedactExtensionConfig(config map[string]any) map[string]any {
+	if config == nil {
+		return config
+	}
+	redacted := make(map[string]any)
+	for k, v := range config {
+		redacted[k] = v
+	}
+	// Remove any known raw secret keys; only leave *_ref keys
+	rawSecretKeys := []string{"access_key", "secret_key", "password", "hmac_secret"}
+	for _, key := range rawSecretKeys {
+		delete(redacted, key)
+	}
+	return redacted
+}
