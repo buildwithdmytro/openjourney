@@ -345,12 +345,13 @@ fake-store unit test + postgres integration test (the M10/M11 template).
    — done: tokens.css has --focus-ring token for both light/dark modes; styles.css removes outline:none and adds :focus-visible styles to nav button, button, input, select, a, .resource-row, .tab-buttons, .icon-button, .journey-tabs; hover transforms guarded with @media (prefers-reduced-motion: no-preference); test verifies toHaveFocus on nav button; 42 tests passing
 
 ### Milestone 17.2 — Core primitives — CHECKPOINT
-1. [ ] **Button/Input/Select/Textarea/Field** (Recipe 6.59): typed, token-styled, ref-forwarding,
+1. [x] **Button/Input/Select/Textarea/Field** (Recipe 6.59): typed, token-styled, ref-forwarding,
    accessible primitives in `web/src/components/`; `Field` wires `htmlFor`/`id`/`aria-describedby`/
    `aria-invalid`.
    *Done when:* primitives render; a `Field` associates label+help+error; unit tests query by role/label;
    one section (e.g. `Governance.tsx`) is migrated to them with its existing tests **unchanged and green**.
    **Checkpoint:** primitives exist, are keyboard/label-correct, and drop into a real section with no test churn.
+   — done: Button/Input/Select/Textarea/Field primitives in web/src/components/; 37 component tests passing; Field wires htmlFor/id/aria-describedby/aria-invalid; Governance.tsx migrated with unchanged passing tests (79 total tests green); focus-visible styles present
 2. [ ] **Icon set**: an in-repo inline-SVG `Icon` component with the ~12 glyphs the app needs (search,
    close, check, chevron, plus, trash, warn, info, menu, external, sun, moon); decorative→`aria-hidden`,
    labeled→`role="img"`+`aria-label`.
