@@ -885,6 +885,15 @@ type ExperimentRollout struct {
 	JourneyVersion *JourneyVersion `json:"journey_version,omitempty"`
 }
 
+type Overview struct {
+	Profiles           int64 `json:"profiles"`
+	Journeys           int64 `json:"journeys"`
+	Campaigns          int64 `json:"campaigns"`
+	DeliveryAttempts   int64 `json:"delivery_attempts"`
+	InAppMessages      int64 `json:"inapp_messages"`
+	ConnectorRuns      int64 `json:"connector_runs"`
+}
+
 type ExperimentVariantReport struct {
 	Label       string                `json:"label"`
 	IsControl   bool                  `json:"is_control"`

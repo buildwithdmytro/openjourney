@@ -737,6 +737,19 @@ export type ExperimentReport = {
   variants: ExperimentVariantReport[];
 };
 
+export type Overview = {
+  profiles: number;
+  journeys: number;
+  campaigns: number;
+  delivery_attempts: number;
+  inapp_messages: number;
+  connector_runs: number;
+};
+
+export async function getOverview(baseURL: string, apiKey: string): Promise<Overview> {
+  return requestJSON<Overview>(baseURL, apiKey, "/v1/overview");
+}
+
 export async function getCampaignReport(baseURL: string, apiKey: string, id: string): Promise<CampaignReport> {
   return requestJSON<CampaignReport>(baseURL, apiKey, `/v1/reports/campaigns/${encodeURIComponent(id)}`);
 }

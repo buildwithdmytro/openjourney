@@ -174,6 +174,7 @@ func (s *Server) buildMux() http.Handler {
 	mux.Handle("POST /v1/experiments/{id}/optimize", s.authenticate("experiments:write", http.HandlerFunc(s.proposeExperimentOptimization)))
 	mux.Handle("POST /v1/experiments/{id}/optimize/{proposalId}/approve", s.authenticate("experiments:write", http.HandlerFunc(s.approveExperimentOptimization)))
 	mux.Handle("POST /v1/experiments/{id}/rollout", s.authenticate("experiments:write", http.HandlerFunc(s.rolloutExperiment)))
+	mux.Handle("GET /v1/overview", s.authenticate("reports:read", http.HandlerFunc(s.getOverview)))
 	mux.Handle("GET /v1/reports/campaigns/{id}", s.authenticate("reports:read", http.HandlerFunc(s.getCampaignReport)))
 	mux.Handle("GET /v1/reports/journeys/{id}", s.authenticate("reports:read", http.HandlerFunc(s.getJourneyReport)))
 	mux.Handle("GET /v1/reports/experiments/{id}", s.authenticate("reports:read", http.HandlerFunc(s.getExperimentReport)))

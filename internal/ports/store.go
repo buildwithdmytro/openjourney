@@ -187,6 +187,7 @@ type Store interface {
 	CampaignReport(ctx context.Context, p domain.Principal, campaignID string) (domain.CampaignReport, error)
 	JourneyReport(ctx context.Context, p domain.Principal, journeyID string) (domain.JourneyReport, error)
 	ExperimentReport(ctx context.Context, p domain.Principal, experimentID string) (domain.ExperimentReport, error)
+	GetOverview(ctx context.Context, p domain.Principal) (domain.Overview, error)
 	ProposeExperimentOptimization(ctx context.Context, p domain.Principal, experimentID string) (domain.OptimizationProposal, error)
 	ApproveExperimentOptimization(ctx context.Context, p domain.Principal, experimentID, proposalID string) (domain.ExperimentVersion, error)
 	RolloutExperiment(ctx context.Context, p domain.Principal, experimentID string) (domain.ExperimentRollout, error)

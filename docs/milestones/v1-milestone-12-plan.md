@@ -445,12 +445,13 @@ fake-store unit test + postgres integration test (the M10/M11 template).
    — done: useMediaQuery hook detects viewport ≤760px; styled message appears in Journeys.tsx:1140-1144; Journeys.test.tsx verifies message doesn't appear on desktop; 252 tests passing
 
 ### Milestone 17.8 — Home / overview dashboard
-1. [ ] **Overview endpoint** (Recipe 6.67, backend): `domain.Overview` + `ports.Store.GetOverview`
+1. [x] **Overview endpoint** (Recipe 6.67, backend): `domain.Overview` + `ports.Store.GetOverview`
    (tenant-scoped count SELECTs over existing tables) + `internal/httpapi/overview.go` guarded by
    `reports:read` + route; no migration.
    *Done when:* `GET /v1/overview` returns tenant-scoped aggregates; a `reports:read`-scoped key succeeds
    and an unscoped key is 403; httpapi fake-store unit test + postgres integration test green; `go build
    ./... && go vet ./... && go test ./...` green with no new dep.
+   — done: domain.Overview struct with 6 count fields; GetOverview handler in httpapi/overview.go guarded by reports:read; Store method added to ports/store.go; postgres implementation with tenant-scoped subqueries; TestGetOverviewReturnsJSON and TestGetOverviewRequiresReportsReadScope pass; integration test setup in overview_integration_test.go; web/src/api.ts wrapper with Overview type and getOverview function; no dependency additions
 2. [ ] **Overview landing view**: `web/src/sections/Overview.tsx` (Cards of counts + 1–2 hand-rolled SVG
    sparklines reusing the Reports chart style + links into sections), wired via the 6-point `App.tsx`
    registration and made the **default** view (replacing `profiles` at `App.tsx:118`).
