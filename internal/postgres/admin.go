@@ -131,7 +131,7 @@ func isBuiltInEvent(eventType string) bool {
 		eventType == "form.submitted" ||
 		eventType == "stage.changed" ||
 		eventType == "company.updated" ||
-		eventType == "identity.alias" || eventType == "identity.merge" ||
+		eventType == "identity.alias" || eventType == "identity.merge" || eventType == "identity.unmerge" ||
 		eventType == "email.sent" || eventType == "email.opened" || eventType == "link.clicked" ||
 		eventType == "message.sent" || eventType == "message.delivered" ||
 		eventType == "message.bounced" || eventType == "message.complained" ||

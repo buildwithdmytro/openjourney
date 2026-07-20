@@ -163,4 +163,34 @@ func TestIdentityMergeIsDeterministicAndReversibleBySnapshot(t *testing.T) {
 	if !exists {
 		t.Fatalf("reversal blob %q was not written", reversalRef)
 	}
+
+	// The command restores the tombstoned source and its original alias edge.
+	project(event("identity.unmerge", sourceID, "unmerge", `{"source_profile_id":"`+sourceID+`"}`))
+	var restoredInto string
+	if err := store.pool.QueryRow(ctx, `SELECT COALESCE(merged_into::text,'') FROM profiles WHERE id=$1`, sourceID).Scan(&restoredInto); err != nil {
+		t.Fatal(err)
+	}
+	if restoredInto != "" {
+		t.Fatalf("unmerge did not restore source profile: merged_into=%q", restoredInto)
+	}
+	var aliasOwner string
+	if err := store.pool.QueryRow(ctx, `SELECT profile_id FROM identity_aliases
+		WHERE tenant_id=$1 AND app_id=$2 AND namespace='email' AND value='merge@example.test'`, p.TenantID, p.AppID).Scan(&aliasOwner); err != nil {
+		t.Fatal(err)
+	}
+	if aliasOwner != sourceID {
+		t.Fatalf("unmerge did not restore source alias: got %q want %q", aliasOwner, sourceID)
+	}
+
+	// A fresh merge command after unmerge selects the same winner, independent
+	// of the order in which the two namespace keys are supplied.
+	project(event("profile.updated", "merge-after-unmerge", "merge-again", `{"identities":{"email":"merge@example.test","user_id":"merge-user"},"attributes":{"merged_again":true}}`))
+	var rematchedTarget string
+	if err := store.pool.QueryRow(ctx, `SELECT target_profile_id FROM identity_merges
+		WHERE source_profile_id=$1 AND undone_at IS NULL ORDER BY merged_at DESC LIMIT 1`, sourceID).Scan(&rematchedTarget); err != nil {
+		t.Fatal(err)
+	}
+	if rematchedTarget != targetID {
+		t.Fatalf("merge after unmerge was not deterministic: got %q want %q", rematchedTarget, targetID)
+	}
 }

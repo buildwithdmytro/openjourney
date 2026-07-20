@@ -462,7 +462,7 @@ func (s *Store) ProjectEvent(ctx context.Context, event domain.AcceptedEvent) er
 	var profileID string
 	var conversionAttributed bool
 	var conversionSourceType, conversionVariant string
-	if event.Type != "message.bounced" && event.Type != "message.complained" {
+	if event.Type != "message.bounced" && event.Type != "message.complained" && event.Type != "identity.unmerge" {
 		var err error
 		profileID, err = s.resolveIdentity(ctx, tx, event)
 		if err == nil && profileID == "" {
@@ -624,22 +624,31 @@ func (s *Store) ProjectEvent(ctx context.Context, event domain.AcceptedEvent) er
 		}
 	case "identity.alias":
 		var body struct {
-			Namespace string `json:"namespace"`
-			Value     string `json:"value"`
+			Namespace  string            `json:"namespace"`
+			Value      string            `json:"value"`
+			Identities map[string]string `json:"identities"`
 		}
 		if err := json.Unmarshal(event.Payload, &body); err != nil {
 			return err
 		}
-		body.Namespace = strings.TrimSpace(body.Namespace)
-		body.Value = normalizeIdentityValue(body.Namespace, body.Value)
-		_, err = tx.Exec(ctx, `INSERT INTO identity_aliases
-			(tenant_id,app_id,namespace,value,profile_id,source_event_id)
-			VALUES($1,$2,$3,$4,$5,$6)
-			ON CONFLICT(tenant_id,app_id,namespace,value)
-			DO UPDATE SET profile_id=EXCLUDED.profile_id,source_event_id=EXCLUDED.source_event_id`,
-			event.Principal.TenantID, event.Principal.AppID, body.Namespace, body.Value, profileID, event.ID)
-		if err != nil {
-			return err
+		aliases := body.Identities
+		if len(aliases) == 0 {
+			aliases = map[string]string{body.Namespace: body.Value}
+		}
+		for namespace, value := range aliases {
+			namespace = strings.TrimSpace(namespace)
+			value = normalizeIdentityValue(namespace, value)
+			if namespace == "" || value == "" {
+				return errors.New("identity.alias contains an empty namespace or value")
+			}
+			if _, err = tx.Exec(ctx, `INSERT INTO identity_aliases
+				(tenant_id,app_id,namespace,value,profile_id,source_event_id)
+				VALUES($1,$2,$3,$4,$5,$6)
+				ON CONFLICT(tenant_id,app_id,namespace,value)
+				DO UPDATE SET profile_id=EXCLUDED.profile_id,source_event_id=EXCLUDED.source_event_id`,
+				event.Principal.TenantID, event.Principal.AppID, namespace, value, profileID, event.ID); err != nil {
+				return err
+			}
 		}
 	case "identity.merge":
 		var body struct {
@@ -662,6 +671,10 @@ func (s *Store) ProjectEvent(ctx context.Context, event domain.AcceptedEvent) er
 			if err := s.mergeProfiles(ctx, tx, event, sourceID, profileID); err != nil {
 				return err
 			}
+		}
+	case "identity.unmerge":
+		if err := s.unmergeProfile(ctx, tx, event); err != nil {
+			return err
 		}
 	}
 	if err := s.projectEngagementFact(ctx, tx, event, profileID); err != nil {
@@ -694,6 +707,84 @@ func (s *Store) ProjectEvent(ctx context.Context, event domain.AcceptedEvent) er
 		telemetry.RecordConversionAttributed(ctx, conversionSourceType, conversionVariant)
 	}
 	return nil
+}
+
+// unmergeProfile restores the source profile and its identity edges from the
+// immutable merge snapshot. It is deliberately projector-only: the command is
+// accepted as an event and all profile/identity mutations stay in this tx.
+func (s *Store) unmergeProfile(ctx context.Context, tx pgx.Tx, event domain.AcceptedEvent) error {
+	var body struct {
+		MergeID         string `json:"merge_id"`
+		SourceProfileID string `json:"source_profile_id"`
+	}
+	if err := json.Unmarshal(event.Payload, &body); err != nil {
+		return err
+	}
+	var mergeID, sourceID, targetID, reversalRef string
+	var undoneAt *time.Time
+	query := `SELECT id,source_profile_id,target_profile_id,reversal_ref,undone_at
+		FROM identity_merges WHERE tenant_id=$1 AND app_id=$2 AND `
+	args := []any{event.Principal.TenantID, event.Principal.AppID}
+	if body.MergeID != "" {
+		query += "id=$3"
+		args = append(args, body.MergeID)
+	} else {
+		query += "source_profile_id=$3"
+		args = append(args, body.SourceProfileID)
+	}
+	query += " FOR UPDATE"
+	if err := tx.QueryRow(ctx, query, args...).Scan(&mergeID, &sourceID, &targetID, &reversalRef, &undoneAt); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil // idempotent replay of an unknown/already-retired command
+		}
+		return err
+	}
+	if undoneAt != nil {
+		return nil
+	}
+	if reversalRef == "" || s.blobs == nil {
+		return errors.New("identity merge has no reversible snapshot")
+	}
+	data, err := s.blobs.Get(ctx, reversalRef)
+	if err != nil {
+		return err
+	}
+	var snapshot identityMergeSnapshot
+	if err := json.Unmarshal(data, &snapshot); err != nil {
+		return fmt.Errorf("decode identity merge snapshot: %w", err)
+	}
+	if snapshot.Profile.ID != sourceID {
+		return errors.New("identity merge snapshot source mismatch")
+	}
+	if _, err := tx.Exec(ctx, `UPDATE profiles SET external_id=$1,anonymous_id=$2,
+		attributes=$3,version=$4,merged_into=NULL,updated_at=$5 WHERE id=$6 AND merged_into=$7`,
+		nullableString(snapshot.Profile.ExternalID), nullableString(snapshot.Profile.AnonymousID),
+		snapshot.Profile.Attributes, snapshot.Profile.Version, snapshot.Profile.UpdatedAt, sourceID, targetID); err != nil {
+		return err
+	}
+	for _, alias := range snapshot.Aliases {
+		if _, err := tx.Exec(ctx, `UPDATE identity_aliases SET profile_id=$1
+			WHERE tenant_id=$2 AND app_id=$3 AND namespace=$4 AND value=$5 AND profile_id=$6`,
+			sourceID, event.Principal.TenantID, event.Principal.AppID, alias.Namespace, alias.Value, targetID); err != nil {
+			return err
+		}
+	}
+	for _, consent := range snapshot.Consents {
+		if _, err := tx.Exec(ctx, `UPDATE consent_ledger SET profile_id=$1
+			WHERE tenant_id=$2 AND app_id=$3 AND source_event_id=$4`, sourceID,
+			event.Principal.TenantID, event.Principal.AppID, consent.SourceEventID); err != nil {
+			return err
+		}
+	}
+	_, err = tx.Exec(ctx, `UPDATE identity_merges SET undone_at=now() WHERE id=$1`, mergeID)
+	return err
+}
+
+func nullableString(value *string) any {
+	if value == nil {
+		return nil
+	}
+	return *value
 }
 
 func ensureProfile(ctx context.Context, tx pgx.Tx, event domain.AcceptedEvent) (string, error) {

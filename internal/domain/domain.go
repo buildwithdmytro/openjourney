@@ -119,12 +119,13 @@ func (e Event) Validate(now time.Time) error {
 		}
 	case "identity.alias":
 		var body struct {
-			Namespace string `json:"namespace"`
-			Value     string `json:"value"`
+			Namespace  string            `json:"namespace"`
+			Value      string            `json:"value"`
+			Identities map[string]string `json:"identities"`
 		}
 		if err := json.Unmarshal(e.Payload, &body); err != nil ||
-			strings.TrimSpace(body.Namespace) == "" || strings.TrimSpace(body.Value) == "" {
-			return errors.New("identity.alias requires namespace and value")
+			(strings.TrimSpace(body.Namespace) == "" || strings.TrimSpace(body.Value) == "") && len(body.Identities) == 0 {
+			return errors.New("identity.alias requires namespace/value or identities")
 		}
 	case "identity.merge":
 		var body struct {
@@ -133,6 +134,15 @@ func (e Event) Validate(now time.Time) error {
 		if err := json.Unmarshal(e.Payload, &body); err != nil ||
 			strings.TrimSpace(body.SourceExternalID) == "" || strings.TrimSpace(e.ExternalID) == "" {
 			return errors.New("identity.merge requires event external_id as target and source_external_id")
+		}
+	case "identity.unmerge":
+		var body struct {
+			MergeID         string `json:"merge_id"`
+			SourceProfileID string `json:"source_profile_id"`
+		}
+		if err := json.Unmarshal(e.Payload, &body); err != nil ||
+			(strings.TrimSpace(body.MergeID) == "" && strings.TrimSpace(body.SourceProfileID) == "") {
+			return errors.New("identity.unmerge requires merge_id or source_profile_id")
 		}
 	case "email.sent":
 		var body struct {

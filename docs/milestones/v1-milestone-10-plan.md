@@ -474,11 +474,13 @@ winner by `identity_namespaces.priority` + policy version.
    conflict merging snapshots and tombstones losers, repoints aliases/consent, and
    `TestIdentityMergeIsDeterministicAndReversibleBySnapshot` verifies provenance; full Go build/vet/test and
    tidy pass with no dependency diff.
-2. **`identity.unmerge` command + identify/merge/unmerge HTTP**: an `identity.unmerge` `ProjectEvent` case that
+2. [x] **`identity.unmerge` command + identify/merge/unmerge HTTP**: an `identity.unmerge` `ProjectEvent` case that
    restores the tombstoned profile from `reversal_ref` and marks `undone_at`; event-sourced
    `POST /v1/identity/{identify,merge,unmerge}` endpoints (emit events, human-actor gate on merge/unmerge).
    *Done when:* an unmerge restores the original two profiles and their edges from provenance; merge→unmerge→
-   merge is deterministic; endpoints emit events (never direct writes); integration test green.
+   merge is deterministic; endpoints emit events (never direct writes); integration test green. — done: projector
+   snapshot restore, deterministic merge→unmerge→merge integration coverage, and human-gated event-emitting
+   identity HTTP command tests pass; full Go build/vet/test and tidy show no dependency diff.
 
 ### Milestone 15.10 — Governance: runs audit, budget/rate, kill switch, quarantine
 1. **Connector governance**: every source/sink/export run writes an append-only `connector_runs` row on every
