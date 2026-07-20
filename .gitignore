@@ -10,3 +10,4 @@ sdk/javascript/node_modules/
 sdk/javascript/dist/
 *.tsbuildinfo
 .ralph/
+/ralph
