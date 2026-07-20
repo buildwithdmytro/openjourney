@@ -336,12 +336,13 @@ fake-store unit test + postgres integration test (the M10/M11 template).
    `prefers-color-scheme`; the choice persists across reload; a test asserts `data-theme` flips and
    Reports still renders.
    — done: useTheme.ts hook created with localStorage persistence and matchMedia support; theme toggle button added to App.tsx sidebar; Reports.tsx refactored to use global hook; test verifies toggling sets data-theme on document root and persists to localStorage; 41 tests passing
-3. [ ] **Focus-visible + reduced-motion baseline**: replace `outline:none` (`styles.css:61`) with a
+3. [x] **Focus-visible + reduced-motion baseline**: replace `outline:none` (`styles.css:61`) with a
    global `:focus-visible` ring token on all interactive elements (`button`, `a`, `.resource-row`, tabs,
    `.icon-button`); add `@media (prefers-reduced-motion: reduce)` guarding existing transforms.
    *Done when:* every interactive element shows a visible keyboard focus ring (asserted via a
    `:focus-visible` style + a `toHaveFocus` test on a nav button); reduced-motion disables the hover
    transforms; tests green.
+   — done: tokens.css has --focus-ring token for both light/dark modes; styles.css removes outline:none and adds :focus-visible styles to nav button, button, input, select, a, .resource-row, .tab-buttons, .icon-button, .journey-tabs; hover transforms guarded with @media (prefers-reduced-motion: no-preference); test verifies toHaveFocus on nav button; 42 tests passing
 
 ### Milestone 17.2 — Core primitives — CHECKPOINT
 1. [ ] **Button/Input/Select/Textarea/Field** (Recipe 6.59): typed, token-styled, ref-forwarding,

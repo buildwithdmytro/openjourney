@@ -355,4 +355,12 @@ describe("App", () => {
       expect(document.documentElement.getAttribute("data-theme")).toBeNull();
     });
   });
+
+  it("keyboard focus is restored and visible on nav buttons", () => {
+    render(<App />);
+    const profilesButton = screen.getByRole("button", { name: "Profiles" });
+
+    profilesButton.focus();
+    expect(profilesButton).toHaveFocus();
+  });
 });

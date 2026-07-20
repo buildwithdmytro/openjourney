@@ -58,6 +58,7 @@
   --shadow-xl: 0 10px 30px rgba(0, 0, 0, 0.2);
   --shadow-2xl: 0 16px 40px rgba(39, 31, 93, 0.2);
   --shadow-inset: 0 0 0 3px rgba(111, 92, 255, 0.12);
+  --focus-ring: 0 0 0 3px rgba(111, 92, 255, 0.24);
 
   /* Typography */
   --font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -100,6 +101,7 @@
     --color-warn-bg: #46391d;
     --color-warn-text: #ffd27a;
     --color-info: #9b8cff;
+    --focus-ring: 0 0 0 3px rgba(155, 140, 255, 0.32);
   }
 }
 
@@ -134,4 +136,5 @@
   --color-warn-bg: #46391d;
   --color-warn-text: #ffd27a;
   --color-info: #9b8cff;
+  --focus-ring: 0 0 0 3px rgba(155, 140, 255, 0.32);
 }

@@ -5,6 +5,7 @@
   font-synthesis: none;
 }
 * { box-sizing: border-box; }
+a:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 body { margin: 0; min-width: 320px; min-height: 100vh; }
 .shell { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
 aside { background: var(--color-surface-muted); color: var(--color-ink-muted); padding: var(--space-2xl) 18px; display: flex; flex-direction: column; }
@@ -12,6 +13,7 @@ aside { background: var(--color-surface-muted); color: var(--color-ink-muted); p
 .brand span { display: inline-grid; place-items: center; width: 30px; height: 30px; margin-right: var(--space-sm); border-radius: var(--radius-md); background: var(--color-accent); color: white; }
 nav { display: grid; gap: 5px; }
 nav button { color: var(--color-ink-subtle); text-align: left; padding: 10px 12px; border-radius: var(--radius-md); display: flex; justify-content: space-between; background: transparent; }
+nav button:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
 nav button.active { color: white; background: rgba(255, 255, 255, 0.1); }
 nav button:disabled { cursor: default; opacity: .55; }
 nav small { color: var(--color-ink-muted); }
@@ -38,7 +40,9 @@ button.secondary { background: var(--color-surface-subtle); color: var(--color-i
 .acquisition-grid { display: grid; grid-template-columns: minmax(250px, .7fr) minmax(520px, 1.3fr); gap: var(--space-lg); align-items: start; }
 .tab-buttons, .form-actions, .field-row { display: flex; align-items: center; gap: var(--space-sm); flex-wrap: wrap; }
 .tab-buttons button.active { background: var(--color-surface-muted); color: #fff; }
+.tab-buttons button:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 .resource-row { width: 100%; display: grid; grid-template-columns: 1fr auto; gap: 3px 10px; margin-top: var(--space-sm); padding: 12px; text-align: left; background: var(--color-surface-subtle); color: var(--color-ink); border: 1px solid var(--color-border-light); }
+.resource-row:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -1px; }
 .resource-row small { color: var(--color-ink-subtle); grid-column: 1 / -1; }
 .acquisition-form { display: grid; gap: 15px; }
 .acquisition-form fieldset { display: grid; gap: 12px; padding: 15px; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-lg); }
@@ -58,10 +62,12 @@ button.secondary { background: var(--color-surface-subtle); color: var(--color-i
 .score-condition-fields { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
 textarea { border: 1px solid var(--color-border-default); border-radius: var(--radius-md); padding: 10px 12px; font: 13px var(--font-mono); resize: vertical; }
 label { display: grid; gap: 7px; font-size: 13px; font-weight: 650; }
-input, select { width: 100%; border: 1px solid var(--color-border-default); border-radius: var(--radius-md); padding: 10px 12px; font: inherit; outline: none; background: var(--color-surface-default); }
+input, select { width: 100%; border: 1px solid var(--color-border-default); border-radius: var(--radius-md); padding: 10px 12px; font: inherit; background: var(--color-surface-default); }
 input:focus, select:focus { border-color: var(--color-accent); box-shadow: var(--shadow-inset); }
+input:focus-visible, select:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 button { border: 0; border-radius: var(--radius-md); background: var(--color-accent); color: white; padding: 11px 18px; font-weight: 700; cursor: pointer; }
 button:disabled { opacity: .6; cursor: wait; }
+button:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 .error { color: var(--color-danger); margin: 16px 0 0; }
 .profile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-lg); margin-top: var(--space-lg); }
 .profile-grid h2 { margin: 8px 0 20px; }
@@ -118,7 +124,10 @@ button.danger { color: var(--color-danger-text); background: var(--color-danger-
 .report-link:hover { border-color: var(--color-accent); background: rgba(111, 92, 255, 0.1); }
 
 /* Postgres-backed reports and inline SVG charts */
-.reports-view { --report-bg: var(--color-surface-muted); --report-surface: var(--color-surface-default); --report-ink: var(--color-ink); --report-muted: var(--color-ink-muted); --report-border: var(--color-border-subtle); --report-track: var(--color-border-light); --report-accent: var(--color-accent-dark); --report-good: var(--color-success); --report-good-bg: var(--color-success-bg); --report-warn: var(--color-warn); --report-warn-bg: var(--color-warn-bg); display: grid; gap: 18px; padding: 2px; color: var(--report-ink); background: var(--report-bg); border-radius: 16px; transition: color var(--motion-fast), background var(--motion-fast); }
+.reports-view { --report-bg: var(--color-surface-muted); --report-surface: var(--color-surface-default); --report-ink: var(--color-ink); --report-muted: var(--color-ink-muted); --report-border: var(--color-border-subtle); --report-track: var(--color-border-light); --report-accent: var(--color-accent-dark); --report-good: var(--color-success); --report-good-bg: var(--color-success-bg); --report-warn: var(--color-warn); --report-warn-bg: var(--color-warn-bg); display: grid; gap: 18px; padding: 2px; color: var(--report-ink); background: var(--report-bg); border-radius: 16px; }
+@media (prefers-reduced-motion: no-preference) {
+  .reports-view { transition: color var(--motion-fast), background var(--motion-fast); }
+}
 .reports-view[data-theme="dark"] { --report-bg: var(--color-surface-muted); --report-surface: var(--color-surface-default); --report-ink: var(--color-ink); --report-muted: var(--color-ink-muted); --report-border: var(--color-border-subtle); --report-track: var(--color-border-light); --report-accent: var(--color-accent); --report-good: var(--color-success); --report-good-bg: var(--color-success-bg); --report-warn: var(--color-warn); --report-warn-bg: var(--color-warn-bg); padding: 18px; }
 .report-controls,.report-card,.metric-tile { color: var(--report-ink); background: var(--report-surface); border: 1px solid var(--report-border); border-radius: var(--radius-xl); box-shadow: var(--shadow-sm); }
 .report-controls { display: flex; align-items: end; justify-content: space-between; gap: var(--space-lg); padding: var(--space-lg) 20px; }
@@ -193,8 +202,14 @@ button.danger { color: var(--color-danger-text); background: var(--color-danger-
 .journey-list-header span { color: var(--color-ink-subtle); font-size: 12px; }
 .journey-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; padding: 20px; }
 .journey-card-shell { display: grid; gap: 8px; align-content: start; }
-.journey-card { min-height: 210px; padding: 20px; display: flex; flex-direction: column; justify-content: space-between; gap: 20px; text-align: left; color: inherit; background: var(--color-surface-default); border: 1px solid var(--color-border-muted); border-radius: var(--radius-xl); transition: transform var(--motion-fast), border-color var(--motion-fast), box-shadow var(--motion-fast); }
-.journey-card:hover { transform: translateY(-2px); border-color: var(--color-accent-light); box-shadow: 0 10px 25px rgba(44, 35, 106, .1); }
+.journey-card { min-height: 210px; padding: 20px; display: flex; flex-direction: column; justify-content: space-between; gap: 20px; text-align: left; color: inherit; background: var(--color-surface-default); border: 1px solid var(--color-border-muted); border-radius: var(--radius-xl); }
+@media (prefers-reduced-motion: no-preference) {
+  .journey-card { transition: transform var(--motion-fast), border-color var(--motion-fast), box-shadow var(--motion-fast); }
+  .journey-card:hover { transform: translateY(-2px); border-color: var(--color-accent-light); box-shadow: 0 10px 25px rgba(44, 35, 106, .1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .journey-card:hover { border-color: var(--color-accent-light); }
+}
 .journey-card-top { display: flex; align-items: center; justify-content: space-between; }
 .journey-card-icon { display: grid; place-items: center; width: 38px; height: 38px; border-radius: var(--radius-lg); font-size: 21px; color: var(--color-accent-dark); background: rgba(111, 92, 255, 0.1); }
 .journey-card h3 { margin: 0 0 5px; font-size: 17px; }
@@ -213,11 +228,13 @@ button.danger { color: var(--color-danger-text); background: var(--color-danger-
 .journey-title-line h2 { margin: 0; font-size: 18px; }
 .journey-title-block p { margin: 4px 0 0; color: var(--color-ink-subtle); font-size: 11px; }
 .icon-button { width: 38px; height: 38px; padding: 0; color: var(--color-ink-subtle); background: var(--color-surface-subtle); font-size: 18px; }
+.icon-button:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 .journey-actions button { padding: 9px 13px; font-size: 12px; }
 .publish-button { background: var(--color-success); }
 .journey-tabs { display: flex; gap: 22px; padding: 0 20px; border-bottom: 1px solid var(--color-border-light); background: var(--color-surface-default); }
 .journey-tabs button { padding: 13px 2px 11px; color: var(--color-ink-subtle); background: transparent; border-bottom: 2px solid transparent; border-radius: 0; }
 .journey-tabs button.active { color: var(--color-accent-dark); background: transparent; border-bottom-color: var(--color-accent); }
+.journey-tabs button:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 .journey-editor-layout { min-height: 680px; height: calc(100vh - 260px); }
 .journey-editor-layout.visual { display: grid; grid-template-columns: 250px minmax(420px, 1fr) 310px; }
 .journey-editor-layout.operator { display: grid; grid-template-columns: minmax(500px, 2fr) minmax(300px, 1fr); gap: var(--space-lg); padding: var(--space-lg); background: var(--color-surface-subtle); }
@@ -269,8 +286,14 @@ button.danger { color: var(--color-danger-text); background: var(--color-danger-
 .react-flow__edge.selected .react-flow__edge-path { stroke: var(--color-accent); stroke-width: 3; }
 .insert-edge-control { position: absolute; z-index: 8; display: flex; align-items: center; gap: 5px; pointer-events: all; }
 .insert-edge-control > span { padding: 3px 6px; color: var(--color-ink-subtle); background: var(--color-surface-default); border: 1px solid var(--color-border-muted); border-radius: var(--radius-full); font-size: 9px; font-weight: 700; }
-.insert-edge-control > button { width: 25px; height: 25px; display: grid; place-items: center; padding: 0; color: var(--color-accent-dark); background: var(--color-surface-default); border: 2px solid var(--color-accent-light); border-radius: 50%; box-shadow: 0 3px 9px rgba(48,35,127,.18); font-size: 16px; line-height: 1; opacity: .82; transition: transform var(--motion-fast), opacity var(--motion-fast), background var(--motion-fast); }
-.insert-edge-control > button:hover { transform: scale(1.14); opacity: 1; color: white; background: var(--color-accent); }
+.insert-edge-control > button { width: 25px; height: 25px; display: grid; place-items: center; padding: 0; color: var(--color-accent-dark); background: var(--color-surface-default); border: 2px solid var(--color-accent-light); border-radius: 50%; box-shadow: 0 3px 9px rgba(48,35,127,.18); font-size: 16px; line-height: 1; opacity: .82; }
+@media (prefers-reduced-motion: no-preference) {
+  .insert-edge-control > button { transition: transform var(--motion-fast), opacity var(--motion-fast), background var(--motion-fast); }
+  .insert-edge-control > button:hover { transform: scale(1.14); opacity: 1; color: white; background: var(--color-accent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .insert-edge-control > button:hover { opacity: 1; color: white; background: var(--color-accent); }
+}
 .journey-inspector { overflow-y: auto; padding: 18px; border-left: 1px solid var(--color-border-light); background: var(--color-surface-default); }
 .journey-inspector-empty { height: 100%; display: grid; place-content: center; justify-items: center; text-align: center; color: var(--color-ink-muted); }
 .journey-inspector-empty > span { font-size: 25px; color: var(--color-accent); }.journey-inspector-empty h3 { margin: 8px 0 3px; color: var(--color-ink); }.journey-inspector-empty p { max-width: 230px; margin: 0; font-size: 11px; line-height: 1.5; }
