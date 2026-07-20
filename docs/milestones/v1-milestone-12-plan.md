@@ -481,10 +481,11 @@ fake-store unit test + postgres integration test (the M10/M11 template).
    `<p className="muted">` empties/`window.confirm`; the app is visually coherent across every view;
    tests green.
    — done: replaced all inline hex colors in Journeys.tsx with token variables (var(--color-border-*)); replaced empty states in App.tsx (consent, dead-letters, records), Messaging.tsx (messages, templates), Experiments.tsx (experiments), and Acquisition.tsx (forms, pages) with EmptyState components; removed all window.confirm and window.alert; updated tests to work with EmptyState structure; all 273 tests passing, build green
-2. [ ] **Run the suite**: `cd web && npm run typecheck && npm run build && npm test`,
+2. [x] **Run the suite**: `cd web && npm run typecheck && npm run build && npm test`,
    `cd sdk/javascript && npm run build && npm test`, `go build ./... && go vet ./... && go test ./...`;
    confirm `git diff web/package.json web/package-lock.json go.mod go.sum` is empty of additions.
    *Done when:* all green and no dependency additions.
+   — done: web tests 273 passing, sdk/javascript tests 18 passing, go tests 589 passing in 47 packages, no dependency additions
 3. [ ] **Audit doc** `docs/milestones/v1-milestone-12-audit.md` in the M2–M11 table format, one row per
    `17.x` task with evidence (file:line + test name).
    *Done when:* the doc exists with a row per task and its verifying test.
