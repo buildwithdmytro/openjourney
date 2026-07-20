@@ -454,11 +454,12 @@ model). No new npm dep; framework-free.
    *Done when:* cards with different ranks return in rank order; an out-of-window or expired card is
    excluded; a dismissed card never returns; test green.
    — done: TestCardFetchOrderingByRank verifies rank DESC ordering; TestCardFetchExcludesOutOfWindow verifies future start_at exclusion; TestInBoxFetchFiltering verifies expired/dismissed exclusion; all integration tests pass
-2. [ ] **Expiry sweep + read/impression state**: an `expires_at` past-due status flip (`status='expired'`
+2. [x] **Expiry sweep + read/impression state**: an `expires_at` past-due status flip (`status='expired'`
    via a bounded sweep in `cmd/operations` or the projector) and read-state semantics distinct from
    dismissed (a card can be read/impressed repeatedly until dismissed).
    *Done when:* an expired card is swept to `expired` and excluded from fetch; repeated impressions on a
    card update `displayed_at` without dismissing it; test green.
+   — done: impression projector changed to allow repeated updates (WHERE dismissed_at IS NULL); added message.expire event type; ExpireInAppMessages function generates expire events; TestRepeatedImpressionsUpdateTimestamp and TestExpireInAppMessages verify both behaviors
 
 ### Milestone 16.7 — Admin API + templates
 1. [ ] **Messages admin CRUD** (Recipe 6.56): `internal/httpapi/messages.go` — create/list in-app
