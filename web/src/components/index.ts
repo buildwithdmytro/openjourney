@@ -30,3 +30,5 @@ export { ToastProvider, useToast } from "./ToastProvider";
 export type { ToastMessage } from "./ToastProvider";
 export { default as Modal } from "./Modal";
 export type { ModalProps } from "./Modal";
+export { default as ConfirmDialog } from "./ConfirmDialog";
+export type { ConfirmDialogProps } from "./ConfirmDialog";

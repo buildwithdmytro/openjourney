@@ -43,6 +43,7 @@ import {
   EventSchema,
 } from "../api";
 import { journeyColors } from "../tokens";
+import { ConfirmDialog } from "../components";
 
 const apiBase = import.meta.env.VITE_API_BASE_URL || "/api";
 
@@ -173,6 +174,7 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [isDirty, setIsDirty] = useState(false);
+  const [confirmDiscardChanges, setConfirmDiscardChanges] = useState(false);
   const undoHistory = useRef<Array<{ nodes: FlowNode[]; edges: FlowEdge[] }>>([]);
   const redoHistory = useRef<Array<{ nodes: FlowNode[]; edges: FlowEdge[] }>>([]);
   const selectInsertionEdge = useCallback((edgeID: string) => {
@@ -386,10 +388,18 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
   };
 
   const closeEditor = () => {
-    if (isDirty && !window.confirm("Discard your unsaved journey changes?")) return;
+    if (isDirty) {
+      setConfirmDiscardChanges(true);
+    } else {
+      performCloseEditor();
+    }
+  };
+
+  const performCloseEditor = () => {
     setEditingJourney(null);
     setSelectedNodeId(null);
     setSelectedEdgeId(null);
+    setConfirmDiscardChanges(false);
   };
 
   const onConnect = useCallback((params: Connection) => {
@@ -1111,6 +1121,16 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
 
   if (editingJourney) {
     return (
+      <>
+      <ConfirmDialog
+        isOpen={confirmDiscardChanges}
+        onClose={() => setConfirmDiscardChanges(false)}
+        onConfirm={performCloseEditor}
+        title="Discard unsaved changes?"
+        message="All unsaved changes to this journey will be lost."
+        confirmText="Discard"
+        isDangerous={true}
+      />
       <section className="journey-workspace">
         <div className="journey-topbar">
           <div className="journey-title-block">
@@ -1438,6 +1458,7 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
           )}
         </div>
       </section>
+      </>
     );
   }
 

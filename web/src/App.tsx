@@ -16,7 +16,7 @@ import {
 import { oidcConfigured, restoreOIDCSession, signIn, signOut } from "./auth";
 import { staticColors, defaultAccentColor, defaultBackgroundColor } from "./tokens";
 import { useTheme } from "./useTheme";
-import { Skeleton, Spinner, ToastProvider, useToast } from "./components";
+import { Skeleton, Spinner, ToastProvider, useToast, ConfirmDialog } from "./components";
 import { message } from "./errors";
 
 const Journeys = lazy(() => import("./sections/Journeys"));
@@ -420,6 +420,7 @@ function APIKeys({ apiKey }: { apiKey: string }) {
   const [expiresAt, setExpiresAt] = useState("");
   const [secret, setSecret] = useState("");
   const [error, setError] = useState("");
+  const [confirmRevokeId, setConfirmRevokeId] = useState<string | null>(null);
   async function refresh() {
     try { setItems(await listAPIKeys(apiBase, apiKey)); setError(""); }
     catch (cause) { setError(message(cause)); }
@@ -437,7 +438,17 @@ function APIKeys({ apiKey }: { apiKey: string }) {
     try { await revokeAPIKey(apiBase, apiKey, id); await refresh(); }
     catch (cause) { setError(message(cause)); }
   }
+  const revokeItem = items.find(i => i.id === confirmRevokeId);
   return <section className="stack">
+    <ConfirmDialog
+      isOpen={confirmRevokeId !== null}
+      onClose={() => setConfirmRevokeId(null)}
+      onConfirm={() => revoke(confirmRevokeId!)}
+      title="Revoke API key?"
+      message={`Revoke "${revokeItem?.name || ""}"`}
+      confirmText="Revoke"
+      isDangerous={true}
+    />
     <article className="card"><form onSubmit={submit} className="single-action">
       <label>Name<input value={name} onChange={(e) => setName(e.target.value)}
         placeholder="Website ingestion" required /></label>
@@ -451,7 +462,7 @@ function APIKeys({ apiKey }: { apiKey: string }) {
       {items.map((item) => <div className="key-row" key={item.id}>
         <div><strong>{item.name}</strong><small>{item.scopes.join(", ")}</small>
           <small>Created {formatDate(item.created_at)} · Expires {formatDate(item.expires_at) || "never"} · Last used {formatDate(item.last_used_at) || "never"}</small></div>
-        <button className="danger" disabled={Boolean(item.revoked_at)} onClick={() => void revoke(item.id)}>
+        <button className="danger" disabled={Boolean(item.revoked_at)} onClick={() => setConfirmRevokeId(item.id)}>
           {item.revoked_at ? "Revoked" : "Revoke"}</button></div>)}</article>
   </section>;
 }
@@ -562,6 +573,7 @@ function Operations({ apiKey }: { apiKey: string }) {
   const [dlqQueue, setDLQQueue] = useState("");
   const [report, setReport] = useState<ReplayReport | null>(null);
   const [error, setError] = useState("");
+  const [confirmDiscardItem, setConfirmDiscardItem] = useState<DeadLetterItem | null>(null);
   async function refresh() {
     try {
       const [nextQueues, nextDeadLetters] = await Promise.all([
@@ -584,6 +596,15 @@ function Operations({ apiKey }: { apiKey: string }) {
     } catch (cause) { setError(message(cause)); }
   }
   return <section className="stack">
+    <ConfirmDialog
+      isOpen={confirmDiscardItem !== null}
+      onClose={() => setConfirmDiscardItem(null)}
+      onConfirm={() => dlq("discard", confirmDiscardItem!)}
+      title="Discard dead-letter item?"
+      message={`Item: ${confirmDiscardItem?.id || ""}`}
+      confirmText="Discard"
+      isDangerous={true}
+    />
     <article className="card"><div className="section-title"><div><div className="eyebrow">Durable work</div>
       <h2>Queue status</h2></div><button onClick={() => void refresh()}>Refresh</button></div>
       <ResourceTable rows={queues.map((q) => [q.queue, q.pending, q.processing, q.dead])}
@@ -597,7 +618,7 @@ function Operations({ apiKey }: { apiKey: string }) {
         <div className="key-row" key={`${item.queue}:${item.id}`}><div><strong>{item.queue} · {item.kind}</strong>
           <small>{item.subject_id || item.id} · attempts {item.attempts} · {item.last_error || "no error"}</small></div>
           <div className="row-actions"><button onClick={() => void dlq("retry", item)}>Retry</button>
-            <button className="danger" onClick={() => void dlq("discard", item)}>Discard</button></div></div>)}</article>
+            <button className="danger" onClick={() => setConfirmDiscardItem(item)}>Discard</button></div></div>)}</article>
     <article className="card"><div className="section-title"><div><div className="eyebrow">Determinism</div>
       <h2>Projection replay</h2></div><button onClick={() => void replay()}>Verify replay</button></div>
       {report && <div className={`replay ${report.match ? "match" : "drift"}`}>
@@ -909,6 +930,7 @@ function Templates({ apiKey }: { apiKey: string }) {
   const [saving, setSaving] = useState(false);
   const [composerMode, setComposerMode] = useState<"visual" | "advanced">("visual");
   const [composer, setComposer] = useState<EmailComposer>(defaultEmailComposer);
+  const [confirmSwitchToVisual, setConfirmSwitchToVisual] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const reload = async () => {
@@ -1028,13 +1050,26 @@ function Templates({ apiKey }: { apiKey: string }) {
   }
 
   return (
-    <section id="template-editor-section" className="template-editor-layout">
-      <div>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem" }}>
-          <button className="secondary" id="back-to-templates-btn" onClick={() => setEditorView("list")}>← Back</button>
-          <h2 style={{ margin: 0 }}>{editorView === "new" ? "New template" : `Edit: ${editing.name}`}</h2>
-        </div>
-        {error && <p className="error">{error}</p>}
+    <>
+      <ConfirmDialog
+        isOpen={confirmSwitchToVisual}
+        onClose={() => setConfirmSwitchToVisual(false)}
+        onConfirm={() => {
+          setComposerMode("visual");
+          updateComposer({});
+        }}
+        title="Replace custom HTML?"
+        message="Switching to the visual composer will replace the current custom HTML."
+        confirmText="Switch"
+        isDangerous={false}
+      />
+      <section id="template-editor-section" className="template-editor-layout">
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem" }}>
+            <button className="secondary" id="back-to-templates-btn" onClick={() => setEditorView("list")}>← Back</button>
+            <h2 style={{ margin: 0 }}>{editorView === "new" ? "New template" : `Edit: ${editing.name}`}</h2>
+          </div>
+          {error && <p className="error">{error}</p>}
         <form id="template-form" onSubmit={(e) => void handleSave(e)} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
           <label>Name
             <input id="template-name" value={editing.name ?? ""} required
@@ -1090,8 +1125,11 @@ function Templates({ apiKey }: { apiKey: string }) {
           {editing.channel !== "webhook" && editing.channel !== "sms" && editing.channel !== "push" && <>
             <div className="composer-mode-tabs" role="tablist" aria-label="Template editor mode">
               <button type="button" role="tab" aria-selected={composerMode === "visual"} className={composerMode === "visual" ? "active" : ""} onClick={() => {
-                if (composerMode === "advanced" && !parseComposerHTML(editing.html_template || "") && !window.confirm("Switching to the visual composer will replace the current custom HTML. Continue?")) return;
-                setComposerMode("visual"); updateComposer({});
+                if (composerMode === "advanced" && !parseComposerHTML(editing.html_template || "")) {
+                  setConfirmSwitchToVisual(true);
+                } else {
+                  setComposerMode("visual"); updateComposer({});
+                }
               }}>Visual composer</button>
               <button type="button" role="tab" aria-selected={composerMode === "advanced"} className={composerMode === "advanced" ? "active" : ""} onClick={() => setComposerMode("advanced")}>Advanced HTML</button>
             </div>
@@ -1145,6 +1183,7 @@ function Templates({ apiKey }: { apiKey: string }) {
         )}
       </div>
     </section>
+    </>
   );
 }
 
@@ -1437,6 +1476,7 @@ function DeviceTokensInspector({ apiKey }: { apiKey: string }) {
   const [loading, setLoading] = useState(false);
   const [retiring, setRetiring] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [confirmRetireId, setConfirmRetireId] = useState<string | null>(null);
 
   async function handleSearch(event: FormEvent) {
     event.preventDefault();
@@ -1451,8 +1491,7 @@ function DeviceTokensInspector({ apiKey }: { apiKey: string }) {
     }
   }
 
-  async function handleRetire(id: string) {
-    if (!window.confirm("Retire this device token? It will no longer receive push notifications.")) return;
+  async function performRetire(id: string) {
     setRetiring(id); setError("");
     try {
       await retireDeviceToken(apiBase, apiKey, id);
@@ -1466,6 +1505,15 @@ function DeviceTokensInspector({ apiKey }: { apiKey: string }) {
 
   return (
     <section className="card">
+      <ConfirmDialog
+        isOpen={confirmRetireId !== null}
+        onClose={() => setConfirmRetireId(null)}
+        onConfirm={() => performRetire(confirmRetireId!)}
+        title="Retire device token?"
+        message="This device will no longer receive push notifications."
+        confirmText="Retire"
+        isDangerous={true}
+      />
       <h2>Device token inspector</h2>
       <form onSubmit={handleSearch} style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
         <input id="device-token-profile-id" value={profileId} onChange={e => setProfileId(e.target.value)}
@@ -1502,7 +1550,7 @@ function DeviceTokensInspector({ apiKey }: { apiKey: string }) {
                   {tok.active && (
                     <button id={`retire-token-${tok.id}`} className="secondary small"
                       disabled={retiring === tok.id}
-                      onClick={() => void handleRetire(tok.id)}>
+                      onClick={() => setConfirmRetireId(tok.id)}>
                       {retiring === tok.id ? "Retiring…" : "Retire"}
                     </button>
                   )}

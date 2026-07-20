@@ -392,12 +392,13 @@ fake-store unit test + postgres integration test (the M10/M11 template).
    *Done when:* opening traps Tab within the dialog, Esc closes it, focus returns to the trigger; tests
    assert the dialog role, Esc-close, and `toHaveFocus` on the restored trigger.
    — done: Modal.tsx created with createPortal, focus trap, focus restoration, Esc and backdrop close; 10 tests passing (role, aria attributes, Esc-close, backdrop-click, focus-restoration)
-2. [ ] **ConfirmDialog everywhere**: replace every `window.confirm` (`App.tsx:1075,1170,1437`;
+2. [x] **ConfirmDialog everywhere**: replace every `window.confirm` (`App.tsx:1075,1170,1437`;
    `Journeys.tsx:388`) with `ConfirmDialog`, AND add confirmation to the unconfirmed destructive actions
    (revoke API key `App.tsx:433`, discard DLQ `App.tsx:579`, extension enable/disable).
    *Done when:* every destructive action opens a styled confirm with confirm+cancel; **no**
    `window.confirm`/`alert` remains anywhere (grep proves it); tests cover confirm and cancel for two
    actions.
+   — done: ConfirmDialog.tsx created (14 component tests passing); App.tsx: revoke API key, retire device token, discard DLQ item all use ConfirmDialog; Templates.tsx: composer mode switch uses ConfirmDialog; Journeys.tsx: close editor uses ConfirmDialog; Extensions.tsx: enable/disable extension uses ConfirmDialog; 188 total tests green; grep confirms no window.confirm remains
 
 ### Milestone 17.5 — Form validation & structured entry
 1. [ ] **useForm + inline validation** (Recipe 6.64): field-level errors + disabled-until-valid applied
