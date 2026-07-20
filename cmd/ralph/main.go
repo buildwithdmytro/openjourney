@@ -40,6 +40,7 @@ type config struct {
 	attemptTimeout   time.Duration
 	codexModel       string
 	antigravityModel string
+	claudeModel      string
 	unsafe           bool
 	dryRun           bool
 }
@@ -126,7 +127,7 @@ func main() {
 
 func parseFlags() config {
 	var cfg config
-	flag.StringVar(&cfg.primary, "primary", "", "primary provider: codex or antigravity (required)")
+	flag.StringVar(&cfg.primary, "primary", "", "primary provider: codex, antigravity, or claude (required)")
 	flag.StringVar(&cfg.promptPath, "prompt", "prompt.md", "path to the Ralph mission prompt")
 	flag.StringVar(&cfg.planPath, "plan", "docs/milestones/v1-milestone-10-plan.md", "path to the milestone plan")
 	flag.StringVar(&cfg.branch, "branch", "phase10", "implementation branch")
@@ -135,6 +136,7 @@ func parseFlags() config {
 	flag.DurationVar(&cfg.attemptTimeout, "attempt-timeout", 2*time.Hour, "timeout for each provider attempt")
 	flag.StringVar(&cfg.codexModel, "codex-model", "gpt-5.6-luna", "Codex model identifier")
 	flag.StringVar(&cfg.antigravityModel, "antigravity-model", "Gemini 3.5 Flash (Medium)", "Antigravity model label")
+	flag.StringVar(&cfg.claudeModel, "claude-model", "haiku", "Claude Code model alias or id (e.g. haiku, sonnet, opus)")
 	flag.BoolVar(&cfg.unsafe, "unsafe-autonomous", false, "acknowledge that agents receive unrestricted autonomous permissions")
 	flag.BoolVar(&cfg.dryRun, "dry-run", false, "validate configuration without changing Git state or invoking an agent")
 	flag.Parse()
@@ -250,8 +252,8 @@ func run(ctx context.Context, cfg config) error {
 }
 
 func preflight(ctx context.Context, cfg config) (string, []task, error) {
-	if cfg.primary != "codex" && cfg.primary != "antigravity" {
-		return "", nil, errors.New("--primary must be codex or antigravity")
+	if cfg.primary != "codex" && cfg.primary != "antigravity" && cfg.primary != "claude" {
+		return "", nil, errors.New("--primary must be codex, antigravity, or claude")
 	}
 	if cfg.maxIterations < 1 || cfg.attemptTimeout <= 0 {
 		return "", nil, errors.New("iteration count and attempt timeout must be positive")
@@ -270,13 +272,45 @@ func preflight(ctx context.Context, cfg config) (string, []task, error) {
 	if _, err := exec.LookPath("git"); err != nil {
 		return "", nil, err
 	}
-	if err := checkCodexModel(ctx, cfg.codexModel); err != nil {
+	// Validate only the providers this run can actually use: the primary and its
+	// single fallback. This keeps a claude (or codex, or antigravity) run from
+	// requiring all three CLIs to be installed.
+	if err := checkProviderModel(ctx, cfg.primary, cfg); err != nil {
 		return "", nil, err
 	}
-	if err := checkAntigravityModel(ctx, cfg.antigravityModel); err != nil {
-		return "", nil, err
+	if fb := alternate(cfg.primary); fb != cfg.primary {
+		if err := checkProviderModel(ctx, fb, cfg); err != nil {
+			return "", nil, err
+		}
 	}
 	return mission, tasks, nil
+}
+
+func checkProviderModel(ctx context.Context, provider string, cfg config) error {
+	switch provider {
+	case "codex":
+		return checkCodexModel(ctx, cfg.codexModel)
+	case "antigravity":
+		return checkAntigravityModel(ctx, cfg.antigravityModel)
+	case "claude":
+		return checkClaudeModel(ctx, cfg.claudeModel)
+	default:
+		return fmt.Errorf("unknown provider %q", provider)
+	}
+}
+
+// checkClaudeModel is a lighter preflight than Codex/Antigravity: Claude Code has
+// no clean model-catalog listing and resolves aliases (haiku/sonnet/opus) at
+// runtime, so we only confirm the CLI is present and a model was named. An invalid
+// model fails the attempt and the loop falls back like any other provider failure.
+func checkClaudeModel(ctx context.Context, model string) error {
+	if _, err := exec.LookPath("claude"); err != nil {
+		return errors.New("claude CLI not found in PATH")
+	}
+	if strings.TrimSpace(model) == "" {
+		return errors.New("claude model must not be empty")
+	}
+	return nil
 }
 
 func checkCodexModel(ctx context.Context, model string) error {
@@ -559,12 +593,21 @@ func invoke(parent context.Context, cfg config, provider, mission, taskID string
 }
 
 func providerCommand(ctx context.Context, cfg config, provider, mission string) *exec.Cmd {
-	if provider == "codex" {
+	switch provider {
+	case "codex":
 		cmd := exec.CommandContext(ctx, "codex", "exec", "--json", "--model", cfg.codexModel, "--dangerously-bypass-approvals-and-sandbox", "--cd", cfg.root, "-")
 		cmd.Stdin = strings.NewReader(mission)
 		return cmd
+	case "claude":
+		// Claude Code non-interactive print mode with full autonomy for the loop
+		// (trusted checkout). The mission goes on stdin so a long prompt never hits
+		// argv limits; cmd.Dir (set by invoke) scopes it to the repo root.
+		cmd := exec.CommandContext(ctx, "claude", "--print", "--model", cfg.claudeModel, "--dangerously-skip-permissions")
+		cmd.Stdin = strings.NewReader(mission)
+		return cmd
+	default:
+		return exec.CommandContext(ctx, "agy", "--model", cfg.antigravityModel, "--mode", "accept-edits", "--dangerously-skip-permissions", "--print-timeout", cfg.attemptTimeout.String(), "--print", mission)
 	}
-	return exec.CommandContext(ctx, "agy", "--model", cfg.antigravityModel, "--mode", "accept-edits", "--dangerously-skip-permissions", "--print-timeout", cfg.attemptTimeout.String(), "--print", mission)
 }
 
 func (s *codexStream) Write(p []byte) (int, error) {
@@ -723,11 +766,20 @@ func fileDigest(path string) ([32]byte, error) {
 	return sha256.Sum256(b), nil
 }
 
+// alternate returns the single fallback provider tried once when the primary
+// fails before committing. codex<->antigravity remain paired; claude falls back
+// to codex (the most capable generally-available provider).
 func alternate(provider string) string {
-	if provider == "codex" {
+	switch provider {
+	case "codex":
 		return "antigravity"
+	case "antigravity":
+		return "codex"
+	case "claude":
+		return "codex"
+	default:
+		return "codex"
 	}
-	return "codex"
 }
 
 func attemptFailure(result attemptResult) error {

@@ -14,7 +14,12 @@ blocker, the other provider gets one recovery attempt against the same working t
 ```bash
 go run ./cmd/ralph --primary codex --unsafe-autonomous
 go run ./cmd/ralph --primary antigravity --unsafe-autonomous
+go run ./cmd/ralph --primary claude --unsafe-autonomous          # cheapest: defaults to Haiku
 ```
+
+`--primary` accepts `codex`, `antigravity`, or `claude`. Only the primary and its single fallback
+CLI need to be installed (claude falls back to codex). For the cheapest runs use
+`--primary claude` (defaults to the `haiku` model; override with `--claude-model sonnet|opus|<id>`).
 
 The defaults now target Milestone 10 (`--plan docs/milestones/v1-milestone-10-plan.md`,
 `--branch phase10`, `--milestone 10`). Run `go run ./cmd/ralph --help` for model, timeout, iteration,
@@ -32,7 +37,9 @@ iteration budget before and after each attempt. The latest machine-readable aggr
 The unrestricted flag is deliberately explicit: both agents need non-interactive permission to
 edit, verify, update the plan, and commit. Run it only in a trusted checkout. The default Codex
 model is `gpt-5.6-luna`; startup fails closed when that model is absent from the local Codex
-catalog. The Antigravity default is `Gemini 3.5 Flash (Medium)`.
+catalog. The Antigravity default is `Gemini 3.5 Flash (Medium)`. The Claude Code default is `haiku`
+(the cheapest model); it runs in `--print` mode with `--dangerously-skip-permissions`, and its
+preflight only checks that the `claude` CLI is present (model aliases resolve at runtime).
 
 **Manual Antigravity use:** alternatively, paste the block below as the agent mission and let it
 run on the `phase10` branch; re-trigger the same mission for each iteration. Keep auto-run enabled

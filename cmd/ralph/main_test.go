@@ -101,7 +101,7 @@ func TestCodexStreamCapturesUsageAndDisplaysAgentMessage(t *testing.T) {
 }
 
 func TestProviderCommandsAreFreshAndUseLockedModels(t *testing.T) {
-	cfg := config{root: "/repo", codexModel: "gpt-5.6-luna", antigravityModel: "Gemini 3.5 Flash (Medium)", attemptTimeout: 2 * time.Hour}
+	cfg := config{root: "/repo", codexModel: "gpt-5.6-luna", antigravityModel: "Gemini 3.5 Flash (Medium)", claudeModel: "haiku", attemptTimeout: 2 * time.Hour}
 	codex := providerCommand(context.Background(), cfg, "codex", "mission")
 	joined := strings.Join(codex.Args, " ")
 	if !strings.Contains(joined, "exec --json --model gpt-5.6-luna") || !strings.Contains(joined, "--dangerously-bypass-approvals-and-sandbox") {
@@ -111,6 +111,17 @@ func TestProviderCommandsAreFreshAndUseLockedModels(t *testing.T) {
 	joined = strings.Join(agy.Args, " ")
 	if !strings.Contains(joined, "Gemini 3.5 Flash (Medium)") || !strings.Contains(joined, "--dangerously-skip-permissions") || !strings.Contains(joined, "--print mission") {
 		t.Fatalf("unexpected Antigravity command: %s", joined)
+	}
+	claude := providerCommand(context.Background(), cfg, "claude", "mission")
+	joined = strings.Join(claude.Args, " ")
+	if !strings.Contains(joined, "claude --print --model haiku") || !strings.Contains(joined, "--dangerously-skip-permissions") {
+		t.Fatalf("unexpected Claude command: %s", joined)
+	}
+	if claude.Stdin == nil {
+		t.Fatal("Claude mission must be passed on stdin")
+	}
+	if alternate("claude") != "codex" {
+		t.Fatalf("claude fallback = %q, want codex", alternate("claude"))
 	}
 }
 
