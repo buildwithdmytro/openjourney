@@ -34,15 +34,20 @@ func (s *Server) fetchInbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Determine the subject and authentication method
+	// Determine the subject and authentication method. byExternalID pins the
+	// profile lookup to the SINGLE column this subject was authenticated against,
+	// so an untrusted anonymous_id param cannot smuggle a victim's external_id.
 	var subject string
+	var byExternalID bool
 
 	if token != "" && externalID != "" {
 		// Token-authenticated known subject
 		subject = externalID
+		byExternalID = true
 	} else if anonID != "" {
 		// Anonymous subject
 		subject = anonID
+		byExternalID = false
 	} else {
 		writeError(w, http.StatusBadRequest, "missing_subject", "either anonymous_id or (external_id + token) required")
 		return
@@ -70,7 +75,7 @@ func (s *Server) fetchInbox(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch the inbox: map subject to profile_id, then list messages
 	inboxStore, ok := s.store.(interface {
-		GetProfileIDBySubject(context.Context, string, string, string) (string, error)
+		GetProfileIDBySubject(context.Context, string, string, string, bool) (string, error)
 		ListInboxForProfile(context.Context, string, string, string, int) ([]domain.InAppMessage, error)
 		EvaluateAudience(ctx context.Context, p domain.Principal, profileID string, dsl json.RawMessage) (bool, error)
 	})
@@ -79,7 +84,7 @@ func (s *Server) fetchInbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	profileID, err := inboxStore.GetProfileIDBySubject(r.Context(), principalTenantID, principalAppID, subject)
+	profileID, err := inboxStore.GetProfileIDBySubject(r.Context(), principalTenantID, principalAppID, subject, byExternalID)
 	if errors.Is(err, postgres.ErrNotFound) {
 		// Return empty inbox for unknown profile (no error)
 		w.Header().Set("Content-Type", "application/json")
@@ -161,12 +166,16 @@ func (s *Server) reportMessageEngagement(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Determine the subject and authentication method
+	// Determine the subject and authentication method. byExternalID pins the
+	// lookup to the column this subject was authenticated against (see fetchInbox).
 	var subject string
+	var byExternalID bool
 	if token != "" && externalID != "" {
 		subject = externalID
+		byExternalID = true
 	} else if anonID != "" {
 		subject = anonID
+		byExternalID = false
 	} else {
 		writeError(w, http.StatusBadRequest, "missing_subject", "either anonymous_id or (external_id + token) required")
 		return
@@ -193,7 +202,7 @@ func (s *Server) reportMessageEngagement(w http.ResponseWriter, r *http.Request)
 
 	// Get the store interface
 	msgStore, ok := s.store.(interface {
-		GetProfileIDBySubject(context.Context, string, string, string) (string, error)
+		GetProfileIDBySubject(context.Context, string, string, string, bool) (string, error)
 		GetInAppMessage(context.Context, string, string) (domain.InAppMessage, error)
 		AcceptEvents(context.Context, domain.Principal, []domain.Event) ([]string, error)
 	})
@@ -203,7 +212,7 @@ func (s *Server) reportMessageEngagement(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Resolve subject to profile ID
-	profileID, err := msgStore.GetProfileIDBySubject(r.Context(), principalTenantID, principalAppID, subject)
+	profileID, err := msgStore.GetProfileIDBySubject(r.Context(), principalTenantID, principalAppID, subject, byExternalID)
 	if errors.Is(err, postgres.ErrNotFound) {
 		writeError(w, http.StatusForbidden, "subject_not_found", "subject does not exist")
 		return
@@ -300,6 +309,17 @@ func (s *Server) createAdminMessage(w http.ResponseWriter, r *http.Request) {
 	// Set principal's tenant/workspace
 	input.TenantID = principal.TenantID
 	input.WorkspaceID = principal.WorkspaceID
+
+	// Display-state is projector-only: the admin create path must not forge
+	// engagement. Force a safe delivered baseline and clear every engagement
+	// timestamp; only the message.* ProjectEvent cases advance displayed/clicked/
+	// dismissed/status.
+	input.Status = "delivered"
+	deliveredAt := time.Now().UTC()
+	input.DeliveredAt = &deliveredAt
+	input.DisplayedAt = nil
+	input.ClickedAt = nil
+	input.DismissedAt = nil
 
 	// Create the message
 	res, err := s.store.(interface {

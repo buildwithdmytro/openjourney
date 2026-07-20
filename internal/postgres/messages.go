@@ -92,11 +92,21 @@ func (s *Store) ListInAppMessages(ctx context.Context, p domain.Principal, appID
 	return out, rows.Err()
 }
 
-func (s *Store) GetProfileIDBySubject(ctx context.Context, tenantID, appID, subject string) (string, error) {
+// GetProfileIDBySubject resolves a public-edge subject to a profile id, matching
+// the ONE column the caller was authenticated against — never both. byExternalID
+// true matches external_id (token-authenticated known subject); false matches
+// anonymous_id (the caller's own high-entropy device id). Matching both columns
+// with OR would let an unauthenticated anonymous_id param smuggle a victim's
+// external_id and read/report on their inbox without a token (IDOR).
+func (s *Store) GetProfileIDBySubject(ctx context.Context, tenantID, appID, subject string, byExternalID bool) (string, error) {
+	column := "anonymous_id"
+	if byExternalID {
+		column = "external_id"
+	}
 	var profileID string
 	err := s.pool.QueryRow(ctx, `
 		SELECT id FROM profiles
-		WHERE tenant_id = $1 AND app_id = $2 AND (external_id = $3 OR anonymous_id = $3)
+		WHERE tenant_id = $1 AND app_id = $2 AND `+column+` = $3
 		LIMIT 1
 	`, tenantID, appID, subject).Scan(&profileID)
 	if err == pgx.ErrNoRows {

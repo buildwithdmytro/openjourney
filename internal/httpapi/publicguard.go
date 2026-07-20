@@ -192,12 +192,15 @@ func VerifyInAppToken(token, expectedTenantID, expectedAppID string, secret []by
 	if err != nil {
 		return out, ErrInvalidInAppToken
 	}
-	parts := strings.Split(string(full), ".")
-	if len(parts) != 2 {
+	// Split on the LAST '.' — the payload's subject (an external_id, often an
+	// email) may itself contain '.', while the base64url signature never does.
+	// A plain Split(".") would break token verification for any dotted subject.
+	dot := strings.LastIndex(string(full), ".")
+	if dot < 0 {
 		return out, ErrInvalidInAppToken
 	}
-	payload := parts[0]
-	signature, err := base64.RawURLEncoding.DecodeString(parts[1])
+	payload := string(full)[:dot]
+	signature, err := base64.RawURLEncoding.DecodeString(string(full)[dot+1:])
 	if err != nil {
 		return out, ErrInvalidInAppToken
 	}

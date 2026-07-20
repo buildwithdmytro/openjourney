@@ -16,7 +16,7 @@ import (
 
 type mockMessageStore struct {
 	ports.Store
-	getProfileIDBySubjectFn func(ctx context.Context, tenantID, appID, subject string) (string, error)
+	getProfileIDBySubjectFn func(ctx context.Context, tenantID, appID, subject string, byExternalID bool) (string, error)
 	getInAppMessageFn       func(ctx context.Context, tenantID, msgID string) (domain.InAppMessage, error)
 	acceptEventsFn          func(ctx context.Context, p domain.Principal, events []domain.Event) ([]string, error)
 	createInAppMessageFn    func(ctx context.Context, tenantID, workspaceID, appID, profileID string, msg domain.InAppMessage) (domain.InAppMessage, error)
@@ -24,9 +24,9 @@ type mockMessageStore struct {
 	listInboxForProfileFn   func(ctx context.Context, tenantID, appID, profileID string, limit int) ([]domain.InAppMessage, error)
 }
 
-func (m *mockMessageStore) GetProfileIDBySubject(ctx context.Context, tenantID, appID, subject string) (string, error) {
+func (m *mockMessageStore) GetProfileIDBySubject(ctx context.Context, tenantID, appID, subject string, byExternalID bool) (string, error) {
 	if m.getProfileIDBySubjectFn != nil {
-		return m.getProfileIDBySubjectFn(ctx, tenantID, appID, subject)
+		return m.getProfileIDBySubjectFn(ctx, tenantID, appID, subject, byExternalID)
 	}
 	return "", postgres.ErrNotFound
 }
@@ -180,7 +180,7 @@ func TestReportMessageEngagementWithValidToken(t *testing.T) {
 	profileID := "profile-123"
 
 	mockStore := &mockMessageStore{
-		getProfileIDBySubjectFn: func(ctx context.Context, tid, aid, subj string) (string, error) {
+		getProfileIDBySubjectFn: func(ctx context.Context, tid, aid, subj string, byExt bool) (string, error) {
 			if tid == tenantID && aid == appID && subj == externalID {
 				return profileID, nil
 			}
@@ -251,7 +251,7 @@ func TestReportMessageEngagementIDORProtection(t *testing.T) {
 	otherProfileID := "profile-456"
 
 	mockStore := &mockMessageStore{
-		getProfileIDBySubjectFn: func(ctx context.Context, tid, aid, subj string) (string, error) {
+		getProfileIDBySubjectFn: func(ctx context.Context, tid, aid, subj string, byExt bool) (string, error) {
 			if tid == tenantID && aid == appID && subj == externalID {
 				return profileID, nil
 			}
@@ -453,7 +453,7 @@ func TestFetchInboxFiltersMessages(t *testing.T) {
 		}
 
 		mockStore := &mockMessageStore{
-			getProfileIDBySubjectFn: func(ctx context.Context, tid, aid, subj string) (string, error) {
+			getProfileIDBySubjectFn: func(ctx context.Context, tid, aid, subj string, byExt bool) (string, error) {
 				return profileID, nil
 			},
 			listInboxForProfileFn: func(ctx context.Context, tid, aid, pid string, limit int) ([]domain.InAppMessage, error) {
@@ -486,6 +486,122 @@ func TestFetchInboxFiltersMessages(t *testing.T) {
 			t.Errorf("expected 1 message, got %d", len(messages))
 		}
 	})
+}
+
+// TestFetchInboxRejectsExternalIDSmuggledViaAnonymousID is the regression test
+// for the M11 IDOR: the public lookup used to match (external_id OR anonymous_id),
+// so an unauthenticated caller could pass a victim's external_id in the
+// anonymous_id param and read their inbox with no token. The fake models column
+// semantics — the victim exists only as an external_id, never as an anonymous_id —
+// so the anonymous (byExt=false) path must resolve NOTHING while the token
+// (byExt=true) path still works.
+func TestFetchInboxRejectsExternalIDSmuggledViaAnonymousID(t *testing.T) {
+	secret := []byte("test-secret")
+	tenantID := "tenant-123"
+	appID := "app-456"
+	victimExternalID := "victim@example.com" // guessable known-subject id
+	victimProfileID := "profile-victim"
+
+	newStore := func() *mockMessageStore {
+		return &mockMessageStore{
+			// The victim is matchable ONLY by external_id; nobody's anonymous_id
+			// equals victimExternalID. Honors the byExternalID column pin.
+			getProfileIDBySubjectFn: func(ctx context.Context, tid, aid, subj string, byExt bool) (string, error) {
+				if tid == tenantID && aid == appID && byExt && subj == victimExternalID {
+					return victimProfileID, nil
+				}
+				return "", postgres.ErrNotFound
+			},
+			listInboxForProfileFn: func(ctx context.Context, tid, aid, pid string, limit int) ([]domain.InAppMessage, error) {
+				return []domain.InAppMessage{{ID: "msg-secret", TenantID: tenantID, AppID: appID, ProfileID: victimProfileID, Status: "delivered"}}, nil
+			},
+		}
+	}
+	newServer := func(s *mockMessageStore) *Server {
+		return &Server{store: s, trackingSecretKey: secret, trustedProxy: false, publicLimiter: nil}
+	}
+
+	// ATTACK: smuggle the victim's external_id through the tokenless anonymous_id
+	// param. Must resolve nothing → empty inbox, never the victim's messages.
+	attack := httptest.NewRequest("GET", "/v1/messages/inbox?tenant="+tenantID+"&app="+appID+"&anonymous_id="+victimExternalID, nil)
+	aw := httptest.NewRecorder()
+	newServer(newStore()).fetchInbox(aw, attack)
+	if aw.Code != http.StatusOK {
+		t.Fatalf("attack: expected 200 empty, got %d", aw.Code)
+	}
+	var attackResp map[string]any
+	if err := json.Unmarshal(aw.Body.Bytes(), &attackResp); err != nil {
+		t.Fatalf("attack: unmarshal: %v", err)
+	}
+	if msgs, _ := attackResp["messages"].([]any); len(msgs) != 0 {
+		t.Fatalf("IDOR: tokenless anonymous_id smuggle leaked %d victim message(s)", len(msgs))
+	}
+
+	// LEGIT: the real known-subject path (external_id + valid token) still works.
+	token, err := SignInAppToken(tenantID, appID, victimExternalID, time.Now().Add(time.Hour), secret)
+	if err != nil {
+		t.Fatalf("SignInAppToken: %v", err)
+	}
+	legit := httptest.NewRequest("GET", "/v1/messages/inbox?tenant="+tenantID+"&app="+appID+"&external_id="+victimExternalID+"&token="+token, nil)
+	lw := httptest.NewRecorder()
+	newServer(newStore()).fetchInbox(lw, legit)
+	if lw.Code != http.StatusOK {
+		t.Fatalf("legit: expected 200, got %d", lw.Code)
+	}
+	var legitResp map[string]any
+	if err := json.Unmarshal(lw.Body.Bytes(), &legitResp); err != nil {
+		t.Fatalf("legit: unmarshal: %v", err)
+	}
+	if msgs, _ := legitResp["messages"].([]any); len(msgs) != 1 {
+		t.Fatalf("legit token path: expected 1 message, got %d", len(msgs))
+	}
+}
+
+// TestCreateAdminMessageCannotForgeDisplayState is the regression test for the
+// M11 write-path bypass: createAdminMessage decoded the full InAppMessage and the
+// store INSERTed status/*_at verbatim, letting a messages:write holder mint a row
+// with forged engagement state that never flowed through the projector. The
+// handler must now clamp to a delivered baseline and clear engagement timestamps.
+func TestCreateAdminMessageCannotForgeDisplayState(t *testing.T) {
+	var captured domain.InAppMessage
+	mockStore := &mockMessageStore{
+		createInAppMessageFn: func(ctx context.Context, tid, wid, aid, pid string, msg domain.InAppMessage) (domain.InAppMessage, error) {
+			captured = msg
+			msg.ID = "msg-1"
+			return msg, nil
+		},
+	}
+	server := &Server{store: mockStore}
+
+	body, _ := json.Marshal(map[string]any{
+		"app_id":       "app-1",
+		"profile_id":   "profile-1",
+		"message_type": "modal",
+		"content":      json.RawMessage(`{"title":"x"}`),
+		// Attacker-supplied forged engagement state:
+		"status":       "clicked",
+		"displayed_at": "2020-01-01T00:00:00Z",
+		"clicked_at":   "2020-01-01T00:00:00Z",
+		"dismissed_at": "2020-01-01T00:00:00Z",
+	})
+	req := httptest.NewRequest("POST", "/v1/messages", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(context.WithValue(req.Context(), principalKey{}, domain.Principal{TenantID: "tenant-1", WorkspaceID: "ws-1"}))
+	w := httptest.NewRecorder()
+	server.createAdminMessage(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	if captured.Status != "delivered" {
+		t.Errorf("status not clamped: got %q, want delivered", captured.Status)
+	}
+	if captured.DisplayedAt != nil || captured.ClickedAt != nil || captured.DismissedAt != nil {
+		t.Errorf("engagement timestamps not cleared: displayed=%v clicked=%v dismissed=%v", captured.DisplayedAt, captured.ClickedAt, captured.DismissedAt)
+	}
+	if captured.DeliveredAt == nil {
+		t.Error("expected a delivered_at baseline")
+	}
 }
 
 // Security tests for Milestone 16.11.2
