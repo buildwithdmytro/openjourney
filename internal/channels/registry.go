@@ -27,6 +27,9 @@ func NewRegistry(adapters map[string]ports.ChannelAdapter, fallback ports.Channe
 //   - "webhook" → a fresh WebhookAdapter
 //   - "twilio"  → a fresh TwilioSMSAdapter (HTTPProviderAdapter + TwilioSMSProfile)
 //   - "http"    → a fresh HTTPProviderAdapter with HTTPGenericProfile (generic gateway)
+//   - "fcm"     → a fresh FCMPushAdapter
+//   - "apns"    → a fresh APNsPushAdapter
+//   - "webpush" → a fresh WebPushAdapter (HTTPProviderAdapter + WebPushProfile)
 //   - "fake"    → a fresh FakeAdapter (also the fallback for unknown providers)
 func DefaultRegistry() *Registry {
 	fake := NewFakeAdapter()
@@ -38,6 +41,7 @@ func DefaultRegistry() *Registry {
 			"http":    NewHTTPProviderAdapter(&HTTPGenericProfile{}, "sms"),
 			"fcm":     NewFCMPushAdapter(),
 			"apns":    NewAPNsPushAdapter(),
+			"webpush": NewWebPushAdapter(),
 			"fake":    fake,
 		},
 		fake,

@@ -432,13 +432,14 @@ model). No new npm dep; framework-free.
    impression/click/dismiss round-trip (16.4).
 
 ### Milestone 16.5 — Web push (provider under `push`)
-1. [ ] **VAPID sending identity + `webpush` provider** (Recipe 6.53): store the VAPID keypair as a
+1. [x] **VAPID sending identity + `webpush` provider** (Recipe 6.53): store the VAPID keypair as a
    `sending_identities` row (`channel='push', provider='webpush'`, `vapid_*_ref` secret refs);
    `WebPushProfile` (`internal/channels/profiles_webpush.go`) signing a stdlib-ECDSA P-256 JWT;
    register `"webpush"` in `DefaultRegistry` (`registry.go:29`).
    *Done when:* a `webpush` send builds a VAPID-authenticated request (verifiable JWT) with no payload to
    the subscription endpoint; a `404`/`410` marks the token invalid for cleanup; `go mod tidy` shows no
    new dep; unit test green (against a fake receiver).
+   — done: WebPushProfile.BuildRequest creates VAPID JWT (RFC 8292, stdlib crypto/ecdsa P-256) with empty body; IsInvalidToken maps 404/410; registry.go:39 registers "webpush"; comprehensive tests verify JWT structure, VAPID auth, invalid-token cleanup, and no new dependencies; go build/vet pass
 2. [ ] **Web subscription registration + wake→fetch contract**: accept `platform='web',
    provider='webpush'` device tokens (`device_tokens.go:11`), the subscription endpoint stored on the
    token; document the wake→`fetchInbox` flow.
