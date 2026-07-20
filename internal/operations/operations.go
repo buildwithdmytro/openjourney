@@ -228,6 +228,41 @@ func execute(ctx context.Context, store Store, blobs ports.BlobStore, gateway AI
 			}
 		}
 		return executeReverseETL(ctx, rs, blobs, job)
+	case "export.replay":
+		cs, ok := store.(interface {
+			ReplayExportEvents(context.Context, string, string, string, string, time.Time, time.Time) (int, error)
+		})
+		if !ok {
+			return errors.New("operation store does not support event export")
+		}
+		from, to := time.Time{}, time.Time{}
+		if len(input.Input) > 0 {
+			var raw struct {
+				From string `json:"from"`
+				To   string `json:"to"`
+			}
+			if err := json.Unmarshal(input.Input, &raw); err != nil {
+				return fmt.Errorf("export.replay input: %w", err)
+			}
+			var err error
+			if raw.From != "" {
+				from, err = time.Parse(time.RFC3339Nano, raw.From)
+				if err != nil {
+					return err
+				}
+			}
+			if raw.To != "" {
+				to, err = time.Parse(time.RFC3339Nano, raw.To)
+				if err != nil {
+					return err
+				}
+			}
+		}
+		if input.PipelineID == "" {
+			return errors.New("export.replay requires pipeline_id")
+		}
+		_, err := cs.ReplayExportEvents(ctx, input.TenantID, input.WorkspaceID, input.AppID, input.PipelineID, from, to)
+		return err
 	default:
 		return fmt.Errorf("unsupported operation type %q", jobType)
 	}

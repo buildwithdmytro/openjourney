@@ -424,13 +424,16 @@ winner by `identity_namespaces.priority` + policy version.
    and tidy show no dependency diff.
 
 ### Milestone 15.6 — Currents-style event-stream export
-1. **Event-stream export** (Recipe 6.50): add export outbox topic(s) (`exports.events.v1`) as a second
+1. [x] **Event-stream export** (Recipe 6.50): add export outbox topic(s) (`exports.events.v1`) as a second
    `outbox_events` INSERT + an `internal/dispatcher`-style relay that pushes to an export sink
    (`kafka`/`s3`/signed `webhook`), bounded + signed; an `export.replay` job backfills a time window from
    `accepted_events`.
    *Done when:* every accepted event is delivered to the export sink at-least-once with per-event dedup
    (`UNIQUE(topic,event_id)`); `export.replay` re-emits a window without duplicating live delivery;
-   integration test green.
+   integration test green. — done: `exports.events.v1` fan-out, topic-specific leased relay, replay
+   backfill, `TestRelayUsesOutboxAtLeastOnceWithSinkUpsert`, and
+   `TestEventExportFanoutAndReplayIsDeduplicated` pass; full Go build/vet/test and tidy
+   show no dependency diff.
 
 ### Milestone 15.7 — Native sinks + remote connectors
 1. **`s3` / `clickhouse` / `webhook` sink drivers** (Recipe 6.45): idempotent object write (content-addressed

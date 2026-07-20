@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"sync"
@@ -10,6 +11,67 @@ import (
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 )
+
+func TestEventExportFanoutAndReplayIsDeduplicated(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	key := fmt.Sprintf("export-%d", time.Now().UnixNano())
+	if err := store.EnsureDevelopmentTenant(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	p, err := store.Authenticate(ctx, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ext, err := store.CreateExtension(ctx, p, domain.Extension{Name: "export-connector-" + key, Publisher: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pipeline, err := store.CreateConnectorPipeline(ctx, p, domain.ConnectorPipeline{
+		AppID: p.AppID, ConnectorExtensionID: ext.ID, Name: "export-pipeline-" + key, Direction: "export",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.pool.Exec(ctx, `UPDATE connector_pipelines SET status='enabled' WHERE id=$1`, pipeline.ID); err != nil {
+		t.Fatal(err)
+	}
+	event := domain.Event{Type: "profile.updated", SchemaVersion: 1, ExternalID: "export-profile-" + key,
+		IdempotencyKey: "export-event-" + key, OccurredAt: time.Now().UTC().Add(-time.Second), Source: "test",
+		Payload: json.RawMessage(`{"attributes":{"plan":"pro"}}`)}
+	if _, err := store.AcceptEvents(ctx, p, []domain.Event{event}); err != nil {
+		t.Fatal(err)
+	}
+	var live int
+	if err := store.pool.QueryRow(ctx, `SELECT count(*) FROM outbox_events WHERE topic='exports.events.v1' AND event_id=(SELECT id FROM accepted_events WHERE idempotency_key=$1)`, event.IdempotencyKey).Scan(&live); err != nil {
+		t.Fatal(err)
+	}
+	if live != 1 {
+		t.Fatalf("live export fan-out count=%d, want 1", live)
+	}
+	from, to := time.Now().UTC().Add(-time.Hour), time.Now().UTC().Add(time.Hour)
+	if _, err := store.ReplayExportEvents(ctx, p.TenantID, p.WorkspaceID, p.AppID, pipeline.ID, from, to); err != nil {
+		t.Fatal(err)
+	}
+	var total int
+	if err := store.pool.QueryRow(ctx, `SELECT count(*) FROM outbox_events WHERE topic='exports.events.v1' AND event_id=(SELECT id FROM accepted_events WHERE idempotency_key=$1)`, event.IdempotencyKey).Scan(&total); err != nil {
+		t.Fatal(err)
+	}
+	if total != 1 {
+		t.Fatalf("replay duplicated live export: count=%d", total)
+	}
+}
 
 func TestConnectorPipelineStoreRoundTrip(t *testing.T) {
 	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")

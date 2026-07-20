@@ -288,6 +288,29 @@ func (s *Store) AcceptEvents(ctx context.Context, p domain.Principal, events []d
 			ON CONFLICT(topic,event_id) DO NOTHING`, p.TenantID, partitionKey, id, envelope); err != nil {
 			return nil, err
 		}
+		var exportPipelines []string
+		if err := tx.QueryRow(ctx, `SELECT COALESCE(array_agg(id::text ORDER BY id), '{}')
+			FROM connector_pipelines
+			WHERE tenant_id=$1 AND workspace_id=$2 AND app_id=$3
+			  AND direction='export' AND status='enabled'`, p.TenantID, p.WorkspaceID, p.AppID).Scan(&exportPipelines); err != nil {
+			return nil, err
+		}
+		if len(exportPipelines) > 0 {
+			var exportEnvelope map[string]any
+			if err := json.Unmarshal(envelope, &exportEnvelope); err != nil {
+				return nil, err
+			}
+			exportEnvelope["export_pipeline_ids"] = exportPipelines
+			exportPayload, err := json.Marshal(exportEnvelope)
+			if err != nil {
+				return nil, err
+			}
+			if _, err := tx.Exec(ctx, `INSERT INTO outbox_events
+				(tenant_id,topic,partition_key,event_id,payload) VALUES($1,'exports.events.v1',$2,$3,$4)
+				ON CONFLICT(topic,event_id) DO NOTHING`, p.TenantID, partitionKey, id, exportPayload); err != nil {
+				return nil, err
+			}
+		}
 		// Connector jobs are created in the same transaction as the accepted event
 		// and outbox record. The payload predicate makes replays idempotent per
 		// connector/event pair, including duplicate API submissions.
