@@ -452,11 +452,12 @@ fake-store unit test + postgres integration test (the M10/M11 template).
    and an unscoped key is 403; httpapi fake-store unit test + postgres integration test green; `go build
    ./... && go vet ./... && go test ./...` green with no new dep.
    — done: domain.Overview struct with 6 count fields; GetOverview handler in httpapi/overview.go guarded by reports:read; Store method added to ports/store.go; postgres implementation with tenant-scoped subqueries; TestGetOverviewReturnsJSON and TestGetOverviewRequiresReportsReadScope pass; integration test setup in overview_integration_test.go; web/src/api.ts wrapper with Overview type and getOverview function; no dependency additions
-2. [ ] **Overview landing view**: `web/src/sections/Overview.tsx` (Cards of counts + 1–2 hand-rolled SVG
+2. [x] **Overview landing view**: `web/src/sections/Overview.tsx` (Cards of counts + 1–2 hand-rolled SVG
    sparklines reusing the Reports chart style + links into sections), wired via the 6-point `App.tsx`
    registration and made the **default** view (replacing `profiles` at `App.tsx:118`).
    *Done when:* the app opens on Overview; cards show live counts from the endpoint; an empty workspace
    shows a friendly onboarding `EmptyState`; `npm run typecheck && npm run build && npm test` green.
+   — done: Overview.tsx section created with 6 cards showing profile/journey/campaign/delivery/message/connector counts with sparklines; added to App.tsx as default view; EmptyState shows for empty workspace; 259 tests passing; no dependencies added
 
 ### Milestone 17.9 — Accessibility hardening
 1. [ ] **Focus-management + ScopeSelector combobox**: assert Esc-to-close, focus-trap, and focus-restore

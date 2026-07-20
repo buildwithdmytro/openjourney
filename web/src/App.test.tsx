@@ -118,6 +118,7 @@ describe("App", () => {
 
   it("renders the profile lookup", () => {
     render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Profiles" }));
     expect(screen.getByRole("heading", { name: "Profiles" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Find profile" })).toBeInTheDocument();
   });

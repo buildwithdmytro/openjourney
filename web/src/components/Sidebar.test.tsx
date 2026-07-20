@@ -2,9 +2,10 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { Sidebar } from "./Sidebar";
 
-type View = "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "copilots" | "governance" | "extensions" | "connectors" | "suppressions" | "sender-identities" | "device-tokens" | "acquisition" | "messaging";
+type View = "overview" | "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "copilots" | "governance" | "extensions" | "connectors" | "suppressions" | "sender-identities" | "device-tokens" | "acquisition" | "messaging";
 
 const viewTitles: Record<View, [string, string]> = {
+  overview: ["Overview", "At a glance view of your workspace activity and resources."],
   profiles: ["Profiles", "Inspect the current customer and consent projection."],
   schemas: ["Event schemas", "Register typed event contracts and compatibility rules."],
   "api-keys": ["API keys", "Create scoped credentials and revoke access."],

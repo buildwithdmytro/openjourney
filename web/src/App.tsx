@@ -20,6 +20,7 @@ import { useForm } from "./useForm";
 import { Skeleton, Spinner, ToastProvider, useToast, ConfirmDialog, Field, Input, Select, Textarea, JsonField, AppShell } from "./components";
 import { message } from "./errors";
 
+const Overview = lazy(() => import("./sections/Overview"));
 const Journeys = lazy(() => import("./sections/Journeys"));
 const Experiments = lazy(() => import("./sections/Experiments"));
 const Reports = lazy(() => import("./sections/Reports"));
@@ -58,10 +59,11 @@ function SuspenseLoader() {
   return <div style={{ display: "flex", gap: "12px", alignItems: "center" }} role="status"><Skeleton height="24px" width="100%" /></div>;
 }
 
-type View = "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "copilots" | "governance" | "extensions" | "connectors" | "suppressions" | "sender-identities" | "device-tokens" | "acquisition" | "messaging";
+type View = "overview" | "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "copilots" | "governance" | "extensions" | "connectors" | "suppressions" | "sender-identities" | "device-tokens" | "acquisition" | "messaging";
 type CredentialSource = "manual" | "session" | "oidc";
 
 const viewTitles: Record<View, [string, string]> = {
+  overview: ["Overview", "At a glance view of your workspace activity and resources."],
   profiles: ["Profiles", "Inspect the current customer and consent projection."],
   schemas: ["Event schemas", "Register typed event contracts and compatibility rules."],
   "api-keys": ["API keys", "Create scoped credentials and revoke access."],
@@ -130,7 +132,7 @@ const AVAILABLE_SCOPES = [
 
 export function App() {
   const [healthy, setHealthy] = useState<boolean | null>(null);
-  const [view, setView] = useState<View>(() => currentHashView() || "profiles");
+  const [view, setView] = useState<View>(() => currentHashView() || "overview");
   const [apiKey, setAPIKey] = useState(() => sessionStorage.getItem("oj_session_token") || localStorage.getItem("oj_api_key") || "");
   const [credentialSource, setCredentialSource] = useState<CredentialSource>(() =>
     sessionStorage.getItem("oj_session_token") ? "session" : "manual");
@@ -277,6 +279,7 @@ export function App() {
         onSignOut={() => void handleSignOut()}
       >
         <UIErrorBoundary resetKey={view}>
+          {view === "overview" && <Suspense fallback={<SuspenseLoader />}><Overview apiKey={apiKey} baseURL={apiBase} /></Suspense>}
           {view === "profiles" && <Profiles apiKey={apiKey} />}
           {view === "segments" && <Segments apiKey={apiKey} />}
           {view === "scoring" && <Suspense fallback={<SuspenseLoader />}><Scoring apiKey={apiKey} baseURL={apiBase} /></Suspense>}
