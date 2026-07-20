@@ -365,10 +365,11 @@ fake-store unit test + postgres integration test (the M10/M11 template).
    — done: Badge.tsx with 12 kinds + 12 tests, Card.tsx/DataTable.tsx with 5 tests each; Governance.tsx migrated to use Card and DataTable; 115 tests passing, no visual regression
 
 ### Milestone 17.3 — Shared UX-state primitives
-1. [ ] **Spinner + Skeleton** (Recipe 6.61): the first CSS `@keyframes`, reduced-motion-guarded; used in
+1. [x] **Spinner + Skeleton** (Recipe 6.61): the first CSS `@keyframes`, reduced-motion-guarded; used in
    at least one lazy section's Suspense fallback and one list load.
    *Done when:* a section shows a `Skeleton` instead of "Loading…" text; reduced-motion renders a static
    fallback; tests green.
+   — done: Spinner.tsx/Skeleton.tsx created with size/circle props; @keyframes spin and shimmer added with @media (prefers-reduced-motion: reduce) guards; 16 component tests passing; SuspenseLoader component adopted in Scoring/Acquisition Suspense fallbacks using Skeleton; Spinner used in Suppressions list-loading; 131 total tests green
 2. [ ] **EmptyState**: `<EmptyState icon title description cta>` replacing ~27 ad-hoc
    `<p className="muted">No X yet</p>`; adopted in 3+ sections.
    *Done when:* empty lists render a consistent `EmptyState` with a CTA where relevant; a test asserts the

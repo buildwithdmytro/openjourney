@@ -16,6 +16,7 @@ import {
 import { oidcConfigured, restoreOIDCSession, signIn, signOut } from "./auth";
 import { staticColors, defaultAccentColor, defaultBackgroundColor } from "./tokens";
 import { useTheme } from "./useTheme";
+import { Skeleton, Spinner } from "./components";
 
 const Journeys = lazy(() => import("./sections/Journeys"));
 const Experiments = lazy(() => import("./sections/Experiments"));
@@ -50,6 +51,11 @@ class UIErrorBoundary extends Component<{ children: ReactNode; resetKey: string 
     return this.props.children;
   }
 }
+
+function SuspenseLoader() {
+  return <div style={{ display: "flex", gap: "12px", alignItems: "center" }} role="status"><Skeleton height="24px" width="100%" /></div>;
+}
+
 type View = "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "copilots" | "governance" | "extensions" | "connectors" | "suppressions" | "sender-identities" | "device-tokens" | "acquisition" | "messaging";
 type CredentialSource = "manual" | "session" | "oidc";
 
@@ -288,8 +294,8 @@ export function App() {
         <UIErrorBoundary resetKey={view}>
         {view === "profiles" && <Profiles apiKey={apiKey} />}
         {view === "segments" && <Segments apiKey={apiKey} />}
-        {view === "scoring" && <Suspense fallback={<p role="status">Loading scoring…</p>}><Scoring apiKey={apiKey} baseURL={apiBase} /></Suspense>}
-        {view === "acquisition" && <Suspense fallback={<p role="status">Loading acquisition builder…</p>}><Acquisition apiKey={apiKey} baseURL={apiBase} /></Suspense>}
+        {view === "scoring" && <Suspense fallback={<SuspenseLoader />}><Scoring apiKey={apiKey} baseURL={apiBase} /></Suspense>}
+        {view === "acquisition" && <Suspense fallback={<SuspenseLoader />}><Acquisition apiKey={apiKey} baseURL={apiBase} /></Suspense>}
         {view === "templates" && <Templates apiKey={apiKey} />}
         {view === "campaigns" && <Campaigns apiKey={apiKey} />}
         {view === "journeys" && (
@@ -1218,7 +1224,7 @@ function Suppressions({ apiKey }: { apiKey: string }) {
         </div>
         <div>
           <h2>Suppressed endpoints ({items.length})</h2>
-          {loading && <p>Loading suppressions…</p>}
+          {loading && <Spinner size="md" label="Loading suppressions…" />}
           {!loading && items.length === 0 && <p style={{ color: "var(--muted)" }}>No suppressed endpoints found.</p>}
           <ul className="list">
             {items.map(item => (

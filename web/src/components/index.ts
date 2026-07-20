@@ -16,3 +16,7 @@ export { default as Card } from "./Card";
 export type { CardProps } from "./Card";
 export { default as DataTable } from "./DataTable";
 export type { DataTableProps } from "./DataTable";
+export { default as Spinner } from "./Spinner";
+export type { SpinnerProps } from "./Spinner";
+export { default as Skeleton } from "./Skeleton";
+export type { SkeletonProps } from "./Skeleton";
