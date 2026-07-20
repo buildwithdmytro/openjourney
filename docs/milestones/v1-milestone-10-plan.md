@@ -506,10 +506,12 @@ winner by `identity_namespaces.priority` + policy version.
    web typecheck/build/test plus Go build/vet/test and tidy showing no dependency diff.
 
 ### Milestone 15.12 — Integration, security & audit closeout
-1. **Data round-trip E2E**: an object-storage source ingests rows → events → profiles; a replay of the same
+1. [x] **Data round-trip E2E**: an object-storage source ingests rows → events → profiles; a replay of the same
    source is a no-op; a reverse-ETL pipeline materializes an audience and upserts to a `fake` sink without
    duplication.
-   *Done when:* the end-to-end source→profile and audience→sink flows pass, both idempotent.
+   *Done when:* the end-to-end source→profile and audience→sink flows pass, both idempotent. — done:
+   `TestConnectorDataRoundTripE2E` proves S3 CSV source replay and fake-sink reverse-ETL replay remain
+   single-row through event/profile projection.
 2. **Identity E2E**: multi-namespace resolution, deterministic order-independent merge, reversible unmerge,
    and the "nothing writes profiles directly" invariant (all four identity tables mutated only inside
    `ProjectEvent`) hold under test.
