@@ -501,12 +501,13 @@ model). No new npm dep; framework-free.
    *Done when:* a display-rule message shows only to eligible profiles at fetch; the edge rate-limits
    abusive IPs and rejects forged/expired tokens; tests cover each.
    — done: migration 049_inapp_display_rule.sql adds display_rule field; fetchInbox evaluates EvaluateAudience for messages with display rules; tests verify message filtering and public edge hardening (IPRateLimiter, token validation, CORS); all 566 tests pass
-2. [ ] **Suppression / consent / fatigue for in-app**: in-app suppression keyed by
+2. [x] **Suppression / consent / fatigue for in-app**: in-app suppression keyed by
    `(tenant,'in_app',profile_id)`; marketing in-app is fatigue-counted (`SentCountSince`), transactional
    in-app routes suppression-only (`deliver.go:261`); an unsubscribe suppresses future in-app.
    *Done when:* a suppressed/over-fatigued profile receives no marketing in-app row; a transactional
    in-app bypasses caps but honors suppression; a `consent.changed` unsubscribe blocks future in-app;
    tests cover each.
+   — done: TestDeliverNext_InAppSuppressed/Fatigued/NoConsent (journey) + TestDeliverNext_InAppSuppression/Fatigue/NoConsent (campaigns) verify suppression/fatigue/consent enforcement; TestDeliverNext_InAppTransactionalBypassesCapsButHonorsSuppression verifies transactional bypasses fatigue but honors suppression; all 573 tests pass
 
 ### Milestone 16.11 — Integration, security & audit closeout
 1. [ ] **In-app E2E**: a journey-triggered in-app message + a content card are delivered, fetched by the

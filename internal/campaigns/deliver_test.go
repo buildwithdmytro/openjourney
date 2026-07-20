@@ -40,6 +40,8 @@ type mockStore struct {
 	profilePhones    map[string]string
 	deviceTokens     []domain.DeviceToken
 	retiredTokens    []string
+	consentState     string // "subscribed" or "unsubscribed"
+	sentCountSince   int    // for fatigue testing
 }
 
 func newMockStore() *mockStore {
@@ -60,6 +62,8 @@ func newMockStore() *mockStore {
 		manifestKeys:     make(map[string]string),
 		profileEmails:    make(map[string]string),
 		profilePhones:    make(map[string]string),
+		consentState:     "subscribed",
+		sentCountSince:   0,
 	}
 }
 
@@ -202,7 +206,7 @@ func (m *mockStore) LatestConsent(ctx context.Context, p domain.Principal, profi
 		ProfileID:  profileID,
 		Channel:    channel,
 		Topic:      topic,
-		State:      "subscribed",
+		State:      m.consentState,
 		OccurredAt: time.Now(),
 	}, nil
 }
@@ -215,7 +219,7 @@ func (m *mockStore) IsSuppressed(ctx context.Context, p domain.Principal, channe
 }
 
 func (m *mockStore) SentCountSince(ctx context.Context, p domain.Principal, profileID string, since time.Time) (int, error) {
-	return 0, nil
+	return m.sentCountSince, nil
 }
 
 func (m *mockStore) GetProfileByPhone(ctx context.Context, tenantID string, phone string) (domain.Profile, error) {
@@ -1137,6 +1141,200 @@ func TestDeliverNext_InvalidTokenRetirement_Campaign(t *testing.T) {
 	// Adapter should not have recorded any successful send
 	if len(adapter.GetSends()) != 0 {
 		t.Errorf("expected 0 sends, got %d", len(adapter.GetSends()))
+	}
+}
+
+func TestDeliverNext_InAppSuppression(t *testing.T) {
+	store := newMockStore()
+	campID := "camp-1"
+	tmplID := "tmpl-in-app"
+	profID := "prof-1"
+	jobID := "job-1"
+
+	store.campaigns[campID] = domain.Campaign{
+		ID:          campID,
+		TenantID:    "tenant-1",
+		WorkspaceID: "workspace-1",
+		TemplateID:  tmplID,
+	}
+
+	titleTmpl := "In-App Title"
+	bodyTmpl := "In-App Body"
+	store.templates[tmplID] = domain.Template{
+		ID:            tmplID,
+		Channel:       "in_app",
+		TitleTemplate: &titleTmpl,
+		BodyTemplate:  &bodyTmpl,
+	}
+
+	store.profiles[profID] = domain.Profile{
+		ID:         profID,
+		ExternalID: "ext-1",
+	}
+
+	store.jobs[jobID] = domain.DeliveryJob{
+		ID:         jobID,
+		CampaignID: campID,
+		TenantID:   "tenant-1",
+		Recipients: []domain.Recipient{
+			{
+				ProfileID: profID,
+				Endpoint:  profID, // For in-app, endpoint is profile_id
+			},
+		},
+	}
+
+	// Mark profile as suppressed
+	store.isSuppressedFunc = func(ctx context.Context, p domain.Principal, channel, endpoint string) (bool, error) {
+		return true, nil
+	}
+
+	adapter := &testAdapter{}
+	cfg := Config{
+		Adapter: adapter,
+	}
+
+	processed, err := DeliverNext(context.Background(), store, "worker-1", cfg)
+	if !processed || err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+
+	foundSuppressed := false
+	for _, up := range store.updatedAttempts {
+		if up == profID+":suppressed" {
+			foundSuppressed = true
+		}
+	}
+	if !foundSuppressed {
+		t.Errorf("expected in-app attempt to be updated to suppressed, got: %v", store.updatedAttempts)
+	}
+}
+
+func TestDeliverNext_InAppFatigue(t *testing.T) {
+	store := newMockStore()
+	campID := "camp-1"
+	tmplID := "tmpl-in-app"
+	profID := "prof-1"
+	jobID := "job-1"
+
+	store.campaigns[campID] = domain.Campaign{
+		ID:          campID,
+		TenantID:    "tenant-1",
+		WorkspaceID: "workspace-1",
+		TemplateID:  tmplID,
+	}
+
+	titleTmpl := "In-App Title"
+	bodyTmpl := "In-App Body"
+	store.templates[tmplID] = domain.Template{
+		ID:            tmplID,
+		Channel:       "in_app",
+		TitleTemplate: &titleTmpl,
+		BodyTemplate:  &bodyTmpl,
+	}
+
+	store.profiles[profID] = domain.Profile{
+		ID:         profID,
+		ExternalID: "ext-1",
+	}
+
+	store.jobs[jobID] = domain.DeliveryJob{
+		ID:         jobID,
+		CampaignID: campID,
+		TenantID:   "tenant-1",
+		Recipients: []domain.Recipient{
+			{
+				ProfileID: profID,
+				Endpoint:  profID,
+			},
+		},
+	}
+
+	// Mark profile as fatigued (already has 5 sends, which is the 24h cap)
+	store.sentCountSince = 5
+
+	adapter := &testAdapter{}
+	cfg := Config{
+		Adapter: adapter,
+	}
+
+	processed, err := DeliverNext(context.Background(), store, "worker-1", cfg)
+	if !processed || err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+
+	foundFatigued := false
+	for _, up := range store.updatedAttempts {
+		if up == profID+":fatigued" {
+			foundFatigued = true
+		}
+	}
+	if !foundFatigued {
+		t.Errorf("expected in-app attempt to be updated to fatigued, got: %v", store.updatedAttempts)
+	}
+}
+
+func TestDeliverNext_InAppNoConsent(t *testing.T) {
+	store := newMockStore()
+	campID := "camp-1"
+	tmplID := "tmpl-in-app"
+	profID := "prof-1"
+	jobID := "job-1"
+
+	store.campaigns[campID] = domain.Campaign{
+		ID:          campID,
+		TenantID:    "tenant-1",
+		WorkspaceID: "workspace-1",
+		TemplateID:  tmplID,
+	}
+
+	titleTmpl := "In-App Title"
+	bodyTmpl := "In-App Body"
+	store.templates[tmplID] = domain.Template{
+		ID:            tmplID,
+		Channel:       "in_app",
+		TitleTemplate: &titleTmpl,
+		BodyTemplate:  &bodyTmpl,
+	}
+
+	store.profiles[profID] = domain.Profile{
+		ID:         profID,
+		ExternalID: "ext-1",
+	}
+
+	store.jobs[jobID] = domain.DeliveryJob{
+		ID:         jobID,
+		CampaignID: campID,
+		TenantID:   "tenant-1",
+		Recipients: []domain.Recipient{
+			{
+				ProfileID: profID,
+				Endpoint:  profID,
+			},
+		},
+	}
+
+	// Mark profile as unsubscribed
+	store.consentState = "unsubscribed"
+
+	adapter := &testAdapter{}
+	cfg := Config{
+		Adapter: adapter,
+	}
+
+	processed, err := DeliverNext(context.Background(), store, "worker-1", cfg)
+	if !processed || err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+
+	foundNoConsent := false
+	for _, up := range store.updatedAttempts {
+		if up == profID+":no_consent" {
+			foundNoConsent = true
+		}
+	}
+	if !foundNoConsent {
+		t.Errorf("expected in-app attempt to be updated to no_consent, got: %v", store.updatedAttempts)
 	}
 }
 

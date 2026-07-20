@@ -108,6 +108,8 @@ type mockStore struct {
 	acceptedEvents    []domain.Event
 	updateIntentHook  func(domain.JourneyMessageIntent) error
 	suppressed        bool
+	consentState      string // "subscribed" or "unsubscribed" or "missing"
+	sentCountSince    int    // for fatigue testing
 	deviceTokens     []domain.DeviceToken
 	identities       []domain.SendingIdentity
 	retiredTokens    []string
@@ -163,11 +165,13 @@ func (m *mockStore) AcceptEvents(ctx context.Context, p domain.Principal, events
 
 func newMockStore() *mockStore {
 	return &mockStore{
-		runs:        make(map[string]domain.JourneyRun),
-		steps:       make(map[string]domain.JourneyStep),
-		versions:    make(map[string]domain.JourneyVersion),
-		transitions: make([]domain.JourneyTransition, 0),
-		intents:     make([]domain.JourneyMessageIntent, 0),
+		runs:         make(map[string]domain.JourneyRun),
+		steps:        make(map[string]domain.JourneyStep),
+		versions:     make(map[string]domain.JourneyVersion),
+		transitions:  make([]domain.JourneyTransition, 0),
+		intents:      make([]domain.JourneyMessageIntent, 0),
+		consentState: "subscribed",
+		sentCountSince: 0,
 	}
 }
 

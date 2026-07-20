@@ -150,6 +150,16 @@ func (m *mockStore) GetTemplate(ctx context.Context, p domain.Principal, id stri
 			BodyTemplate:  &body,
 		}, nil
 	}
+	if strings.Contains(id, "in_app") {
+		title := "In-App {{name}}"
+		body := "Body {{name}}"
+		return domain.Template{
+			ID:            id,
+			Channel:       "in_app",
+			TitleTemplate: &title,
+			BodyTemplate:  &body,
+		}, nil
+	}
 	subj := "Hello {{name}}"
 	html := "Body {{name}}"
 	return domain.Template{
@@ -169,13 +179,16 @@ func (m *mockStore) IsSuppressed(ctx context.Context, p domain.Principal, channe
 }
 
 func (m *mockStore) LatestConsent(ctx context.Context, p domain.Principal, profileID, channel, topic string) (domain.Consent, error) {
+	if m.consentState == "missing" {
+		return domain.Consent{}, errors.New("no consent found")
+	}
 	return domain.Consent{
-		State: "subscribed",
+		State: m.consentState,
 	}, nil
 }
 
 func (m *mockStore) SentCountSince(ctx context.Context, p domain.Principal, profileID string, since time.Time) (int, error) {
-	return 0, nil
+	return m.sentCountSince, nil
 }
 
 func (m *mockStore) GetSendingIdentity(ctx context.Context, p domain.Principal, id string) (domain.SendingIdentity, error) {
@@ -608,6 +621,272 @@ func TestDeliverNext_InvalidTokenRetirement_Journey(t *testing.T) {
 	// No provider send should have occurred
 	if len(fakeAdapter.GetSends()) != 0 {
 		t.Errorf("expected 0 sends, got %d", len(fakeAdapter.GetSends()))
+	}
+}
+
+func TestDeliverNext_InAppSuppressed(t *testing.T) {
+	store := newMockStore()
+	store.suppressed = true // Profile is suppressed
+
+	fakeAdapter := channels.NewFakeAdapter()
+	cfg := Config{
+		FakeAdapter: fakeAdapter,
+	}
+
+	intent := domain.JourneyMessageIntent{
+		ID:               "intent-1",
+		RunID:            "run-1",
+		TenantID:         "tenant-1",
+		WorkspaceID:      "workspace-1",
+		JourneyID:        "journey-1",
+		JourneyVersionID: "version-1",
+		NodeID:           "node-2",
+		ProfileID:        "profile-1",
+		TemplateID:       "in_app-template",
+		Channel:          "in_app",
+		Endpoint:         "profile-1", // For in_app, endpoint is profile_id
+		Status:           "pending",
+		Transactional:    false, // Marketing message
+	}
+	store.intents = append(store.intents, intent)
+
+	store.profile = &domain.Profile{
+		ID:         "profile-1",
+		ExternalID: "ext-1",
+		Attributes: json.RawMessage(`{"name":"World"}`),
+	}
+
+	processed, err := DeliverNext(context.Background(), store, "worker-1", cfg)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !processed {
+		t.Fatalf("expected processed to be true")
+	}
+
+	updatedIntent := store.intents[0]
+	if updatedIntent.Status != "completed" {
+		t.Errorf("expected status completed, got %s", updatedIntent.Status)
+	}
+	if updatedIntent.Decision == nil || *updatedIntent.Decision != "suppressed" {
+		t.Errorf("expected decision suppressed, got %v", updatedIntent.Decision)
+	}
+
+	// No provider send should have occurred
+	if len(fakeAdapter.GetSends()) != 0 {
+		t.Errorf("expected 0 sends (suppressed), got %d", len(fakeAdapter.GetSends()))
+	}
+}
+
+func TestDeliverNext_InAppFatigued(t *testing.T) {
+	store := newMockStore()
+	store.sentCountSince = 5 // Profile already has 5 sends (at 24h cap)
+
+	fakeAdapter := channels.NewFakeAdapter()
+	cfg := Config{
+		FakeAdapter: fakeAdapter,
+	}
+
+	intent := domain.JourneyMessageIntent{
+		ID:               "intent-1",
+		RunID:            "run-1",
+		TenantID:         "tenant-1",
+		WorkspaceID:      "workspace-1",
+		JourneyID:        "journey-1",
+		JourneyVersionID: "version-1",
+		NodeID:           "node-2",
+		ProfileID:        "profile-1",
+		TemplateID:       "in_app-template",
+		Channel:          "in_app",
+		Endpoint:         "profile-1",
+		Status:           "pending",
+		Transactional:    false, // Marketing message
+	}
+	store.intents = append(store.intents, intent)
+
+	store.profile = &domain.Profile{
+		ID:         "profile-1",
+		ExternalID: "ext-1",
+		Attributes: json.RawMessage(`{"name":"World"}`),
+	}
+
+	processed, err := DeliverNext(context.Background(), store, "worker-1", cfg)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !processed {
+		t.Fatalf("expected processed to be true")
+	}
+
+	updatedIntent := store.intents[0]
+	if updatedIntent.Status != "completed" {
+		t.Errorf("expected status completed, got %s", updatedIntent.Status)
+	}
+	if updatedIntent.Decision == nil || *updatedIntent.Decision != "fatigued" {
+		t.Errorf("expected decision fatigued, got %v", updatedIntent.Decision)
+	}
+
+	// No provider send should have occurred
+	if len(fakeAdapter.GetSends()) != 0 {
+		t.Errorf("expected 0 sends (fatigued), got %d", len(fakeAdapter.GetSends()))
+	}
+}
+
+func TestDeliverNext_InAppNoConsent(t *testing.T) {
+	store := newMockStore()
+	store.consentState = "unsubscribed" // Profile is unsubscribed
+
+	fakeAdapter := channels.NewFakeAdapter()
+	cfg := Config{
+		FakeAdapter: fakeAdapter,
+	}
+
+	intent := domain.JourneyMessageIntent{
+		ID:               "intent-1",
+		RunID:            "run-1",
+		TenantID:         "tenant-1",
+		WorkspaceID:      "workspace-1",
+		JourneyID:        "journey-1",
+		JourneyVersionID: "version-1",
+		NodeID:           "node-2",
+		ProfileID:        "profile-1",
+		TemplateID:       "in_app-template",
+		Channel:          "in_app",
+		Endpoint:         "profile-1",
+		Status:           "pending",
+		Transactional:    false, // Marketing message
+	}
+	store.intents = append(store.intents, intent)
+
+	store.profile = &domain.Profile{
+		ID:         "profile-1",
+		ExternalID: "ext-1",
+		Attributes: json.RawMessage(`{"name":"World"}`),
+	}
+
+	processed, err := DeliverNext(context.Background(), store, "worker-1", cfg)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !processed {
+		t.Fatalf("expected processed to be true")
+	}
+
+	updatedIntent := store.intents[0]
+	if updatedIntent.Status != "completed" {
+		t.Errorf("expected status completed, got %s", updatedIntent.Status)
+	}
+	if updatedIntent.Decision == nil || *updatedIntent.Decision != "no_consent" {
+		t.Errorf("expected decision no_consent, got %v", updatedIntent.Decision)
+	}
+
+	// No provider send should have occurred
+	if len(fakeAdapter.GetSends()) != 0 {
+		t.Errorf("expected 0 sends (no_consent), got %d", len(fakeAdapter.GetSends()))
+	}
+}
+
+func TestDeliverNext_InAppTransactionalBypassesCapsButHonorsSuppression(t *testing.T) {
+	// Test 1: Transactional in-app should bypass suppression check? No, it should honor suppression!
+	{
+		store := newMockStore()
+		store.suppressed = true // Profile is suppressed
+
+		fakeAdapter := channels.NewFakeAdapter()
+		cfg := Config{
+			FakeAdapter: fakeAdapter,
+		}
+
+		intent := domain.JourneyMessageIntent{
+			ID:               "intent-1",
+			RunID:            "run-1",
+			TenantID:         "tenant-1",
+			WorkspaceID:      "workspace-1",
+			JourneyID:        "journey-1",
+			JourneyVersionID: "version-1",
+			NodeID:           "node-2",
+			ProfileID:        "profile-1",
+			TemplateID:       "in_app-template",
+			Channel:          "in_app",
+			Endpoint:         "profile-1",
+			Status:           "pending",
+			Transactional:    true, // Transactional message
+		}
+		store.intents = append(store.intents, intent)
+
+		store.profile = &domain.Profile{
+			ID:         "profile-1",
+			ExternalID: "ext-1",
+			Attributes: json.RawMessage(`{"name":"World"}`),
+		}
+
+		processed, err := DeliverNext(context.Background(), store, "worker-1", cfg)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if !processed {
+			t.Fatalf("expected processed to be true")
+		}
+
+		updatedIntent := store.intents[0]
+		if updatedIntent.Decision == nil || *updatedIntent.Decision != "suppressed" {
+			t.Errorf("expected decision suppressed (transactional honors suppression), got %v", updatedIntent.Decision)
+		}
+
+		if len(fakeAdapter.GetSends()) != 0 {
+			t.Errorf("expected 0 sends (suppressed), got %d", len(fakeAdapter.GetSends()))
+		}
+	}
+
+	// Test 2: Transactional in-app should bypass fatigue but honor suppression check
+	{
+		store := newMockStore()
+		store.sentCountSince = 5 // Profile already has 5 sends (at 24h cap)
+
+		fakeAdapter := channels.NewFakeAdapter()
+		cfg := Config{
+			FakeAdapter: fakeAdapter,
+		}
+
+		intent := domain.JourneyMessageIntent{
+			ID:               "intent-2",
+			RunID:            "run-2",
+			TenantID:         "tenant-1",
+			WorkspaceID:      "workspace-1",
+			JourneyID:        "journey-1",
+			JourneyVersionID: "version-1",
+			NodeID:           "node-2",
+			ProfileID:        "profile-2",
+			TemplateID:       "in_app-template",
+			Channel:          "in_app",
+			Endpoint:         "profile-2",
+			Status:           "pending",
+			Transactional:    true, // Transactional message should bypass fatigue
+		}
+		store.intents = append(store.intents, intent)
+
+		store.profile = &domain.Profile{
+			ID:         "profile-2",
+			ExternalID: "ext-2",
+			Attributes: json.RawMessage(`{"name":"World"}`),
+		}
+
+		processed, err := DeliverNext(context.Background(), store, "worker-1", cfg)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if !processed {
+			t.Fatalf("expected processed to be true")
+		}
+
+		updatedIntent := store.intents[0]
+		if updatedIntent.Decision == nil || *updatedIntent.Decision != "sent" {
+			t.Errorf("expected decision sent (transactional bypasses fatigue), got %v", updatedIntent.Decision)
+		}
+
+		if len(fakeAdapter.GetSends()) != 1 {
+			t.Errorf("expected 1 send (transactional bypasses fatigue), got %d", len(fakeAdapter.GetSends()))
+		}
 	}
 }
 
