@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -18,6 +19,9 @@ type mockMessageStore struct {
 	getProfileIDBySubjectFn func(ctx context.Context, tenantID, appID, subject string) (string, error)
 	getInAppMessageFn       func(ctx context.Context, tenantID, msgID string) (domain.InAppMessage, error)
 	acceptEventsFn          func(ctx context.Context, p domain.Principal, events []domain.Event) ([]string, error)
+	createInAppMessageFn    func(ctx context.Context, tenantID, workspaceID, appID, profileID string, msg domain.InAppMessage) (domain.InAppMessage, error)
+	listInAppMessagesFn     func(ctx context.Context, p domain.Principal, appID string) ([]domain.InAppMessage, error)
+	listInboxForProfileFn   func(ctx context.Context, tenantID, appID, profileID string, limit int) ([]domain.InAppMessage, error)
 }
 
 func (m *mockMessageStore) GetProfileIDBySubject(ctx context.Context, tenantID, appID, subject string) (string, error) {
@@ -39,6 +43,27 @@ func (m *mockMessageStore) AcceptEvents(ctx context.Context, p domain.Principal,
 		return m.acceptEventsFn(ctx, p, events)
 	}
 	return nil, nil
+}
+
+func (m *mockMessageStore) CreateInAppMessage(ctx context.Context, tenantID, workspaceID, appID, profileID string, msg domain.InAppMessage) (domain.InAppMessage, error) {
+	if m.createInAppMessageFn != nil {
+		return m.createInAppMessageFn(ctx, tenantID, workspaceID, appID, profileID, msg)
+	}
+	return domain.InAppMessage{}, nil
+}
+
+func (m *mockMessageStore) ListInAppMessages(ctx context.Context, p domain.Principal, appID string) ([]domain.InAppMessage, error) {
+	if m.listInAppMessagesFn != nil {
+		return m.listInAppMessagesFn(ctx, p, appID)
+	}
+	return []domain.InAppMessage{}, nil
+}
+
+func (m *mockMessageStore) ListInboxForProfile(ctx context.Context, tenantID, appID, profileID string, limit int) ([]domain.InAppMessage, error) {
+	if m.listInboxForProfileFn != nil {
+		return m.listInboxForProfileFn(ctx, tenantID, appID, profileID, limit)
+	}
+	return []domain.InAppMessage{}, nil
 }
 
 func TestSignInAppToken(t *testing.T) {
@@ -274,4 +299,137 @@ func TestReportMessageEngagementIDORProtection(t *testing.T) {
 	if w.Code != http.StatusForbidden {
 		t.Errorf("expected status 403, got %d", w.Code)
 	}
+}
+
+func TestAdminMessageHandlers(t *testing.T) {
+	tenantID := "tenant-123"
+	workspaceID := "workspace-456"
+	appID := "app-789"
+	profileID := "profile-001"
+	messageID := "msg-123"
+
+	t.Run("create_admin_message", func(t *testing.T) {
+		mockStore := &mockMessageStore{
+			createInAppMessageFn: func(ctx context.Context, tid, wid, aid, pid string, msg domain.InAppMessage) (domain.InAppMessage, error) {
+				result := msg
+				result.ID = messageID
+				result.TenantID = tid
+				result.WorkspaceID = wid
+				result.AppID = aid
+				result.ProfileID = pid
+				result.CreatedAt = time.Now()
+				result.UpdatedAt = time.Now()
+				return result, nil
+			},
+		}
+
+		server := &Server{store: mockStore}
+
+		body, _ := json.Marshal(map[string]any{
+			"app_id":      appID,
+			"profile_id":  profileID,
+			"message_type": "modal",
+			"content":     json.RawMessage(`{"title":"Test"}`),
+		})
+
+		req := httptest.NewRequest("POST", "/v1/messages", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(context.WithValue(req.Context(), principalKey{}, domain.Principal{
+			TenantID:    tenantID,
+			WorkspaceID: workspaceID,
+		}))
+
+		w := httptest.NewRecorder()
+		server.createAdminMessage(w, req)
+
+		if w.Code != http.StatusCreated {
+			t.Errorf("expected status 201, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("list_messages", func(t *testing.T) {
+		messages := []domain.InAppMessage{
+			{
+				ID:        "msg-001",
+				TenantID:  tenantID,
+				AppID:     appID,
+				MessageType: "modal",
+			},
+		}
+
+		mockStore := &mockMessageStore{
+			listInAppMessagesFn: func(ctx context.Context, p domain.Principal, aid string) ([]domain.InAppMessage, error) {
+				return messages, nil
+			},
+		}
+
+		server := &Server{store: mockStore}
+		req := httptest.NewRequest("GET", "/v1/messages?app_id="+appID, nil)
+		req = req.WithContext(context.WithValue(req.Context(), principalKey{}, domain.Principal{
+			TenantID: tenantID,
+		}))
+
+		w := httptest.NewRecorder()
+		server.listMessages(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("expected status 200, got %d", w.Code)
+		}
+	})
+
+	t.Run("get_message", func(t *testing.T) {
+		mockStore := &mockMessageStore{
+			getInAppMessageFn: func(ctx context.Context, tid, mid string) (domain.InAppMessage, error) {
+				return domain.InAppMessage{
+					ID:       messageID,
+					TenantID: tenantID,
+					Status:   "delivered",
+				}, nil
+			},
+		}
+
+		server := &Server{store: mockStore}
+		req := httptest.NewRequest("GET", "/v1/messages/"+messageID, nil)
+		req.SetPathValue("id", messageID)
+		req = req.WithContext(context.WithValue(req.Context(), principalKey{}, domain.Principal{
+			TenantID: tenantID,
+		}))
+
+		w := httptest.NewRecorder()
+		server.getMessage(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("expected status 200, got %d", w.Code)
+		}
+	})
+
+	t.Run("get_profile_inbox", func(t *testing.T) {
+		messages := []domain.InAppMessage{
+			{
+				ID:        "msg-001",
+				ProfileID: profileID,
+				Status:    "delivered",
+			},
+		}
+
+		mockStore := &mockMessageStore{
+			listInboxForProfileFn: func(ctx context.Context, tid, aid, pid string, limit int) ([]domain.InAppMessage, error) {
+				return messages, nil
+			},
+		}
+
+		server := &Server{store: mockStore}
+		req := httptest.NewRequest("GET", "/v1/profiles/"+profileID+"/inbox?app_id="+appID, nil)
+		req.SetPathValue("profileId", profileID)
+		req = req.WithContext(context.WithValue(req.Context(), principalKey{}, domain.Principal{
+			TenantID: tenantID,
+		}))
+
+		w := httptest.NewRecorder()
+		server.getProfileInbox(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("expected status 200, got %d", w.Code)
+		}
+	})
 }

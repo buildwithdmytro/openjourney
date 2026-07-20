@@ -250,3 +250,134 @@ func (s *Server) reportMessageEngagement(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("Content-Type", "application/json")
 	writeJSON(w, http.StatusOK, map[string]any{"status": "accepted"})
 }
+
+// createAdminMessage handles admin creation of in-app messages for broadcast/testing.
+func (s *Server) createAdminMessage(w http.ResponseWriter, r *http.Request) {
+	principal := principalFrom(r)
+	var input domain.InAppMessage
+	if err := decodeJSON(w, r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_json", err.Error())
+		return
+	}
+
+	// Validate required fields
+	if input.AppID == "" || input.ProfileID == "" {
+		writeError(w, http.StatusUnprocessableEntity, "validation_error", "app_id and profile_id required")
+		return
+	}
+	if input.MessageType == "" {
+		input.MessageType = "modal"
+	}
+	if input.Content == nil {
+		writeError(w, http.StatusUnprocessableEntity, "validation_error", "content required")
+		return
+	}
+
+	// Set principal's tenant/workspace
+	input.TenantID = principal.TenantID
+	input.WorkspaceID = principal.WorkspaceID
+
+	// Create the message
+	res, err := s.store.(interface {
+		CreateInAppMessage(context.Context, string, string, string, string, domain.InAppMessage) (domain.InAppMessage, error)
+	}).CreateInAppMessage(r.Context(), principal.TenantID, principal.WorkspaceID, input.AppID, input.ProfileID, input)
+	if err != nil {
+		internalError(w, err, "create in-app message", principal)
+		return
+	}
+	writeJSON(w, http.StatusCreated, res)
+}
+
+// listMessages lists all in-app messages in an app (admin view).
+func (s *Server) listMessages(w http.ResponseWriter, r *http.Request) {
+	principal := principalFrom(r)
+	appID := strings.TrimSpace(r.URL.Query().Get("app_id"))
+	if appID == "" {
+		writeError(w, http.StatusBadRequest, "missing_params", "app_id query parameter required")
+		return
+	}
+
+	msgStore, ok := s.store.(interface {
+		ListInAppMessages(context.Context, domain.Principal, string) ([]domain.InAppMessage, error)
+	})
+	if !ok {
+		writeError(w, http.StatusServiceUnavailable, "store_unavailable", "store is unavailable")
+		return
+	}
+
+	res, err := msgStore.ListInAppMessages(r.Context(), principal, appID)
+	if err != nil {
+		internalError(w, err, "list in-app messages", principal)
+		return
+	}
+	if res == nil {
+		res = []domain.InAppMessage{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"messages": res})
+}
+
+// getMessage gets a specific in-app message.
+func (s *Server) getMessage(w http.ResponseWriter, r *http.Request) {
+	principal := principalFrom(r)
+	id := r.PathValue("id")
+	if id == "" {
+		writeError(w, http.StatusBadRequest, "missing_params", "id path parameter required")
+		return
+	}
+
+	msgStore, ok := s.store.(interface {
+		GetInAppMessage(context.Context, string, string) (domain.InAppMessage, error)
+	})
+	if !ok {
+		writeError(w, http.StatusServiceUnavailable, "store_unavailable", "store is unavailable")
+		return
+	}
+
+	res, err := msgStore.GetInAppMessage(r.Context(), principal.TenantID, id)
+	if errors.Is(err, postgres.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "message not found")
+		return
+	}
+	if err != nil {
+		internalError(w, err, "get in-app message", principal)
+		return
+	}
+
+	// Verify the message belongs to this tenant
+	if res.TenantID != principal.TenantID {
+		writeError(w, http.StatusForbidden, "forbidden", "message does not belong to this tenant")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, res)
+}
+
+// getProfileInbox lists a profile's inbox (admin view, no filtering).
+func (s *Server) getProfileInbox(w http.ResponseWriter, r *http.Request) {
+	principal := principalFrom(r)
+	profileID := r.PathValue("profileId")
+	appID := strings.TrimSpace(r.URL.Query().Get("app_id"))
+
+	if profileID == "" || appID == "" {
+		writeError(w, http.StatusBadRequest, "missing_params", "profileId path parameter and app_id query parameter required")
+		return
+	}
+
+	msgStore, ok := s.store.(interface {
+		ListInboxForProfile(context.Context, string, string, string, int) ([]domain.InAppMessage, error)
+	})
+	if !ok {
+		writeError(w, http.StatusServiceUnavailable, "store_unavailable", "store is unavailable")
+		return
+	}
+
+	res, err := msgStore.ListInboxForProfile(r.Context(), principal.TenantID, appID, profileID, 1000)
+	if err != nil {
+		internalError(w, err, "get profile inbox", principal)
+		return
+	}
+	if res == nil {
+		res = []domain.InAppMessage{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"messages": res})
+}

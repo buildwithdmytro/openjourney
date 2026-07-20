@@ -462,11 +462,12 @@ model). No new npm dep; framework-free.
    — done: impression projector changed to allow repeated updates (WHERE dismissed_at IS NULL); added message.expire event type; ExpireInAppMessages function generates expire events; TestRepeatedImpressionsUpdateTimestamp and TestExpireInAppMessages verify both behaviors
 
 ### Milestone 16.7 — Admin API + templates
-1. [ ] **Messages admin CRUD** (Recipe 6.56): `internal/httpapi/messages.go` — create/list in-app
+1. [x] **Messages admin CRUD** (Recipe 6.56): `internal/httpapi/messages.go` — create/list in-app
    message definitions (for campaign/broadcast use), list a profile's inbox (admin, `messages:read`),
    guarded by `messages:read`/`messages:write`; routes at `server.go:137`-style.
    *Done when:* admin can create an in-app message, list definitions, and view a profile's inbox; a
    `messages:read` key is 403 on write; httpapi tests green.
+   — done: createAdminMessage/listMessages/getMessage/getProfileInbox handlers added to messages.go; routes registered in server.go with messages:read/write guards; 5 new handler tests; all 549 tests pass
 2. [ ] **`in_app` template channel**: the template editor accepts `channel='in_app'` with card/modal
    fields; preview renders Liquid with a sample profile.
    *Done when:* an `in_app` template is created, validated, and preview-rendered; tests green.

@@ -190,6 +190,10 @@ func (s *Server) buildMux() http.Handler {
 	mux.Handle("POST /v1/journeys/{id}/runs/{runID}/cancel", s.authenticate("journeys:write", http.HandlerFunc(s.cancelJourneyRun)))
 	mux.Handle("GET /v1/journeys/{id}/runs", s.authenticate("journeys:read", http.HandlerFunc(s.listJourneyRuns)))
 	mux.Handle("GET /v1/journeys/{id}/runs/{runID}/transitions", s.authenticate("journeys:read", http.HandlerFunc(s.listJourneyRunTransitions)))
+	mux.Handle("POST /v1/messages", s.authenticate("messages:write", http.HandlerFunc(s.createAdminMessage)))
+	mux.Handle("GET /v1/messages", s.authenticate("messages:read", http.HandlerFunc(s.listMessages)))
+	mux.Handle("GET /v1/messages/{id}", s.authenticate("messages:read", http.HandlerFunc(s.getMessage)))
+	mux.Handle("GET /v1/profiles/{profileId}/inbox", s.authenticate("messages:read", http.HandlerFunc(s.getProfileInbox)))
 
 	mux.HandleFunc("GET /r/{token}", s.redirectLink)
 	mux.HandleFunc("GET /s/{slug}", s.redirectShortLink)
