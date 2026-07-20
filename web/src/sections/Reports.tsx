@@ -13,6 +13,7 @@ import {
   ReportDeliverability,
   ReportFunnel,
 } from "../api";
+import { useTheme } from "../useTheme";
 
 type ReportType = "campaign" | "journey" | "experiment";
 type FunnelReport = { funnel: ReportFunnel; deliverability: ReportDeliverability };
@@ -95,7 +96,7 @@ export default function Reports({ apiKey, baseURL }: { apiKey: string; baseURL: 
   const [experiments, setExperiments] = useState<Experiment[]>([]);
   const [funnelReport, setFunnelReport] = useState<FunnelReport | null>(null);
   const [experimentReport, setExperimentReport] = useState<ExperimentReport | null>(null);
-  const [theme, setTheme] = useState<Theme>("light");
+  const { theme, toggle: toggleTheme } = useTheme();
   const [subjectsLoaded, setSubjectsLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -172,7 +173,7 @@ export default function Reports({ apiKey, baseURL }: { apiKey: string; baseURL: 
           {subjects.map((subject) => <option value={subject.id} key={subject.id}>{subject.name}</option>)}
         </select></label>
       </div>
-      <button type="button" className="report-theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")}>
+      <button type="button" className="report-theme-toggle" onClick={() => toggleTheme()}>
         Use {theme === "light" ? "dark" : "light"} theme
       </button>
     </article>

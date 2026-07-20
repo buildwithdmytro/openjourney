@@ -103,6 +103,17 @@ describe("App", () => {
     sessionStorage.clear();
     localStorage.clear();
     localStorage.setItem("oj_api_key", "test-key");
+    document.documentElement.removeAttribute("data-theme");
+    vi.stubGlobal("matchMedia", vi.fn().mockImplementation((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })));
   });
 
   it("renders the profile lookup", () => {
@@ -308,6 +319,40 @@ describe("App", () => {
       expect(payload.html_template).toContain("data-openjourney-builder");
       expect(payload.html_template).toContain("You’re in!");
       expect(payload.html_template).toContain("We’re happy to welcome you.");
+    });
+  });
+
+  it("toggles theme globally and persists to localStorage", async () => {
+    render(<App />);
+    const themeButton = screen.getByRole("button", { name: "Dark mode" });
+    expect(themeButton).toBeInTheDocument();
+
+    fireEvent.click(themeButton);
+    await waitFor(() => {
+      expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+      expect(localStorage.getItem("openjourney-theme")).toBe("dark");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Light mode" }));
+    await waitFor(() => {
+      expect(document.documentElement.getAttribute("data-theme")).toBeNull();
+      expect(localStorage.getItem("openjourney-theme")).toBe("light");
+    });
+  });
+
+  it("restyles Reports when global theme changes", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Reports" }));
+    await screen.findByText("Campaign");
+
+    fireEvent.click(screen.getByRole("button", { name: "Dark mode" }));
+    await waitFor(() => {
+      expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Light mode" }));
+    await waitFor(() => {
+      expect(document.documentElement.getAttribute("data-theme")).toBeNull();
     });
   });
 });

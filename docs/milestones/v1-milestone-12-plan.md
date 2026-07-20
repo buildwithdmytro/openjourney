@@ -329,12 +329,13 @@ fake-store unit test + postgres integration test (the M10/M11 template).
    *Done when:* `npm run typecheck && npm run build && npm test` green; no hex literal remains in
    component `.tsx`; the app is visually unchanged in light mode (existing tests pass unmodified).
    — done: tokens.css created with light/dark palettes and CSS custom properties; styles.css swept to use var(--...); App.tsx and Journeys.tsx hardcoded colors replaced with token references; all 33 tests passing, 0 hex literals in .tsx files
-2. [ ] **Global theming** (Recipe 6.60): `useTheme` hook (OS default + persisted + `data-theme` on
+2. [x] **Global theming** (Recipe 6.60): `useTheme` hook (OS default + persisted + `data-theme` on
    `documentElement`); `tokens.css` dark palette; a theme toggle in the shell; Reports refactored to
    consume the global hook.
    *Done when:* toggling restyles the WHOLE app (not just Reports); first load respects
    `prefers-color-scheme`; the choice persists across reload; a test asserts `data-theme` flips and
    Reports still renders.
+   — done: useTheme.ts hook created with localStorage persistence and matchMedia support; theme toggle button added to App.tsx sidebar; Reports.tsx refactored to use global hook; test verifies toggling sets data-theme on document root and persists to localStorage; 41 tests passing
 3. [ ] **Focus-visible + reduced-motion baseline**: replace `outline:none` (`styles.css:61`) with a
    global `:focus-visible` ring token on all interactive elements (`button`, `a`, `.resource-row`, tabs,
    `.icon-button`); add `@media (prefers-reduced-motion: reduce)` guarding existing transforms.

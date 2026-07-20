@@ -15,6 +15,7 @@ import {
 } from "./api";
 import { oidcConfigured, restoreOIDCSession, signIn, signOut } from "./auth";
 import { staticColors, defaultAccentColor, defaultBackgroundColor } from "./tokens";
+import { useTheme } from "./useTheme";
 
 const Journeys = lazy(() => import("./sections/Journeys"));
 const Experiments = lazy(() => import("./sections/Experiments"));
@@ -129,6 +130,7 @@ export function App() {
   const [loginPassword, setLoginPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [manualKey, setManualKey] = useState("");
+  const { theme, toggle: toggleTheme } = useTheme();
 
   useEffect(() => {
     checkHealth(apiBase).then(setHealthy).catch(() => setHealthy(false));
@@ -265,7 +267,10 @@ export function App() {
               onClick={() => setView(item)}>{viewTitles[item][0]}</button>
           ))}
         </nav>
-        <div style={{ marginTop: "auto", padding: "16px 0 0 0", borderTop: "1px solid rgba(255,255,255,0.1)", display: "flex", flexDirection: "column" }}>
+        <div style={{ marginTop: "auto", padding: "16px 0 0 0", borderTop: "1px solid rgba(255,255,255,0.1)", display: "flex", flexDirection: "column", gap: "8px" }}>
+          <button className="secondary small" onClick={() => toggleTheme()} style={{ width: "100%", background: "transparent", border: "1px solid rgba(255,255,255,0.2)", color: "var(--color-ink-muted)", padding: "8px", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: "bold" }}>
+            {theme === "light" ? "Dark" : "Light"} mode
+          </button>
           <button className="secondary small" onClick={() => void handleSignOut()} style={{ width: "100%", background: "transparent", border: "1px solid rgba(255,255,255,0.2)", color: "var(--color-ink-muted)", padding: "8px", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: "bold" }}>
             Sign out
           </button>
