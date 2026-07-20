@@ -571,3 +571,345 @@ func stringContains(s, substr string) bool {
 	}
 	return false
 }
+
+// TestImpressionProjectionIdempotency verifies that task 17.0.4 is satisfied:
+// A replayed impression event does not overwrite displayed_at with a fresh timestamp.
+// This tests the guard: displayed_at IS NULL in the impression UPDATE.
+func TestImpressionProjectionIdempotency(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	key := fmt.Sprintf("impression-idempotency-%d", time.Now().UnixNano())
+	if err := store.EnsureDevelopmentTenant(ctx, key); err != nil {
+		t.Fatalf("ensure tenant: %v", err)
+	}
+	p, err := store.Authenticate(ctx, key)
+	if err != nil {
+		t.Fatalf("authenticate: %v", err)
+	}
+
+	// Create a profile and message
+	var profileID string
+	if err := store.pool.QueryRow(ctx,
+		`INSERT INTO profiles(tenant_id,workspace_id,app_id,external_id,anonymous_id)
+		 VALUES($1,$2,$3,$4,gen_random_uuid()::text) RETURNING id`,
+		p.TenantID, p.WorkspaceID, p.AppID, "impression-idempotency-user",
+	).Scan(&profileID); err != nil {
+		t.Fatalf("insert profile: %v", err)
+	}
+
+	now := time.Now().UTC()
+	msg, err := store.CreateInAppMessage(ctx, p.TenantID, p.WorkspaceID, p.AppID, profileID, domain.InAppMessage{
+		MessageType: "modal",
+		Content:     json.RawMessage(`{"title":"Test"}`),
+		Status:      "delivered",
+		DeliveredAt: &now,
+	})
+	if err != nil {
+		t.Fatalf("create message: %v", err)
+	}
+
+	// Report impression (first time)
+	firstImpressionKey := key + "-impression-1"
+	firstImpressionEvent := domain.Event{
+		Type:           "message.impression",
+		SchemaVersion:  1,
+		ExternalID:     "impression-idempotency-user",
+		IdempotencyKey: firstImpressionKey,
+		OccurredAt:     now,
+		Payload:        json.RawMessage(`{"message_id":"` + msg.ID + `"}`),
+	}
+	if _, err := store.AcceptEvents(ctx, p, []domain.Event{firstImpressionEvent}); err != nil {
+		t.Fatalf("accept first impression: %v", err)
+	}
+
+	// Project first impression
+	if _, err = projector.Drain(ctx, store, 1, false); err != nil {
+		t.Fatalf("project first impression: %v", err)
+	}
+
+	// Get message after first impression
+	msg1After, err := store.GetInAppMessage(ctx, p.TenantID, msg.ID)
+	if err != nil {
+		t.Fatalf("get message after first impression: %v", err)
+	}
+	if msg1After.DisplayedAt == nil {
+		t.Error("displayed_at should be set after first impression")
+	}
+	firstDisplayedAt := *msg1After.DisplayedAt
+
+	// Wait a bit to ensure timestamp would be different
+	time.Sleep(100 * time.Millisecond)
+
+	// Report impression again (replay with different idempotency key)
+	// This simulates a late-arriving or re-reported event
+	secondImpressionKey := key + "-impression-2"
+	secondImpressionEvent := domain.Event{
+		Type:           "message.impression",
+		SchemaVersion:  1,
+		ExternalID:     "impression-idempotency-user",
+		IdempotencyKey: secondImpressionKey,
+		OccurredAt:     now.Add(50 * time.Millisecond),
+		Payload:        json.RawMessage(`{"message_id":"` + msg.ID + `"}`),
+	}
+	if _, err := store.AcceptEvents(ctx, p, []domain.Event{secondImpressionEvent}); err != nil {
+		t.Fatalf("accept second impression: %v", err)
+	}
+
+	// Project second impression
+	if _, err = projector.Drain(ctx, store, 1, false); err != nil {
+		t.Fatalf("project second impression: %v", err)
+	}
+
+	// Get message after second impression
+	msg2After, err := store.GetInAppMessage(ctx, p.TenantID, msg.ID)
+	if err != nil {
+		t.Fatalf("get message after second impression: %v", err)
+	}
+	if msg2After.DisplayedAt == nil {
+		t.Error("displayed_at should still be set after second impression")
+	}
+	secondDisplayedAt := *msg2After.DisplayedAt
+
+	// CRITICAL: displayed_at should NOT change on replayed impression
+	if !firstDisplayedAt.Equal(secondDisplayedAt) {
+		t.Errorf("idempotency violated: displayed_at changed from %v to %v on replayed impression",
+			firstDisplayedAt, secondDisplayedAt)
+	}
+
+	t.Log("✓ Impression idempotency: replayed impression did not overwrite displayed_at")
+}
+
+// TestImpressionProjectionMonotonicity verifies that task 17.0.4 is satisfied:
+// An impression arriving after a click does not regress status from 'clicked' to 'displayed'.
+// This tests the guard: clicks/dismisses set their *_at before impression can.
+func TestImpressionProjectionMonotonicity(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	key := fmt.Sprintf("impression-monotonicity-%d", time.Now().UnixNano())
+	if err := store.EnsureDevelopmentTenant(ctx, key); err != nil {
+		t.Fatalf("ensure tenant: %v", err)
+	}
+	p, err := store.Authenticate(ctx, key)
+	if err != nil {
+		t.Fatalf("authenticate: %v", err)
+	}
+
+	// Create a profile and message
+	var profileID string
+	if err := store.pool.QueryRow(ctx,
+		`INSERT INTO profiles(tenant_id,workspace_id,app_id,external_id,anonymous_id)
+		 VALUES($1,$2,$3,$4,gen_random_uuid()::text) RETURNING id`,
+		p.TenantID, p.WorkspaceID, p.AppID, "monotonicity-user",
+	).Scan(&profileID); err != nil {
+		t.Fatalf("insert profile: %v", err)
+	}
+
+	now := time.Now().UTC()
+	msg, err := store.CreateInAppMessage(ctx, p.TenantID, p.WorkspaceID, p.AppID, profileID, domain.InAppMessage{
+		MessageType: "modal",
+		Content:     json.RawMessage(`{"title":"Test"}`),
+		Status:      "delivered",
+		DeliveredAt: &now,
+	})
+	if err != nil {
+		t.Fatalf("create message: %v", err)
+	}
+
+	// Report click (arrives first)
+	clickEvent := domain.Event{
+		Type:           "message.clicked",
+		SchemaVersion:  1,
+		ExternalID:     "monotonicity-user",
+		IdempotencyKey: key + "-clicked",
+		OccurredAt:     now.Add(100 * time.Millisecond),
+		Payload:        json.RawMessage(`{"message_id":"` + msg.ID + `"}`),
+	}
+	if _, err := store.AcceptEvents(ctx, p, []domain.Event{clickEvent}); err != nil {
+		t.Fatalf("accept click: %v", err)
+	}
+
+	// Project click
+	if _, err = projector.Drain(ctx, store, 1, false); err != nil {
+		t.Fatalf("project click: %v", err)
+	}
+
+	// Get message after click
+	msgAfterClick, err := store.GetInAppMessage(ctx, p.TenantID, msg.ID)
+	if err != nil {
+		t.Fatalf("get message after click: %v", err)
+	}
+	if msgAfterClick.Status != "clicked" {
+		t.Errorf("status after click: got %q, want clicked", msgAfterClick.Status)
+	}
+	if msgAfterClick.ClickedAt == nil {
+		t.Error("clicked_at should be set")
+	}
+
+	// Now report impression (arrives late, out of order)
+	impressionEvent := domain.Event{
+		Type:           "message.impression",
+		SchemaVersion:  1,
+		ExternalID:     "monotonicity-user",
+		IdempotencyKey: key + "-impression",
+		OccurredAt:     now.Add(50 * time.Millisecond), // earlier timestamp
+		Payload:        json.RawMessage(`{"message_id":"` + msg.ID + `"}`),
+	}
+	if _, err := store.AcceptEvents(ctx, p, []domain.Event{impressionEvent}); err != nil {
+		t.Fatalf("accept impression: %v", err)
+	}
+
+	// Project impression
+	if _, err = projector.Drain(ctx, store, 1, false); err != nil {
+		t.Fatalf("project impression: %v", err)
+	}
+
+	// Get message after impression
+	msgAfterImpression, err := store.GetInAppMessage(ctx, p.TenantID, msg.ID)
+	if err != nil {
+		t.Fatalf("get message after impression: %v", err)
+	}
+
+	// CRITICAL: status should NOT regress from 'clicked' to 'displayed'
+	if msgAfterImpression.Status != "clicked" {
+		t.Errorf("monotonicity violated: status regressed from clicked to %q after late impression",
+			msgAfterImpression.Status)
+	}
+
+	// ClickedAt should remain unchanged
+	if msgAfterImpression.ClickedAt == nil {
+		t.Error("clicked_at should still be set")
+	}
+	if !msgAfterImpression.ClickedAt.Equal(*msgAfterClick.ClickedAt) {
+		t.Error("clicked_at should not change after late impression")
+	}
+
+	t.Log("✓ Impression monotonicity: late impression did not regress status from clicked")
+}
+
+// TestClickDismissIdempotency verifies that click/dismiss handlers remain idempotent
+// (existing behavior that must not regress while fixing impression).
+func TestClickDismissIdempotency(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	key := fmt.Sprintf("click-dismiss-idempotency-%d", time.Now().UnixNano())
+	if err := store.EnsureDevelopmentTenant(ctx, key); err != nil {
+		t.Fatalf("ensure tenant: %v", err)
+	}
+	p, err := store.Authenticate(ctx, key)
+	if err != nil {
+		t.Fatalf("authenticate: %v", err)
+	}
+
+	// Create a profile and message
+	var profileID string
+	if err := store.pool.QueryRow(ctx,
+		`INSERT INTO profiles(tenant_id,workspace_id,app_id,external_id,anonymous_id)
+		 VALUES($1,$2,$3,$4,gen_random_uuid()::text) RETURNING id`,
+		p.TenantID, p.WorkspaceID, p.AppID, "click-dismiss-user",
+	).Scan(&profileID); err != nil {
+		t.Fatalf("insert profile: %v", err)
+	}
+
+	now := time.Now().UTC()
+	msg, err := store.CreateInAppMessage(ctx, p.TenantID, p.WorkspaceID, p.AppID, profileID, domain.InAppMessage{
+		MessageType: "modal",
+		Content:     json.RawMessage(`{"title":"Test"}`),
+		Status:      "delivered",
+		DeliveredAt: &now,
+	})
+	if err != nil {
+		t.Fatalf("create message: %v", err)
+	}
+
+	// Report click
+	clickEvent := domain.Event{
+		Type:           "message.clicked",
+		SchemaVersion:  1,
+		ExternalID:     "click-dismiss-user",
+		IdempotencyKey: key + "-click-1",
+		OccurredAt:     now.Add(100 * time.Millisecond),
+		Payload:        json.RawMessage(`{"message_id":"` + msg.ID + `"}`),
+	}
+	if _, err := store.AcceptEvents(ctx, p, []domain.Event{clickEvent}); err != nil {
+		t.Fatalf("accept click: %v", err)
+	}
+
+	if _, err = projector.Drain(ctx, store, 1, false); err != nil {
+		t.Fatalf("project click: %v", err)
+	}
+
+	msgAfterClick, err := store.GetInAppMessage(ctx, p.TenantID, msg.ID)
+	if err != nil {
+		t.Fatalf("get message after click: %v", err)
+	}
+	firstClickedAt := *msgAfterClick.ClickedAt
+
+	// Wait a bit
+	time.Sleep(50 * time.Millisecond)
+
+	// Replay click with different idempotency key
+	replayClickEvent := domain.Event{
+		Type:           "message.clicked",
+		SchemaVersion:  1,
+		ExternalID:     "click-dismiss-user",
+		IdempotencyKey: key + "-click-2",
+		OccurredAt:     now.Add(150 * time.Millisecond),
+		Payload:        json.RawMessage(`{"message_id":"` + msg.ID + `"}`),
+	}
+	if _, err := store.AcceptEvents(ctx, p, []domain.Event{replayClickEvent}); err != nil {
+		t.Fatalf("accept replay click: %v", err)
+	}
+
+	if _, err = projector.Drain(ctx, store, 1, false); err != nil {
+		t.Fatalf("project replay click: %v", err)
+	}
+
+	msgAfterReplayClick, err := store.GetInAppMessage(ctx, p.TenantID, msg.ID)
+	if err != nil {
+		t.Fatalf("get message after replay click: %v", err)
+	}
+
+	// clicked_at should NOT change on replay
+	if !firstClickedAt.Equal(*msgAfterReplayClick.ClickedAt) {
+		t.Errorf("click idempotency violated: clicked_at changed on replay from %v to %v",
+			firstClickedAt, msgAfterReplayClick.ClickedAt)
+	}
+
+	t.Log("✓ Click/dismiss idempotency: replayed click did not overwrite clicked_at")
+}

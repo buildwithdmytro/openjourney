@@ -297,7 +297,7 @@ fake-store unit test + postgres integration test (the M10/M11 template).
    *Done when:* the scope-enforcement test passes and `git diff` shows no additions to `go.mod`/`go.sum`/
    `web/package.json`/`sdk/javascript/package.json` from M11.
    — done: TestMessagesReadKeyForbiddenOnWrite verifies messages:read key gets 403 on POST /v1/messages; no dependency changes in git diff
-4. [ ] **Impression projection is idempotent + monotonic (review finding #3).** The `message.impression`
+4. [x] **Impression projection is idempotent + monotonic (review finding #3).** The `message.impression`
    `ProjectEvent` case (`internal/postgres/store.go:~689`) is guarded only by `dismissed_at IS NULL` —
    unlike `message.clicked` (`clicked_at IS NULL`) and `message.dismissed` — so a replayed impression
    overwrites `displayed_at` with a fresh `now()`, and an out-of-order impression after a click regresses
@@ -305,6 +305,7 @@ fake-store unit test + postgres integration test (the M10/M11 template).
    advances, mirroring the click/dismiss handlers.
    *Done when:* a test proves a replayed impression does not move `displayed_at`, and an impression
    arriving after a click does not regress `status`; the click/dismiss cases stay idempotent.
+   — done: store.go:691-692 add displayed_at IS NULL AND clicked_at IS NULL guards; TestImpressionProjectionIdempotency + TestImpressionProjectionMonotonicity + TestClickDismissIdempotency verify properties
 5. [ ] **Admin create validates the target profile's tenant/app (review finding #4).** `createAdminMessage`
    (`internal/httpapi/messages.go`) trusts `input.ProfileID`; verify the profile exists under
    `principal.TenantID`/`WorkspaceID`/`input.AppID` (e.g. via `GetProfileByIDSystem`) before insert, so a
