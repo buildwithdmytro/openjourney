@@ -526,9 +526,9 @@ winner by `identity_namespaces.priority` + policy version.
    `TestWebhookSinkRejectsRawSecretWithoutReference`, `TestWebhookSinkBlocksPrivateEndpointWithoutAllowlist`,
    `TestSecurityE2E_RequiredScopeIsDeniedAndAudited`, `TestPublishConnectorPipelineFreezesCanonicalDefinitionAndRequiresHuman`,
    and append-only audit integration tests pass; full Go build/vet/test and tidy show no dependency diff.
-4. **Run the suite**: `go build ./... && go vet ./... && go test ./...`, `go mod tidy` (**MUST show no new
+4. [x] **Run the suite**: `go build ./... && go vet ./... && go test ./...`, `go mod tidy` (**MUST show no new
    dependency**), `cd web && npm run typecheck && npm run build && npm test`.
-   *Done when:* all green and `git diff go.mod go.sum web/package.json` is empty of additions.
+   *Done when:* all green and `git diff go.mod go.sum web/package.json` is empty of additions. — done: all green (go build/vet/test 497 passed, typecheck/build/test 33 passed, no new dependencies in go.mod/go.sum/package.json).
 5. **Audit doc** `docs/milestones/v1-milestone-10-audit.md` in the M2–M9 table format, one row per task with
    evidence (file:line + test name).
    *Done when:* the doc exists with a row per `15.x` task and its verifying test.
