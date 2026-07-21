@@ -754,6 +754,52 @@ type ExperimentAssignment struct {
 	AssignedAt   time.Time `json:"assigned_at"`
 }
 
+type FlagVariant struct {
+	Label  string          `json:"label"`
+	Value  json.RawMessage `json:"value"`
+	Weight int             `json:"weight"`
+}
+
+type FlagTargetingRule struct {
+	DSL     json.RawMessage `json:"dsl"`
+	Variant string          `json:"variant"`
+}
+
+type FeatureFlag struct {
+	ID              string                  `json:"id"`
+	TenantID        string                  `json:"tenant_id"`
+	WorkspaceID     string                  `json:"workspace_id"`
+	AppID           string                  `json:"app_id"`
+	Environment     string                  `json:"environment"` // development, staging, production
+	Key             string                  `json:"key"`
+	Name            *string                 `json:"name,omitempty"`
+	Description     *string                 `json:"description,omitempty"`
+	FlagType        string                  `json:"flag_type"` // boolean, string, number, json
+	DefaultValue    json.RawMessage         `json:"default_value"`
+	Variants        []FlagVariant           `json:"variants,omitempty"`
+	TargetingRules  []FlagTargetingRule     `json:"targeting_rules,omitempty"`
+	RolloutPct      int                     `json:"rollout_pct"` // 0-100
+	Seed            string                  `json:"seed"`
+	Enabled         bool                    `json:"enabled"`
+	Status          string                  `json:"status"` // draft, published, disabled
+	CurrentVersionID *string                `json:"current_version_id,omitempty"`
+	CreatedAt       time.Time               `json:"created_at"`
+	UpdatedAt       time.Time               `json:"updated_at"`
+}
+
+type FeatureFlagVersion struct {
+	ID              string          `json:"id"`
+	FlagID          string          `json:"flag_id"`
+	TenantID        string          `json:"tenant_id"`
+	WorkspaceID     string          `json:"workspace_id"`
+	Version         int             `json:"version"`
+	DefinitionKey   string          `json:"definition_key"`
+	DefinitionSha   string          `json:"definition_sha"`
+	Definition      json.RawMessage `json:"definition"`
+	CreatedByUserID *string         `json:"created_by_user_id,omitempty"`
+	CreatedAt       time.Time       `json:"created_at"`
+}
+
 type Journey struct {
 	ID               string          `json:"id"`
 	TenantID         string          `json:"tenant_id"`

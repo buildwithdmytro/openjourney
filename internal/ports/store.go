@@ -143,6 +143,14 @@ type Store interface {
 	ListExperiments(ctx context.Context, p domain.Principal) ([]domain.Experiment, error)
 	AssignExperiment(ctx context.Context, p domain.Principal, experimentID, profileID, variant string) (domain.ExperimentAssignment, error)
 	SetDeliveryAttemptExperiment(ctx context.Context, tenantID, campaignID, profileID, channel, experimentID, variant string) error
+
+	CreateFeatureFlag(ctx context.Context, p domain.Principal, flag domain.FeatureFlag) (domain.FeatureFlag, error)
+	GetFeatureFlag(ctx context.Context, p domain.Principal, id string) (domain.FeatureFlag, error)
+	UpdateFeatureFlag(ctx context.Context, p domain.Principal, flag domain.FeatureFlag) (domain.FeatureFlag, error)
+	ListFeatureFlags(ctx context.Context, p domain.Principal) ([]domain.FeatureFlag, error)
+	ListActiveFlags(ctx context.Context, tenantID, appID, environment string) ([]domain.FeatureFlag, error)
+	PublishFeatureFlag(ctx context.Context, p domain.Principal, flagID string, approverUserID string, manifestKey string) (domain.FeatureFlagVersion, error)
+
 	CreateJourney(ctx context.Context, p domain.Principal, j domain.Journey) (domain.Journey, error)
 	GetJourney(ctx context.Context, p domain.Principal, id string) (domain.Journey, error)
 	UpdateJourney(ctx context.Context, p domain.Principal, j domain.Journey) (domain.Journey, error)

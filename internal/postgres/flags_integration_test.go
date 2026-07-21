@@ -1,0 +1,326 @@
+package postgres
+
+import (
+	"context"
+	"encoding/json"
+	"os"
+	"strings"
+	"testing"
+
+	"github.com/buildwithdmytro/openjourney/internal/domain"
+)
+
+func TestFeatureFlagStoreRoundTripAndDuplicateRejection(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.pool.Exec(ctx, "TRUNCATE tenants CASCADE"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.EnsureDevelopmentTenant(ctx, "flag-store"); err != nil {
+		t.Fatal(err)
+	}
+	p, err := store.Authenticate(ctx, "flag-store")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a feature flag
+	defaultVal := json.RawMessage(`true`)
+	created, err := store.CreateFeatureFlag(ctx, p, domain.FeatureFlag{
+		AppID:        p.AppID,
+		Environment:  "production",
+		Key:          "test_flag",
+		Name:         stringPtr("Test Flag"),
+		FlagType:     "boolean",
+		DefaultValue: defaultVal,
+		Seed:         "seed-123",
+		Enabled:      false,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify round-trip: get the flag
+	got, err := store.GetFeatureFlag(ctx, p, created.ID)
+	if err != nil {
+		t.Fatalf("GetFeatureFlag failed: %v", err)
+	}
+	if got.ID != created.ID || got.Key != "test_flag" || got.Environment != "production" || got.FlagType != "boolean" {
+		t.Fatalf("GetFeatureFlag mismatch: %+v", got)
+	}
+	if got.Enabled || got.Status != "draft" {
+		t.Fatalf("Expected draft and disabled, got status=%s enabled=%v", got.Status, got.Enabled)
+	}
+
+	// Update the flag
+	got.Enabled = true
+	got.RolloutPct = 50
+	updated, err := store.UpdateFeatureFlag(ctx, p, got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !updated.Enabled || updated.RolloutPct != 50 {
+		t.Fatalf("UpdateFeatureFlag mismatch: enabled=%v rollout=%d", updated.Enabled, updated.RolloutPct)
+	}
+
+	// Verify duplicate (same tenant, app, environment, key) is rejected
+	_, err = store.CreateFeatureFlag(ctx, p, domain.FeatureFlag{
+		AppID:        p.AppID,
+		Environment:  "production",
+		Key:          "test_flag",
+		FlagType:     "string",
+		DefaultValue: json.RawMessage(`"default"`),
+		Seed:         "seed-456",
+	})
+	if err == nil {
+		t.Fatal("expected duplicate error, got nil")
+	}
+	if !strings.Contains(err.Error(), "unique") && !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("expected unique/duplicate error, got: %v", err)
+	}
+
+	// Verify same key in different environment is allowed
+	created2, err := store.CreateFeatureFlag(ctx, p, domain.FeatureFlag{
+		AppID:        p.AppID,
+		Environment:  "staging",
+		Key:          "test_flag",
+		FlagType:     "boolean",
+		DefaultValue: json.RawMessage(`false`),
+		Seed:         "seed-789",
+	})
+	if err != nil {
+		t.Fatalf("different environment should be allowed: %v", err)
+	}
+	if created2.Environment != "staging" {
+		t.Fatalf("wrong environment: %s", created2.Environment)
+	}
+
+	// List should return both flags
+	list, err := store.ListFeatureFlags(ctx, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) < 2 {
+		t.Fatalf("expected at least 2 flags, got %d", len(list))
+	}
+}
+
+func TestListActiveFlagsFiltersCorrectly(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.pool.Exec(ctx, "TRUNCATE tenants CASCADE"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.EnsureDevelopmentTenant(ctx, "flag-active"); err != nil {
+		t.Fatal(err)
+	}
+	p, err := store.Authenticate(ctx, "flag-active")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create multiple flags with different states
+	f1, err := store.CreateFeatureFlag(ctx, p, domain.FeatureFlag{
+		AppID:        p.AppID,
+		Environment:  "production",
+		Key:          "flag1",
+		FlagType:     "boolean",
+		DefaultValue: json.RawMessage(`true`),
+		Seed:         "seed-1",
+		Enabled:      true,
+		Status:       "published",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Draft flag (should not be returned)
+	_, err = store.CreateFeatureFlag(ctx, p, domain.FeatureFlag{
+		AppID:        p.AppID,
+		Environment:  "production",
+		Key:          "flag2",
+		FlagType:     "boolean",
+		DefaultValue: json.RawMessage(`true`),
+		Seed:         "seed-2",
+		Enabled:      true,
+		Status:       "draft",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Published but disabled (should not be returned)
+	_, err = store.CreateFeatureFlag(ctx, p, domain.FeatureFlag{
+		AppID:        p.AppID,
+		Environment:  "production",
+		Key:          "flag3",
+		FlagType:     "boolean",
+		DefaultValue: json.RawMessage(`true`),
+		Seed:         "seed-3",
+		Enabled:      false,
+		Status:       "published",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Different environment (should not be returned)
+	_, err = store.CreateFeatureFlag(ctx, p, domain.FeatureFlag{
+		AppID:        p.AppID,
+		Environment:  "staging",
+		Key:          "flag1",
+		FlagType:     "boolean",
+		DefaultValue: json.RawMessage(`true`),
+		Seed:         "seed-4",
+		Enabled:      true,
+		Status:       "published",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// List active flags for production
+	active, err := store.ListActiveFlags(ctx, p.TenantID, p.AppID, "production")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Should only return f1 (published and enabled)
+	if len(active) != 1 {
+		t.Fatalf("expected 1 active flag for production, got %d", len(active))
+	}
+	if active[0].ID != f1.ID || active[0].Key != "flag1" {
+		t.Fatalf("unexpected flag: %+v", active[0])
+	}
+
+	// List active flags for staging (should have the other flag1)
+	activeStaging, err := store.ListActiveFlags(ctx, p.TenantID, p.AppID, "staging")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(activeStaging) != 1 || activeStaging[0].Environment != "staging" {
+		t.Fatalf("expected 1 flag for staging, got %d", len(activeStaging))
+	}
+}
+
+func TestFeatureFlagValidation(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.pool.Exec(ctx, "TRUNCATE tenants CASCADE"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.EnsureDevelopmentTenant(ctx, "flag-validation"); err != nil {
+		t.Fatal(err)
+	}
+	p, err := store.Authenticate(ctx, "flag-validation")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name    string
+		flag    domain.FeatureFlag
+		wantErr bool
+	}{
+		{
+			name: "missing key",
+			flag: domain.FeatureFlag{
+				AppID:        p.AppID,
+				FlagType:     "boolean",
+				DefaultValue: json.RawMessage(`true`),
+				Seed:         "seed",
+			},
+			wantErr: true,
+		},
+		{
+			name: "missing flag_type",
+			flag: domain.FeatureFlag{
+				AppID:        p.AppID,
+				Key:          "flag",
+				DefaultValue: json.RawMessage(`true`),
+				Seed:         "seed",
+			},
+			wantErr: true,
+		},
+		{
+			name: "missing seed",
+			flag: domain.FeatureFlag{
+				AppID:        p.AppID,
+				Key:          "flag",
+				FlagType:     "boolean",
+				DefaultValue: json.RawMessage(`true`),
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid environment",
+			flag: domain.FeatureFlag{
+				AppID:        p.AppID,
+				Environment:  "invalid",
+				Key:          "flag",
+				FlagType:     "boolean",
+				DefaultValue: json.RawMessage(`true`),
+				Seed:         "seed",
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid rollout_pct",
+			flag: domain.FeatureFlag{
+				AppID:        p.AppID,
+				Key:          "flag",
+				FlagType:     "boolean",
+				DefaultValue: json.RawMessage(`true`),
+				Seed:         "seed",
+				RolloutPct:   101,
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := store.CreateFeatureFlag(ctx, p, tt.flag)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("CreateFeatureFlag wantErr=%v, got err=%v", tt.wantErr, err)
+			}
+		})
+	}
+}
+
+func stringPtr(s string) *string {
+	return &s
+}

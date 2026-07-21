@@ -316,13 +316,14 @@ registration. ConfirmDialog on publish + kill-switch toggle. Theme-aware; no new
    writes and reject an unknown one; `feature_flag_versions` rejects UPDATE/DELETE; `rbac.go` accepts the
    two scopes; `go test ./internal/postgres/...` green.
    — done: 050_feature_flags.sql created with feature_flags/versions/exposures tables, CHECKs for flag_type/environment/status, BEFORE UPDATE OR DELETE trigger on versions, REVOKE on versions, flags:read/write added to rbac.go allowedPermissions; go build/vet/test all pass (589 tests green)
-2. [ ] **Domain + store CRUD** (Recipe 6.68): `domain.FeatureFlag`/`FeatureFlagVersion` structs;
+2. [x] **Domain + store CRUD** (Recipe 6.68): `domain.FeatureFlag`/`FeatureFlagVersion` structs;
    `ports.Store` `CreateFeatureFlag`/`GetFeatureFlag`/`ListFeatureFlags`/`UpdateFeatureFlag`/
    `ListActiveFlags` (for the edge); `internal/postgres/flags.go` tenant+workspace+environment-scoped;
    `pgx.ErrNoRows → ErrNotFound`.
    *Done when:* a flag round-trips through the store; a duplicate `(tenant,app,environment,key)` is
    rejected; `ListActiveFlags` returns only published+enabled flags for an environment; unit + integration
    tests green.
+   — done: domain/domain.go has FeatureFlag/FeatureFlagVersion/FlagVariant/FlagTargetingRule structs; ports/store.go has 6 methods; internal/postgres/flags.go implements CRUD with validation and unique constraint enforcement; flags_integration_test.go verifies round-trip, duplicate rejection, and filtering; all 589 tests green
 
 ### Milestone 18.2 — Deterministic evaluation engine
 1. [ ] **`internal/flags` bucketing + composition** (Recipe 6.69): `Evaluate(flag, subject, evalAudience)
