@@ -387,10 +387,10 @@ func TestFunnelOverTimeReport(t *testing.T) {
 	}
 
 	// Seed engagement events spread across buckets
-	// Day 1: 8 delivered, 4 opened, 2 clicked
-	// Day 2: 12 delivered, 6 opened, 3 clicked
-	// Day 3: 10 delivered, 5 opened, 2 clicked
-	events := make([]domain.Event, 0, 60)
+	// Day 1: 8 delivered, 4 opened, 2 clicked, 1 bounced, 1 complained
+	// Day 2: 12 delivered, 6 opened, 3 clicked, 2 bounced, 1 complained
+	// Day 3: 10 delivered, 5 opened, 2 clicked, 1 bounced, 1 complained
+	events := make([]domain.Event, 0, 80)
 	addEvent := func(eventType string, recipient recipient, suffix string, payload json.RawMessage) {
 		events = append(events, domain.Event{
 			Type: eventType, SchemaVersion: 1, ExternalID: recipient.externalID,
@@ -399,10 +399,12 @@ func TestFunnelOverTimeReport(t *testing.T) {
 		})
 	}
 
-	// Day 1 events: 8 delivered, 4 opened, 2 clicked
+	// Day 1 events: 8 delivered, 4 opened, 2 clicked, 1 bounced, 1 complained
 	for i := 0; i < 10; i++ {
-		addEvent("message.delivered", recipients[i], "delivered",
-			json.RawMessage(fmt.Sprintf(`{"campaign_id":%q,"endpoint":%q}`, campaign.ID, recipients[i].endpoint)))
+		if i < 8 {
+			addEvent("message.delivered", recipients[i], "delivered",
+				json.RawMessage(fmt.Sprintf(`{"campaign_id":%q,"endpoint":%q}`, campaign.ID, recipients[i].endpoint)))
+		}
 		if i < 4 {
 			addEvent("email.opened", recipients[i], "opened",
 				json.RawMessage(fmt.Sprintf(`{"template_id":%q,"dispatch_id":%q,"campaign_id":%q}`,
@@ -413,12 +415,24 @@ func TestFunnelOverTimeReport(t *testing.T) {
 				json.RawMessage(fmt.Sprintf(`{"template_id":%q,"dispatch_id":%q,"url":"https://example.com/offer","campaign_id":%q}`,
 					template.ID, fmt.Sprintf("click-d1-%02d", i), campaign.ID)))
 		}
+		if i == 8 {
+			addEvent("message.bounced", recipients[i], "bounced",
+				json.RawMessage(fmt.Sprintf(`{"campaign_id":%q,"endpoint":%q,"bounce_type":"permanent"}`,
+					campaign.ID, recipients[i].endpoint)))
+		}
+		if i == 9 {
+			addEvent("message.complained", recipients[i], "complained",
+				json.RawMessage(fmt.Sprintf(`{"campaign_id":%q,"endpoint":%q}`,
+					campaign.ID, recipients[i].endpoint)))
+		}
 	}
 
-	// Day 2 events: 12 delivered, 6 opened, 3 clicked
+	// Day 2 events: 12 delivered, 6 opened, 3 clicked, 2 bounced, 1 complained
 	for i := 10; i < 25; i++ {
-		addEvent("message.delivered", recipients[i], "delivered",
-			json.RawMessage(fmt.Sprintf(`{"campaign_id":%q,"endpoint":%q}`, campaign.ID, recipients[i].endpoint)))
+		if i < 22 {
+			addEvent("message.delivered", recipients[i], "delivered",
+				json.RawMessage(fmt.Sprintf(`{"campaign_id":%q,"endpoint":%q}`, campaign.ID, recipients[i].endpoint)))
+		}
 		if i < 16 {
 			addEvent("email.opened", recipients[i], "opened",
 				json.RawMessage(fmt.Sprintf(`{"template_id":%q,"dispatch_id":%q,"campaign_id":%q}`,
@@ -429,12 +443,24 @@ func TestFunnelOverTimeReport(t *testing.T) {
 				json.RawMessage(fmt.Sprintf(`{"template_id":%q,"dispatch_id":%q,"url":"https://example.com/offer","campaign_id":%q}`,
 					template.ID, fmt.Sprintf("click-d2-%02d", i-10), campaign.ID)))
 		}
+		if i == 22 || i == 23 {
+			addEvent("message.bounced", recipients[i], "bounced",
+				json.RawMessage(fmt.Sprintf(`{"campaign_id":%q,"endpoint":%q,"bounce_type":"permanent"}`,
+					campaign.ID, recipients[i].endpoint)))
+		}
+		if i == 24 {
+			addEvent("message.complained", recipients[i], "complained",
+				json.RawMessage(fmt.Sprintf(`{"campaign_id":%q,"endpoint":%q}`,
+					campaign.ID, recipients[i].endpoint)))
+		}
 	}
 
-	// Day 3 events: 10 delivered, 5 opened, 2 clicked
+	// Day 3 events: 10 delivered, 5 opened, 2 clicked, 1 bounced, 1 complained
 	for i := 25; i < 37; i++ {
-		addEvent("message.delivered", recipients[i], "delivered",
-			json.RawMessage(fmt.Sprintf(`{"campaign_id":%q,"endpoint":%q}`, campaign.ID, recipients[i].endpoint)))
+		if i < 35 {
+			addEvent("message.delivered", recipients[i], "delivered",
+				json.RawMessage(fmt.Sprintf(`{"campaign_id":%q,"endpoint":%q}`, campaign.ID, recipients[i].endpoint)))
+		}
 		if i < 30 {
 			addEvent("email.opened", recipients[i], "opened",
 				json.RawMessage(fmt.Sprintf(`{"template_id":%q,"dispatch_id":%q,"campaign_id":%q}`,
@@ -445,10 +471,22 @@ func TestFunnelOverTimeReport(t *testing.T) {
 				json.RawMessage(fmt.Sprintf(`{"template_id":%q,"dispatch_id":%q,"url":"https://example.com/offer","campaign_id":%q}`,
 					template.ID, fmt.Sprintf("click-d3-%02d", i-25), campaign.ID)))
 		}
+		if i == 35 {
+			addEvent("message.bounced", recipients[i], "bounced",
+				json.RawMessage(fmt.Sprintf(`{"campaign_id":%q,"endpoint":%q,"bounce_type":"permanent"}`,
+					campaign.ID, recipients[i].endpoint)))
+		}
+		if i == 36 {
+			addEvent("message.complained", recipients[i], "complained",
+				json.RawMessage(fmt.Sprintf(`{"campaign_id":%q,"endpoint":%q}`,
+					campaign.ID, recipients[i].endpoint)))
+		}
 	}
 
-	if len(events) != 60 {
-		t.Fatalf("events=%d, want 60", len(events))
+	// Total events: Day 1 (16) + Day 2 (24) + Day 3 (19) = 59
+	expectedEventCount := 16 + 24 + 19
+	if len(events) != expectedEventCount {
+		t.Fatalf("events=%d, want %d", len(events), expectedEventCount)
 	}
 
 	ids, err := store.AcceptEvents(ctx, p, events)
@@ -482,7 +520,7 @@ func TestFunnelOverTimeReport(t *testing.T) {
 		t.Fatalf("buckets=%d, want 3", len(overTimeReport.Buckets))
 	}
 
-	// Verify day 1: 10 sent, 8 delivered, 4 opened, 2 clicked
+	// Verify day 1: 10 sent, 8 delivered, 4 opened, 2 clicked, 1 bounced, 1 complained
 	day1Bucket := overTimeReport.Buckets[0]
 	if day1Bucket.Funnel.Sent.Total != 10 || day1Bucket.Funnel.Sent.Unique != 10 {
 		t.Fatalf("day 1 sent=%+v, want {Total:10, Unique:10}", day1Bucket.Funnel.Sent)
@@ -496,8 +534,22 @@ func TestFunnelOverTimeReport(t *testing.T) {
 	if day1Bucket.Funnel.Clicked.Total != 2 || day1Bucket.Funnel.Clicked.Unique != 2 {
 		t.Fatalf("day 1 clicked=%+v, want {Total:2, Unique:2}", day1Bucket.Funnel.Clicked)
 	}
+	if day1Bucket.Deliverability.Bounced.Total != 1 || day1Bucket.Deliverability.Bounced.Unique != 1 {
+		t.Fatalf("day 1 bounced=%+v, want {Total:1, Unique:1}", day1Bucket.Deliverability.Bounced)
+	}
+	if day1Bucket.Deliverability.Complained.Total != 1 || day1Bucket.Deliverability.Complained.Unique != 1 {
+		t.Fatalf("day 1 complained=%+v, want {Total:1, Unique:1}", day1Bucket.Deliverability.Complained)
+	}
+	expectedDay1BounceRate := 1.0 / 10.0 // 1 bounce / 10 sent
+	if day1Bucket.Deliverability.BounceRate != expectedDay1BounceRate {
+		t.Fatalf("day 1 bounce_rate=%v, want %v", day1Bucket.Deliverability.BounceRate, expectedDay1BounceRate)
+	}
+	expectedDay1ComplaintRate := 1.0 / 10.0 // 1 complaint / 10 sent
+	if day1Bucket.Deliverability.ComplaintRate != expectedDay1ComplaintRate {
+		t.Fatalf("day 1 complaint_rate=%v, want %v", day1Bucket.Deliverability.ComplaintRate, expectedDay1ComplaintRate)
+	}
 
-	// Verify day 2: 15 sent, 12 delivered, 6 opened, 3 clicked
+	// Verify day 2: 15 sent, 12 delivered, 6 opened, 3 clicked, 2 bounced, 1 complained
 	day2Bucket := overTimeReport.Buckets[1]
 	if day2Bucket.Funnel.Sent.Total != 15 || day2Bucket.Funnel.Sent.Unique != 15 {
 		t.Fatalf("day 2 sent=%+v, want {Total:15, Unique:15}", day2Bucket.Funnel.Sent)
@@ -511,8 +563,22 @@ func TestFunnelOverTimeReport(t *testing.T) {
 	if day2Bucket.Funnel.Clicked.Total != 3 || day2Bucket.Funnel.Clicked.Unique != 3 {
 		t.Fatalf("day 2 clicked=%+v, want {Total:3, Unique:3}", day2Bucket.Funnel.Clicked)
 	}
+	if day2Bucket.Deliverability.Bounced.Total != 2 || day2Bucket.Deliverability.Bounced.Unique != 2 {
+		t.Fatalf("day 2 bounced=%+v, want {Total:2, Unique:2}", day2Bucket.Deliverability.Bounced)
+	}
+	if day2Bucket.Deliverability.Complained.Total != 1 || day2Bucket.Deliverability.Complained.Unique != 1 {
+		t.Fatalf("day 2 complained=%+v, want {Total:1, Unique:1}", day2Bucket.Deliverability.Complained)
+	}
+	expectedDay2BounceRate := 2.0 / 15.0 // 2 bounces / 15 sent
+	if day2Bucket.Deliverability.BounceRate != expectedDay2BounceRate {
+		t.Fatalf("day 2 bounce_rate=%v, want %v", day2Bucket.Deliverability.BounceRate, expectedDay2BounceRate)
+	}
+	expectedDay2ComplaintRate := 1.0 / 15.0 // 1 complaint / 15 sent
+	if day2Bucket.Deliverability.ComplaintRate != expectedDay2ComplaintRate {
+		t.Fatalf("day 2 complaint_rate=%v, want %v", day2Bucket.Deliverability.ComplaintRate, expectedDay2ComplaintRate)
+	}
 
-	// Verify day 3: 12 sent, 10 delivered, 5 opened, 2 clicked
+	// Verify day 3: 12 sent, 10 delivered, 5 opened, 2 clicked, 1 bounced, 1 complained
 	day3Bucket := overTimeReport.Buckets[2]
 	if day3Bucket.Funnel.Sent.Total != 12 || day3Bucket.Funnel.Sent.Unique != 12 {
 		t.Fatalf("day 3 sent=%+v, want {Total:12, Unique:12}", day3Bucket.Funnel.Sent)
@@ -525,5 +591,19 @@ func TestFunnelOverTimeReport(t *testing.T) {
 	}
 	if day3Bucket.Funnel.Clicked.Total != 2 || day3Bucket.Funnel.Clicked.Unique != 2 {
 		t.Fatalf("day 3 clicked=%+v, want {Total:2, Unique:2}", day3Bucket.Funnel.Clicked)
+	}
+	if day3Bucket.Deliverability.Bounced.Total != 1 || day3Bucket.Deliverability.Bounced.Unique != 1 {
+		t.Fatalf("day 3 bounced=%+v, want {Total:1, Unique:1}", day3Bucket.Deliverability.Bounced)
+	}
+	if day3Bucket.Deliverability.Complained.Total != 1 || day3Bucket.Deliverability.Complained.Unique != 1 {
+		t.Fatalf("day 3 complained=%+v, want {Total:1, Unique:1}", day3Bucket.Deliverability.Complained)
+	}
+	expectedDay3BounceRate := 1.0 / 12.0 // 1 bounce / 12 sent
+	if day3Bucket.Deliverability.BounceRate != expectedDay3BounceRate {
+		t.Fatalf("day 3 bounce_rate=%v, want %v", day3Bucket.Deliverability.BounceRate, expectedDay3BounceRate)
+	}
+	expectedDay3ComplaintRate := 1.0 / 12.0 // 1 complaint / 12 sent
+	if day3Bucket.Deliverability.ComplaintRate != expectedDay3ComplaintRate {
+		t.Fatalf("day 3 complaint_rate=%v, want %v", day3Bucket.Deliverability.ComplaintRate, expectedDay3ComplaintRate)
 	}
 }

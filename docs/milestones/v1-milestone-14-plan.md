@@ -287,9 +287,10 @@ to a real time-series endpoint (kill the fake data `Overview.tsx:116`).
    integration test green.
    **Checkpoint:** over-time reporting returns exact per-bucket counts from the fact tables.
    — done: FunnelOverTimeReport + TimeBucket types added to domain.go; analytics.go implements date_trunc + generate_series bucketing with workspace isolation; TestFunnelOverTimeReport verifies exact per-bucket counts (10/8/4/2 on day1, 15/12/6/3 on day2, 12/10/5/2 on day3); all 628 tests pass
-2. [ ] **Deliverability-over-time**: bounce/complaint counts + rates per bucket.
+2. [x] **Deliverability-over-time**: bounce/complaint counts + rates per bucket.
    *Done when:* per-bucket deliverability matches a fixture exactly; rates are computed over per-bucket
    sends; test green.
+	   — done: Extended TestFunnelOverTimeReport to seed bounce/complaint events; verified per-bucket Deliverability counts and BounceRate/ComplaintRate
 
 ### Milestone 19.3 — Cohort & retention
 1. [ ] **Retention matrix** (Recipe 6.78): `RetentionReport` — cohort by first-seen bucket × period
