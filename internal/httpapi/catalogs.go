@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
@@ -232,4 +233,27 @@ func parseCSV(data []byte) ([]domain.CatalogItem, []map[string]any) {
 	}
 
 	return items, failedRows
+}
+
+func (s *Server) listCatalogItems(w http.ResponseWriter, r *http.Request) {
+	principal := principalFrom(r)
+	catalogID := r.PathValue("id")
+
+	// Parse limit query parameter
+	limit := 100
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if parsed, err := strconv.Atoi(limitStr); err == nil {
+			limit = parsed
+		}
+	}
+
+	res, err := s.store.ListCatalogItems(r.Context(), principal, catalogID, limit)
+	if err != nil {
+		internalError(w, err, "list catalog items", principal)
+		return
+	}
+	if res == nil {
+		res = []domain.CatalogItem{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": res})
 }

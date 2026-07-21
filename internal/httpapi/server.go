@@ -189,6 +189,7 @@ func (s *Server) buildMux() http.Handler {
 	mux.Handle("GET /v1/saved-reports/{id}", s.authenticate("reports:read", http.HandlerFunc(s.getSavedReport)))
 	mux.Handle("DELETE /v1/saved-reports/{id}", s.authenticate("reports:write", http.HandlerFunc(s.deleteSavedReport)))
 	mux.Handle("POST /v1/catalogs/{id}/items:bulk", s.authenticate("catalogs:write", http.HandlerFunc(s.bulkUploadCatalogItems)))
+	mux.Handle("GET /v1/catalogs/{id}/items", s.authenticate("catalogs:read", http.HandlerFunc(s.listCatalogItems)))
 	mux.Handle("POST /v1/journeys", s.authenticate("journeys:write", http.HandlerFunc(s.createJourney)))
 	mux.Handle("GET /v1/journeys", s.authenticate("journeys:read", http.HandlerFunc(s.listJourneys)))
 	mux.Handle("GET /v1/journeys/dlq", s.authenticate("journeys:read", http.HandlerFunc(s.getJourneyDLQ)))

@@ -302,10 +302,10 @@ multipart upload.
    UPDATE`; updates `item_count`.
    *Done when:* uploading N items inserts/updates exactly N rows keyed by `item_key`; re-uploading is an
    idempotent upsert (no dupes); a malformed row is reported, not silently dropped; integration test green. — done: handler with CSV/JSONL parsing + chunked upsert + item_count update; store.BulkUpsertCatalogItems; integration tests TestBulkUpsertCatalogItems + TestBulkUpsertMalformedRows verify idempotence + malformed row reporting; go build/vet/test pass.
-2. [ ] **Item list + lookup**: `GET /v1/catalogs/{id}/items?limit=` (paginated via `limit`) and the
+2. [x] **Item list + lookup**: `GET /v1/catalogs/{id}/items?limit=` (paginated via `limit`) and the
    store `GetCatalogItem` used by the render filter.
    *Done when:* listing returns items ordered + limited; a by-key lookup returns the exact payload or
-   `not_found`; workspace-isolated; test green.
+   `not_found`; workspace-isolated; test green. — done: Handler listCatalogItems added; route registered with catalogs:read scope; ListCatalogItems queries with ORDER BY item_key ASC + LIMIT, tenant/app isolation enforced; GetCatalogItem exists from 20.1.2; tests pass (TestMockStoreListCatalogItems, TestMockStoreListCatalogItemsWithLimit, TestMockStoreListCatalogItemsEmpty); go build/vet green.
 
 ### Milestone 20.3 — TTL cache primitive
 1. [ ] **Bounded TTL cache** (Recipe 6.89): `internal/render/cache.go` — `Get`/`Set(key,val,ttl)`,

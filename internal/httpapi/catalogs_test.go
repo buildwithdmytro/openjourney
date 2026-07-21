@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 	"github.com/buildwithdmytro/openjourney/internal/ports"
+	"github.com/buildwithdmytro/openjourney/internal/postgres"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -23,14 +25,14 @@ type mockCatalogStore struct {
 	items    map[string][]domain.CatalogItem
 }
 
-func (m *mockCatalogStore) GetCatalog(ctx interface{}, p domain.Principal, id string) (domain.Catalog, error) {
+func (m *mockCatalogStore) GetCatalog(ctx context.Context, p domain.Principal, id string) (domain.Catalog, error) {
 	if cat, ok := m.catalogs[id]; ok {
 		return cat, nil
 	}
-	return domain.Catalog{}, ErrNotFound
+	return domain.Catalog{}, postgres.ErrNotFound
 }
 
-func (m *mockCatalogStore) BulkUpsertCatalogItems(ctx interface{}, p domain.Principal, items []domain.CatalogItem) (domain.BulkUpsertResult, error) {
+func (m *mockCatalogStore) BulkUpsertCatalogItems(ctx context.Context, p domain.Principal, items []domain.CatalogItem) (domain.BulkUpsertResult, error) {
 	if len(items) == 0 {
 		return domain.BulkUpsertResult{}, nil
 	}
@@ -68,12 +70,26 @@ func (m *mockCatalogStore) BulkUpsertCatalogItems(ctx interface{}, p domain.Prin
 	return domain.BulkUpsertResult{InsertedCount: inserted, UpdatedCount: 0}, nil
 }
 
-func (m *mockCatalogStore) Authenticate(ctx interface{}, key string) (domain.Principal, error) {
+func (m *mockCatalogStore) ListCatalogItems(ctx context.Context, p domain.Principal, catalogID string, limit int) ([]domain.CatalogItem, error) {
+	items, ok := m.items[catalogID]
+	if !ok {
+		return []domain.CatalogItem{}, nil
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > len(items) {
+		limit = len(items)
+	}
+	return items[:limit], nil
+}
+
+func (m *mockCatalogStore) Authenticate(ctx context.Context, key string) (domain.Principal, error) {
 	return domain.Principal{
 		TenantID:    "tenant-123",
 		WorkspaceID: "workspace-123",
 		AppID:       "app-123",
-		Scopes:      []string{"catalogs:write"},
+		Scopes:      []string{"catalogs:write", "catalogs:read"},
 	}, nil
 }
 
@@ -239,4 +255,131 @@ func TestBulkUploadEmptyFile(t *testing.T) {
 	http.Handler(server.authenticate("catalogs:write", http.HandlerFunc(server.bulkUploadCatalogItems))).ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestMockStoreListCatalogItems(t *testing.T) {
+	store := &mockCatalogStore{
+		catalogs: map[string]domain.Catalog{
+			"cat-list": {
+				ID:     "cat-list",
+				Key:    "products",
+				Name:   "Products",
+				Status: "active",
+			},
+		},
+		items: map[string][]domain.CatalogItem{
+			"cat-list": {
+				{
+					ID:       "item-1",
+					CatalogID: "cat-list",
+					TenantID: "tenant-123",
+					AppID:    "app-123",
+					ItemKey:  "SKU001",
+					Payload:  []byte(`{"name":"Product 1","price":10}`),
+				},
+				{
+					ID:       "item-2",
+					CatalogID: "cat-list",
+					TenantID: "tenant-123",
+					AppID:    "app-123",
+					ItemKey:  "SKU002",
+					Payload:  []byte(`{"name":"Product 2","price":20}`),
+				},
+				{
+					ID:       "item-3",
+					CatalogID: "cat-list",
+					TenantID: "tenant-123",
+					AppID:    "app-123",
+					ItemKey:  "SKU003",
+					Payload:  []byte(`{"name":"Product 3","price":30}`),
+				},
+			},
+		},
+	}
+
+	principal := domain.Principal{
+		TenantID: "tenant-123",
+		AppID:    "app-123",
+	}
+
+	// Test listing all items
+	items, err := store.ListCatalogItems(context.Background(), principal, "cat-list", 100)
+	require.NoError(t, err)
+	assert.Equal(t, 3, len(items))
+	assert.Equal(t, "SKU001", items[0].ItemKey)
+}
+
+func TestMockStoreListCatalogItemsWithLimit(t *testing.T) {
+	store := &mockCatalogStore{
+		catalogs: map[string]domain.Catalog{
+			"cat-limit": {
+				ID:     "cat-limit",
+				Key:    "products",
+				Name:   "Products",
+				Status: "active",
+			},
+		},
+		items: map[string][]domain.CatalogItem{
+			"cat-limit": {
+				{
+					ID:       "item-1",
+					CatalogID: "cat-limit",
+					TenantID: "tenant-123",
+					AppID:    "app-123",
+					ItemKey:  "SKU001",
+					Payload:  []byte(`{"name":"Product 1"}`),
+				},
+				{
+					ID:       "item-2",
+					CatalogID: "cat-limit",
+					TenantID: "tenant-123",
+					AppID:    "app-123",
+					ItemKey:  "SKU002",
+					Payload:  []byte(`{"name":"Product 2"}`),
+				},
+				{
+					ID:       "item-3",
+					CatalogID: "cat-limit",
+					TenantID: "tenant-123",
+					AppID:    "app-123",
+					ItemKey:  "SKU003",
+					Payload:  []byte(`{"name":"Product 3"}`),
+				},
+			},
+		},
+	}
+
+	principal := domain.Principal{
+		TenantID: "tenant-123",
+		AppID:    "app-123",
+	}
+
+	// Test with limit=2
+	items, err := store.ListCatalogItems(context.Background(), principal, "cat-limit", 2)
+	require.NoError(t, err)
+	assert.Equal(t, 2, len(items))
+}
+
+func TestMockStoreListCatalogItemsEmpty(t *testing.T) {
+	store := &mockCatalogStore{
+		catalogs: map[string]domain.Catalog{
+			"cat-empty": {
+				ID:     "cat-empty",
+				Key:    "products",
+				Name:   "Products",
+				Status: "active",
+			},
+		},
+		items: map[string][]domain.CatalogItem{},
+	}
+
+	principal := domain.Principal{
+		TenantID: "tenant-123",
+		AppID:    "app-123",
+	}
+
+	// Test empty catalog
+	items, err := store.ListCatalogItems(context.Background(), principal, "cat-empty", 100)
+	require.NoError(t, err)
+	assert.Equal(t, 0, len(items))
 }
