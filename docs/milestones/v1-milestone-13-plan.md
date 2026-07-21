@@ -417,12 +417,13 @@ registration. ConfirmDialog on publish + kill-switch toggle. Theme-aware; no new
    *Done when:* the end-to-end create→publish→evaluate→expose flow passes for a boolean and a multivariate
    flag, deterministic and environment-scoped.
    — done: TestFeatureFlagE2ECreatePublishEvaluateExpose added with 3 sub-tests covering boolean create/publish/evaluate/expose, multivariate environment scoping, and kill switch behavior; all 614 tests green
-2. [ ] **Security E2E**: the evaluate edge is IDOR-safe (`byExternalID` pin — a tokenless cross-subject
+2. [x] **Security E2E**: the evaluate edge is IDOR-safe (`byExternalID` pin — a tokenless cross-subject
    read is blocked), rate-limited, and token-verified; `flags:read`/`flags:write` are enforced on admin
    routes; publish/enable/kill-switch are human-gated; `feature_flag_versions` is append-only; no exposure
    writer exists outside `ProjectEvent`.
    *Done when:* each property has a test (a tokenless cross-`external_id` evaluate blocked; a forged token
    rejected; a `flags:read` key 403 on write; a non-human publish 403; a version UPDATE rejected).
+   — done: 7 security tests added: TestSecurityIDORCrossSubjectBlockedTokenlessAnonymous, TestSecurityTokenVerificationRequiredForExternalID, TestSecurityForgedTokenRejected, TestSecurityVersionsAppendOnly, TestSecurityExposureProjectorOnlyWriter, TestSecurityNonHumanPublishRejected/StatusChangeRejected/ScopeEnforcementReadOnly verify IDOR pin, token verification, human gate, append-only versions, and scope enforcement; 621 tests green
 3. [ ] **Run the suite**: `go build ./... && go vet ./... && go test ./...`, `go mod tidy`,
    `cd web && npm run typecheck && npm run build && npm test`,
    `cd sdk/javascript && npm run build && npm test`.

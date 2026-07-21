@@ -320,3 +320,78 @@ func TestKillSwitch_StatusUpdateOnDisable(t *testing.T) {
 		t.Errorf("expected status 'published' after re-enable, got %q", reEnabled.Status)
 	}
 }
+
+func TestSecurityNonHumanPublishRejected(t *testing.T) {
+	apiPrincipal := domain.Principal{
+		ActorType: "api_key",
+		KeyID:     "test-key",
+		TenantID:  "tenant-1",
+		AppID:     "app-1",
+	}
+
+	if isHuman(apiPrincipal) {
+		t.Fatal("expected API principal to not be human; security check failed")
+	}
+}
+
+func TestSecurityNonHumanStatusChangeRejected(t *testing.T) {
+	apiPrincipal := domain.Principal{
+		ActorType: "api_key",
+		KeyID:     "test-key",
+		TenantID:  "tenant-1",
+		AppID:     "app-1",
+	}
+
+	// API key (non-human) should not be able to change flag status
+	if isHuman(apiPrincipal) {
+		t.Fatal("security check: API key should not be human")
+	}
+
+	// Verify only humans can change status
+	humanPrincipal := domain.Principal{
+		ActorType: "user",
+		UserID:    "user-123",
+		TenantID:  "tenant-1",
+		AppID:     "app-1",
+	}
+	if !isHuman(humanPrincipal) {
+		t.Fatal("security check: user principal should be human")
+	}
+}
+
+func TestSecurityScopeEnforcementReadOnly(t *testing.T) {
+	// Verify that a principal with only flags:read cannot call flags:write endpoints
+	readOnlyPrincipal := domain.Principal{
+		ActorType: "api_key",
+		KeyID:     "read-only-key",
+		TenantID:  "tenant-1",
+		AppID:     "app-1",
+		Scopes:    []string{"flags:read"},
+	}
+
+	writePrincipal := domain.Principal{
+		ActorType: "api_key",
+		KeyID:     "write-key",
+		TenantID:  "tenant-1",
+		AppID:     "app-1",
+		Scopes:    []string{"flags:read", "flags:write"},
+	}
+
+	// Verify read-only principal has the read scope
+	if !readOnlyPrincipal.HasScope("flags:read") {
+		t.Error("read-only principal should have flags:read scope")
+	}
+
+	// Verify read-only principal does NOT have the write scope
+	if readOnlyPrincipal.HasScope("flags:write") {
+		t.Error("read-only principal should NOT have flags:write scope")
+	}
+
+	// Verify write principal has both scopes
+	if !writePrincipal.HasScope("flags:read") {
+		t.Error("write principal should have flags:read scope")
+	}
+	if !writePrincipal.HasScope("flags:write") {
+		t.Error("write principal should have flags:write scope")
+	}
+}

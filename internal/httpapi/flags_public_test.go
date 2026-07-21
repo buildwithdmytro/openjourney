@@ -392,3 +392,111 @@ func TestEvaluateFlagsRateLimiting(t *testing.T) {
 		t.Fatalf("second request status = %d, want %d", res.Code, http.StatusTooManyRequests)
 	}
 }
+
+func TestSecurityIDORCrossSubjectBlockedTokenlessAnonymous(t *testing.T) {
+	store := &flagTestStore{
+		profiles: map[string]string{"anon-1": "profile-1", "ext-1": "profile-2"},
+		flags: []domain.FeatureFlag{
+			{
+				ID:           "flag-1",
+				TenantID:     "tenant-1",
+				AppID:        "app-1",
+				Environment:  "production",
+				Key:          "feature_x",
+				DefaultValue: json.RawMessage(`false`),
+				Status:       "published",
+				Enabled:      true,
+				Seed:         "seed-1",
+				RolloutPct:   50,
+			},
+		},
+	}
+	h := New(store, 10)
+
+	// Attacker tries to use someone's external_id as anonymous_id without a token
+	// The byExternalID pin should ensure this fails because external_id requires a token
+	req := httptest.NewRequest(http.MethodGet,
+		"/v1/flags/evaluate?tenant=tenant-1&app=app-1&anonymous_id=ext-1&external_id=ext-1", nil)
+	res := httptest.NewRecorder()
+	h.ServeHTTP(res, req)
+
+	// Should use only the anonymous_id and NOT match ext-1 as external_id
+	// This is the IDOR protection — anonymous_id matches only anonymous profiles
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", res.Code, http.StatusOK)
+	}
+	var body map[string]any
+	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	flags, ok := body["flags"].(map[string]any)
+	if !ok {
+		t.Fatalf("flags = %T, want map", body["flags"])
+	}
+	if _, ok := flags["feature_x"]; !ok {
+		t.Fatal("expected flags to be evaluated for anon-1 profile, not ext-1")
+	}
+}
+
+func TestSecurityTokenVerificationRequiredForExternalID(t *testing.T) {
+	store := &flagTestStore{
+		profiles: map[string]string{"ext-1": "profile-1"},
+		flags: []domain.FeatureFlag{
+			{
+				ID:           "flag-1",
+				TenantID:     "tenant-1",
+				AppID:        "app-1",
+				Environment:  "production",
+				Key:          "feature_x",
+				DefaultValue: json.RawMessage(`false`),
+				Status:       "published",
+				Enabled:      true,
+				Seed:         "seed-1",
+				RolloutPct:   50,
+			},
+		},
+	}
+	h := New(store, 10)
+
+	// Request with external_id but no token should fail
+	req := httptest.NewRequest(http.MethodGet,
+		"/v1/flags/evaluate?tenant=tenant-1&app=app-1&external_id=ext-1", nil)
+	res := httptest.NewRecorder()
+	h.ServeHTTP(res, req)
+
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d (missing token for external_id)", res.Code, http.StatusBadRequest)
+	}
+}
+
+func TestSecurityForgedTokenRejected(t *testing.T) {
+	store := &flagTestStore{
+		profiles: map[string]string{"ext-1": "profile-1"},
+		flags: []domain.FeatureFlag{
+			{
+				ID:           "flag-1",
+				TenantID:     "tenant-1",
+				AppID:        "app-1",
+				Environment:  "production",
+				Key:          "feature_x",
+				DefaultValue: json.RawMessage(`false`),
+				Status:       "published",
+				Enabled:      true,
+				Seed:         "seed-1",
+				RolloutPct:   50,
+			},
+		},
+	}
+	h := New(store, 10)
+
+	// Request with external_id and a forged/invalid token
+	req := httptest.NewRequest(http.MethodGet,
+		"/v1/flags/evaluate?tenant=tenant-1&app=app-1&external_id=ext-1&token=forged.token.value", nil)
+	res := httptest.NewRecorder()
+	h.ServeHTTP(res, req)
+
+	// Forged token should be rejected (400, 401, or 403 depending on verification stage)
+	if res.Code != http.StatusBadRequest && res.Code != http.StatusUnauthorized && res.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 400, 401, or 403 for forged token", res.Code)
+	}
+}
