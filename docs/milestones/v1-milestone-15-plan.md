@@ -276,9 +276,11 @@ multipart upload.
    sparkline (or an empty affordance) when a card has no real series.
    *Done when:* no synthesized sparkline data remains in `Overview.tsx`; the section shows real trend data
    or none; tests green. — done: sparkline fallback removed, renders only with real data; added 2 tests for sparkline behavior; all 309 web tests pass.
-4. [ ] **M14 review findings.** Fold any further concrete findings from the M14 review here (file:line +
+4. [x] **M14 review findings.** Fold any further concrete findings from the M14 review here (file:line +
    a proving test), mirroring `19.0`/`18.0`.
-   *Done when:* every finding has a fix + a test, or is recorded verified-safe.
+   *Done when:* every finding has a fix + a test, or is recorded verified-safe. — done: no further M14
+   findings beyond the three closed in 20.0.1–20.0.3 (Chart.test.tsx + Analytics.test.tsx added, faked
+   Overview sparkline fallback removed); web suite 309/309 green, Go/dep unchanged. Verified-safe.
 
 ### Milestone 20.1 — Catalog foundation: schema + store + scopes
 1. [x] **Migration `054_catalogs.sql`** (§2.1, Recipe 6.84): `catalogs` + `catalog_items` +
