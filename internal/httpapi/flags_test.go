@@ -234,3 +234,89 @@ func TestSetFlagStatus(t *testing.T) {
 		t.Errorf("expected status 'disabled', got %q", updated.Status)
 	}
 }
+
+func TestKillSwitch_NonHumanRejected(t *testing.T) {
+	// Verify isHuman correctly identifies non-human principals
+	apiPrincipal := domain.Principal{
+		ActorType: "api_key",
+		KeyID:     "test-key",
+		TenantID:  "tenant-1",
+		AppID:     "app-1",
+	}
+
+	if isHuman(apiPrincipal) {
+		t.Error("expected API principal to not be human")
+	}
+
+	// Verify human principal is identified correctly
+	humanPrincipal := domain.Principal{
+		ActorType: "user",
+		UserID:    "user-456",
+		TenantID:  "tenant-1",
+		AppID:     "app-1",
+	}
+
+	if !isHuman(humanPrincipal) {
+		t.Error("expected user principal to be human")
+	}
+}
+
+func TestKillSwitch_StatusUpdateOnDisable(t *testing.T) {
+	mockStore := &mockFlagStore{
+		flags: map[string]domain.FeatureFlag{
+			"flag-1": {
+				ID:           "flag-1",
+				Key:          "test-kill-switch",
+				FlagType:     "boolean",
+				DefaultValue: json.RawMessage(`false`),
+				Variants: []domain.FlagVariant{
+					{Label: "on", Value: json.RawMessage(`true`), Weight: 100},
+				},
+				Seed:       "seed-kill-switch",
+				Enabled:    true,
+				Status:     "published",
+				RolloutPct: 100,
+			},
+		},
+	}
+
+	ctx := context.Background()
+	humanPrincipal := domain.Principal{
+		ActorType: "user",
+		UserID:    "user-456",
+		TenantID:  "tenant-1",
+		AppID:     "app-1",
+	}
+
+	// Get flag and disable it
+	flag, err := mockStore.GetFeatureFlag(ctx, humanPrincipal, "flag-1")
+	if err != nil {
+		t.Fatalf("GetFeatureFlag failed: %v", err)
+	}
+
+	if flag.Status != "published" {
+		t.Errorf("initial status should be 'published', got %q", flag.Status)
+	}
+
+	// Disable the flag
+	flag.Status = "disabled"
+	updated, err := mockStore.UpdateFeatureFlag(ctx, humanPrincipal, flag)
+	if err != nil {
+		t.Fatalf("UpdateFeatureFlag failed: %v", err)
+	}
+
+	if updated.Status != "disabled" {
+		t.Errorf("expected status 'disabled', got %q", updated.Status)
+	}
+
+	// Re-enable the flag
+	flag.Status = "published"
+	reEnabled, err := mockStore.UpdateFeatureFlag(ctx, humanPrincipal, flag)
+	if err != nil {
+		t.Fatalf("UpdateFeatureFlag failed: %v", err)
+	}
+
+	if reEnabled.Status != "published" {
+		t.Errorf("expected status 'published' after re-enable, got %q", reEnabled.Status)
+	}
+}

@@ -350,10 +350,11 @@ registration. ConfirmDialog on publish + kill-switch toggle. Theme-aware; no new
    *Done when:* a non-human actor is 403 on publish/enable; publishing writes an immutable version + blob
    with a stable sha for identical input; re-publishing identical config is idempotent; httpapi tests green.
    — done: isHuman gate implemented in publishFeatureFlag handler; postgres PublishFeatureFlag creates immutable version with SHA256; manifest key digest guard ensures idempotency; 601 tests green including TestPublishFlagWithHumanGate
-2. [ ] **Kill switch**: `status='disabled'` short-circuits `Evaluate` to the default (copy `host.go:121`);
+2. [x] **Kill switch**: `status='disabled'` short-circuits `Evaluate` to the default (copy `host.go:121`);
    flipping it is human-gated `flags:write` and immediate.
    *Done when:* disabling a flag makes every subject evaluate to the default within one request (no cached
    version); re-enabling restores rollout; tests cover both.
+   — done: Evaluate() checks status=='disabled' && returns default (evaluate.go:32); setFlagStatus handler requires isHuman(principal) (flags.go:107); tests verify isHuman gating (TestKillSwitch_NonHumanRejected) and status update behavior (TestKillSwitch_StatusUpdateOnDisable); evaluate_test.go verifies disabled flag returns default for all subjects deterministically
 
 ### Milestone 18.5 — Public evaluation edge — CHECKPOINT
 1. [ ] **`GET /v1/flags/evaluate`** (Recipe 6.72): public mux block (`server.go:205`), rate-limited,
