@@ -326,12 +326,13 @@ registration. ConfirmDialog on publish + kill-switch toggle. Theme-aware; no new
    — done: domain/domain.go has FeatureFlag/FeatureFlagVersion/FlagVariant/FlagTargetingRule structs; ports/store.go has 6 methods; internal/postgres/flags.go implements CRUD with validation and unique constraint enforcement; flags_integration_test.go verifies round-trip, duplicate rejection, and filtering; all 589 tests green
 
 ### Milestone 18.2 — Deterministic evaluation engine
-1. [ ] **`internal/flags` bucketing + composition** (Recipe 6.69): `Evaluate(flag, subject, evalAudience)
+1. [x] **`internal/flags` bucketing + composition** (Recipe 6.69): `Evaluate(flag, subject, evalAudience)
    → {variant, value, reason}` reusing `experiment.BucketOf`/`Assign` (`assign.go:16,26`); kill-switch and
    default short-circuits; rollout gating.
    *Done when:* the same subject maps to the same variant across 1000 evaluations (stable); a 30% rollout
    buckets ~30% of subjects (±3%); a disabled flag returns the default; `math/rand`/wall-clock are absent
    (grep); unit test green.
+   — done: internal/flags/evaluate.go implements Evaluate using BucketOf/Assign; EvaluationResult {variant, value, reason}; 9 unit tests verify stability (1000 evals), rollout distribution (30%±3%), disabled returns default, deterministic no-randomness; 598 tests green
 
 ### Milestone 18.3 — Segment/rule targeting
 1. [ ] **Targeting via audience DSL** (Recipe 6.70): walk `targeting_rules` calling
