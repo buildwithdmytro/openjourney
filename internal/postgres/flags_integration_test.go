@@ -3,9 +3,11 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 	"github.com/buildwithdmytro/openjourney/internal/flags"
@@ -430,6 +432,156 @@ func TestFeatureFlagTargetingRulesIntegration(t *testing.T) {
 	}
 	if string(result2.Value) != `"fallback"` {
 		t.Errorf("Expected fallback value, got %s", result2.Value)
+	}
+}
+
+func TestFeatureFlagExposureProjection(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.pool.Exec(ctx, "TRUNCATE tenants CASCADE"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.EnsureDevelopmentTenant(ctx, "flag-exposure"); err != nil {
+		t.Fatal(err)
+	}
+	p, err := store.Authenticate(ctx, "flag-exposure")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a feature flag
+	flag, err := store.CreateFeatureFlag(ctx, p, domain.FeatureFlag{
+		AppID:        p.AppID,
+		Environment:  "production",
+		Key:          "exposure_test",
+		FlagType:     "boolean",
+		DefaultValue: json.RawMessage(`true`),
+		Seed:         "seed-exposure",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Emit an exposure event
+	exposureEvent := domain.Event{
+		Type:           "feature_flag.exposure",
+		SchemaVersion:  1,
+		IdempotencyKey: flag.ID + ":on:subject1:window1",
+		OccurredAt:     time.Now(),
+		Payload:        json.RawMessage(fmt.Sprintf(`{"flag_id":"%s","variant":"on","environment":"production"}`, flag.ID)),
+		AnonymousID:    "subject1",
+	}
+
+	principal := domain.Principal{
+		TenantID:  p.TenantID,
+		AppID:     p.AppID,
+		ActorType: "public",
+	}
+	_, err = store.AcceptEvents(ctx, principal, []domain.Event{exposureEvent})
+	if err != nil {
+		t.Fatalf("AcceptEvents failed: %v", err)
+	}
+
+	// Query the exposure aggregate
+	var exposures int64
+	var lastSeen interface{}
+	err = store.pool.QueryRow(ctx, `SELECT exposures, last_seen FROM feature_flag_exposures
+		WHERE flag_id=$1 AND environment='production' AND variant='on'`,
+		flag.ID).Scan(&exposures, &lastSeen)
+	if err != nil {
+		t.Fatalf("query exposure failed: %v", err)
+	}
+	if exposures != 1 {
+		t.Errorf("expected 1 exposure, got %d", exposures)
+	}
+	if lastSeen == nil {
+		t.Error("expected last_seen to be set")
+	}
+
+	// Re-emit the SAME exposure event with the same idempotency key (idempotent)
+	exposureEvent2 := domain.Event{
+		Type:           "feature_flag.exposure",
+		SchemaVersion:  1,
+		IdempotencyKey: flag.ID + ":on:subject1:window1",
+		OccurredAt:     time.Now(),
+		Payload:        json.RawMessage(fmt.Sprintf(`{"flag_id":"%s","variant":"on","environment":"production"}`, flag.ID)),
+		AnonymousID:    "subject1",
+	}
+	_, err = store.AcceptEvents(ctx, principal, []domain.Event{exposureEvent2})
+	if err != nil {
+		t.Fatalf("AcceptEvents (idempotent) failed: %v", err)
+	}
+
+	// Verify exposure count is still 1 (idempotency check)
+	err = store.pool.QueryRow(ctx, `SELECT exposures FROM feature_flag_exposures
+		WHERE flag_id=$1 AND environment='production' AND variant='on'`,
+		flag.ID).Scan(&exposures)
+	if err != nil {
+		t.Fatalf("query exposure failed: %v", err)
+	}
+	if exposures != 1 {
+		t.Errorf("idempotency failed: expected 1 exposure after re-emit, got %d", exposures)
+	}
+
+	// Emit a DIFFERENT exposure event (different variant)
+	exposureEvent3 := domain.Event{
+		Type:           "feature_flag.exposure",
+		SchemaVersion:  1,
+		IdempotencyKey: flag.ID + ":off:subject2:window1",
+		OccurredAt:     time.Now(),
+		Payload:        json.RawMessage(fmt.Sprintf(`{"flag_id":"%s","variant":"off","environment":"production"}`, flag.ID)),
+		AnonymousID:    "subject2",
+	}
+	_, err = store.AcceptEvents(ctx, principal, []domain.Event{exposureEvent3})
+	if err != nil {
+		t.Fatalf("AcceptEvents (different variant) failed: %v", err)
+	}
+
+	// Verify the new variant is in the aggregate
+	err = store.pool.QueryRow(ctx, `SELECT exposures FROM feature_flag_exposures
+		WHERE flag_id=$1 AND environment='production' AND variant='off'`,
+		flag.ID).Scan(&exposures)
+	if err != nil {
+		t.Fatalf("query off-variant exposure failed: %v", err)
+	}
+	if exposures != 1 {
+		t.Errorf("expected 1 exposure for 'off' variant, got %d", exposures)
+	}
+
+	// Emit a third variant to test cumulative counting
+	exposureEvent4 := domain.Event{
+		Type:           "feature_flag.exposure",
+		SchemaVersion:  1,
+		IdempotencyKey: flag.ID + ":on:subject2:window1",
+		OccurredAt:     time.Now(),
+		Payload:        json.RawMessage(fmt.Sprintf(`{"flag_id":"%s","variant":"on","environment":"production"}`, flag.ID)),
+		AnonymousID:    "subject2",
+	}
+	_, err = store.AcceptEvents(ctx, principal, []domain.Event{exposureEvent4})
+	if err != nil {
+		t.Fatalf("AcceptEvents (cumulative) failed: %v", err)
+	}
+
+	// Verify 'on' variant count increased
+	err = store.pool.QueryRow(ctx, `SELECT exposures FROM feature_flag_exposures
+		WHERE flag_id=$1 AND environment='production' AND variant='on'`,
+		flag.ID).Scan(&exposures)
+	if err != nil {
+		t.Fatalf("query cumulative exposure failed: %v", err)
+	}
+	if exposures != 2 {
+		t.Errorf("expected 2 exposures for 'on' variant after cumulative event, got %d", exposures)
 	}
 }
 

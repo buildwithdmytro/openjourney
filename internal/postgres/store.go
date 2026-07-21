@@ -745,6 +745,27 @@ func (s *Store) ProjectEvent(ctx context.Context, event domain.AcceptedEvent) er
 		if err != nil {
 			return err
 		}
+	case "feature_flag.exposure":
+		var body struct {
+			FlagID      string `json:"flag_id"`
+			Variant     string `json:"variant"`
+			Environment string `json:"environment"`
+		}
+		if err := json.Unmarshal(event.Payload, &body); err != nil {
+			return err
+		}
+		if body.FlagID == "" || body.Variant == "" || body.Environment == "" {
+			return errors.New("feature_flag.exposure payload requires flag_id, variant, and environment")
+		}
+		_, err = tx.Exec(ctx, `INSERT INTO feature_flag_exposures
+			(tenant_id, app_id, flag_id, environment, variant, exposures, first_seen, last_seen)
+			VALUES($1, $2, $3, $4, $5, 1, now(), now())
+			ON CONFLICT(flag_id, environment, variant)
+			DO UPDATE SET exposures=feature_flag_exposures.exposures + 1, last_seen=now()`,
+			event.Principal.TenantID, event.Principal.AppID, body.FlagID, body.Environment, body.Variant)
+		if err != nil {
+			return err
+		}
 	}
 	if err := s.projectEngagementFact(ctx, tx, event, profileID); err != nil {
 		return fmt.Errorf("project engagement fact: %w", err)

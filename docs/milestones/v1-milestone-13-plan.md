@@ -369,11 +369,12 @@ registration. ConfirmDialog on publish + kill-switch toggle. Theme-aware; no new
    — done: evaluateFlags handler in flags.go with byExternalID column-pin, token verification, rate-limiting; 9 tests verify anon/known/IDOR/rate-limit; 612 tests green
 
 ### Milestone 18.6 — Exposure events
-1. [ ] **Exposure emit + projection** (Recipe 6.73): the edge emits `feature_flag.exposure` per evaluated
+1. [x] **Exposure emit + projection** (Recipe 6.73): the edge emits `feature_flag.exposure` per evaluated
    flag via `AcceptEvents` (idempotency-keyed); a `ProjectEvent` case upserts `feature_flag_exposures`.
    *Done when:* evaluating a flag records exactly one exposure per `(flag,version,subject,window)` even on
    re-evaluation (idempotent); the exposure aggregate increments per variant; no exposure writer exists
    outside `ProjectEvent` (grep/assertion); integration test green.
+   — done: ProjectEvent case handles feature_flag.exposure, upserts with idempotent counting per variant (flags_integration_test.go TestFeatureFlagExposureProjection verifies idempotency and cumulative counting); grep confirms no other writers; 612 tests green
 
 ### Milestone 18.7 — Browser SDK: fetch + cache + exposure
 1. [ ] **`fetchFlags` + cache** (Recipe 6.74): `sdk/javascript` `fetchFlags(token?)` cloning `fetchInbox`
