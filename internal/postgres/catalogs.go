@@ -74,6 +74,16 @@ func (s *Store) GetCatalog(ctx context.Context, p domain.Principal, id string) (
 	return cat, err
 }
 
+func (s *Store) GetCatalogByKey(ctx context.Context, p domain.Principal, key string) (domain.Catalog, error) {
+	cat, err := scanCatalog(s.pool.QueryRow(ctx, `SELECT `+catalogColumns+` FROM catalogs
+		WHERE tenant_id=$1 AND app_id=$2 AND key=$3`,
+		p.TenantID, p.AppID, key))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Catalog{}, ErrNotFound
+	}
+	return cat, err
+}
+
 func (s *Store) ListCatalogs(ctx context.Context, p domain.Principal) ([]domain.Catalog, error) {
 	rows, err := s.pool.Query(ctx, `SELECT `+catalogColumns+` FROM catalogs
 		WHERE tenant_id=$1 AND app_id=$2 ORDER BY created_at DESC`,

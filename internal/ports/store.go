@@ -209,6 +209,7 @@ type Store interface {
 
 	CreateCatalog(ctx context.Context, p domain.Principal, cat domain.Catalog) (domain.Catalog, error)
 	GetCatalog(ctx context.Context, p domain.Principal, id string) (domain.Catalog, error)
+	GetCatalogByKey(ctx context.Context, p domain.Principal, key string) (domain.Catalog, error)
 	ListCatalogs(ctx context.Context, p domain.Principal) ([]domain.Catalog, error)
 	UpdateCatalog(ctx context.Context, p domain.Principal, cat domain.Catalog) (domain.Catalog, error)
 	DeleteCatalog(ctx context.Context, p domain.Principal, id string) error

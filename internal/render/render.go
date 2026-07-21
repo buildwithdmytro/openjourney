@@ -2,7 +2,9 @@ package render
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 	"github.com/buildwithdmytro/openjourney/internal/ports"
@@ -22,6 +24,7 @@ type RenderDeps struct {
 	Store    ports.Store
 	Principal domain.Principal
 	Fetcher  ConnectedContentFetcher
+	Cache    *TTLCache
 }
 
 func Render(tmpl string, vars map[string]any) (string, error) {
@@ -43,25 +46,54 @@ func RenderWithContext(ctx context.Context, tmpl string, vars map[string]any, de
 		if len(args) == 0 {
 			return "", nil
 		}
-		// In the Liquid template: {{ item_key | catalog_item: 'catalog_key' }}
-		// args[0] is 'catalog_key', value is the item_key
-		_, ok := args[0].(string)
+
+		catalogKey, ok := args[0].(string)
 		if !ok {
 			return "", nil
 		}
+
 		itemKey, ok := value.(string)
 		if !ok {
 			return "", nil
 		}
 
-		// Look up the catalog item from the store (cache-first, via store implementation)
-		// For now (20.4 stub), just return fallback on any error
-		item, err := deps.Store.GetCatalogItem(ctx, deps.Principal, "", itemKey)
+		// Build cache key: catalog:tenant:app:catalogkey:itemkey
+		cacheKey := fmt.Sprintf("catalog:%s:%s:%s:%s", deps.Principal.TenantID, deps.Principal.AppID, catalogKey, itemKey)
+
+		// Check cache first
+		if deps.Cache != nil {
+			if cached, ok := deps.Cache.Get(cacheKey); ok {
+				return cached, nil
+			}
+		}
+
+		// Look up catalog by key
+		catalog, err := deps.Store.GetCatalogByKey(ctx, deps.Principal, catalogKey)
+		if err != nil {
+			// Missing catalog: fallback to empty, never fail the render
+			return "", nil
+		}
+
+		// Look up catalog item
+		item, err := deps.Store.GetCatalogItem(ctx, deps.Principal, catalog.ID, itemKey)
 		if err != nil {
 			// Missing item: fallback to empty, never fail the render
 			return "", nil
 		}
-		return item.Payload, nil
+
+		// Unmarshal payload to a map[string]any for proper rendering
+		var payload map[string]any
+		if err := json.Unmarshal(item.Payload, &payload); err != nil {
+			// Malformed JSON: fallback to empty, never fail the render
+			return "", nil
+		}
+
+		// Cache the result with a default TTL of 5 minutes
+		if deps.Cache != nil {
+			deps.Cache.Set(cacheKey, payload, 5*time.Minute)
+		}
+
+		return payload, nil
 	})
 
 	// Register the connected_content tag (stub)

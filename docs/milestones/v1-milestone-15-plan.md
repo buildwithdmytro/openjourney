@@ -323,11 +323,11 @@ multipart upload.
    fallback); no per-send regression; integration test green. — done: RenderWithContext function + RenderDeps struct added; filter/tag registered in seam; delivery paths wired (campaigns, journey, preview); tests pass (backward-compatible, filter/tag work, regression-free).
 
 ### Milestone 20.5 — Catalog-lookup filter
-1. [ ] **`catalog_item` filter** (Recipe 6.87): resolves `{{ item_key | catalog_item: 'catalog_key' }}`
+1. [x] **`catalog_item` filter** (Recipe 6.87): resolves `{{ item_key | catalog_item: 'catalog_key' }}`
    from the store (cache-first via 20.3); fallback on miss (never a render error).
    *Done when:* a template using `catalog_item` renders the item's payload field for a real item; a
    missing item renders the fallback (empty/default) without failing the send; the second lookup in a
-   render batch is served from cache; integration test green.
+   render batch is served from cache; integration test green. — done: added GetCatalogByKey to store interface and postgres implementation; implemented catalog_item filter with cache-first lookup, fallback on miss; added 5 comprehensive tests (real item rendering, caching, missing catalog/item, no-cache backward compat); all render/postgres tests pass (41/41).
 
 ### Milestone 20.6 — Connected Content sources (governed)
 1. [ ] **Sources CRUD + governance** (Recipe 6.88): `connected_content_sources` slice (`catalogs:write`);
