@@ -121,7 +121,7 @@ func TestDecodeConfigSupportedNodes(t *testing.T) {
 }
 
 func TestDecodeConfigRejectsUnsupportedNodes(t *testing.T) {
-	for _, nodeType := range []string{"feature_flag", "nested_journey", "webhook_action", "integration_action", "experiment", "holdout"} {
+	for _, nodeType := range []string{"nested_journey", "webhook_action", "integration_action", "experiment", "holdout"} {
 		t.Run(nodeType, func(t *testing.T) {
 			_, err := DecodeConfig(Node{Type: nodeType, Config: []byte(`{}`)})
 			if err == nil {
@@ -156,14 +156,14 @@ func TestParseGraphRejectsUnsupportedNode(t *testing.T) {
 		"entry_node_id": "n1",
 		"nodes": [
 			{"id":"n1","type":"entry","config":{"trigger":"event","event_type":"signup.completed"}},
-			{"id":"n2","type":"feature_flag","config":{}}
+			{"id":"n2","type":"webhook_action","config":{}}
 		],
 		"edges": [{"from":"n1","to":"n2"}]
 	}`))
 	if err == nil {
 		t.Fatalf("expected unsupported node type error")
 	}
-	if !strings.Contains(err.Error(), "unsupported node type: feature_flag") {
+	if !strings.Contains(err.Error(), "unsupported node type: webhook_action") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -230,13 +230,15 @@ func TestAIDecisionTimeoutUsesFallbackAndValidOutputUsesBranch(t *testing.T) {
 
 type executorMockStore struct {
 	mockStore
-	evaluatedAudience map[string]bool
-	profileInSegment  map[string]bool
-	updatedProfileID  string
-	updatedAttrs      map[string]any
-	acceptedEvents    []domain.Event
-	experiments       map[string]domain.Experiment
-	assignments       []domain.ExperimentAssignment
+	evaluatedAudience  map[string]bool
+	profileInSegment   map[string]bool
+	updatedProfileID   string
+	updatedAttrs       map[string]any
+	acceptedEvents     []domain.Event
+	experiments        map[string]domain.Experiment
+	assignments        []domain.ExperimentAssignment
+	GetFirstAppIDFunc  func(context.Context, string, string) (string, error)
+	ListActiveFlagsFunc func(context.Context, string, string, string) ([]domain.FeatureFlag, error)
 }
 
 func (m *executorMockStore) GetExperiment(_ context.Context, _ domain.Principal, id string) (domain.Experiment, error) {
@@ -265,6 +267,20 @@ func (m *executorMockStore) UpdateProfileAttributes(ctx context.Context, p domai
 
 func (m *executorMockStore) AcceptEvents(ctx context.Context, p domain.Principal, events []domain.Event) ([]string, error) {
 	m.acceptedEvents = append(m.acceptedEvents, events...)
+	return nil, nil
+}
+
+func (m *executorMockStore) GetFirstAppID(ctx context.Context, tenantID, workspaceID string) (string, error) {
+	if m.GetFirstAppIDFunc != nil {
+		return m.GetFirstAppIDFunc(ctx, tenantID, workspaceID)
+	}
+	return "app-1", nil
+}
+
+func (m *executorMockStore) ListActiveFlags(ctx context.Context, tenantID, appID, environment string) ([]domain.FeatureFlag, error) {
+	if m.ListActiveFlagsFunc != nil {
+		return m.ListActiveFlagsFunc(ctx, tenantID, appID, environment)
+	}
 	return nil, nil
 }
 
@@ -995,5 +1011,100 @@ func TestExtensionNodesExecution_Validation(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestFeatureFlagNodeDecodeConfig(t *testing.T) {
+	cfg, err := DecodeConfig(Node{Type: "feature_flag", Config: []byte(`{"flag_key":"test_flag"}`)})
+	if err != nil {
+		t.Fatalf("DecodeConfig returned error: %v", err)
+	}
+	got := cfg.(FeatureFlagNodeConfig)
+	if got.FlagKey != "test_flag" {
+		t.Fatalf("unexpected flag_key: %q", got.FlagKey)
+	}
+}
+
+func TestFeatureFlagNodeExecution(t *testing.T) {
+	store := &executorMockStore{
+		evaluatedAudience: map[string]bool{},
+	}
+	store.GetFirstAppIDFunc = func(context.Context, string, string) (string, error) {
+		return "app-1", nil
+	}
+	store.ListActiveFlagsFunc = func(context.Context, string, string, string) ([]domain.FeatureFlag, error) {
+		return []domain.FeatureFlag{
+			{
+				ID:      "flag-1",
+				Key:     "test_flag",
+				Enabled: true,
+				Status:  "published",
+				Variants: []domain.FlagVariant{
+					{Label: "control", Value: json.RawMessage(`"control"`), Weight: 50},
+					{Label: "treatment", Value: json.RawMessage(`"treatment"`), Weight: 50},
+				},
+				DefaultValue: json.RawMessage(`"default"`),
+				RolloutPct:   100,
+				Seed:         "flag-1",
+			},
+		}, nil
+	}
+
+	now := time.Now()
+	run := &domain.JourneyRun{
+		ID:          "run-1",
+		TenantID:    "tenant-1",
+		WorkspaceID: "workspace-1",
+		ProfileID:   "profile-1",
+		Status:      "active",
+	}
+	graph := &Graph{
+		Nodes: []Node{
+			{ID: "n1", Type: "feature_flag", Config: json.RawMessage(`{"flag_key":"test_flag"}`)},
+			{ID: "n2_control", Type: NodeTypeExit, Config: json.RawMessage(`{"reason":"control"}`)},
+			{ID: "n2_treatment", Type: NodeTypeExit, Config: json.RawMessage(`{"reason":"treatment"}`)},
+			{ID: "n2_default", Type: NodeTypeExit, Config: json.RawMessage(`{"reason":"default"}`)},
+		},
+		Edges: []Edge{
+			{From: "n1", To: "n2_control", Branch: "control"},
+			{From: "n1", To: "n2_treatment", Branch: "treatment"},
+			{From: "n1", To: "n2_default", Branch: "default"},
+		},
+	}
+
+	res, err := graph.Nodes[0].Execute(context.Background(), store, run, graph, now, "advance")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.NextStep == nil || res.NextStep.NodeID == "" {
+		t.Errorf("expected valid next step, got: %+v", res.NextStep)
+	}
+	if res.Transition.Outcome == "" || !strings.HasPrefix(res.Transition.Outcome, "branch:") {
+		t.Errorf("expected branch outcome, got: %q", res.Transition.Outcome)
+	}
+}
+
+func TestFeatureFlagNodeRequiresFlagKey(t *testing.T) {
+	store := &executorMockStore{}
+
+	run := &domain.JourneyRun{
+		ID:          "run-1",
+		TenantID:    "tenant-1",
+		WorkspaceID: "workspace-1",
+		ProfileID:   "profile-1",
+	}
+	graph := &Graph{
+		Nodes: []Node{
+			{ID: "n1", Type: "feature_flag", Config: json.RawMessage(`{}`)},
+		},
+		Edges: []Edge{},
+	}
+
+	_, err := graph.Nodes[0].Execute(context.Background(), store, run, graph, time.Now(), "advance")
+	if err == nil {
+		t.Fatal("expected error for missing flag_key")
+	}
+	if !strings.Contains(err.Error(), "flag_key") {
+		t.Fatalf("expected error about flag_key, got: %v", err)
 	}
 }

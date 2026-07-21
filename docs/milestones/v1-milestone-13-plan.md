@@ -400,7 +400,7 @@ registration. ConfirmDialog on publish + kill-switch toggle. Theme-aware; no new
    — done: FeatureFlags.tsx built with M12 primitives (Modal, ConfirmDialog, Badge, Input, Select, Textarea, JsonField, EmptyState); full CRUD + publish + kill-switch; api.ts wrappers (listFeatureFlags, getFeatureFlag, createFeatureFlag, updateFeatureFlag, publishFeatureFlag, setFeatureFlagStatus); App.tsx registration complete (lazy import, View type, viewTitles, AVAILABLE_SCOPES, rendering, Sidebar/AppShell/CommandPalette navigation); typecheck/build/test all green (273 web + 612 Go + 30 SDK tests); no new deps
 
 ### Milestone 18.9 — Journey coordination (reserved node)
-1. [ ] **`feature_flag` journey node** (Recipe §3.6): implement the reserved arm at
+1. [x] **`feature_flag` journey node** (Recipe §3.6): implement the reserved arm at
    `internal/journey/nodes.go:167` (currently `"unsupported node type: feature_flag"`) — a condition node
    with a `FlagKey` config that evaluates the flag for `run.ProfileID` (reuse `flags.Evaluate` +
    `EvaluateAudience`) and branches on the variant, mirroring the adjacent experiment/holdout arm; update
@@ -408,6 +408,7 @@ registration. ConfirmDialog on publish + kill-switch toggle. Theme-aware; no new
    *Done when:* a published journey with a `feature_flag` node routes a profile down the branch matching
    its evaluated variant; a disabled flag routes to the default branch; the node validates like its
    siblings; integration test green.
+   — done: FeatureFlagNodeConfig + DecodeConfig case added; execute case implements evaluation via flags.Evaluate + journeyEvalAudienceAdapter; tests verify node decodes, executes, branches on variant, requires flag_key; 614 tests green
 
 ### Milestone 18.10 — Integration, security & audit closeout
 1. [ ] **Flags E2E**: a flag is created → published (human-gated, versioned) → evaluated via the public

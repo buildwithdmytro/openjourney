@@ -9,6 +9,7 @@ import (
 	"github.com/buildwithdmytro/openjourney/internal/ai"
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 	"github.com/buildwithdmytro/openjourney/internal/experiment"
+	"github.com/buildwithdmytro/openjourney/internal/flags"
 	"github.com/buildwithdmytro/openjourney/internal/ports"
 )
 
@@ -108,6 +109,10 @@ type AIDecisionConfig struct {
 	Fallback        string   `json:"fallback"`
 }
 
+type FeatureFlagNodeConfig struct {
+	FlagKey string `json:"flag_key"`
+}
+
 func ParseGraph(data []byte) (*Graph, error) {
 	var graph Graph
 	if err := json.Unmarshal(data, &graph); err != nil {
@@ -164,7 +169,10 @@ func DecodeConfig(node Node) (any, error) {
 	case NodeTypeExtensionCondition:
 		var cfg ExtensionNodeConfig
 		return cfg, decodeNodeConfig(node, &cfg)
-	case "feature_flag", "nested_journey", "webhook_action", "integration_action", "experiment", "holdout":
+	case "feature_flag":
+		var cfg FeatureFlagNodeConfig
+		return cfg, decodeNodeConfig(node, &cfg)
+	case "nested_journey", "webhook_action", "integration_action", "experiment", "holdout":
 		return nil, fmt.Errorf("unsupported node type: %s", node.Type)
 	default:
 		return nil, fmt.Errorf("unknown node type: %s", node.Type)
@@ -791,6 +799,70 @@ func (n *Node) execute(ctx context.Context, store ports.Store, run *domain.Journ
 			}
 		}
 
+	case "feature_flag":
+		var cfg FeatureFlagNodeConfig
+		if err := decodeNodeConfig(*n, &cfg); err != nil {
+			return ExecutionResult{}, err
+		}
+		if cfg.FlagKey == "" {
+			return ExecutionResult{}, fmt.Errorf("feature_flag node requires flag_key")
+		}
+
+		appID, err := store.GetFirstAppID(ctx, run.TenantID, run.WorkspaceID)
+		if err != nil {
+			return ExecutionResult{}, fmt.Errorf("get app id: %w", err)
+		}
+
+		p := domain.Principal{TenantID: run.TenantID, WorkspaceID: run.WorkspaceID, AppID: appID}
+		flagList, err := store.ListActiveFlags(ctx, run.TenantID, appID, "production")
+		if err != nil {
+			return ExecutionResult{}, fmt.Errorf("list active flags: %w", err)
+		}
+
+		var flag *domain.FeatureFlag
+		for i := range flagList {
+			if flagList[i].Key == cfg.FlagKey {
+				flag = &flagList[i]
+				break
+			}
+		}
+		if flag == nil {
+			return ExecutionResult{}, fmt.Errorf("feature flag %q not found or not published", cfg.FlagKey)
+		}
+
+		evalAudienceAdapter := &journeyEvalAudienceAdapter{store: store, principal: p}
+		result, err := flags.Evaluate(ctx, flag, run.ProfileID, evalAudienceAdapter)
+		if err != nil {
+			return ExecutionResult{}, fmt.Errorf("evaluate flag: %w", err)
+		}
+
+		branch := result.Variant
+		if branch == "" {
+			branch = "default"
+		}
+		nxt, err := findNextNode(graph, n.ID, branch)
+		if err != nil {
+			return ExecutionResult{}, fmt.Errorf("find successor branch %q: %w", branch, err)
+		}
+		nextNodeID = nxt
+		nextStep = &domain.JourneyStep{
+			RunID:       run.ID,
+			TenantID:    run.TenantID,
+			NodeID:      nextNodeID,
+			Kind:        "advance",
+			Status:      "pending",
+			AvailableAt: now,
+		}
+		trans = domain.JourneyTransition{
+			RunID:    run.ID,
+			TenantID: run.TenantID,
+			FromNode: &n.ID,
+			ToNode:   &nextNodeID,
+			NodeType: "feature_flag",
+			Outcome:  "branch:" + branch,
+			Detail:   json.RawMessage("{}"),
+		}
+
 	default:
 		return ExecutionResult{}, fmt.Errorf("unsupported node type: %s", n.Type)
 	}
@@ -816,4 +888,13 @@ func findNextNode(graph *Graph, fromID string, branch string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("no edge from %s with branch %q", fromID, branch)
+}
+
+type journeyEvalAudienceAdapter struct {
+	store     ports.Store
+	principal domain.Principal
+}
+
+func (a *journeyEvalAudienceAdapter) Eval(ctx context.Context, profileID string, dsl json.RawMessage) (bool, error) {
+	return a.store.EvaluateAudience(ctx, a.principal, profileID, dsl)
 }
