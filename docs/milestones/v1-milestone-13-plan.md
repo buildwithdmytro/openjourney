@@ -309,12 +309,13 @@ registration. ConfirmDialog on publish + kill-switch toggle. Theme-aware; no new
    — done: v1-milestone-12-audit.md verifies all 17.x tasks complete; no additional design-quality findings from review; M12 complete
 
 ### Milestone 18.1 — Flag foundation: schema + store + scopes
-1. [ ] **Migration `050_feature_flags.sql`** (§2.1, Recipe 6.68): `feature_flags` + `feature_flag_versions`
+1. [x] **Migration `050_feature_flags.sql`** (§2.1, Recipe 6.68): `feature_flags` + `feature_flag_versions`
    (append-only trigger + REVOKE) + `feature_flag_exposures`; `flags:read`/`flags:write` in `rbac.go:12-29`
    **and** the re-declared `api_keys` DEFAULT array (copy `048:68`).
    *Done when:* migration applies; the CHECKs accept every `flag_type`/`environment`/`status` the code
    writes and reject an unknown one; `feature_flag_versions` rejects UPDATE/DELETE; `rbac.go` accepts the
    two scopes; `go test ./internal/postgres/...` green.
+   — done: 050_feature_flags.sql created with feature_flags/versions/exposures tables, CHECKs for flag_type/environment/status, BEFORE UPDATE OR DELETE trigger on versions, REVOKE on versions, flags:read/write added to rbac.go allowedPermissions; go build/vet/test all pass (589 tests green)
 2. [ ] **Domain + store CRUD** (Recipe 6.68): `domain.FeatureFlag`/`FeatureFlagVersion` structs;
    `ports.Store` `CreateFeatureFlag`/`GetFeatureFlag`/`ListFeatureFlags`/`UpdateFeatureFlag`/
    `ListActiveFlags` (for the edge); `internal/postgres/flags.go` tenant+workspace+environment-scoped;
