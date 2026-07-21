@@ -69,7 +69,7 @@ func TestExtensionChannelAdapter_Send_Success(t *testing.T) {
 		},
 	}
 
-	providerID, err := adapter.Send(context.Background(), msg)
+	providerID, _, err := adapter.Send(context.Background(), msg)
 	if err != nil {
 		t.Fatalf("unexpected Send error: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestExtensionChannelAdapter_Send_FailureWrapsInDeliveryError(t *testing.T) 
 		},
 	}
 
-	_, err := adapter.Send(context.Background(), msg)
+	_, _, err := adapter.Send(context.Background(), msg)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -160,7 +160,7 @@ func TestExtensionChannelAdapter_OverScopedInvocationIsDeniedAndAudited(t *testi
 		return nil, nil
 	}}
 
-	_, err := NewExtensionChannelAdapter(host, store, "scoped_sms").Send(context.Background(), ports.RenderedMessage{
+	_, _, err := NewExtensionChannelAdapter(host, store, "scoped_sms").Send(context.Background(), ports.RenderedMessage{
 		Channel: "sms", Endpoint: "+1", Body: "blocked", Identity: domain.SendingIdentity{TenantID: "tenant-1", WorkspaceID: "workspace-1"},
 	})
 	if err == nil || len(store.activities) != 1 || store.activities[0].PolicyDecision != "denied_scope" {

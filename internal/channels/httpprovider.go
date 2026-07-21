@@ -100,15 +100,15 @@ func NewHTTPProviderAdapter(profile ProviderProfile, channel string) *HTTPProvid
 
 // Send builds the provider request, executes it (with retries on 5xx/network errors),
 // and returns the provider-assigned message ID on success.
-func (a *HTTPProviderAdapter) Send(ctx context.Context, msg ports.RenderedMessage) (string, error) {
+func (a *HTTPProviderAdapter) Send(ctx context.Context, msg ports.RenderedMessage) (string, int64, error) {
 	req, err := a.profile.BuildRequest(ctx, msg)
 	if err != nil {
-		return "", &DeliveryError{Err: fmt.Errorf("build request: %w", err), Retryable: false}
+		return "", 0, &DeliveryError{Err: fmt.Errorf("build request: %w", err), Retryable: false}
 	}
 
 	resp, body, netErr := a.doRequest(req)
 	if netErr != nil {
-		return "", a.mapNetError(netErr)
+		return "", 0, a.mapNetError(netErr)
 	}
 
 	providerID, err := a.profile.ParseResponse(resp, body)
@@ -123,7 +123,7 @@ func (a *HTTPProviderAdapter) Send(ctx context.Context, msg ports.RenderedMessag
 			}
 		}
 	}
-	return providerID, err
+	return providerID, 0, err
 }
 
 // doRequest executes the HTTP request and returns the response and fully-read body bytes.

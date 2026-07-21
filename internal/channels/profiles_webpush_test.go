@@ -484,7 +484,7 @@ func TestWebPushSSRFProtection(t *testing.T) {
 				},
 			}
 
-			_, err := adapter.Send(context.Background(), msg)
+			_, _, err := adapter.Send(context.Background(), msg)
 			if err == nil {
 				t.Errorf("expected SSRF error for %s, got none", test.endpoint)
 			}

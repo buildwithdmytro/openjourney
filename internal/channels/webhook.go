@@ -92,15 +92,15 @@ func NewWebhookAdapter() *WebhookAdapter {
 }
 
 // Send executes secure outbound HTTP POST webhook with HMAC signing and retries.
-func (w *WebhookAdapter) Send(ctx context.Context, msg ports.RenderedMessage) (string, error) {
+func (w *WebhookAdapter) Send(ctx context.Context, msg ports.RenderedMessage) (string, int64, error) {
 	if msg.Identity.Channel != "webhook" {
-		return "", &DeliveryError{Err: fmt.Errorf("invalid channel for Webhook: %s", msg.Identity.Channel), Retryable: false}
+		return "", 0, &DeliveryError{Err: fmt.Errorf("invalid channel for Webhook: %s", msg.Identity.Channel), Retryable: false}
 	}
 
 	var webCfg WebhookConfig
 	if len(msg.Identity.Config) > 0 && string(msg.Identity.Config) != "{}" {
 		if err := json.Unmarshal(msg.Identity.Config, &webCfg); err != nil {
-			return "", &DeliveryError{Err: fmt.Errorf("failed to parse Webhook config: %w", err), Retryable: false}
+			return "", 0, &DeliveryError{Err: fmt.Errorf("failed to parse Webhook config: %w", err), Retryable: false}
 		}
 	}
 
@@ -110,18 +110,18 @@ func (w *WebhookAdapter) Send(ctx context.Context, msg ports.RenderedMessage) (s
 	}
 
 	if endpoint == "" {
-		return "", &DeliveryError{Err: errors.New("empty webhook endpoint"), Retryable: false}
+		return "", 0, &DeliveryError{Err: errors.New("empty webhook endpoint"), Retryable: false}
 	}
 
 	// SSRF validate URL string before making request
 	if err := IsSafeURL(endpoint); err != nil {
-		return "", &DeliveryError{Err: fmt.Errorf("SSRF safety validation failed: %w", err), Retryable: false}
+		return "", 0, &DeliveryError{Err: fmt.Errorf("SSRF safety validation failed: %w", err), Retryable: false}
 	}
 
 	bodyBytes := []byte(msg.Body)
 	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(bodyBytes))
 	if err != nil {
-		return "", &DeliveryError{Err: fmt.Errorf("failed to create request: %w", err), Retryable: false}
+		return "", 0, &DeliveryError{Err: fmt.Errorf("failed to create request: %w", err), Retryable: false}
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -163,7 +163,7 @@ func (w *WebhookAdapter) Send(ctx context.Context, msg ports.RenderedMessage) (s
 		if attempt < maxAttempts {
 			select {
 			case <-ctx.Done():
-				return "", &DeliveryError{Err: ctx.Err(), Retryable: true}
+				return "", 0, &DeliveryError{Err: ctx.Err(), Retryable: true}
 			case <-time.After(retryDelay):
 				retryDelay *= 2
 			}
@@ -171,17 +171,17 @@ func (w *WebhookAdapter) Send(ctx context.Context, msg ports.RenderedMessage) (s
 	}
 
 	if err != nil {
-		return "", w.mapError(err)
+		return "", 0, w.mapError(err)
 	}
 
 	defer resp.Body.Close()
 
 	// 2xx and 3xx codes are considered successful deliveries, 4xx is a permanent failure
 	if resp.StatusCode >= 400 {
-		return "", &DeliveryError{Err: fmt.Errorf("webhook delivery failed with status: %d", resp.StatusCode), Retryable: false}
+		return "", 0, &DeliveryError{Err: fmt.Errorf("webhook delivery failed with status: %d", resp.StatusCode), Retryable: false}
 	}
 
-	return fmt.Sprintf("webhook-success-%d", resp.StatusCode), nil
+	return fmt.Sprintf("webhook-success-%d", resp.StatusCode), 0, nil
 }
 
 // ValidateConfig verifies that the webhook target is completely and securely configured.

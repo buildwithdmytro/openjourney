@@ -38,7 +38,7 @@ func TestWebhookAdapter_SSRFBlocks(t *testing.T) {
 		},
 	}
 
-	_, err := w.Send(context.Background(), msgPrivate)
+	_, _, err := w.Send(context.Background(), msgPrivate)
 	if err == nil {
 		t.Fatal("expected Send to fail for loopback address 127.0.0.1")
 	}
@@ -49,7 +49,7 @@ func TestWebhookAdapter_SSRFBlocks(t *testing.T) {
 	// Try sending to AWS metadata link-local IP
 	msgLinkLocal := msgPrivate
 	msgLinkLocal.Endpoint = "http://169.254.169.254/latest/meta-data"
-	_, err = w.Send(context.Background(), msgLinkLocal)
+	_, _, err = w.Send(context.Background(), msgLinkLocal)
 	if err == nil {
 		t.Fatal("expected Send to fail for AWS metadata link-local address 169.254.169.254")
 	}
@@ -57,7 +57,7 @@ func TestWebhookAdapter_SSRFBlocks(t *testing.T) {
 	// Try sending to Carrier-Grade NAT (CGNAT) 100.64.0.0/10 IP
 	msgCGNAT := msgPrivate
 	msgCGNAT.Endpoint = "http://100.64.1.2:8080/webhook"
-	_, err = w.Send(context.Background(), msgCGNAT)
+	_, _, err = w.Send(context.Background(), msgCGNAT)
 	if err == nil {
 		t.Fatal("expected Send to fail for CGNAT address 100.64.1.2")
 	}
@@ -101,7 +101,7 @@ func TestWebhookAdapter_HMACSignature(t *testing.T) {
 		},
 	}
 
-	_, err := w.Send(context.Background(), msg)
+	_, _, err := w.Send(context.Background(), msg)
 	if err != nil {
 		t.Fatalf("unexpected Send error: %v", err)
 	}

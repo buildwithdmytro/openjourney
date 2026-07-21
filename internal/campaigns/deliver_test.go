@@ -158,7 +158,7 @@ func (m *mockStore) GetDeliveryAttempt(ctx context.Context, campaignID, profileI
 	return att, nil
 }
 
-func (m *mockStore) UpdateDeliveryAttempt(ctx context.Context, campaignID, profileID, channel, endpoint, decision, reason, providerMsgID string, policySnapshot []byte) error {
+func (m *mockStore) UpdateDeliveryAttempt(ctx context.Context, campaignID, profileID, channel, endpoint, decision, reason, providerMsgID string, policySnapshot []byte, costMicros int64) error {
 	m.updatedAttempts = append(m.updatedAttempts, profileID+":"+decision)
 	key := campaignID + ":" + profileID + ":" + channel + ":" + endpoint
 	if att, ok := m.deliveryAttempts[key]; ok {
@@ -344,9 +344,9 @@ type testAdapter struct {
 	messages []ports.RenderedMessage
 }
 
-func (a *testAdapter) Send(ctx context.Context, msg ports.RenderedMessage) (string, error) {
+func (a *testAdapter) Send(ctx context.Context, msg ports.RenderedMessage) (string, int64, error) {
 	a.messages = append(a.messages, msg)
-	return "msg-123", a.err
+	return "msg-123", 0, a.err
 }
 
 func (a *testAdapter) ValidateConfig(identity domain.SendingIdentity) error {
@@ -516,9 +516,9 @@ type countingAdapter struct {
 	sendCount *int
 }
 
-func (a *countingAdapter) Send(ctx context.Context, msg ports.RenderedMessage) (string, error) {
+func (a *countingAdapter) Send(ctx context.Context, msg ports.RenderedMessage) (string, int64, error) {
 	*a.sendCount++
-	return "ses-999", nil
+	return "ses-999", 0, nil
 }
 
 func (a *countingAdapter) ValidateConfig(identity domain.SendingIdentity) error {

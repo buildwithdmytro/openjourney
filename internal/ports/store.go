@@ -189,7 +189,7 @@ type Store interface {
 	CompleteDeliveryJob(ctx context.Context, jobID string) error
 	FailDeliveryJob(ctx context.Context, jobID string, errMsg string) error
 	CreateDeliveryAttempt(ctx context.Context, attempt domain.DeliveryAttempt) (bool, error)
-	UpdateDeliveryAttempt(ctx context.Context, campaignID, profileID, channel, endpoint, decision, reason, providerMsgID string, policySnapshot []byte) error
+	UpdateDeliveryAttempt(ctx context.Context, campaignID, profileID, channel, endpoint, decision, reason, providerMsgID string, policySnapshot []byte, costMicros int64) error
 	DeleteDeliveryAttempt(ctx context.Context, tenantID, campaignID, profileID, channel, endpoint string) error
 	GetDeliveryAttempt(ctx context.Context, campaignID, profileID, channel, endpoint string) (domain.DeliveryAttempt, error)
 	CampaignReport(ctx context.Context, p domain.Principal, campaignID string, query domain.ReportQuery) (domain.CampaignReport, error)

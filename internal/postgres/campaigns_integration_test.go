@@ -207,7 +207,7 @@ func TestCampaignsIntegration(t *testing.T) {
 	}
 
 	// Update delivery attempt
-	err = store.UpdateDeliveryAttempt(ctx, claimedCamp.ID, "550e8400-e29b-41d4-a716-446655440000", "email", "user1@example.com", "sent", "", "msg-12345", nil)
+	err = store.UpdateDeliveryAttempt(ctx, claimedCamp.ID, "550e8400-e29b-41d4-a716-446655440000", "email", "user1@example.com", "sent", "", "msg-12345", nil, 0)
 	if err != nil {
 		t.Fatalf("update delivery attempt: %v", err)
 	}

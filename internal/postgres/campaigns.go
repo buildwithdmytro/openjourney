@@ -294,12 +294,12 @@ func (s *Store) CreateDeliveryAttempt(ctx context.Context, attempt domain.Delive
 	return res.RowsAffected() > 0, nil
 }
 
-func (s *Store) UpdateDeliveryAttempt(ctx context.Context, campaignID, profileID, channel, endpoint, decision, reason, providerMsgID string, policySnapshot []byte) error {
+func (s *Store) UpdateDeliveryAttempt(ctx context.Context, campaignID, profileID, channel, endpoint, decision, reason, providerMsgID string, policySnapshot []byte, costMicros int64) error {
 	if len(policySnapshot) == 0 {
 		policySnapshot = []byte("{}")
 	}
-	_, err := s.pool.Exec(ctx, `UPDATE delivery_attempts SET decision=$5, reason=$6, provider_message_id=$7, policy_snapshot=$8 WHERE campaign_id=$1 AND profile_id=$2 AND channel=$3 AND endpoint=$4`,
-		campaignID, profileID, channel, endpoint, decision, reason, providerMsgID, policySnapshot)
+	_, err := s.pool.Exec(ctx, `UPDATE delivery_attempts SET decision=$5, reason=$6, provider_message_id=$7, policy_snapshot=$8, cost_micros=$9 WHERE campaign_id=$1 AND profile_id=$2 AND channel=$3 AND endpoint=$4`,
+		campaignID, profileID, channel, endpoint, decision, reason, providerMsgID, policySnapshot, costMicros)
 	return err
 }
 

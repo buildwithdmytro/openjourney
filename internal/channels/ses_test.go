@@ -82,7 +82,7 @@ func TestSESAdapter_Send_Success(t *testing.T) {
 		},
 	}
 
-	id, err := s.Send(context.Background(), msg)
+	id, _, err := s.Send(context.Background(), msg)
 	if err != nil {
 		t.Fatalf("unexpected Send error: %v", err)
 	}

@@ -12,8 +12,8 @@ import (
 // stubAdapter is a minimal ports.ChannelAdapter for registry tests.
 type stubAdapter struct{ name string }
 
-func (s *stubAdapter) Send(_ context.Context, _ ports.RenderedMessage) (string, error) {
-	return s.name, nil
+func (s *stubAdapter) Send(_ context.Context, _ ports.RenderedMessage) (string, int64, error) {
+	return s.name, 0, nil
 }
 func (s *stubAdapter) ValidateConfig(_ domain.SendingIdentity) error { return nil }
 

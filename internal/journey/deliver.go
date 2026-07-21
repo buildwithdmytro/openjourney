@@ -316,6 +316,7 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 
 		// Check if we need to render & send (if not already "provider_sent")
 		var providerMsgID string
+		var costMicros int64
 		var hasRetryableError bool
 		var retryableErrMsg string
 
@@ -422,7 +423,7 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 				IdempotencyKey: fmt.Sprintf("sent-%s-%s", intent.RunID, intent.NodeID),
 			}
 
-			providerMsgID, err = adapter.Send(ctx, msg)
+			providerMsgID, costMicros, err = adapter.Send(ctx, msg)
 			if err != nil {
 				slog.Error("failed to send journey message via adapter", "error", err, "profile_id", intent.ProfileID)
 				if channels.IsInvalidTokenError(err) {
@@ -483,6 +484,7 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 
 			// Update decision to provider_sent in database before emitting event
 			intent.ProviderMessageID = &providerMsgID
+			intent.CostMicros = costMicros
 			dec := "provider_sent"
 			intent.Decision = &dec
 			reason := "eligible"

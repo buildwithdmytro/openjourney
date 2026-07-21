@@ -1141,6 +1141,7 @@ type JourneyMessageIntent struct {
 	ProviderMessageID *string         `json:"provider_message_id,omitempty"`
 	PolicySnapshot    json.RawMessage `json:"policy_snapshot"`
 	ErrorMessage      *string         `json:"error_message,omitempty"`
+	CostMicros        int64           `json:"cost_micros"`
 	CreatedAt         time.Time       `json:"created_at"`
 	UpdatedAt         time.Time       `json:"updated_at"`
 }

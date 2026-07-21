@@ -52,7 +52,7 @@ func TestInAppAdapter_Send(t *testing.T) {
 		Data:           map[string]string{"key": "value"},
 	}
 
-	providerID, err := adapter.Send(context.Background(), msg)
+	providerID, _, err := adapter.Send(context.Background(), msg)
 	if err != nil {
 		t.Fatalf("Send: %v", err)
 	}
@@ -107,11 +107,11 @@ func TestInAppAdapter_SendIdempotency(t *testing.T) {
 		IdempotencyKey: "key-123",
 	}
 
-	id1, err := adapter.Send(context.Background(), msg)
+	id1, _, err := adapter.Send(context.Background(), msg)
 	if err != nil {
 		t.Fatalf("first Send: %v", err)
 	}
-	id2, err := adapter.Send(context.Background(), msg)
+	id2, _, err := adapter.Send(context.Background(), msg)
 	if err != nil {
 		t.Fatalf("second Send: %v", err)
 	}
@@ -127,7 +127,7 @@ func TestInAppAdapter_SendIdempotency(t *testing.T) {
 
 func TestInAppAdapter_InvalidChannel(t *testing.T) {
 	adapter := NewInAppAdapter(&mockInAppStore{})
-	_, err := adapter.Send(context.Background(), ports.RenderedMessage{
+	_, _, err := adapter.Send(context.Background(), ports.RenderedMessage{
 		Channel:  "email",
 		Endpoint: "profile-123",
 		Identity: domain.SendingIdentity{Channel: "email"},
@@ -139,7 +139,7 @@ func TestInAppAdapter_InvalidChannel(t *testing.T) {
 
 func TestInAppAdapter_EmptyEndpoint(t *testing.T) {
 	adapter := NewInAppAdapter(&mockInAppStore{})
-	_, err := adapter.Send(context.Background(), ports.RenderedMessage{
+	_, _, err := adapter.Send(context.Background(), ports.RenderedMessage{
 		Channel:  "in_app",
 		Endpoint: "",
 		Identity: domain.SendingIdentity{Channel: "in_app"},

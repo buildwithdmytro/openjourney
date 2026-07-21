@@ -463,7 +463,7 @@ func (f *fakeStore) FailDeliveryJob(ctx context.Context, jobID string, errMsg st
 func (f *fakeStore) CreateDeliveryAttempt(ctx context.Context, attempt domain.DeliveryAttempt) (bool, error) {
 	return true, nil
 }
-func (f *fakeStore) UpdateDeliveryAttempt(ctx context.Context, campaignID, profileID, channel, endpoint, decision, reason, providerMsgID string, policySnapshot []byte) error {
+func (f *fakeStore) UpdateDeliveryAttempt(ctx context.Context, campaignID, profileID, channel, endpoint, decision, reason, providerMsgID string, policySnapshot []byte, costMicros int64) error {
 	return nil
 }
 func (f *fakeStore) DeleteDeliveryAttempt(ctx context.Context, tenantID, campaignID, profileID, channel, endpoint string) error {

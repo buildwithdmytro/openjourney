@@ -100,25 +100,25 @@ func NewSESAdapter() *SESAdapter {
 }
 
 // Send rate-limits and sends an email via SES.
-func (s *SESAdapter) Send(ctx context.Context, msg ports.RenderedMessage) (string, error) {
+func (s *SESAdapter) Send(ctx context.Context, msg ports.RenderedMessage) (string, int64, error) {
 	if msg.Identity.Channel != "email" {
-		return "", &DeliveryError{Err: fmt.Errorf("invalid channel for SES: %s", msg.Identity.Channel), Retryable: false}
+		return "", 0, &DeliveryError{Err: fmt.Errorf("invalid channel for SES: %s", msg.Identity.Channel), Retryable: false}
 	}
 	if !msg.Identity.Verified {
-		return "", &DeliveryError{Err: errors.New("cannot send via unverified identity"), Retryable: false}
+		return "", 0, &DeliveryError{Err: errors.New("cannot send via unverified identity"), Retryable: false}
 	}
 
 	// Retrieve or create token-bucket rate limiter for this sending identity
 	limiter := s.getLimiter(msg.Identity.ID, msg.Identity.MaxSendRate)
 	if err := limiter.Wait(ctx); err != nil {
-		return "", &DeliveryError{Err: fmt.Errorf("rate limiter wait aborted: %w", err), Retryable: true}
+		return "", 0, &DeliveryError{Err: fmt.Errorf("rate limiter wait aborted: %w", err), Retryable: true}
 	}
 
 	// Parse custom config
 	var sesCfg SESConfig
 	if len(msg.Identity.Config) > 0 && string(msg.Identity.Config) != "{}" {
 		if err := json.Unmarshal(msg.Identity.Config, &sesCfg); err != nil {
-			return "", &DeliveryError{Err: fmt.Errorf("failed to parse SES config: %w", err), Retryable: false}
+			return "", 0, &DeliveryError{Err: fmt.Errorf("failed to parse SES config: %w", err), Retryable: false}
 		}
 	}
 
@@ -130,7 +130,7 @@ func (s *SESAdapter) Send(ctx context.Context, msg ports.RenderedMessage) (strin
 	// Initialize SES client
 	client, err := s.newClient(ctx, region)
 	if err != nil {
-		return "", &DeliveryError{Err: fmt.Errorf("failed to initialize SES client: %w", err), Retryable: true}
+		return "", 0, &DeliveryError{Err: fmt.Errorf("failed to initialize SES client: %w", err), Retryable: true}
 	}
 
 	// Construct input payload
@@ -180,13 +180,13 @@ func (s *SESAdapter) Send(ctx context.Context, msg ports.RenderedMessage) (strin
 
 	output, err := client.SendEmail(ctx, input)
 	if err != nil {
-		return "", s.mapError(err)
+		return "", 0, s.mapError(err)
 	}
 
 	if output.MessageId == nil {
-		return "ses-fallback-id", nil
+		return "ses-fallback-id", 0, nil
 	}
-	return *output.MessageId, nil
+	return *output.MessageId, 0, nil
 }
 
 // ValidateConfig enforces that the identity is verified and properly configured for SES.

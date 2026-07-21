@@ -50,13 +50,14 @@ func (s *Store) projectEngagementFact(ctx context.Context, tx pgx.Tx, event doma
 		variant      *string
 		resolvedID   string
 		channel      string
+		costMicros   int64
 	)
 	err := tx.QueryRow(ctx, `
-		SELECT source_type, source_id, node_id, experiment_id, variant, profile_id, channel
+		SELECT source_type, source_id, node_id, experiment_id, variant, profile_id, channel, cost_micros
 		FROM (
 			SELECT 'campaign'::text AS source_type, da.campaign_id AS source_id,
 				NULL::text AS node_id, da.experiment_id, da.variant, da.profile_id, da.channel,
-				da.attempted_at AS sent_at
+				da.attempted_at AS sent_at, da.cost_micros
 			FROM delivery_attempts da
 			JOIN campaigns c ON c.id = da.campaign_id
 			WHERE da.tenant_id = $1 AND c.tenant_id = $1 AND c.workspace_id = $2
@@ -69,7 +70,7 @@ func (s *Store) projectEngagementFact(ctx context.Context, tx pgx.Tx, event doma
 			UNION ALL
 			SELECT 'journey'::text AS source_type, jmi.journey_id AS source_id,
 				jmi.node_id, jmi.experiment_id, jmi.variant, jmi.profile_id, jmi.channel,
-				jmi.updated_at AS sent_at
+				jmi.updated_at AS sent_at, jmi.cost_micros
 			FROM journey_message_intents jmi
 			WHERE jmi.tenant_id = $1 AND jmi.workspace_id = $2
 			  AND jmi.decision IN ('sent','provider_sent')
@@ -84,7 +85,7 @@ func (s *Store) projectEngagementFact(ctx context.Context, tx pgx.Tx, event doma
 		LIMIT 1`, event.Principal.TenantID, event.Principal.WorkspaceID, profileID,
 		payload.Endpoint, payload.CampaignID, payload.JourneyID, payload.NodeID,
 		payload.ProviderMessageID).Scan(&sourceType, &sourceID, &nodeID, &experimentID,
-		&variant, &resolvedID, &channel)
+		&variant, &resolvedID, &channel, &costMicros)
 	if err == pgx.ErrNoRows {
 		return nil
 	}
@@ -97,11 +98,11 @@ func (s *Store) projectEngagementFact(ctx context.Context, tx pgx.Tx, event doma
 
 	_, err = tx.Exec(ctx, `INSERT INTO engagement_facts
 		(tenant_id, workspace_id, source_type, source_id, node_id, experiment_id, variant,
-		 profile_id, channel, event_type, occurred_at, source_event_id)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+		 profile_id, channel, event_type, occurred_at, source_event_id, cost_micros)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
 		ON CONFLICT (source_event_id, event_type) DO NOTHING`,
 		event.Principal.TenantID, event.Principal.WorkspaceID, sourceType, sourceID, nodeID,
-		experimentID, variant, resolvedID, channel, eventType, event.OccurredAt, event.ID)
+		experimentID, variant, resolvedID, channel, eventType, event.OccurredAt, event.ID, costMicros)
 	return err
 }
 
@@ -113,14 +114,15 @@ func (s *Store) projectConversionFact(ctx context.Context, tx pgx.Tx, event doma
 		variant      *string
 		sentAt       time.Time
 		goalJSON     []byte
+		costMicros   int64
 	)
 
 	err := tx.QueryRow(ctx, `
-		SELECT source_type, source_id, experiment_id, variant, sent_at, goal
+		SELECT source_type, source_id, experiment_id, variant, sent_at, goal, cost_micros
 		FROM (
 			SELECT 'campaign'::text AS source_type, da.campaign_id AS source_id,
 				da.experiment_id, da.variant, da.attempted_at AS sent_at,
-				c.conversion_goal AS goal
+				c.conversion_goal AS goal, da.cost_micros
 			FROM delivery_attempts da
 			JOIN campaigns c ON c.id = da.campaign_id
 			WHERE da.tenant_id = $1 AND c.tenant_id = $1 AND c.workspace_id = $2
@@ -132,7 +134,7 @@ func (s *Store) projectConversionFact(ctx context.Context, tx pgx.Tx, event doma
 			UNION ALL
 			SELECT 'journey'::text AS source_type, jmi.journey_id AS source_id,
 				jmi.experiment_id, jmi.variant, jmi.updated_at AS sent_at,
-				jv.conversion_goal AS goal
+				jv.conversion_goal AS goal, jmi.cost_micros
 			FROM journey_message_intents jmi
 			JOIN journey_versions jv ON jv.id = jmi.journey_version_id
 			WHERE jmi.tenant_id = $1 AND jmi.workspace_id = $2
@@ -147,7 +149,7 @@ func (s *Store) projectConversionFact(ctx context.Context, tx pgx.Tx, event doma
 		LIMIT 1`,
 		event.Principal.TenantID, event.Principal.WorkspaceID, profileID, event.Type,
 		event.OccurredAt, event.Payload,
-	).Scan(&sourceType, &sourceID, &experimentID, &variant, &sentAt, &goalJSON)
+	).Scan(&sourceType, &sourceID, &experimentID, &variant, &sentAt, &goalJSON, &costMicros)
 	if err == pgx.ErrNoRows {
 		return false, "", "", nil
 	}
@@ -165,11 +167,11 @@ func (s *Store) projectConversionFact(ctx context.Context, tx pgx.Tx, event doma
 	value := conversionValue(event.Payload, goal.ValueField)
 	result, err := tx.Exec(ctx, `INSERT INTO conversion_facts
 		(tenant_id, workspace_id, source_type, source_id, experiment_id, variant, profile_id,
-		 goal_name, value, occurred_at, attributed_send_at, source_event_id)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+		 goal_name, value, occurred_at, attributed_send_at, source_event_id, cost_micros)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
 		ON CONFLICT (source_event_id, goal_name) DO NOTHING`,
 		event.Principal.TenantID, event.Principal.WorkspaceID, sourceType, sourceID,
-		experimentID, variant, profileID, goal.Name, value, event.OccurredAt, sentAt, event.ID)
+		experimentID, variant, profileID, goal.Name, value, event.OccurredAt, sentAt, event.ID, costMicros)
 	if err != nil {
 		return false, "", "", err
 	}

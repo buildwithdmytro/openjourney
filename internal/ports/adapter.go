@@ -22,6 +22,6 @@ type RenderedMessage struct {
 
 // ChannelAdapter is the interface that message delivery channel integrations (like SES, Webhooks) must implement.
 type ChannelAdapter interface {
-	Send(ctx context.Context, msg RenderedMessage) (providerID string, err error)
+	Send(ctx context.Context, msg RenderedMessage) (providerID string, costMicros int64, err error)
 	ValidateConfig(iden domain.SendingIdentity) error
 }

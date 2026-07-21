@@ -31,7 +31,7 @@ func NewExtensionChannelAdapter(host *Host, store ports.Store, providerName stri
 
 // Send serializes the ports.RenderedMessage, resolves the active extension,
 // and invokes it on the Extension Host.
-func (e *ExtensionChannelAdapter) Send(ctx context.Context, msg ports.RenderedMessage) (string, error) {
+func (e *ExtensionChannelAdapter) Send(ctx context.Context, msg ports.RenderedMessage) (string, int64, error) {
 	principal := domain.Principal{
 		TenantID:    msg.Identity.TenantID,
 		WorkspaceID: msg.Identity.WorkspaceID,
@@ -41,7 +41,7 @@ func (e *ExtensionChannelAdapter) Send(ctx context.Context, msg ports.RenderedMe
 	// 1. Get the extension ID for the provider name
 	ext, err := e.store.GetExtensionByName(ctx, principal, e.providerName)
 	if err != nil {
-		return "", &channels.DeliveryError{
+		return "", 0, &channels.DeliveryError{
 			Err:       fmt.Errorf("failed to resolve channel provider extension %q: %w", e.providerName, err),
 			Retryable: true,
 		}
@@ -50,7 +50,7 @@ func (e *ExtensionChannelAdapter) Send(ctx context.Context, msg ports.RenderedMe
 	// 2. Serialize msg to JSON
 	input, err := json.Marshal(msg)
 	if err != nil {
-		return "", &channels.DeliveryError{
+		return "", 0, &channels.DeliveryError{
 			Err:       fmt.Errorf("failed to marshal message for extension: %w", err),
 			Retryable: false,
 		}
@@ -64,7 +64,7 @@ func (e *ExtensionChannelAdapter) Send(ctx context.Context, msg ports.RenderedMe
 			retryable = false
 		}
 		// Wrap in DeliveryError
-		return "", &channels.DeliveryError{
+		return "", 0, &channels.DeliveryError{
 			Err:       fmt.Errorf("extension channel send invocation failed: %w", err),
 			Retryable: retryable,
 		}
@@ -75,16 +75,19 @@ func (e *ExtensionChannelAdapter) Send(ctx context.Context, msg ports.RenderedMe
 		ProviderID string `json:"provider_id"`
 		MessageID  string `json:"message_id"`
 		ID         string `json:"id"`
+		CostMicros int64  `json:"cost_micros"`
 	}
 	if err := json.Unmarshal(output, &res); err == nil {
+		msgID := ""
 		if res.ProviderID != "" {
-			return res.ProviderID, nil
+			msgID = res.ProviderID
+		} else if res.MessageID != "" {
+			msgID = res.MessageID
+		} else if res.ID != "" {
+			msgID = res.ID
 		}
-		if res.MessageID != "" {
-			return res.MessageID, nil
-		}
-		if res.ID != "" {
-			return res.ID, nil
+		if msgID != "" {
+			return msgID, res.CostMicros, nil
 		}
 	}
 
@@ -92,10 +95,10 @@ func (e *ExtensionChannelAdapter) Send(ctx context.Context, msg ports.RenderedMe
 	strVal := string(output)
 	strVal = strings.Trim(strVal, `"`+"\n\r\t ")
 	if strVal != "" {
-		return strVal, nil
+		return strVal, 0, nil
 	}
 
-	return "ext-default-msg-id", nil
+	return "ext-default-msg-id", 0, nil
 }
 
 // ValidateConfig implements ports.ChannelAdapter

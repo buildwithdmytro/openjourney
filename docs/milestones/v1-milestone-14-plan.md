@@ -305,10 +305,11 @@ to a real time-series endpoint (kill the fake data `Overview.tsx:116`).
    — done: GrowthReport method added to analytics.go with date_trunc + generate_series bucketing; GrowthBucket domain type; TestGrowthReport verifies exact per-bucket new-profile/segment-membership/net-growth counts (day1: 5/4/4, day2: 8/6/6, day3: 7/5/5); all 628 tests pass
 
 ### Milestone 19.5 — Cost reporting
-1. [ ] **Record cost at send**: add `cost_micros` to the delivery/engagement facts (migration `051`) and
+1. [x] **Record cost at send**: add `cost_micros` to the delivery/engagement facts (migration `051`) and
    populate it from the channel adapter's cost accounting at delivery (`internal/campaigns/deliver.go`).
    *Done when:* a delivered message records a non-zero `cost_micros` from the adapter estimate; the column
    defaults to 0 for adapters without cost; test green.
+   — done: Migration 051 adds cost_micros to engagement_facts, conversion_facts, delivery_attempts, journey_message_intents; ChannelAdapter.Send returns (string, int64, error); deliver.go captures cost and stores in delivery_attempts; fact_projection reads cost and projects to fact tables; all 628 tests pass
 2. [ ] **Cost report** (Recipe 6.79): `CostReport` — `SUM(cost_micros)` by campaign/journey/channel/
    provider over time + cost-per-send.
    *Done when:* a fixture returns exact spend per dimension/bucket and cost-per-send; test green.
