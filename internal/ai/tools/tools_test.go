@@ -18,13 +18,13 @@ func (s *testStore) PreviewSegment(_ context.Context, p domain.Principal, _ stri
 	s.previewedWith = p
 	return 3, map[string]int{"profiles": 3}, nil
 }
-func (s *testStore) CampaignReport(context.Context, domain.Principal, string) (domain.CampaignReport, error) {
+func (s *testStore) CampaignReport(context.Context, domain.Principal, string, domain.ReportQuery) (domain.CampaignReport, error) {
 	return domain.CampaignReport{}, nil
 }
-func (s *testStore) JourneyReport(context.Context, domain.Principal, string) (domain.JourneyReport, error) {
+func (s *testStore) JourneyReport(context.Context, domain.Principal, string, domain.ReportQuery) (domain.JourneyReport, error) {
 	return domain.JourneyReport{}, nil
 }
-func (s *testStore) ExperimentReport(context.Context, domain.Principal, string) (domain.ExperimentReport, error) {
+func (s *testStore) ExperimentReport(context.Context, domain.Principal, string, domain.ReportQuery) (domain.ExperimentReport, error) {
 	return domain.ExperimentReport{}, nil
 }
 

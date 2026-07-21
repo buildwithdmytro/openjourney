@@ -27,7 +27,7 @@ func (s *performanceCopilotStore) GetCampaign(context.Context, domain.Principal,
 	s.original = domain.Campaign{ID: "campaign-1", Name: "Live campaign", SegmentID: "segment-1", TemplateID: "template-1", Status: "scheduled", SegmentVersion: 2, TemplateVersion: 3}
 	return s.original, nil
 }
-func (s *performanceCopilotStore) CampaignReport(context.Context, domain.Principal, string) (domain.CampaignReport, error) {
+func (s *performanceCopilotStore) CampaignReport(context.Context, domain.Principal, string, domain.ReportQuery) (domain.CampaignReport, error) {
 	return domain.CampaignReport{CampaignID: "campaign-1", Funnel: domain.ReportFunnel{Sent: domain.ReportCount{Total: 42, Unique: 40}}}, nil
 }
 func (s *performanceCopilotStore) GetPromptByName(context.Context, domain.Principal, string) (domain.Prompt, error) {

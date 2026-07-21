@@ -17,7 +17,7 @@ type reportHTTPStore struct {
 	IDs        []string
 }
 
-func (s *reportHTTPStore) CampaignReport(_ context.Context, p domain.Principal, id string) (domain.CampaignReport, error) {
+func (s *reportHTTPStore) CampaignReport(_ context.Context, p domain.Principal, id string, _ domain.ReportQuery) (domain.CampaignReport, error) {
 	s.principals = append(s.principals, p)
 	s.IDs = append(s.IDs, id)
 	if id == "missing" {
@@ -41,7 +41,7 @@ func (s *reportHTTPStore) CampaignReport(_ context.Context, p domain.Principal, 
 	}, nil
 }
 
-func (s *reportHTTPStore) JourneyReport(_ context.Context, p domain.Principal, id string) (domain.JourneyReport, error) {
+func (s *reportHTTPStore) JourneyReport(_ context.Context, p domain.Principal, id string, _ domain.ReportQuery) (domain.JourneyReport, error) {
 	s.principals = append(s.principals, p)
 	s.IDs = append(s.IDs, id)
 	if id == "missing" {
@@ -61,7 +61,7 @@ func (s *reportHTTPStore) JourneyReport(_ context.Context, p domain.Principal, i
 	}, nil
 }
 
-func (s *reportHTTPStore) ExperimentReport(_ context.Context, p domain.Principal, id string) (domain.ExperimentReport, error) {
+func (s *reportHTTPStore) ExperimentReport(_ context.Context, p domain.Principal, id string, _ domain.ReportQuery) (domain.ExperimentReport, error) {
 	s.principals = append(s.principals, p)
 	s.IDs = append(s.IDs, id)
 	if id == "missing" {
@@ -214,5 +214,150 @@ func TestReportEndpointsReturnNotFound(t *testing.T) {
 		if err := json.Unmarshal(res.Body.Bytes(), &body); err != nil || body.Error.Code != "not_found" {
 			t.Fatalf("GET %s error=%v body=%s", path, err, res.Body.String())
 		}
+	}
+}
+
+func TestReportQueryEmptyQueryBackwardCompatible(t *testing.T) {
+	store := &reportHTTPStore{}
+	store.scopes = []string{"reports:read"}
+	server := New(store, 75)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/reports/campaigns/campaign-1", nil)
+	req.Header.Set("Authorization", "Bearer test-key")
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("empty query: status=%d body=%s", res.Code, res.Body.String())
+	}
+
+	var report domain.CampaignReport
+	if err := json.Unmarshal(res.Body.Bytes(), &report); err != nil {
+		t.Fatalf("decode report: %v", err)
+	}
+	if report.CampaignID != "campaign-1" {
+		t.Fatalf("expected campaign-1, got %s", report.CampaignID)
+	}
+}
+
+func TestReportQueryValidGranularityAndTimeRange(t *testing.T) {
+	store := &reportHTTPStore{}
+	store.scopes = []string{"reports:read"}
+	server := New(store, 75)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/reports/campaigns/campaign-1?granularity=day&start=2024-01-01T00:00:00Z&end=2024-01-31T23:59:59Z", nil)
+	req.Header.Set("Authorization", "Bearer test-key")
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("valid query: status=%d body=%s", res.Code, res.Body.String())
+	}
+
+	var report domain.CampaignReport
+	if err := json.Unmarshal(res.Body.Bytes(), &report); err != nil {
+		t.Fatalf("decode report: %v", err)
+	}
+}
+
+func TestReportQueryInvalidGranularityRejected(t *testing.T) {
+	store := &reportHTTPStore{}
+	store.scopes = []string{"reports:read"}
+	server := New(store, 75)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/reports/campaigns/campaign-1?granularity=invalid", nil)
+	req.Header.Set("Authorization", "Bearer test-key")
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("invalid granularity: status=%d, want 422, body=%s", res.Code, res.Body.String())
+	}
+
+	var body struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &body); err != nil || body.Error.Code != "invalid_query" {
+		t.Fatalf("invalid granularity error: body=%s", res.Body.String())
+	}
+}
+
+func TestReportQueryInvalidDimensionRejected(t *testing.T) {
+	store := &reportHTTPStore{}
+	store.scopes = []string{"reports:read"}
+	server := New(store, 75)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/reports/campaigns/campaign-1?dimensions=invalid_dimension", nil)
+	req.Header.Set("Authorization", "Bearer test-key")
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("invalid dimension: status=%d, want 422, body=%s", res.Code, res.Body.String())
+	}
+
+	var body struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &body); err != nil || body.Error.Code != "invalid_query" {
+		t.Fatalf("invalid dimension error: body=%s", res.Body.String())
+	}
+}
+
+func TestReportQueryValidDimensionAccepted(t *testing.T) {
+	store := &reportHTTPStore{}
+	store.scopes = []string{"reports:read"}
+	server := New(store, 75)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/reports/campaigns/campaign-1?dimensions=channel,variant,node,provider", nil)
+	req.Header.Set("Authorization", "Bearer test-key")
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("valid dimensions: status=%d body=%s", res.Code, res.Body.String())
+	}
+}
+
+func TestReportQueryValidFiltersAccepted(t *testing.T) {
+	store := &reportHTTPStore{}
+	store.scopes = []string{"reports:read"}
+	server := New(store, 75)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/reports/campaigns/campaign-1?filter_channel=email&filter_variant=control", nil)
+	req.Header.Set("Authorization", "Bearer test-key")
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("valid filters: status=%d body=%s", res.Code, res.Body.String())
+	}
+}
+
+func TestReportQueryInvalidFilterRejected(t *testing.T) {
+	store := &reportHTTPStore{}
+	store.scopes = []string{"reports:read"}
+	server := New(store, 75)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/reports/campaigns/campaign-1?filter_invalid=value", nil)
+	req.Header.Set("Authorization", "Bearer test-key")
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("invalid filter: status=%d, want 422, body=%s", res.Code, res.Body.String())
+	}
+
+	var body struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &body); err != nil || body.Error.Code != "invalid_query" {
+		t.Fatalf("invalid filter error: body=%s", res.Body.String())
 	}
 }

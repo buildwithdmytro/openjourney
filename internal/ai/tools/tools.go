@@ -23,9 +23,9 @@ var (
 type Store interface {
 	ListEventSchemas(context.Context, domain.Principal) ([]domain.EventSchema, error)
 	PreviewSegment(context.Context, domain.Principal, string) (int, map[string]int, error)
-	CampaignReport(context.Context, domain.Principal, string) (domain.CampaignReport, error)
-	JourneyReport(context.Context, domain.Principal, string) (domain.JourneyReport, error)
-	ExperimentReport(context.Context, domain.Principal, string) (domain.ExperimentReport, error)
+	CampaignReport(context.Context, domain.Principal, string, domain.ReportQuery) (domain.CampaignReport, error)
+	JourneyReport(context.Context, domain.Principal, string, domain.ReportQuery) (domain.JourneyReport, error)
+	ExperimentReport(context.Context, domain.Principal, string, domain.ReportQuery) (domain.ExperimentReport, error)
 }
 
 // Tool describes a typed, purpose-bound operation. Input and output are JSON
@@ -212,11 +212,11 @@ func (reportReadTool) Run(ctx context.Context, store Store, p domain.Principal, 
 	var err error
 	switch in.ReportType {
 	case "campaign":
-		value, err = store.CampaignReport(ctx, p, in.ResourceID)
+		value, err = store.CampaignReport(ctx, p, in.ResourceID, domain.ReportQuery{})
 	case "journey":
-		value, err = store.JourneyReport(ctx, p, in.ResourceID)
+		value, err = store.JourneyReport(ctx, p, in.ResourceID, domain.ReportQuery{})
 	case "experiment":
-		value, err = store.ExperimentReport(ctx, p, in.ResourceID)
+		value, err = store.ExperimentReport(ctx, p, in.ResourceID, domain.ReportQuery{})
 	default:
 		err = fmt.Errorf("unsupported report type %q", in.ReportType)
 	}

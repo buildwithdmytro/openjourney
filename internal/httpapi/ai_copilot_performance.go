@@ -39,7 +39,7 @@ func (s *Server) createPerformanceCopilot(w http.ResponseWriter, r *http.Request
 		internalError(w, err, "load campaign for performance copilot", p)
 		return
 	}
-	report, err := s.store.CampaignReport(r.Context(), p, campaignID)
+	report, err := s.store.CampaignReport(r.Context(), p, campaignID, domain.ReportQuery{})
 	if err != nil {
 		internalError(w, err, "load campaign report", p)
 		return
@@ -47,7 +47,7 @@ func (s *Server) createPerformanceCopilot(w http.ResponseWriter, r *http.Request
 
 	data := map[string]any{"campaign_id": campaignID, "campaign_report": report}
 	if campaign.ExperimentID != nil {
-		experimentReport, reportErr := s.store.ExperimentReport(r.Context(), p, *campaign.ExperimentID)
+		experimentReport, reportErr := s.store.ExperimentReport(r.Context(), p, *campaign.ExperimentID, domain.ReportQuery{})
 		if reportErr != nil {
 			internalError(w, reportErr, "load experiment report", p)
 			return

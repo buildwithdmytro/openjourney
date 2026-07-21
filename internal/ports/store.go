@@ -192,9 +192,9 @@ type Store interface {
 	UpdateDeliveryAttempt(ctx context.Context, campaignID, profileID, channel, endpoint, decision, reason, providerMsgID string, policySnapshot []byte) error
 	DeleteDeliveryAttempt(ctx context.Context, tenantID, campaignID, profileID, channel, endpoint string) error
 	GetDeliveryAttempt(ctx context.Context, campaignID, profileID, channel, endpoint string) (domain.DeliveryAttempt, error)
-	CampaignReport(ctx context.Context, p domain.Principal, campaignID string) (domain.CampaignReport, error)
-	JourneyReport(ctx context.Context, p domain.Principal, journeyID string) (domain.JourneyReport, error)
-	ExperimentReport(ctx context.Context, p domain.Principal, experimentID string) (domain.ExperimentReport, error)
+	CampaignReport(ctx context.Context, p domain.Principal, campaignID string, query domain.ReportQuery) (domain.CampaignReport, error)
+	JourneyReport(ctx context.Context, p domain.Principal, journeyID string, query domain.ReportQuery) (domain.JourneyReport, error)
+	ExperimentReport(ctx context.Context, p domain.Principal, experimentID string, query domain.ReportQuery) (domain.ExperimentReport, error)
 	GetOverview(ctx context.Context, p domain.Principal) (domain.Overview, error)
 	ProposeExperimentOptimization(ctx context.Context, p domain.Principal, experimentID string) (domain.OptimizationProposal, error)
 	ApproveExperimentOptimization(ctx context.Context, p domain.Principal, experimentID, proposalID string) (domain.ExperimentVersion, error)

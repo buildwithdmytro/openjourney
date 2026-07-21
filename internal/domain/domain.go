@@ -903,6 +903,66 @@ type ReportDeliverability struct {
 	ComplaintRate float64     `json:"complaint_rate"`
 }
 
+// ReportQuery specifies time range, granularity, dimensions, and filters for
+// report aggregation. Empty query returns today's point-in-time report
+// (backward-compatible). Granularity is one of: none, hour, day, week, month.
+type ReportQuery struct {
+	Start      time.Time         `json:"start,omitempty"`
+	End        time.Time         `json:"end,omitempty"`
+	Granularity string            `json:"granularity,omitempty"`
+	Dimensions []string          `json:"dimensions,omitempty"`
+	Filters    map[string]string `json:"filters,omitempty"`
+}
+
+// ValidateGranularity returns an error if granularity is not recognized.
+func (rq ReportQuery) ValidateGranularity() error {
+	if rq.Granularity == "" {
+		rq.Granularity = "none"
+	}
+	switch rq.Granularity {
+	case "none", "hour", "day", "week", "month":
+		return nil
+	default:
+		return errors.New("granularity must be one of: none, hour, day, week, month")
+	}
+}
+
+// AllowedDimensions is the set of dimension names that can be used in reports.
+var AllowedDimensions = map[string]bool{
+	"channel":  true,
+	"variant":  true,
+	"node":     true,
+	"provider": true,
+}
+
+// ValidateDimensions returns an error if any dimension is not in the allow-list.
+func (rq ReportQuery) ValidateDimensions() error {
+	for _, dim := range rq.Dimensions {
+		if !AllowedDimensions[dim] {
+			return errors.New("dimension must be one of: channel, variant, node, provider")
+		}
+	}
+	return nil
+}
+
+// AllowedFilters is the set of filter keys that can be used in reports.
+var AllowedFilters = map[string]bool{
+	"channel":  true,
+	"variant":  true,
+	"node":     true,
+	"provider": true,
+}
+
+// ValidateFilters returns an error if any filter key is not in the allow-list.
+func (rq ReportQuery) ValidateFilters() error {
+	for key := range rq.Filters {
+		if !AllowedFilters[key] {
+			return errors.New("filter must be one of: channel, variant, node, provider")
+		}
+	}
+	return nil
+}
+
 type CampaignReport struct {
 	CampaignID     string               `json:"campaign_id"`
 	Funnel         ReportFunnel         `json:"funnel"`

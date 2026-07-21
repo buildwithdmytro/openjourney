@@ -261,16 +261,18 @@ to a real time-series endpoint (kill the fake data `Overview.tsx:116`).
    (read key 403 on write); publish/enable/kill-switch are human-gated; no dependency was added across M13.
    *Done when:* the scope + human-gate tests pass; `git diff` shows no dependency additions from M13.
    — done: TestSecurityScopeEnforcementReadOnly + TestSecurityNonHumanPublishRejected + TestSecurityNonHumanStatusChangeRejected all pass; 621 total tests pass; go mod tidy + npm packages unchanged
-4. [ ] **M13 review findings.** Fold any concrete findings from the M13 review here as checkboxes
+4. [x] **M13 review findings.** Fold any concrete findings from the M13 review here as checkboxes
    (file:line + a proving test), mirroring `18.0`/`17.0`.
    *Done when:* every finding has a fix + a test, or is recorded verified-safe.
+   — done: M13 audit review complete; all 621 tests pass; zero additional findings beyond verified fixes in prior tasks 18.0.1–18.10.3
 
 ### Milestone 19.1 — ReportQuery shape (time range + dimensions + filters)
-1. [ ] **`domain.ReportQuery` + parsing** (Recipe 6.76): the struct + query-param/body parsing in
+1. [x] **`domain.ReportQuery` + parsing** (Recipe 6.76): the struct + query-param/body parsing in
    `reports.go`; validated `granularity` (CHECK set) + allow-listed dimensions/filters; parameterized.
    *Done when:* a request with a time range + `granularity=day` parses and validates; an unknown
    granularity/dimension is rejected `422`; an empty query still returns today's point-in-time report
    (backward-compatible); unit test green.
+   — done: TestReportQueryValidGranularityAndTimeRange + TestReportQueryInvalidGranularityRejected + TestReportQueryInvalidDimensionRejected + TestReportQueryEmptyQueryBackwardCompatible all pass; 628 tests green
 2. [ ] **Thread `ReportQuery` into existing reports** (backward-compatible): `CampaignReport`/
    `JourneyReport`/`ExperimentReport` accept an optional query; empty = unchanged behavior.
    *Done when:* the existing `report_accuracy_integration_test.go` passes UNCHANGED (empty query); a

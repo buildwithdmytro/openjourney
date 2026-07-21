@@ -31,7 +31,7 @@ func scanOptimizationProposal(row pgx.Row) (domain.OptimizationProposal, error) 
 // ProposeExperimentOptimization snapshots the current report and records only
 // an advisory winner. It deliberately does not alter variants or assignments.
 func (s *Store) ProposeExperimentOptimization(ctx context.Context, p domain.Principal, experimentID string) (domain.OptimizationProposal, error) {
-	report, err := s.ExperimentReport(ctx, p, experimentID)
+	report, err := s.ExperimentReport(ctx, p, experimentID, domain.ReportQuery{})
 	if err != nil {
 		return domain.OptimizationProposal{}, err
 	}

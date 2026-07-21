@@ -13,7 +13,9 @@ import (
 // CampaignReport reads only campaign dispositions and projection-maintained fact
 // tables. Total is the number of rows at a stage; unique is COUNT(DISTINCT
 // profile_id). Bounce and complaint rates divide total facts by total sent.
-func (s *Store) CampaignReport(ctx context.Context, p domain.Principal, campaignID string) (domain.CampaignReport, error) {
+// When query is empty (zero value), returns today's point-in-time report
+// (backward-compatible).
+func (s *Store) CampaignReport(ctx context.Context, p domain.Principal, campaignID string, query domain.ReportQuery) (domain.CampaignReport, error) {
 	if err := s.requireCampaignSource(ctx, p, campaignID); err != nil {
 		return domain.CampaignReport{}, err
 	}
@@ -55,7 +57,9 @@ func (s *Store) CampaignReport(ctx context.Context, p domain.Principal, campaign
 
 // JourneyReport uses the same definitions as CampaignReport, with message
 // intents as targeted dispositions and journey projection facts as later stages.
-func (s *Store) JourneyReport(ctx context.Context, p domain.Principal, journeyID string) (domain.JourneyReport, error) {
+// When query is empty (zero value), returns today's point-in-time report
+// (backward-compatible).
+func (s *Store) JourneyReport(ctx context.Context, p domain.Principal, journeyID string, query domain.ReportQuery) (domain.JourneyReport, error) {
 	if err := s.requireJourneySource(ctx, p, journeyID); err != nil {
 		return domain.JourneyReport{}, err
 	}
@@ -149,7 +153,7 @@ func setDeliverabilityRates(sent int64, deliverability *domain.ReportDeliverabil
 
 // ExperimentReport generates a statistical report for an experiment, comparing
 // each variant to the control variant on the primary goal and reporting guardrail rates.
-func (s *Store) ExperimentReport(ctx context.Context, p domain.Principal, experimentID string) (domain.ExperimentReport, error) {
+func (s *Store) ExperimentReport(ctx context.Context, p domain.Principal, experimentID string, reportQuery domain.ReportQuery) (domain.ExperimentReport, error) {
 	e, err := s.GetExperiment(ctx, p, experimentID)
 	if err != nil {
 		return domain.ExperimentReport{}, err

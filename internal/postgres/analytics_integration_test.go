@@ -97,7 +97,7 @@ func TestCampaignAndJourneyReportsExactCountsAndWorkspaceIsolation(t *testing.T)
 	seedReportFacts(t, ctx, store, p, "campaign", campaignID, profileIDs)
 	seedCrossWorkspaceFacts(t, ctx, store, pOther, "campaign", campaignID, otherProfileID)
 
-	campaign, err := store.CampaignReport(ctx, p, campaignID)
+	campaign, err := store.CampaignReport(ctx, p, campaignID, domain.ReportQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func TestCampaignAndJourneyReportsExactCountsAndWorkspaceIsolation(t *testing.T)
 	if campaign.CampaignID != campaignID {
 		t.Errorf("campaign id = %q, want %q", campaign.CampaignID, campaignID)
 	}
-	if _, err := store.CampaignReport(ctx, pOther, campaignID); !errors.Is(err, ErrNotFound) {
+	if _, err := store.CampaignReport(ctx, pOther, campaignID, domain.ReportQuery{}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("cross-workspace campaign report error = %v, want ErrNotFound", err)
 	}
 
@@ -115,7 +115,7 @@ func TestCampaignAndJourneyReportsExactCountsAndWorkspaceIsolation(t *testing.T)
 	seedReportFacts(t, ctx, store, p, "journey", journeyID, profileIDs)
 	seedCrossWorkspaceFacts(t, ctx, store, pOther, "journey", journeyID, otherProfileID)
 
-	journey, err := store.JourneyReport(ctx, p, journeyID)
+	journey, err := store.JourneyReport(ctx, p, journeyID, domain.ReportQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestCampaignAndJourneyReportsExactCountsAndWorkspaceIsolation(t *testing.T)
 	if journey.JourneyID != journeyID {
 		t.Errorf("journey id = %q, want %q", journey.JourneyID, journeyID)
 	}
-	if _, err := store.JourneyReport(ctx, pOther, journeyID); !errors.Is(err, ErrNotFound) {
+	if _, err := store.JourneyReport(ctx, pOther, journeyID, domain.ReportQuery{}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("cross-workspace journey report error = %v, want ErrNotFound", err)
 	}
 }
@@ -443,7 +443,7 @@ func TestExperimentReport(t *testing.T) {
 	}
 
 	// Run report
-	rpt, err := store.ExperimentReport(ctx, p, exp.ID)
+	rpt, err := store.ExperimentReport(ctx, p, exp.ID, domain.ReportQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -516,7 +516,7 @@ func TestExperimentReport(t *testing.T) {
 	}
 
 	// Isolation check
-	_, err = store.ExperimentReport(ctx, pOther, exp.ID)
+	_, err = store.ExperimentReport(ctx, pOther, exp.ID, domain.ReportQuery{})
 	if !errors.Is(err, ErrNotFound) {
 		t.Errorf("expected ErrNotFound for other workspace, got %v", err)
 	}

@@ -164,7 +164,7 @@ func TestReportAccuracyFromProjectedEvents(t *testing.T) {
 		}
 	}
 
-	campaignReport, err := store.CampaignReport(ctx, p, campaign.ID)
+	campaignReport, err := store.CampaignReport(ctx, p, campaign.ID, domain.ReportQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +187,7 @@ func TestReportAccuracyFromProjectedEvents(t *testing.T) {
 		t.Fatalf("campaign deliverability=%+v, want %+v", campaignReport.Deliverability, wantDeliverability)
 	}
 
-	experimentReport, err := store.ExperimentReport(ctx, p, experiment.ID)
+	experimentReport, err := store.ExperimentReport(ctx, p, experiment.ID, domain.ReportQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
