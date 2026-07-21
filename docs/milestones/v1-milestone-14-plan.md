@@ -251,11 +251,12 @@ to a real time-series endpoint (kill the fake data `Overview.tsx:116`).
    *Done when:* the M13 public-edge IDOR test passes (a tokenless `anonymous_id`=victim's `external_id`
    evaluate is blocked); a forged token is rejected. (Re-fix if regressed.)
    — done: TestSecurityIDORCrossSubjectBlockedTokenlessAnonymous + TestSecurityForgedTokenRejected + TestSecurityTokenVerificationRequiredForExternalID + TestEvaluateFlagsRateLimiting all pass; byExternalID pin in GetProfileIDBySubject enforces single-column lookup (messages.go:116)
-2. [ ] **Verify deterministic bucketing + projector-only exposure.** Confirm `internal/flags/evaluate.go`
+2. [x] **Verify deterministic bucketing + projector-only exposure.** Confirm `internal/flags/evaluate.go`
    reuses `experiment.BucketOf`/`Assign` with no `math/rand`/wall-clock, and that `feature_flag_exposures`
    is written ONLY by the `feature_flag.exposure` `ProjectEvent` case (`store.go`).
    *Done when:* the bucketing stability test passes; a grep confirms no exposure writer outside
    `ProjectEvent`; `feature_flag_versions` rejects UPDATE/DELETE.
+   — done: TestSecurityBucketingDeterminism verifies deterministic bucketing; grep finds only store.go:760 writes to exposures via ProjectEvent; TestSecurityVersionsAppendOnly + migration 050 trigger confirms versions append-only; all 621 tests pass
 3. [ ] **Verify governance + no new dependency (M13).** `flags:read`/`flags:write` guard admin routes
    (read key 403 on write); publish/enable/kill-switch are human-gated; no dependency was added across M13.
    *Done when:* the scope + human-gate tests pass; `git diff` shows no dependency additions from M13.

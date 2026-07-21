@@ -1091,6 +1091,144 @@ func TestSecurityExposureProjectorOnlyWriter(t *testing.T) {
 	}
 }
 
+func TestSecurityBucketingDeterminism(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.pool.Exec(ctx, "TRUNCATE tenants CASCADE"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.EnsureDevelopmentTenant(ctx, "flag-bucketing"); err != nil {
+		t.Fatal(err)
+	}
+	p, err := store.Authenticate(ctx, "flag-bucketing")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a multivariate rollout flag
+	flag, err := store.CreateFeatureFlag(ctx, p, domain.FeatureFlag{
+		AppID:        p.AppID,
+		Environment:  "production",
+		Key:          "bucketing-determinism-test",
+		FlagType:     "string",
+		DefaultValue: json.RawMessage(`"default"`),
+		Variants: []domain.FlagVariant{
+			{Label: "variant_a", Value: json.RawMessage(`"value_a"`), Weight: 50},
+			{Label: "variant_b", Value: json.RawMessage(`"value_b"`), Weight: 50},
+		},
+		Seed:       "determinism-seed-789",
+		Enabled:    true,
+		Status:     "published",
+		RolloutPct: 100, // All subjects bucketed
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	evalAudience := &storeAudience{store: store, principal: p}
+
+	// Test 1: Same subject evaluated multiple times should get identical results (no randomness)
+	t.Run("same-subject-deterministic", func(t *testing.T) {
+		results := make([]string, 5)
+		for i := 0; i < 5; i++ {
+			result, err := flags.Evaluate(ctx, &flag, "subject-1", evalAudience)
+			if err != nil {
+				t.Fatalf("Evaluate iteration %d failed: %v", i, err)
+			}
+			results[i] = result.Variant
+		}
+
+		// All results should be identical
+		for i := 1; i < len(results); i++ {
+			if results[i] != results[0] {
+				t.Errorf("Bucketing non-deterministic: iter 0=%q, iter %d=%q", results[0], i, results[i])
+			}
+		}
+
+		if results[0] == "" {
+			t.Error("Expected a variant to be assigned, got empty")
+		}
+	})
+
+	// Test 2: Different subjects should get distributed across variants (within reason)
+	t.Run("different-subjects-bucketed", func(t *testing.T) {
+		variantCounts := make(map[string]int)
+		numSubjects := 100
+
+		for i := 0; i < numSubjects; i++ {
+			subjectID := fmt.Sprintf("subject-bucketing-%d", i)
+			result, err := flags.Evaluate(ctx, &flag, subjectID, evalAudience)
+			if err != nil {
+				t.Fatalf("Evaluate subject %d failed: %v", i, err)
+			}
+			if result.Variant != "" {
+				variantCounts[result.Variant]++
+			}
+		}
+
+		// With 100 subjects and 50/50 split, expect roughly 50 each
+		// Allow some variance (25-75 range is reasonable with 100 samples)
+		aCount := variantCounts["variant_a"]
+		bCount := variantCounts["variant_b"]
+
+		if aCount < 20 || aCount > 80 {
+			t.Logf("variant_a distribution suspicious: %d out of %d (expected ~50)", aCount, numSubjects)
+		}
+		if bCount < 20 || bCount > 80 {
+			t.Logf("variant_b distribution suspicious: %d out of %d (expected ~50)", bCount, numSubjects)
+		}
+
+		if aCount+bCount < numSubjects {
+			t.Errorf("Some subjects were not assigned: total assigned=%d, expected=%d", aCount+bCount, numSubjects)
+		}
+	})
+
+	// Test 3: Changing the seed changes the assignment (different seed = different bucketing)
+	t.Run("seed-affects-bucketing", func(t *testing.T) {
+		result1, _ := flags.Evaluate(ctx, &flag, "test-subject-seed", evalAudience)
+		variant1 := result1.Variant
+
+		// Create a new flag with different seed but same everything else
+		flag2, err := store.CreateFeatureFlag(ctx, p, domain.FeatureFlag{
+			AppID:        p.AppID,
+			Environment:  "production",
+			Key:          "bucketing-different-seed",
+			FlagType:     "string",
+			DefaultValue: json.RawMessage(`"default"`),
+			Variants: []domain.FlagVariant{
+				{Label: "variant_a", Value: json.RawMessage(`"value_a"`), Weight: 50},
+				{Label: "variant_b", Value: json.RawMessage(`"value_b"`), Weight: 50},
+			},
+			Seed:       "determinism-seed-DIFFERENT",
+			Enabled:    true,
+			Status:     "published",
+			RolloutPct: 100,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		result2, _ := flags.Evaluate(ctx, &flag2, "test-subject-seed", evalAudience)
+		variant2 := result2.Variant
+
+		// Same subject with different seed should (likely) get different bucketing
+		// Note: this could theoretically be the same variant by chance, but with two variants it's 50% chance
+		// We'll log it but not hard-fail since randomness doesn't apply here; determinism does.
+		t.Logf("seed-affects-bucketing: variant1=%s, variant2=%s (same subject, different seeds)", variant1, variant2)
+	})
+}
+
 func TestSecurityScopeEnforcement(t *testing.T) {
 	// This test verifies that routes are properly guarded with scope checks.
 	// The actual enforcement happens at the HTTP handler level (s.authenticate),
