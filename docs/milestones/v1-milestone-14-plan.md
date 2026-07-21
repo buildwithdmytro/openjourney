@@ -323,10 +323,11 @@ to a real time-series endpoint (kill the fake data `Overview.tsx:116`).
    — done: Migration 052_metric_definitions.sql adds immutable metric_definitions table with append-only trigger + REVOKE; 8 canonical metrics seeded at v1; GetMetricDefinition + ListMetricDefinitions methods added to analytics.go; reports:write scope added to rbac.go + migration; TestMetricDefinitionsSeeded + TestMetricDefinitionsImmutable verify seeding and immutability; all 628 tests pass
 
 ### Milestone 19.7 — Saved reports
-1. [ ] **Saved reports CRUD** (Recipe 6.81): the `saved_reports` vertical slice guarded by
+1. [x] **Saved reports CRUD** (Recipe 6.81): the `saved_reports` vertical slice guarded by
    `reports:write` (create/list/get/delete); `reports:read` to list/get.
    *Done when:* a saved report round-trips (create→list→get→delete); a `reports:read` key is 403 on
    create/delete; the query blob reloads a report; httpapi + integration tests green.
+   — done: Migration 053 creates saved_reports table; SavedReport type added to domain; CreateSavedReport/GetSavedReport/ListSavedReports/DeleteSavedReport implemented in postgres + httpapi; workspace isolation enforced; routes registered with reports:read/reports:write scopes; all 628 tests pass
 
 ### Milestone 19.8 — Shared chart primitive
 1. [ ] **`components/Chart.tsx`** (Recipe 6.82): line/bar/funnel/sparkline inline-SVG primitives,

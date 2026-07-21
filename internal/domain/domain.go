@@ -1480,3 +1480,15 @@ type MetricDefinition struct {
 	Unit      string     `json:"unit"`
 	CreatedAt time.Time  `json:"created_at"`
 }
+
+type SavedReport struct {
+	ID              string          `json:"id"`
+	TenantID        string          `json:"tenant_id"`
+	WorkspaceID     string          `json:"workspace_id"`
+	Name            string          `json:"name"`
+	ReportType      string          `json:"report_type"` // funnel, deliverability, retention, cohort, growth, cost, experiment
+	Query           ReportQuery     `json:"query"`
+	CreatedByUserID *string         `json:"created_by_user_id,omitempty"`
+	CreatedAt       time.Time       `json:"created_at"`
+	UpdatedAt       time.Time       `json:"updated_at"`
+}

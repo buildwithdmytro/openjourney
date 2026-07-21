@@ -202,6 +202,11 @@ type Store interface {
 	ApproveExperimentOptimization(ctx context.Context, p domain.Principal, experimentID, proposalID string) (domain.ExperimentVersion, error)
 	RolloutExperiment(ctx context.Context, p domain.Principal, experimentID string) (domain.ExperimentRollout, error)
 
+	CreateSavedReport(ctx context.Context, p domain.Principal, report domain.SavedReport) (domain.SavedReport, error)
+	GetSavedReport(ctx context.Context, p domain.Principal, id string) (domain.SavedReport, error)
+	ListSavedReports(ctx context.Context, p domain.Principal) ([]domain.SavedReport, error)
+	DeleteSavedReport(ctx context.Context, p domain.Principal, id string) error
+
 	CreateAIProviderConfig(ctx context.Context, p domain.Principal, cfg domain.AIProviderConfig) (domain.AIProviderConfig, error)
 	GetAIProviderConfig(ctx context.Context, p domain.Principal, id string) (domain.AIProviderConfig, error)
 	GetDefaultAIProviderConfig(ctx context.Context, p domain.Principal) (domain.AIProviderConfig, error)
