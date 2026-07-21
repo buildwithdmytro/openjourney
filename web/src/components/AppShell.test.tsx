@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { AppShell } from "./AppShell";
 
-type View = "overview" | "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "copilots" | "governance" | "extensions" | "connectors" | "suppressions" | "sender-identities" | "device-tokens" | "acquisition" | "messaging" | "flags";
+type View = "overview" | "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "analytics" | "copilots" | "governance" | "extensions" | "connectors" | "suppressions" | "sender-identities" | "device-tokens" | "acquisition" | "messaging" | "flags";
 
 const viewTitles: Record<View, [string, string]> = {
   overview: ["Overview", "At a glance view of your workspace activity and resources."],
@@ -20,6 +20,7 @@ const viewTitles: Record<View, [string, string]> = {
   journeys: ["Journeys", "Design, publish, and monitor automated customer experiences."],
   experiments: ["Experiments", "Create controlled tests with stable audience assignment."],
   reports: ["Reports", "Compare delivery, conversion, and experiment performance."],
+  analytics: ["Analytics", "Explore time-series trends, retention cohorts, audience growth, and spending."],
   copilots: ["AI Copilots", "Create governed drafts for review and human approval."],
   governance: ["AI Governance", "Manage providers, budgets, redaction, and AI activity."],
   extensions: ["Extensions", "Install signed providers, configure grants, and review extension health."],

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getOverview, Overview as OverviewType } from "../api";
+import { getOverview, Overview as OverviewType, listCampaigns, getCampaignFunnelOverTimeReport } from "../api";
 import { Card, EmptyState, Spinner, Sparkline } from "../components";
 import { message } from "../errors";
 
@@ -8,10 +8,12 @@ interface OverviewCard {
   value: number;
   link?: string;
   color?: string;
+  sparklineData?: number[];
 }
 
 export default function Overview({ apiKey, baseURL }: { apiKey: string; baseURL: string }) {
   const [data, setData] = useState<OverviewType | null>(null);
+  const [sparklineMap, setSparklineMap] = useState<Record<string, number[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -19,12 +21,29 @@ export default function Overview({ apiKey, baseURL }: { apiKey: string; baseURL:
     let active = true;
     setError("");
     setLoading(true);
-    getOverview(baseURL, apiKey)
-      .then((result) => {
-        if (active) {
-          setData(result);
-          setLoading(false);
+
+    Promise.all([getOverview(baseURL, apiKey), listCampaigns(baseURL, apiKey)])
+      .then(async ([overview, campaigns]) => {
+        if (!active) return;
+        setData(overview);
+
+        if (campaigns.length > 0) {
+          const query = { granularity: "day", start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), end: new Date().toISOString() };
+          try {
+            const report = await getCampaignFunnelOverTimeReport(baseURL, apiKey, campaigns[0].id, query);
+            if (active) {
+              const delivered = report.buckets.map(b => b.funnel.delivered.total);
+              const opened = report.buckets.map(b => b.funnel.opened.total);
+              const clicked = report.buckets.map(b => b.funnel.clicked.total);
+              setSparklineMap({ delivered, opened, clicked });
+            }
+          } catch (cause) {
+            if (active) {
+              console.error("Could not load sparkline data:", cause);
+            }
+          }
         }
+        if (active) setLoading(false);
       })
       .catch((cause: unknown) => {
         if (active) {
@@ -64,7 +83,7 @@ export default function Overview({ apiKey, baseURL }: { apiKey: string; baseURL:
     { label: "Profiles", value: data.profiles, link: "#profiles", color: "accent" },
     { label: "Journeys", value: data.journeys, link: "#journeys" },
     { label: "Campaigns", value: data.campaigns, link: "#campaigns" },
-    { label: "Delivery Attempts", value: data.delivery_attempts, link: "#reports" },
+    { label: "Delivery Attempts", value: data.delivery_attempts, link: "#reports", sparklineData: sparklineMap.delivered },
     { label: "In-App Messages", value: data.inapp_messages, link: "#messaging" },
     { label: "Connector Runs", value: data.connector_runs, link: "#connectors" },
   ];
@@ -85,7 +104,7 @@ export default function Overview({ apiKey, baseURL }: { apiKey: string; baseURL:
               )}
             </div>
             <div className="card-value">{card.value.toLocaleString()}</div>
-            {card.value > 0 && <Sparkline data={[card.value * 0.6, card.value * 0.8, card.value]} label={`${card.label} trend`} />}
+            {card.value > 0 && <Sparkline data={card.sparklineData && card.sparklineData.length > 0 ? card.sparklineData : [card.value * 0.6, card.value * 0.8, card.value]} label={`${card.label} trend`} />}
           </Card>
         ))}
       </div>

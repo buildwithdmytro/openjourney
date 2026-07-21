@@ -343,13 +343,14 @@ to a real time-series endpoint (kill the fake data `Overview.tsx:116`).
    — done: Overview uses Sparkline (Overview.tsx:88); Reports uses FunnelChart (Reports.tsx:203); Reports controls refactored to use Select/Card/Field/EmptyState/Spinner M12 components; all 273 web tests pass; typecheck + build green
 
 ### Milestone 19.9 — Analytics dashboard
-1. [ ] **Analytics section** (Recipe 6.83): `web/src/sections/Analytics.tsx` on the M12 library + `Chart`
+1. [x] **Analytics section** (Recipe 6.83): `web/src/sections/Analytics.tsx` on the M12 library + `Chart`
    — over-time funnel, retention grid, growth, cost/deliverability trends, saved-report load/save;
    6-point `App.tsx` registration + `api.ts` wrappers. Wire Overview's sparklines to a real time-series
    endpoint (remove the faked data `Overview.tsx:116`).
    *Done when:* `cd web && npm run typecheck && npm run build && npm test` green; the dashboard renders
    over-time + retention + cost charts from live endpoints, saves/loads a report, and Overview shows real
    (not synthesized) trend data.
+   — done: Analytics.tsx created with over-time/retention/growth/cost charts + save/load; 6-point App.tsx registration added (lazy import, View type, viewTitles, AVAILABLE_SCOPES, conditional rendering, Sidebar/CommandPalette); api.ts wrappers added for all analytics endpoints; Overview updated to fetch real funnel-over-time data instead of synthetic; all 273 web tests + 628 Go tests green
 
 ### Milestone 19.10 — Integration, accuracy & audit closeout
 1. [ ] **Analytics accuracy E2E**: seed a fixture of events across time buckets and cohorts, project them,

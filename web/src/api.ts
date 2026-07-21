@@ -996,3 +996,173 @@ export async function publishFeatureFlag(baseURL: string, apiKey: string, id: st
 export async function setFeatureFlagStatus(baseURL: string, apiKey: string, id: string, status: string): Promise<FeatureFlag> {
   return requestJSON<FeatureFlag>(baseURL, apiKey, `/v1/flags/${encodeURIComponent(id)}/status`, { method: "PUT", body: JSON.stringify({ status }) });
 }
+
+export type TimeBucket = {
+  time: string;
+  funnel: ReportFunnel;
+  deliverability: ReportDeliverability;
+};
+
+export type FunnelOverTimeReport = {
+  campaign_id?: string;
+  journey_id?: string;
+  buckets: TimeBucket[];
+};
+
+export type CohortData = {
+  cohort_time: string;
+  sizes: number[];
+};
+
+export type RetentionReport = {
+  campaign_id?: string;
+  journey_id?: string;
+  granularity: string;
+  cohorts: CohortData[];
+};
+
+export type GrowthBucket = {
+  time: string;
+  new_profiles: number;
+  net_growth: number;
+  segment_memberships: number;
+};
+
+export type GrowthReport = {
+  campaign_id?: string;
+  journey_id?: string;
+  buckets: GrowthBucket[];
+};
+
+export type CostBucket = {
+  time: string;
+  total_cost_micros: number;
+  send_count: number;
+  cost_per_send: number;
+};
+
+export type CostReport = {
+  campaign_id?: string;
+  journey_id?: string;
+  buckets: CostBucket[];
+};
+
+export type SavedReport = {
+  id: string;
+  tenant_id: string;
+  workspace_id: string;
+  name: string;
+  report_type: string;
+  query: Record<string, unknown>;
+  created_by_user_id?: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export async function getCampaignFunnelOverTimeReport(
+  baseURL: string,
+  apiKey: string,
+  id: string,
+  query?: Record<string, unknown>,
+): Promise<FunnelOverTimeReport> {
+  const params = query ? new URLSearchParams(Object.entries(query).map(([k, v]) => [k, String(v)])) : null;
+  const path = `/v1/reports/campaigns/${encodeURIComponent(id)}/funnel-over-time${params ? `?${params}` : ''}`;
+  return requestJSON<FunnelOverTimeReport>(baseURL, apiKey, path);
+}
+
+export async function getJourneyFunnelOverTimeReport(
+  baseURL: string,
+  apiKey: string,
+  id: string,
+  query?: Record<string, unknown>,
+): Promise<FunnelOverTimeReport> {
+  const params = query ? new URLSearchParams(Object.entries(query).map(([k, v]) => [k, String(v)])) : null;
+  const path = `/v1/reports/journeys/${encodeURIComponent(id)}/funnel-over-time${params ? `?${params}` : ''}`;
+  return requestJSON<FunnelOverTimeReport>(baseURL, apiKey, path);
+}
+
+export async function getCampaignRetentionReport(
+  baseURL: string,
+  apiKey: string,
+  id: string,
+  query?: Record<string, unknown>,
+): Promise<RetentionReport> {
+  const params = query ? new URLSearchParams(Object.entries(query).map(([k, v]) => [k, String(v)])) : null;
+  const path = `/v1/reports/campaigns/${encodeURIComponent(id)}/retention${params ? `?${params}` : ''}`;
+  return requestJSON<RetentionReport>(baseURL, apiKey, path);
+}
+
+export async function getJourneyRetentionReport(
+  baseURL: string,
+  apiKey: string,
+  id: string,
+  query?: Record<string, unknown>,
+): Promise<RetentionReport> {
+  const params = query ? new URLSearchParams(Object.entries(query).map(([k, v]) => [k, String(v)])) : null;
+  const path = `/v1/reports/journeys/${encodeURIComponent(id)}/retention${params ? `?${params}` : ''}`;
+  return requestJSON<RetentionReport>(baseURL, apiKey, path);
+}
+
+export async function getCampaignGrowthReport(
+  baseURL: string,
+  apiKey: string,
+  id: string,
+  query?: Record<string, unknown>,
+): Promise<GrowthReport> {
+  const params = query ? new URLSearchParams(Object.entries(query).map(([k, v]) => [k, String(v)])) : null;
+  const path = `/v1/reports/campaigns/${encodeURIComponent(id)}/growth${params ? `?${params}` : ''}`;
+  return requestJSON<GrowthReport>(baseURL, apiKey, path);
+}
+
+export async function getJourneyGrowthReport(
+  baseURL: string,
+  apiKey: string,
+  id: string,
+  query?: Record<string, unknown>,
+): Promise<GrowthReport> {
+  const params = query ? new URLSearchParams(Object.entries(query).map(([k, v]) => [k, String(v)])) : null;
+  const path = `/v1/reports/journeys/${encodeURIComponent(id)}/growth${params ? `?${params}` : ''}`;
+  return requestJSON<GrowthReport>(baseURL, apiKey, path);
+}
+
+export async function getCampaignCostReport(
+  baseURL: string,
+  apiKey: string,
+  id: string,
+  query?: Record<string, unknown>,
+): Promise<CostReport> {
+  const params = query ? new URLSearchParams(Object.entries(query).map(([k, v]) => [k, String(v)])) : null;
+  const path = `/v1/reports/campaigns/${encodeURIComponent(id)}/cost${params ? `?${params}` : ''}`;
+  return requestJSON<CostReport>(baseURL, apiKey, path);
+}
+
+export async function getJourneyCostReport(
+  baseURL: string,
+  apiKey: string,
+  id: string,
+  query?: Record<string, unknown>,
+): Promise<CostReport> {
+  const params = query ? new URLSearchParams(Object.entries(query).map(([k, v]) => [k, String(v)])) : null;
+  const path = `/v1/reports/journeys/${encodeURIComponent(id)}/cost${params ? `?${params}` : ''}`;
+  return requestJSON<CostReport>(baseURL, apiKey, path);
+}
+
+export async function listSavedReports(baseURL: string, apiKey: string): Promise<SavedReport[]> {
+  return (await requestJSON<{ reports: SavedReport[] | null }>(baseURL, apiKey, "/v1/saved-reports")).reports ?? [];
+}
+
+export async function createSavedReport(
+  baseURL: string,
+  apiKey: string,
+  input: Omit<SavedReport, "id" | "tenant_id" | "created_by_user_id" | "created_at" | "updated_at">,
+): Promise<SavedReport> {
+  return requestJSON<SavedReport>(baseURL, apiKey, "/v1/saved-reports", { method: "POST", body: JSON.stringify(input) });
+}
+
+export async function getSavedReport(baseURL: string, apiKey: string, id: string): Promise<SavedReport> {
+  return requestJSON<SavedReport>(baseURL, apiKey, `/v1/saved-reports/${encodeURIComponent(id)}`);
+}
+
+export async function deleteSavedReport(baseURL: string, apiKey: string, id: string): Promise<void> {
+  await requestJSON<void>(baseURL, apiKey, `/v1/saved-reports/${encodeURIComponent(id)}`, { method: "DELETE" });
+}

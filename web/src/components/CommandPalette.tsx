@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import Modal from "./Modal";
 
-type View = "overview" | "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "copilots" | "governance" | "extensions" | "connectors" | "suppressions" | "sender-identities" | "device-tokens" | "acquisition" | "messaging" | "flags";
+type View = "overview" | "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "analytics" | "copilots" | "governance" | "extensions" | "connectors" | "suppressions" | "sender-identities" | "device-tokens" | "acquisition" | "messaging" | "flags";
 
 interface PaletteItem {
   label: string;
@@ -25,7 +25,7 @@ const navGroups = [
   },
   {
     label: "AI & Insights",
-    items: ["copilots", "governance", "reports"],
+    items: ["copilots", "governance", "reports", "analytics"],
   },
   {
     label: "Data",
@@ -57,6 +57,7 @@ const viewTitles: Record<View, [string, string]> = {
   journeys: ["Journeys", "Design, publish, and monitor automated customer experiences."],
   experiments: ["Experiments", "Create controlled tests with stable audience assignment."],
   reports: ["Reports", "Compare delivery, conversion, and experiment performance."],
+  analytics: ["Analytics", "Explore time-series trends, retention cohorts, audience growth, and spending."],
   copilots: ["AI Copilots", "Create governed drafts for review and human approval."],
   governance: ["AI Governance", "Manage providers, budgets, redaction, and AI activity."],
   extensions: ["Extensions", "Install signed providers, configure grants, and review extension health."],

@@ -25,6 +25,7 @@ const Overview = lazy(() => import("./sections/Overview"));
 const Journeys = lazy(() => import("./sections/Journeys"));
 const Experiments = lazy(() => import("./sections/Experiments"));
 const Reports = lazy(() => import("./sections/Reports"));
+const Analytics = lazy(() => import("./sections/Analytics"));
 const Copilots = lazy(() => import("./sections/Copilots"));
 const Governance = lazy(() => import("./sections/Governance"));
 const Extensions = lazy(() => import("./sections/Extensions"));
@@ -61,7 +62,7 @@ function SuspenseLoader() {
   return <div style={{ display: "flex", gap: "12px", alignItems: "center" }} role="status"><Skeleton height="24px" width="100%" /></div>;
 }
 
-type View = "overview" | "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "copilots" | "governance" | "extensions" | "connectors" | "suppressions" | "sender-identities" | "device-tokens" | "acquisition" | "messaging" | "flags";
+type View = "overview" | "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "analytics" | "copilots" | "governance" | "extensions" | "connectors" | "suppressions" | "sender-identities" | "device-tokens" | "acquisition" | "messaging" | "flags";
 type CredentialSource = "manual" | "session" | "oidc";
 
 const viewTitles: Record<View, [string, string]> = {
@@ -80,6 +81,7 @@ const viewTitles: Record<View, [string, string]> = {
   journeys: ["Journeys", "Design, publish, and monitor automated customer experiences."],
   experiments: ["Experiments", "Create controlled tests with stable audience assignment."],
   reports: ["Reports", "Compare delivery, conversion, and experiment performance."],
+  analytics: ["Analytics", "Explore time-series trends, retention cohorts, audience growth, and spending."],
   copilots: ["AI Copilots", "Create governed drafts for review and human approval."],
   governance: ["AI Governance", "Manage providers, budgets, redaction, and AI activity."],
   extensions: ["Extensions", "Install signed providers, configure grants, and review extension health."],
@@ -126,6 +128,7 @@ const AVAILABLE_SCOPES = [
   "experiments:read",
   "experiments:write",
   "reports:read",
+  "reports:write",
   "messages:read",
   "messages:write",
   "connectors:read",
@@ -298,6 +301,7 @@ export function App() {
           )}
           {view === "experiments" && <Suspense fallback={<p role="status">Loading experiments…</p>}><Experiments apiKey={apiKey} baseURL={apiBase} /></Suspense>}
           {view === "reports" && <Suspense fallback={<p role="status">Loading reports…</p>}><Reports apiKey={apiKey} baseURL={apiBase} /></Suspense>}
+          {view === "analytics" && <Suspense fallback={<p role="status">Loading analytics…</p>}><Analytics apiKey={apiKey} baseURL={apiBase} /></Suspense>}
           {view === "messaging" && <Suspense fallback={<p role="status">Loading messaging…</p>}><Messaging apiKey={apiKey} baseURL={apiBase} /></Suspense>}
           {view === "copilots" && <Suspense fallback={<p role="status">Loading AI copilots…</p>}><Copilots apiKey={apiKey} baseURL={apiBase} /></Suspense>}
           {view === "governance" && <Suspense fallback={<p role="status">Loading AI governance…</p>}><Governance apiKey={apiKey} baseURL={apiBase} /></Suspense>}

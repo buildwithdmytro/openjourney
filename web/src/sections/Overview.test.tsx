@@ -4,11 +4,15 @@ import Overview from "./Overview";
 
 vi.mock("../api", () => ({
   getOverview: vi.fn(),
+  listCampaigns: vi.fn(),
+  getCampaignFunnelOverTimeReport: vi.fn(),
 }));
 
 import * as api from "../api";
 
-const mockApiCall = api.getOverview as ReturnType<typeof vi.fn>;
+const mockGetOverview = api.getOverview as ReturnType<typeof vi.fn>;
+const mockListCampaigns = api.listCampaigns as ReturnType<typeof vi.fn>;
+const mockGetCampaignFunnelOverTimeReport = api.getCampaignFunnelOverTimeReport as ReturnType<typeof vi.fn>;
 
 describe("Overview", () => {
   beforeEach(() => {
@@ -20,18 +24,19 @@ describe("Overview", () => {
   });
 
   it("renders loading state", () => {
-    mockApiCall.mockImplementation(
+    mockGetOverview.mockImplementation(
       () =>
         new Promise(() => {
           // never resolve
         })
     );
+    mockListCampaigns.mockResolvedValue([]);
     const { container } = render(<Overview apiKey="test-key" baseURL="http://api" />);
     expect(container.querySelector('[role="status"]')).toBeInTheDocument();
   });
 
   it("displays overview data when loaded", async () => {
-    mockApiCall.mockResolvedValue({
+    mockGetOverview.mockResolvedValue({
       profiles: 150,
       journeys: 5,
       campaigns: 12,
@@ -39,6 +44,7 @@ describe("Overview", () => {
       inapp_messages: 45,
       connector_runs: 89,
     });
+    mockListCampaigns.mockResolvedValue([]);
 
     render(<Overview apiKey="test-key" baseURL="http://api" />);
 
@@ -55,7 +61,7 @@ describe("Overview", () => {
   });
 
   it("shows labels for each card", async () => {
-    mockApiCall.mockResolvedValue({
+    mockGetOverview.mockResolvedValue({
       profiles: 100,
       journeys: 5,
       campaigns: 10,
@@ -63,6 +69,7 @@ describe("Overview", () => {
       inapp_messages: 20,
       connector_runs: 50,
     });
+    mockListCampaigns.mockResolvedValue([]);
 
     const { container } = render(<Overview apiKey="test-key" baseURL="http://api" />);
 
@@ -82,7 +89,7 @@ describe("Overview", () => {
   });
 
   it("includes navigation links to sections", async () => {
-    mockApiCall.mockResolvedValue({
+    mockGetOverview.mockResolvedValue({
       profiles: 100,
       journeys: 5,
       campaigns: 10,
@@ -90,6 +97,7 @@ describe("Overview", () => {
       inapp_messages: 20,
       connector_runs: 50,
     });
+    mockListCampaigns.mockResolvedValue([]);
 
     const { container } = render(<Overview apiKey="test-key" baseURL="http://api" />);
 
@@ -105,7 +113,7 @@ describe("Overview", () => {
   });
 
   it("shows empty state for empty workspace", async () => {
-    mockApiCall.mockResolvedValue({
+    mockGetOverview.mockResolvedValue({
       profiles: 0,
       journeys: 0,
       campaigns: 0,
@@ -113,6 +121,7 @@ describe("Overview", () => {
       inapp_messages: 0,
       connector_runs: 0,
     });
+    mockListCampaigns.mockResolvedValue([]);
 
     render(<Overview apiKey="test-key" baseURL="http://api" />);
 
@@ -125,7 +134,8 @@ describe("Overview", () => {
   });
 
   it("handles fetch error", async () => {
-    mockApiCall.mockRejectedValue(new Error("Network error"));
+    mockGetOverview.mockRejectedValue(new Error("Network error"));
+    mockListCampaigns.mockResolvedValue([]);
 
     render(<Overview apiKey="test-key" baseURL="http://api" />);
 
@@ -137,7 +147,7 @@ describe("Overview", () => {
   });
 
   it("shows page description", async () => {
-    mockApiCall.mockResolvedValue({
+    mockGetOverview.mockResolvedValue({
       profiles: 100,
       journeys: 5,
       campaigns: 10,
@@ -145,6 +155,7 @@ describe("Overview", () => {
       inapp_messages: 20,
       connector_runs: 50,
     });
+    mockListCampaigns.mockResolvedValue([]);
 
     const { container } = render(<Overview apiKey="test-key" baseURL="http://api" />);
 
