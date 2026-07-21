@@ -383,10 +383,11 @@ registration. ConfirmDialog on publish + kill-switch toggle. Theme-aware; no new
    *Done when:* `cd sdk/javascript && npm run build && npm test` green; the SDK fetches + caches flags,
    returns the cached value offline, and falls back to a supplied default for an unknown key.
    — done: fetchFlags(token, environment) implemented with FlagValue/FlagEvaluation/FlagsResponse types; FLAGS_KEY cache with loadFlags/persistFlags; offline fallback on network error; getFlag(key, default) with default fallback; getVariant(key); 30 tests green including cache persistence, network error fallback, and default fallback
-2. [ ] **Flag read + exposure emit**: `getFlag(key, default)`/`getVariant(key)` return the cached value and
+2. [x] **Flag read + exposure emit**: `getFlag(key, default)`/`getVariant(key)` return the cached value and
    emit `track("feature_flag.exposure", ...)` (`:113-135`) on read.
    *Done when:* reading a flag returns its evaluated value and enqueues exactly one exposure event to
    `/v1/events/batch`; a default is returned (no throw) for a missing key; SDK test green.
+   — done: getFlag/getVariant implemented at index.ts:278-310 with exposure emit; 8 tests verify behavior (exposure on read, default fallback, undefined on missing); 30/30 SDK tests green
 
 ### Milestone 18.8 — Admin UI (Flags)
 1. [ ] **FeatureFlags section** (Recipe 6.75): `web/src/sections/FeatureFlags.tsx` on the M12 primitives —
