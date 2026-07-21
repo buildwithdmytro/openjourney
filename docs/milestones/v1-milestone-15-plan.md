@@ -314,13 +314,13 @@ multipart upload.
    concurrent access is race-free (`go test -race`); unit test green. — done: TTLCache with bounded size (oldest-evict), sync.RWMutex, injected Clock interface for testability; 26 tests (including race detection) all pass; no new dependencies.
 
 ### Milestone 20.4 — Render-context seam — LINCHPIN
-1. [ ] **`render.RenderWithContext` + engine builder** (Recipe 6.86): threads `ctx + principal + store +
+1. [x] **`render.RenderWithContext` + engine builder** (Recipe 6.86): threads `ctx + principal + store +
    fetcher` into engine construction; registers the `catalog_item` filter + `connected_content` tag
    (stubbed to fallback initially); wired through `campaigns/deliver.go:255-292`,
    `journey/deliver.go:328-380`, and `templates.go` preview. Bare `render.Render` unchanged.
    *Done when:* a delivered message renders via the context-aware path with a profile-attribute template
    UNCHANGED (backward-compatible — existing render tests pass); the filter/tag are registered (even if
-   fallback); no per-send regression; integration test green.
+   fallback); no per-send regression; integration test green. — done: RenderWithContext function + RenderDeps struct added; filter/tag registered in seam; delivery paths wired (campaigns, journey, preview); tests pass (backward-compatible, filter/tag work, regression-free).
 
 ### Milestone 20.5 — Catalog-lookup filter
 1. [ ] **`catalog_item` filter** (Recipe 6.87): resolves `{{ item_key | catalog_item: 'catalog_key' }}`

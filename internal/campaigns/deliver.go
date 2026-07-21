@@ -259,7 +259,8 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 
 		subject := "Campaign"
 		if template.SubjectTemplate != nil && *template.SubjectTemplate != "" {
-			subject, err = render.Render(*template.SubjectTemplate, vars)
+			deps := render.RenderDeps{Store: store, Principal: p, Fetcher: nil}
+			subject, err = render.RenderWithContext(ctx, *template.SubjectTemplate, vars, deps)
 			if err != nil {
 				slog.Error("failed to render subject template", "error", err)
 				_ = store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, rec.Endpoint, "render_failed", fmt.Sprintf("render error: %v", err), "", nil, 0)
@@ -269,7 +270,8 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 
 		var htmlBody string
 		if template.HTMLTemplate != nil && *template.HTMLTemplate != "" {
-			htmlBody, err = render.Render(*template.HTMLTemplate, vars)
+			deps := render.RenderDeps{Store: store, Principal: p, Fetcher: nil}
+			htmlBody, err = render.RenderWithContext(ctx, *template.HTMLTemplate, vars, deps)
 			if err != nil {
 				slog.Error("failed to render HTML template", "error", err)
 				_ = store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, rec.Endpoint, "render_failed", fmt.Sprintf("render error: %v", err), "", nil, 0)
@@ -279,7 +281,8 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 
 		var textBody string
 		if template.TextTemplate != nil && *template.TextTemplate != "" {
-			textBody, err = render.Render(*template.TextTemplate, vars)
+			deps := render.RenderDeps{Store: store, Principal: p, Fetcher: nil}
+			textBody, err = render.RenderWithContext(ctx, *template.TextTemplate, vars, deps)
 			if err != nil {
 				slog.Error("failed to render text template", "error", err)
 				_ = store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, rec.Endpoint, "render_failed", fmt.Sprintf("render error: %v", err), "", nil, 0)
@@ -289,7 +292,8 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 
 		var bodyPayload string
 		if template.BodyTemplate != nil && *template.BodyTemplate != "" {
-			bodyPayload, err = render.Render(*template.BodyTemplate, vars)
+			deps := render.RenderDeps{Store: store, Principal: p, Fetcher: nil}
+			bodyPayload, err = render.RenderWithContext(ctx, *template.BodyTemplate, vars, deps)
 			if err != nil {
 				slog.Error("failed to render body template", "error", err)
 				_ = store.UpdateDeliveryAttempt(ctx, camp.ID, rec.ProfileID, template.Channel, rec.Endpoint, "render_failed", fmt.Sprintf("render error: %v", err), "", nil, 0)

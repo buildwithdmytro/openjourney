@@ -207,7 +207,8 @@ func (s *Server) previewTemplate(w http.ResponseWriter, r *http.Request) {
 
 	subject := ""
 	if tmpl.Channel != "push" && tmpl.Channel != "in_app" {
-		subject, err = render.Render(subjectTmpl, vars)
+		deps := render.RenderDeps{Store: s.store, Principal: principal, Fetcher: nil}
+		subject, err = render.RenderWithContext(r.Context(), subjectTmpl, vars, deps)
 		if err != nil {
 			writeError(w, http.StatusUnprocessableEntity, "render_error", fmt.Sprintf("subject: %v", err))
 			return
@@ -215,7 +216,8 @@ func (s *Server) previewTemplate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body string
-	body, err = render.Render(htmlTmpl, vars)
+	deps := render.RenderDeps{Store: s.store, Principal: principal, Fetcher: nil}
+	body, err = render.RenderWithContext(r.Context(), htmlTmpl, vars, deps)
 	if err != nil {
 		writeError(w, http.StatusUnprocessableEntity, "render_error", fmt.Sprintf("body: %v", err))
 		return
@@ -223,7 +225,8 @@ func (s *Server) previewTemplate(w http.ResponseWriter, r *http.Request) {
 
 	title := ""
 	if (tmpl.Channel == "push" || tmpl.Channel == "in_app") && tmpl.TitleTemplate != nil {
-		title, err = render.Render(*tmpl.TitleTemplate, vars)
+		deps := render.RenderDeps{Store: s.store, Principal: principal, Fetcher: nil}
+		title, err = render.RenderWithContext(r.Context(), *tmpl.TitleTemplate, vars, deps)
 		if err != nil {
 			writeError(w, http.StatusUnprocessableEntity, "render_error", fmt.Sprintf("title: %v", err))
 			return
@@ -233,7 +236,8 @@ func (s *Server) previewTemplate(w http.ResponseWriter, r *http.Request) {
 	renderedPushData := make(map[string]string)
 	if tmpl.Channel == "push" && tmpl.PushData != nil {
 		for k, v := range tmpl.PushData {
-			renderedVal, err := render.Render(v, vars)
+			deps := render.RenderDeps{Store: s.store, Principal: principal, Fetcher: nil}
+			renderedVal, err := render.RenderWithContext(r.Context(), v, vars, deps)
 			if err != nil {
 				writeError(w, http.StatusUnprocessableEntity, "render_error", fmt.Sprintf("push_data[%s]: %v", k, err))
 				return
