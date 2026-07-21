@@ -129,9 +129,9 @@ func parseFlags() config {
 	var cfg config
 	flag.StringVar(&cfg.primary, "primary", "", "primary provider: codex, antigravity, or claude (required)")
 	flag.StringVar(&cfg.promptPath, "prompt", "prompt.md", "path to the Ralph mission prompt")
-	flag.StringVar(&cfg.planPath, "plan", "docs/milestones/v1-milestone-12-plan.md", "path to the milestone plan")
-	flag.StringVar(&cfg.branch, "branch", "phase12", "implementation branch")
-	flag.StringVar(&cfg.milestone, "milestone", "12", "human milestone label for completion/error messages")
+	flag.StringVar(&cfg.planPath, "plan", "docs/milestones/v1-milestone-13-plan.md", "path to the milestone plan")
+	flag.StringVar(&cfg.branch, "branch", "phase13", "implementation branch")
+	flag.StringVar(&cfg.milestone, "milestone", "13", "human milestone label for completion/error messages")
 	flag.IntVar(&cfg.maxIterations, "max-iterations", 100, "maximum successful task iterations")
 	flag.DurationVar(&cfg.attemptTimeout, "attempt-timeout", 2*time.Hour, "timeout for each provider attempt")
 	flag.StringVar(&cfg.codexModel, "codex-model", "gpt-5.6-luna", "Codex model identifier")
