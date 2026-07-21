@@ -308,10 +308,10 @@ multipart upload.
    `not_found`; workspace-isolated; test green. — done: Handler listCatalogItems added; route registered with catalogs:read scope; ListCatalogItems queries with ORDER BY item_key ASC + LIMIT, tenant/app isolation enforced; GetCatalogItem exists from 20.1.2; tests pass (TestMockStoreListCatalogItems, TestMockStoreListCatalogItemsWithLimit, TestMockStoreListCatalogItemsEmpty); go build/vet green.
 
 ### Milestone 20.3 — TTL cache primitive
-1. [ ] **Bounded TTL cache** (Recipe 6.89): `internal/render/cache.go` — `Get`/`Set(key,val,ttl)`,
+1. [x] **Bounded TTL cache** (Recipe 6.89): `internal/render/cache.go` — `Get`/`Set(key,val,ttl)`,
    size-bounded (LRU/oldest-evict), `sync.RWMutex`, injected clock.
    *Done when:* a value expires after its TTL (injected clock); the cache evicts past its size bound;
-   concurrent access is race-free (`go test -race`); unit test green.
+   concurrent access is race-free (`go test -race`); unit test green. — done: TTLCache with bounded size (oldest-evict), sync.RWMutex, injected Clock interface for testability; 26 tests (including race detection) all pass; no new dependencies.
 
 ### Milestone 20.4 — Render-context seam — LINCHPIN
 1. [ ] **`render.RenderWithContext` + engine builder** (Recipe 6.86): threads `ctx + principal + store +
