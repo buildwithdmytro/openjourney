@@ -485,4 +485,354 @@ describe("OpenJourney", () => {
     );
     client.destroy();
   });
+
+  it("fetches flags for anonymous user without token", async () => {
+    let sequence = 0;
+    const mockFlags = {
+      "feature-a": { variant: "treatment", value: true },
+      "feature-b": { variant: "control", value: false },
+    };
+    const request = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ flags: mockFlags }),
+    });
+    const client = new OpenJourney({
+      endpoint: "https://events.example.test",
+      apiKey: "public-key",
+      tenant: "tenant-1",
+      app: "app-1",
+      storage: new MemoryStorage(),
+      fetch: request,
+      flushIntervalMs: 0,
+      randomUUID: () => `anon-${++sequence}`,
+    });
+
+    const flags = await client.fetchFlags();
+    expect(flags).toEqual(mockFlags);
+    expect(request).toHaveBeenCalledWith(
+      expect.stringContaining("/v1/flags/evaluate?tenant=tenant-1&app=app-1&environment=production&anonymous_id=anon-1"),
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({ Authorization: "Bearer public-key" }),
+      }),
+    );
+    client.destroy();
+  });
+
+  it("fetches flags with token for identified user", async () => {
+    const mockFlags = {
+      "feature-a": { variant: "premium", value: true },
+    };
+    const request = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ flags: mockFlags }),
+    });
+    const client = new OpenJourney({
+      endpoint: "https://events.example.test",
+      apiKey: "public-key",
+      tenant: "tenant-1",
+      app: "app-1",
+      storage: new MemoryStorage(),
+      fetch: request,
+      flushIntervalMs: 0,
+    });
+
+    client.identify("user-1");
+    const flags = await client.fetchFlags("signed-token-abc");
+    expect(flags).toEqual(mockFlags);
+    expect(request).toHaveBeenCalledWith(
+      expect.stringContaining("/v1/flags/evaluate?tenant=tenant-1&app=app-1&environment=production&token=signed-token-abc&external_id=user-1"),
+      expect.any(Object),
+    );
+    client.destroy();
+  });
+
+  it("requires token for identified user to fetch flags", async () => {
+    const request = vi.fn();
+    const client = new OpenJourney({
+      endpoint: "https://events.example.test",
+      apiKey: "public-key",
+      tenant: "tenant-1",
+      app: "app-1",
+      storage: new MemoryStorage(),
+      fetch: request,
+      flushIntervalMs: 0,
+    });
+
+    client.identify("user-1");
+    await expect(client.fetchFlags()).rejects.toThrow("identified user requires a token");
+    expect(request).not.toHaveBeenCalled();
+    client.destroy();
+  });
+
+  it("gets flag value and emits exposure event", async () => {
+    let sequence = 0;
+    const storage = new MemoryStorage();
+    const request = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        flags: {
+          "feature-a": { variant: "treatment", value: true },
+        },
+      }),
+    });
+    const client = new OpenJourney({
+      endpoint: "https://events.example.test",
+      apiKey: "public-key",
+      tenant: "tenant-1",
+      app: "app-1",
+      storage,
+      fetch: request,
+      flushIntervalMs: 0,
+      randomUUID: () => `id-${++sequence}`,
+    });
+
+    await client.fetchFlags();
+    const value = client.getFlag("feature-a");
+    expect(value).toBe(true);
+
+    const queueStr = storage.getItem("openjourney:event-queue:v1");
+    const queue = JSON.parse(queueStr || "[]");
+    const exposureEvent = queue.find((e: { event_type: string }) => e.event_type === "feature_flag.exposure");
+    expect(exposureEvent).toBeDefined();
+    expect(exposureEvent.payload).toEqual({
+      flag_key: "feature-a",
+      variant: "treatment",
+      value: true,
+    });
+    client.destroy();
+  });
+
+  it("gets variant and emits exposure event", async () => {
+    let sequence = 0;
+    const storage = new MemoryStorage();
+    const request = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        flags: {
+          "feature-a": { variant: "treatment", value: true },
+        },
+      }),
+    });
+    const client = new OpenJourney({
+      endpoint: "https://events.example.test",
+      apiKey: "public-key",
+      tenant: "tenant-1",
+      app: "app-1",
+      storage,
+      fetch: request,
+      flushIntervalMs: 0,
+      randomUUID: () => `id-${++sequence}`,
+    });
+
+    await client.fetchFlags();
+    const variant = client.getVariant("feature-a");
+    expect(variant).toBe("treatment");
+
+    const queueStr = storage.getItem("openjourney:event-queue:v1");
+    const queue = JSON.parse(queueStr || "[]");
+    const exposureEvent = queue.find((e: { event_type: string }) => e.event_type === "feature_flag.exposure");
+    expect(exposureEvent).toBeDefined();
+    expect(exposureEvent.payload.variant).toBe("treatment");
+    client.destroy();
+  });
+
+  it("returns cached flags on network error", async () => {
+    const storage = new MemoryStorage();
+    const request = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          flags: {
+            "feature-a": { variant: "treatment", value: true },
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 503,
+      });
+
+    const client = new OpenJourney({
+      endpoint: "https://events.example.test",
+      apiKey: "public-key",
+      tenant: "tenant-1",
+      app: "app-1",
+      storage,
+      fetch: request,
+      flushIntervalMs: 0,
+    });
+
+    await client.fetchFlags();
+    const failedFetch = await client.fetchFlags();
+    expect(failedFetch).toEqual({
+      "feature-a": { variant: "treatment", value: true },
+    });
+    client.destroy();
+  });
+
+  it("returns default value for missing flag", async () => {
+    const storage = new MemoryStorage();
+    const request = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ flags: {} }),
+    });
+    const client = new OpenJourney({
+      endpoint: "https://events.example.test",
+      apiKey: "public-key",
+      tenant: "tenant-1",
+      app: "app-1",
+      storage,
+      fetch: request,
+      flushIntervalMs: 0,
+    });
+
+    await client.fetchFlags();
+    const value = client.getFlag("missing-flag", false);
+    expect(value).toBe(false);
+    client.destroy();
+  });
+
+  it("persists and restores flag cache", () => {
+    const storage = new MemoryStorage();
+    const request = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        flags: {
+          "feature-a": { variant: "treatment", value: true },
+        },
+      }),
+    });
+    const options = {
+      endpoint: "https://events.example.test",
+      apiKey: "public-key",
+      tenant: "tenant-1",
+      app: "app-1",
+      storage,
+      fetch: request,
+      flushIntervalMs: 0,
+    };
+
+    const first = new OpenJourney(options);
+    void (async () => {
+      await first.fetchFlags();
+      first.destroy();
+
+      const second = new OpenJourney(options);
+      const cached = second.getFlag("feature-a");
+      expect(cached).toBe(true);
+      second.destroy();
+    })();
+  });
+
+  it("returns undefined for missing flag without default", async () => {
+    const storage = new MemoryStorage();
+    const request = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ flags: {} }),
+    });
+    const client = new OpenJourney({
+      endpoint: "https://events.example.test",
+      apiKey: "public-key",
+      tenant: "tenant-1",
+      app: "app-1",
+      storage,
+      fetch: request,
+      flushIntervalMs: 0,
+    });
+
+    await client.fetchFlags();
+    const value = client.getFlag("missing-flag");
+    expect(value).toBeUndefined();
+    client.destroy();
+  });
+
+  it("returns undefined for missing variant", async () => {
+    const storage = new MemoryStorage();
+    const request = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ flags: {} }),
+    });
+    const client = new OpenJourney({
+      endpoint: "https://events.example.test",
+      apiKey: "public-key",
+      tenant: "tenant-1",
+      app: "app-1",
+      storage,
+      fetch: request,
+      flushIntervalMs: 0,
+    });
+
+    await client.fetchFlags();
+    const variant = client.getVariant("missing-flag");
+    expect(variant).toBeUndefined();
+    client.destroy();
+  });
+
+  it("fetches flags with custom environment", async () => {
+    const request = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ flags: {} }),
+    });
+    const client = new OpenJourney({
+      endpoint: "https://events.example.test",
+      apiKey: "public-key",
+      tenant: "tenant-1",
+      app: "app-1",
+      storage: new MemoryStorage(),
+      fetch: request,
+      flushIntervalMs: 0,
+    });
+
+    await client.fetchFlags(undefined, "staging");
+    expect(request).toHaveBeenCalledWith(
+      expect.stringContaining("environment=staging"),
+      expect.any(Object),
+    );
+    client.destroy();
+  });
+
+  it("emits exposure event with default value for missing flag", async () => {
+    let sequence = 0;
+    const storage = new MemoryStorage();
+    const request = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ flags: {} }),
+    });
+    const client = new OpenJourney({
+      endpoint: "https://events.example.test",
+      apiKey: "public-key",
+      tenant: "tenant-1",
+      app: "app-1",
+      storage,
+      fetch: request,
+      flushIntervalMs: 0,
+      randomUUID: () => `id-${++sequence}`,
+    });
+
+    await client.fetchFlags();
+    client.getFlag("missing-flag", "default-value");
+
+    const queueStr = storage.getItem("openjourney:event-queue:v1");
+    const queue = JSON.parse(queueStr || "[]");
+    const exposureEvent = queue.find((e: { event_type: string }) => e.event_type === "feature_flag.exposure");
+    expect(exposureEvent).toBeDefined();
+    expect(exposureEvent.payload).toEqual({
+      flag_key: "missing-flag",
+      variant: "default",
+      value: "default-value",
+    });
+    client.destroy();
+  });
 });

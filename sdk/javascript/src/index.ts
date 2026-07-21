@@ -29,6 +29,17 @@ export type InAppMessage = {
   dismissed_at?: string | null;
 };
 
+export type FlagValue = boolean | string | number | Record<string, unknown>;
+
+export type FlagEvaluation = {
+  variant: string;
+  value: FlagValue;
+};
+
+export type FlagsResponse = {
+  flags: Record<string, FlagEvaluation>;
+};
+
 export type ClientOptions = {
   endpoint: string;
   apiKey: string;
@@ -44,6 +55,7 @@ export type ClientOptions = {
 
 const QUEUE_KEY = "openjourney:event-queue:v1";
 const ANONYMOUS_KEY = "openjourney:anonymous-id:v1";
+const FLAGS_KEY = "openjourney:flags:v1";
 
 export class OpenJourney {
   private readonly endpoint: string;
@@ -60,6 +72,8 @@ export class OpenJourney {
   private queue: OpenJourneyEvent[];
   private timer?: ReturnType<typeof setInterval>;
   private flushing?: Promise<void>;
+  private flags: Record<string, FlagEvaluation>;
+  private currentEnvironment: string;
 
   constructor(options: ClientOptions) {
     if (!options.endpoint || !options.apiKey || !options.tenant || !options.app) {
@@ -77,6 +91,8 @@ export class OpenJourney {
     this.anonymousID = this.storage?.getItem(ANONYMOUS_KEY) || this.uuid();
     this.storage?.setItem(ANONYMOUS_KEY, this.anonymousID);
     this.queue = this.loadQueue();
+    this.flags = this.loadFlags();
+    this.currentEnvironment = "production";
     const interval = options.flushIntervalMs ?? 10_000;
     if (interval > 0) {
       this.timer = setInterval(() => void this.flush(), interval);
@@ -208,6 +224,91 @@ export class OpenJourney {
     return (data.messages ?? []) as InAppMessage[];
   }
 
+  async fetchFlags(token?: string, environment: string = "production"): Promise<Record<string, FlagEvaluation>> {
+    if (this.externalID && !token) {
+      throw new Error(
+        "identified user requires a token from the server; pass SignInAppToken to fetchFlags(token)",
+      );
+    }
+
+    const params = new URLSearchParams({
+      tenant: this.tenant,
+      app: this.app,
+      environment,
+    });
+
+    if (token) {
+      params.set("token", token);
+      if (this.externalID) {
+        params.set("external_id", this.externalID);
+      }
+    } else {
+      params.set("anonymous_id", this.anonymousID);
+    }
+
+    try {
+      const response = await this.request(`${this.endpoint}/v1/flags/evaluate?${params}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error("Unauthorized: invalid or expired token");
+        }
+        if (response.status === 403) {
+          throw new Error("Forbidden: access to flags denied");
+        }
+        throw new Error(`fetchFlags failed (${response.status})`);
+      }
+
+      const data = (await response.json()) as FlagsResponse;
+      this.flags = data.flags ?? {};
+      this.currentEnvironment = environment;
+      this.persistFlags();
+      return this.flags;
+    } catch {
+      return this.flags;
+    }
+  }
+
+  getFlag(key: string, defaultValue?: FlagValue): FlagValue | undefined {
+    const flag = this.flags[key];
+    if (flag) {
+      this.track("feature_flag.exposure", {
+        flag_key: key,
+        variant: flag.variant,
+        value: flag.value,
+      });
+      return flag.value;
+    }
+    if (defaultValue !== undefined) {
+      this.track("feature_flag.exposure", {
+        flag_key: key,
+        variant: "default",
+        value: defaultValue,
+      });
+      return defaultValue;
+    }
+    return undefined;
+  }
+
+  getVariant(key: string): string | undefined {
+    const flag = this.flags[key];
+    if (flag) {
+      this.track("feature_flag.exposure", {
+        flag_key: key,
+        variant: flag.variant,
+        value: flag.value,
+      });
+      return flag.variant;
+    }
+    return undefined;
+  }
+
   async reportImpression(messageId: string, token?: string): Promise<void> {
     await this.reportEngagement(messageId, "impression", token);
   }
@@ -326,5 +427,18 @@ export class OpenJourney {
 
   private persist(): void {
     this.storage?.setItem(QUEUE_KEY, JSON.stringify(this.queue));
+  }
+
+  private loadFlags(): Record<string, FlagEvaluation> {
+    try {
+      const value = this.storage?.getItem(FLAGS_KEY);
+      return value ? (JSON.parse(value) as Record<string, FlagEvaluation>) : {};
+    } catch {
+      return {};
+    }
+  }
+
+  private persistFlags(): void {
+    this.storage?.setItem(FLAGS_KEY, JSON.stringify(this.flags));
   }
 }

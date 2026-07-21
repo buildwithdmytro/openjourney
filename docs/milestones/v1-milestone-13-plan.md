@@ -377,11 +377,12 @@ registration. ConfirmDialog on publish + kill-switch toggle. Theme-aware; no new
    — done: ProjectEvent case handles feature_flag.exposure, upserts with idempotent counting per variant (flags_integration_test.go TestFeatureFlagExposureProjection verifies idempotency and cumulative counting); grep confirms no other writers; 612 tests green
 
 ### Milestone 18.7 — Browser SDK: fetch + cache + exposure
-1. [ ] **`fetchFlags` + cache** (Recipe 6.74): `sdk/javascript` `fetchFlags(token?)` cloning `fetchInbox`
+1. [x] **`fetchFlags` + cache** (Recipe 6.74): `sdk/javascript` `fetchFlags(token?)` cloning `fetchInbox`
    (`index.ts:168-209`) against `/v1/flags/evaluate`; a `FLAGS_KEY` durable cache mirroring `loadQueue`/
    `persist` (`:318-329`) with a default-value fallback.
    *Done when:* `cd sdk/javascript && npm run build && npm test` green; the SDK fetches + caches flags,
    returns the cached value offline, and falls back to a supplied default for an unknown key.
+   — done: fetchFlags(token, environment) implemented with FlagValue/FlagEvaluation/FlagsResponse types; FLAGS_KEY cache with loadFlags/persistFlags; offline fallback on network error; getFlag(key, default) with default fallback; getVariant(key); 30 tests green including cache persistence, network error fallback, and default fallback
 2. [ ] **Flag read + exposure emit**: `getFlag(key, default)`/`getVariant(key)` return the cached value and
    emit `track("feature_flag.exposure", ...)` (`:113-135`) on read.
    *Done when:* reading a flag returns its evaluated value and enqueues exactly one exposure event to
