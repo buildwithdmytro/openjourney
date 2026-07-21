@@ -1285,3 +1285,476 @@ func TestMetricDefinitionsImmutable(t *testing.T) {
 		t.Fatal("expected error when deleting from metric_definitions, got nil")
 	}
 }
+
+func TestAnalyticsAccuracyE2EAllReports(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create two tenants/workspaces to test isolation
+	key1 := fmt.Sprintf("analytics-e2e-ws1-%d", time.Now().UnixNano())
+	if err := store.EnsureDevelopmentTenant(ctx, key1); err != nil {
+		t.Fatal(err)
+	}
+	p1, err := store.Authenticate(ctx, key1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	key2 := fmt.Sprintf("analytics-e2e-ws2-%d", time.Now().UnixNano())
+	if err := store.EnsureDevelopmentTenant(ctx, key2); err != nil {
+		t.Fatal(err)
+	}
+	p2, err := store.Authenticate(ctx, key2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create campaign + resources in workspace 1
+	segment1, err := store.CreateSegment(ctx, p1, domain.Segment{
+		Name: "E2E audience", Type: "dynamic", DSL: json.RawMessage(`{}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	from1 := fmt.Sprintf("e2e-%d@example.com", time.Now().UnixNano())
+	identity1, err := store.CreateSendingIdentity(ctx, p1, domain.SendingIdentity{
+		Channel: "email", FromAddress: &from1, Provider: "ses", MaxSendRate: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	html := "E2E test"
+	template1, err := store.CreateTemplate(ctx, p1, domain.Template{
+		Name: "E2E template", Channel: "email", HTMLTemplate: &html,
+		SendingIdentityID: &identity1.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	campaign1, err := store.CreateCampaign(ctx, p1, domain.Campaign{
+		Name: "E2E campaign", SegmentID: segment1.ID, TemplateID: template1.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create campaign in workspace 2 (for isolation testing)
+	segment2, err := store.CreateSegment(ctx, p2, domain.Segment{
+		Name: "E2E audience WS2", Type: "dynamic", DSL: json.RawMessage(`{}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	from2 := fmt.Sprintf("e2e-ws2-%d@example.com", time.Now().UnixNano())
+	identity2, err := store.CreateSendingIdentity(ctx, p2, domain.SendingIdentity{
+		Channel: "email", FromAddress: &from2, Provider: "ses", MaxSendRate: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	template2, err := store.CreateTemplate(ctx, p2, domain.Template{
+		Name: "E2E template WS2", Channel: "email", HTMLTemplate: &html,
+		SendingIdentityID: &identity2.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	campaign2, err := store.CreateCampaign(ctx, p2, domain.Campaign{
+		Name: "E2E campaign WS2", SegmentID: segment2.ID, TemplateID: template2.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set up time buckets: 3 days
+	baseTime := time.Now().UTC().Truncate(time.Hour)
+	day1 := baseTime.Add(-2 * 24 * time.Hour)
+	day2 := baseTime.Add(-1 * 24 * time.Hour)
+	day3 := baseTime
+
+	// Seed workspace 1: 10 recipients per day, spread across 3 days
+	// Day 1: 10 sent, 8 delivered, 4 opened, 2 clicked, 1 bounced
+	// Day 2: 15 sent, 12 delivered, 6 opened, 3 clicked, 2 bounced
+	// Day 3: 12 sent, 10 delivered, 5 opened, 2 clicked, 1 bounced
+
+	type recipient struct {
+		profileID  string
+		externalID string
+		endpoint   string
+		day        time.Time
+		costMicros int64
+	}
+
+	ws1Recipients := make([]recipient, 37)
+	for i := 0; i < 10; i++ {
+		ws1Recipients[i] = recipient{
+			externalID: fmt.Sprintf("e2e-ws1-day1-%02d", i),
+			endpoint:   fmt.Sprintf("e2e-ws1-day1-%02d@example.com", i),
+			day:        day1,
+			costMicros: 1000,
+		}
+	}
+	for i := 10; i < 25; i++ {
+		ws1Recipients[i] = recipient{
+			externalID: fmt.Sprintf("e2e-ws1-day2-%02d", i-10),
+			endpoint:   fmt.Sprintf("e2e-ws1-day2-%02d@example.com", i-10),
+			day:        day2,
+			costMicros: 1000,
+		}
+	}
+	for i := 25; i < 37; i++ {
+		ws1Recipients[i] = recipient{
+			externalID: fmt.Sprintf("e2e-ws1-day3-%02d", i-25),
+			endpoint:   fmt.Sprintf("e2e-ws1-day3-%02d@example.com", i-25),
+			day:        day3,
+			costMicros: 1000,
+		}
+	}
+
+	// Insert profiles and delivery attempts for workspace 1
+	for i := range ws1Recipients {
+		if err := store.pool.QueryRow(ctx, `INSERT INTO profiles
+			(tenant_id,workspace_id,app_id,external_id,created_at) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+			p1.TenantID, p1.WorkspaceID, p1.AppID, ws1Recipients[i].externalID, ws1Recipients[i].day).Scan(&ws1Recipients[i].profileID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := store.pool.Exec(ctx, `INSERT INTO delivery_attempts
+			(campaign_id,tenant_id,profile_id,channel,endpoint,decision,attempted_at,cost_micros)
+			VALUES ($1,$2,$3,'email',$4,'sent',$5,$6)`, campaign1.ID, p1.TenantID,
+			ws1Recipients[i].profileID, ws1Recipients[i].endpoint, ws1Recipients[i].day, ws1Recipients[i].costMicros); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Seed workspace 1 events
+	events1 := make([]domain.Event, 0, 60)
+	addEvent1 := func(eventType string, recipient recipient, suffix string, payload json.RawMessage) {
+		events1 = append(events1, domain.Event{
+			Type: eventType, SchemaVersion: 1, ExternalID: recipient.externalID,
+			IdempotencyKey: fmt.Sprintf("e2e-ws1-%s-%s-%s", eventType, recipient.externalID, suffix),
+			OccurredAt:     recipient.day, Payload: payload,
+		})
+	}
+
+	// Day 1: 8 delivered, 4 opened, 2 clicked, 1 bounced
+	for i := 0; i < 10; i++ {
+		if i < 8 {
+			addEvent1("message.delivered", ws1Recipients[i], "d", json.RawMessage(fmt.Sprintf(
+				`{"campaign_id":%q,"endpoint":%q}`, campaign1.ID, ws1Recipients[i].endpoint)))
+		}
+		if i < 4 {
+			addEvent1("email.opened", ws1Recipients[i], "o", json.RawMessage(fmt.Sprintf(
+				`{"template_id":%q,"dispatch_id":%q,"campaign_id":%q}`, template1.ID, fmt.Sprintf("o-d1-%02d", i), campaign1.ID)))
+		}
+		if i < 2 {
+			addEvent1("link.clicked", ws1Recipients[i], "c", json.RawMessage(fmt.Sprintf(
+				`{"template_id":%q,"dispatch_id":%q,"url":"https://example.com/offer","campaign_id":%q}`,
+				template1.ID, fmt.Sprintf("c-d1-%02d", i), campaign1.ID)))
+		}
+		if i == 8 {
+			addEvent1("message.bounced", ws1Recipients[i], "b", json.RawMessage(fmt.Sprintf(
+				`{"campaign_id":%q,"channel":"email","endpoint":%q}`, campaign1.ID, ws1Recipients[i].endpoint)))
+		}
+	}
+
+	// Day 2: 12 delivered, 6 opened, 3 clicked, 2 bounced
+	for i := 10; i < 25; i++ {
+		if i < 22 {
+			addEvent1("message.delivered", ws1Recipients[i], "d", json.RawMessage(fmt.Sprintf(
+				`{"campaign_id":%q,"endpoint":%q}`, campaign1.ID, ws1Recipients[i].endpoint)))
+		}
+		if i < 16 {
+			addEvent1("email.opened", ws1Recipients[i], "o", json.RawMessage(fmt.Sprintf(
+				`{"template_id":%q,"dispatch_id":%q,"campaign_id":%q}`, template1.ID, fmt.Sprintf("o-d2-%02d", i-10), campaign1.ID)))
+		}
+		if i < 13 {
+			addEvent1("link.clicked", ws1Recipients[i], "c", json.RawMessage(fmt.Sprintf(
+				`{"template_id":%q,"dispatch_id":%q,"url":"https://example.com/offer","campaign_id":%q}`,
+				template1.ID, fmt.Sprintf("c-d2-%02d", i-10), campaign1.ID)))
+		}
+		if i == 22 || i == 23 {
+			addEvent1("message.bounced", ws1Recipients[i], "b", json.RawMessage(fmt.Sprintf(
+				`{"campaign_id":%q,"channel":"email","endpoint":%q}`, campaign1.ID, ws1Recipients[i].endpoint)))
+		}
+	}
+
+	// Day 3: 10 delivered, 5 opened, 2 clicked, 1 bounced
+	for i := 25; i < 37; i++ {
+		if i < 35 {
+			addEvent1("message.delivered", ws1Recipients[i], "d", json.RawMessage(fmt.Sprintf(
+				`{"campaign_id":%q,"endpoint":%q}`, campaign1.ID, ws1Recipients[i].endpoint)))
+		}
+		if i < 30 {
+			addEvent1("email.opened", ws1Recipients[i], "o", json.RawMessage(fmt.Sprintf(
+				`{"template_id":%q,"dispatch_id":%q,"campaign_id":%q}`, template1.ID, fmt.Sprintf("o-d3-%02d", i-25), campaign1.ID)))
+		}
+		if i < 27 {
+			addEvent1("link.clicked", ws1Recipients[i], "c", json.RawMessage(fmt.Sprintf(
+				`{"template_id":%q,"dispatch_id":%q,"url":"https://example.com/offer","campaign_id":%q}`,
+				template1.ID, fmt.Sprintf("c-d3-%02d", i-25), campaign1.ID)))
+		}
+		if i == 35 {
+			addEvent1("message.bounced", ws1Recipients[i], "b", json.RawMessage(fmt.Sprintf(
+				`{"campaign_id":%q,"channel":"email","endpoint":%q}`, campaign1.ID, ws1Recipients[i].endpoint)))
+		}
+	}
+
+	ids1, err := store.AcceptEvents(ctx, p1, events1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, event := range events1 {
+		accepted := domain.AcceptedEvent{
+			ID: ids1[i], Principal: p1, Type: event.Type, SchemaVersion: event.SchemaVersion,
+			ExternalID: event.ExternalID, IdempotencyKey: event.IdempotencyKey,
+			OccurredAt: event.OccurredAt, Payload: event.Payload,
+		}
+		if err := store.ProjectEvent(ctx, accepted); err != nil {
+			t.Fatalf("project %s for %s: %v", event.Type, event.ExternalID, err)
+		}
+	}
+
+	// Seed workspace 2: smaller dataset (5 profiles per day)
+	ws2Recipients := make([]recipient, 15)
+	for i := 0; i < 5; i++ {
+		ws2Recipients[i] = recipient{
+			externalID: fmt.Sprintf("e2e-ws2-day1-%02d", i),
+			endpoint:   fmt.Sprintf("e2e-ws2-day1-%02d@example.com", i),
+			day:        day1,
+			costMicros: 500,
+		}
+	}
+	for i := 5; i < 10; i++ {
+		ws2Recipients[i] = recipient{
+			externalID: fmt.Sprintf("e2e-ws2-day2-%02d", i-5),
+			endpoint:   fmt.Sprintf("e2e-ws2-day2-%02d@example.com", i-5),
+			day:        day2,
+			costMicros: 500,
+		}
+	}
+	for i := 10; i < 15; i++ {
+		ws2Recipients[i] = recipient{
+			externalID: fmt.Sprintf("e2e-ws2-day3-%02d", i-10),
+			endpoint:   fmt.Sprintf("e2e-ws2-day3-%02d@example.com", i-10),
+			day:        day3,
+			costMicros: 500,
+		}
+	}
+
+	// Insert profiles and delivery attempts for workspace 2
+	for i := range ws2Recipients {
+		if err := store.pool.QueryRow(ctx, `INSERT INTO profiles
+			(tenant_id,workspace_id,app_id,external_id,created_at) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+			p2.TenantID, p2.WorkspaceID, p2.AppID, ws2Recipients[i].externalID, ws2Recipients[i].day).Scan(&ws2Recipients[i].profileID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := store.pool.Exec(ctx, `INSERT INTO delivery_attempts
+			(campaign_id,tenant_id,profile_id,channel,endpoint,decision,attempted_at,cost_micros)
+			VALUES ($1,$2,$3,'email',$4,'sent',$5,$6)`, campaign2.ID, p2.TenantID,
+			ws2Recipients[i].profileID, ws2Recipients[i].endpoint, ws2Recipients[i].day, ws2Recipients[i].costMicros); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Seed workspace 2 events (simpler: 3 delivered per day)
+	events2 := make([]domain.Event, 0, 15)
+	addEvent2 := func(eventType string, recipient recipient, suffix string, payload json.RawMessage) {
+		events2 = append(events2, domain.Event{
+			Type: eventType, SchemaVersion: 1, ExternalID: recipient.externalID,
+			IdempotencyKey: fmt.Sprintf("e2e-ws2-%s-%s-%s", eventType, recipient.externalID, suffix),
+			OccurredAt:     recipient.day, Payload: payload,
+		})
+	}
+
+	for i := 0; i < 5; i++ {
+		if i < 3 {
+			addEvent2("message.delivered", ws2Recipients[i], "d", json.RawMessage(fmt.Sprintf(
+				`{"campaign_id":%q,"endpoint":%q}`, campaign2.ID, ws2Recipients[i].endpoint)))
+		}
+	}
+	for i := 5; i < 10; i++ {
+		if i < 8 {
+			addEvent2("message.delivered", ws2Recipients[i], "d", json.RawMessage(fmt.Sprintf(
+				`{"campaign_id":%q,"endpoint":%q}`, campaign2.ID, ws2Recipients[i].endpoint)))
+		}
+	}
+	for i := 10; i < 15; i++ {
+		if i < 13 {
+			addEvent2("message.delivered", ws2Recipients[i], "d", json.RawMessage(fmt.Sprintf(
+				`{"campaign_id":%q,"endpoint":%q}`, campaign2.ID, ws2Recipients[i].endpoint)))
+		}
+	}
+
+	ids2, err := store.AcceptEvents(ctx, p2, events2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, event := range events2 {
+		accepted := domain.AcceptedEvent{
+			ID: ids2[i], Principal: p2, Type: event.Type, SchemaVersion: event.SchemaVersion,
+			ExternalID: event.ExternalID, IdempotencyKey: event.IdempotencyKey,
+			OccurredAt: event.OccurredAt, Payload: event.Payload,
+		}
+		if err := store.ProjectEvent(ctx, accepted); err != nil {
+			t.Fatalf("project %s for %s: %v", event.Type, event.ExternalID, err)
+		}
+	}
+
+	// Test range for all reports
+	reportStart := day1.Truncate(24 * time.Hour)
+	reportEnd := day3.Truncate(24 * time.Hour).Add(24 * time.Hour)
+	query := domain.ReportQuery{
+		Start:       reportStart,
+		End:         reportEnd,
+		Granularity: "day",
+	}
+
+	// ===== Workspace 1 Verification =====
+
+	// Test 1: Over-time funnel report
+	funnelReport, err := store.FunnelOverTimeReport(ctx, p1, campaign1.ID, query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(funnelReport.Buckets) != 3 {
+		t.Fatalf("WS1 funnel buckets=%d, want 3", len(funnelReport.Buckets))
+	}
+	// Day 1: 10 sent, 8 delivered, 4 opened, 2 clicked
+	if funnelReport.Buckets[0].Funnel.Sent.Total != 10 || funnelReport.Buckets[0].Funnel.Delivered.Total != 8 ||
+		funnelReport.Buckets[0].Funnel.Opened.Total != 4 || funnelReport.Buckets[0].Funnel.Clicked.Total != 2 {
+		t.Fatalf("WS1 day 1 funnel mismatch: %+v", funnelReport.Buckets[0].Funnel)
+	}
+	// Day 2: 15 sent, 12 delivered, 6 opened, 3 clicked
+	if funnelReport.Buckets[1].Funnel.Sent.Total != 15 || funnelReport.Buckets[1].Funnel.Delivered.Total != 12 ||
+		funnelReport.Buckets[1].Funnel.Opened.Total != 6 || funnelReport.Buckets[1].Funnel.Clicked.Total != 3 {
+		t.Fatalf("WS1 day 2 funnel mismatch: %+v", funnelReport.Buckets[1].Funnel)
+	}
+	// Day 3: 12 sent, 10 delivered, 5 opened, 2 clicked
+	if funnelReport.Buckets[2].Funnel.Sent.Total != 12 || funnelReport.Buckets[2].Funnel.Delivered.Total != 10 ||
+		funnelReport.Buckets[2].Funnel.Opened.Total != 5 || funnelReport.Buckets[2].Funnel.Clicked.Total != 2 {
+		t.Fatalf("WS1 day 3 funnel mismatch: %+v", funnelReport.Buckets[2].Funnel)
+	}
+
+	// Test 2: Deliverability-over-time report
+	// Day 1: 1 bounced, Day 2: 2 bounced, Day 3: 1 bounced
+	if funnelReport.Buckets[0].Deliverability.Bounced.Total != 1 {
+		t.Fatalf("WS1 day 1 bounced=%d, want 1", funnelReport.Buckets[0].Deliverability.Bounced.Total)
+	}
+	if funnelReport.Buckets[1].Deliverability.Bounced.Total != 2 {
+		t.Fatalf("WS1 day 2 bounced=%d, want 2", funnelReport.Buckets[1].Deliverability.Bounced.Total)
+	}
+	if funnelReport.Buckets[2].Deliverability.Bounced.Total != 1 {
+		t.Fatalf("WS1 day 3 bounced=%d, want 1", funnelReport.Buckets[2].Deliverability.Bounced.Total)
+	}
+
+	// Test 3: Retention report
+	retentionReport, err := store.RetentionReport(ctx, p1, campaign1.ID, query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(retentionReport.Cohorts) != 3 {
+		t.Fatalf("WS1 retention cohorts=%d, want 3", len(retentionReport.Cohorts))
+	}
+	// Each cohort should have sizes matching its days
+	if len(retentionReport.Cohorts[0].Sizes) == 0 {
+		t.Fatal("WS1 cohort 0 has no sizes")
+	}
+
+	// Test 4: Growth report
+	growthReport, err := store.GrowthReport(ctx, p1, campaign1.ID, query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(growthReport.Buckets) != 3 {
+		t.Fatalf("WS1 growth buckets=%d, want 3", len(growthReport.Buckets))
+	}
+	// Day 1: 10 new profiles
+	if growthReport.Buckets[0].NewProfiles != 10 {
+		t.Fatalf("WS1 day 1 new_profiles=%d, want 10", growthReport.Buckets[0].NewProfiles)
+	}
+	// Day 2: 15 new profiles
+	if growthReport.Buckets[1].NewProfiles != 15 {
+		t.Fatalf("WS1 day 2 new_profiles=%d, want 15", growthReport.Buckets[1].NewProfiles)
+	}
+	// Day 3: 12 new profiles
+	if growthReport.Buckets[2].NewProfiles != 12 {
+		t.Fatalf("WS1 day 3 new_profiles=%d, want 12", growthReport.Buckets[2].NewProfiles)
+	}
+
+	// Test 5: Cost report
+	costReport, err := store.CostReport(ctx, p1, campaign1.ID, query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(costReport.Buckets) != 3 {
+		t.Fatalf("WS1 cost buckets=%d, want 3", len(costReport.Buckets))
+	}
+	// Day 1: 10 sends * 1000 micros = 10000 total
+	if costReport.Buckets[0].SendCount != 10 || costReport.Buckets[0].TotalCostMicros != 10000 {
+		t.Fatalf("WS1 day 1 cost: sends=%d total=%d, want 10/10000", costReport.Buckets[0].SendCount, costReport.Buckets[0].TotalCostMicros)
+	}
+	// Day 2: 15 sends * 1000 micros = 15000 total
+	if costReport.Buckets[1].SendCount != 15 || costReport.Buckets[1].TotalCostMicros != 15000 {
+		t.Fatalf("WS1 day 2 cost: sends=%d total=%d, want 15/15000", costReport.Buckets[1].SendCount, costReport.Buckets[1].TotalCostMicros)
+	}
+	// Day 3: 12 sends * 1000 micros = 12000 total
+	if costReport.Buckets[2].SendCount != 12 || costReport.Buckets[2].TotalCostMicros != 12000 {
+		t.Fatalf("WS1 day 3 cost: sends=%d total=%d, want 12/12000", costReport.Buckets[2].SendCount, costReport.Buckets[2].TotalCostMicros)
+	}
+
+	// ===== Workspace 2 Verification: Isolation Test =====
+	// WS2 should see only its own data (5, 5, 5 profiles per day) and NOT WS1's data
+
+	// Test 6: WS2 Over-time funnel (isolation)
+	funnelReport2, err := store.FunnelOverTimeReport(ctx, p2, campaign2.ID, query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(funnelReport2.Buckets) != 3 {
+		t.Fatalf("WS2 funnel buckets=%d, want 3", len(funnelReport2.Buckets))
+	}
+	// Day 1: 5 sent, 3 delivered
+	if funnelReport2.Buckets[0].Funnel.Sent.Total != 5 || funnelReport2.Buckets[0].Funnel.Delivered.Total != 3 {
+		t.Fatalf("WS2 day 1 funnel mismatch (isolation): sent=%d deliv=%d", funnelReport2.Buckets[0].Funnel.Sent.Total, funnelReport2.Buckets[0].Funnel.Delivered.Total)
+	}
+	// Day 2: 5 sent, 3 delivered
+	if funnelReport2.Buckets[1].Funnel.Sent.Total != 5 || funnelReport2.Buckets[1].Funnel.Delivered.Total != 3 {
+		t.Fatalf("WS2 day 2 funnel mismatch (isolation): sent=%d deliv=%d", funnelReport2.Buckets[1].Funnel.Sent.Total, funnelReport2.Buckets[1].Funnel.Delivered.Total)
+	}
+	// Day 3: 5 sent, 3 delivered
+	if funnelReport2.Buckets[2].Funnel.Sent.Total != 5 || funnelReport2.Buckets[2].Funnel.Delivered.Total != 3 {
+		t.Fatalf("WS2 day 3 funnel mismatch (isolation): sent=%d deliv=%d", funnelReport2.Buckets[2].Funnel.Sent.Total, funnelReport2.Buckets[2].Funnel.Delivered.Total)
+	}
+
+	// Test 7: WS2 Cost report (isolation)
+	costReport2, err := store.CostReport(ctx, p2, campaign2.ID, query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(costReport2.Buckets) != 3 {
+		t.Fatalf("WS2 cost buckets=%d, want 3", len(costReport2.Buckets))
+	}
+	// Day 1: 5 sends * 500 micros = 2500 total
+	if costReport2.Buckets[0].SendCount != 5 || costReport2.Buckets[0].TotalCostMicros != 2500 {
+		t.Fatalf("WS2 day 1 cost (isolation): sends=%d total=%d, want 5/2500", costReport2.Buckets[0].SendCount, costReport2.Buckets[0].TotalCostMicros)
+	}
+	// Day 2: 5 sends * 500 micros = 2500 total
+	if costReport2.Buckets[1].SendCount != 5 || costReport2.Buckets[1].TotalCostMicros != 2500 {
+		t.Fatalf("WS2 day 2 cost (isolation): sends=%d total=%d, want 5/2500", costReport2.Buckets[1].SendCount, costReport2.Buckets[1].TotalCostMicros)
+	}
+	// Day 3: 5 sends * 500 micros = 2500 total
+	if costReport2.Buckets[2].SendCount != 5 || costReport2.Buckets[2].TotalCostMicros != 2500 {
+		t.Fatalf("WS2 day 3 cost (isolation): sends=%d total=%d, want 5/2500", costReport2.Buckets[2].SendCount, costReport2.Buckets[2].TotalCostMicros)
+	}
+}

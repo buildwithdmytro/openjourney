@@ -353,11 +353,12 @@ to a real time-series endpoint (kill the fake data `Overview.tsx:116`).
    — done: Analytics.tsx created with over-time/retention/growth/cost charts + save/load; 6-point App.tsx registration added (lazy import, View type, viewTitles, AVAILABLE_SCOPES, conditional rendering, Sidebar/CommandPalette); api.ts wrappers added for all analytics endpoints; Overview updated to fetch real funnel-over-time data instead of synthetic; all 273 web tests + 628 Go tests green
 
 ### Milestone 19.10 — Integration, accuracy & audit closeout
-1. [ ] **Analytics accuracy E2E**: seed a fixture of events across time buckets and cohorts, project them,
+1. [x] **Analytics accuracy E2E**: seed a fixture of events across time buckets and cohorts, project them,
    and assert every new report (over-time funnel, deliverability-over-time, retention, growth, cost)
    returns EXACT counts — the `report_accuracy_integration_test.go` bar, extended to the time dimension.
    *Done when:* the exact-count E2E passes for every new report; all reports are workspace-isolated and
    read only fact tables (grep/assertion: no `accepted_events` scan in a report path).
+   — done: TestAnalyticsAccuracyE2EAllReports verifies all new reports (funnel/deliverability/retention/growth/cost) with fixture seeding across 3 time buckets + workspace isolation; grep confirms no accepted_events scans in analytics.go report paths
 2. [ ] **Run the suite**: `go build ./... && go vet ./... && go test ./...`, `go mod tidy`,
    `cd web && npm run typecheck && npm run build && npm test`, `cd sdk/javascript && npm run build &&
    npm test`.
