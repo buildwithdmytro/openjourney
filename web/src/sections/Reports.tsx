@@ -13,6 +13,7 @@ import {
   ReportDeliverability,
   ReportFunnel,
 } from "../api";
+import { FunnelChart } from "../components";
 import { useTheme } from "../useTheme";
 
 type ReportType = "campaign" | "journey" | "experiment";
@@ -43,23 +44,12 @@ function percent(value: number) {
 }
 
 export function FunnelBars({ funnel }: { funnel: ReportFunnel }) {
-  const maximum = Math.max(...funnelStages.map(({ key }) => funnel[key].total), 1);
-  return (
-    <svg className="funnel-chart" viewBox="0 0 760 330" role="img" aria-label="Delivery and conversion funnel">
-      <title>Delivery and conversion funnel, using total and unique counts from the report</title>
-      {funnelStages.map(({ key, label }, index) => {
-        const count = funnel[key];
-        const width = Math.max(4, (count.total / maximum) * 490);
-        const y = 12 + index * 52;
-        return <g key={key}>
-          <text className="funnel-label" x="0" y={y + 22}>{label}</text>
-          <rect className="funnel-track" x="112" y={y} width="500" height="32" rx="7" />
-          <rect className="funnel-bar" x="112" y={y} width={width} height="32" rx="7" />
-          <text className="funnel-value" x="625" y={y + 21}>{count.total} total · {count.unique} unique</text>
-        </g>;
-      })}
-    </svg>
-  );
+  const stages = funnelStages.map(({ key, label }) => ({
+    label,
+    total: funnel[key].total,
+    unique: funnel[key].unique,
+  }));
+  return <FunnelChart stages={stages} />;
 }
 
 export function VariantComparison({ report }: { report: ExperimentReport }) {

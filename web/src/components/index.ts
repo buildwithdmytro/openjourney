@@ -41,3 +41,5 @@ export { CommandPalette } from "./CommandPalette";
 export type { CommandPaletteProps } from "./CommandPalette";
 export { default as ScopeSelector } from "./ScopeSelector";
 export type { ScopeSelectorProps } from "./ScopeSelector";
+export { LineChart, BarChart, FunnelChart, Sparkline } from "./Chart";
+export type { LineChartProps, BarChartProps, FunnelChartProps, SparklineProps } from "./Chart";

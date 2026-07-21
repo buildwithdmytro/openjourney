@@ -330,10 +330,11 @@ to a real time-series endpoint (kill the fake data `Overview.tsx:116`).
    — done: Migration 053 creates saved_reports table; SavedReport type added to domain; CreateSavedReport/GetSavedReport/ListSavedReports/DeleteSavedReport implemented in postgres + httpapi; workspace isolation enforced; routes registered with reports:read/reports:write scopes; all 628 tests pass
 
 ### Milestone 19.8 — Shared chart primitive
-1. [ ] **`components/Chart.tsx`** (Recipe 6.82): line/bar/funnel/sparkline inline-SVG primitives,
+1. [x] **`components/Chart.tsx`** (Recipe 6.82): line/bar/funnel/sparkline inline-SVG primitives,
    token-styled, exported from `components/index.ts`.
    *Done when:* the primitives render series to SVG; theme tokens style strokes/fills; `cd web && npm run
    typecheck && npm run build && npm test` green; no new dependency.
+   — done: Chart.tsx created with LineChart/BarChart/FunnelChart/Sparkline components; uses currentColor for theme-aware styling; exported from components/index.ts; typecheck/build/test all green (273 tests pass); no new dependency
 2. [ ] **Retrofit Overview + Reports onto the primitive**: replace `Overview.SimpleSparkline`
    (`Overview.tsx:6`) and `Reports.FunnelBars` (`Reports.tsx:45`) with `<Sparkline>`/`<FunnelChart>`;
    migrate `Reports.tsx` controls to the M12 library (`Select`/`Card`/`EmptyState`).

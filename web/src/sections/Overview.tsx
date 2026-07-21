@@ -1,35 +1,7 @@
 import { useEffect, useState } from "react";
 import { getOverview, Overview as OverviewType } from "../api";
-import { Card, EmptyState, Spinner } from "../components";
+import { Card, EmptyState, Spinner, Sparkline } from "../components";
 import { message } from "../errors";
-
-function SimpleSparkline({ data, label }: { data: number[]; label: string }) {
-  if (data.length === 0) return null;
-  const max = Math.max(...data, 1);
-  const min = Math.min(...data, 0);
-  const range = max - min || 1;
-  const width = 120;
-  const height = 32;
-  const points = data
-    .map((value, i) => ({
-      x: (i / (data.length - 1 || 1)) * width,
-      y: height - ((value - min) / range) * (height - 4) - 2,
-    }))
-    .map((p) => `${p.x},${p.y}`)
-    .join(" ");
-
-  return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="sparkline" role="img" aria-label={label}>
-      <polyline
-        points={points}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        vectorEffect="non-scaling-stroke"
-      />
-    </svg>
-  );
-}
 
 interface OverviewCard {
   label: string;
@@ -113,7 +85,7 @@ export default function Overview({ apiKey, baseURL }: { apiKey: string; baseURL:
               )}
             </div>
             <div className="card-value">{card.value.toLocaleString()}</div>
-            {card.value > 0 && <SimpleSparkline data={[card.value * 0.6, card.value * 0.8, card.value]} label={`${card.label} trend`} />}
+            {card.value > 0 && <Sparkline data={[card.value * 0.6, card.value * 0.8, card.value]} label={`${card.label} trend`} />}
           </Card>
         ))}
       </div>
