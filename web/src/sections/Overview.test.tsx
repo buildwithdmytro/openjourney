@@ -166,4 +166,54 @@ describe("Overview", () => {
     const descriptions = screen.getAllByText("At a glance view of your workspace activity and resources.");
     expect(descriptions.length).toBeGreaterThan(0);
   });
+
+  it("renders sparklines only when real data exists", async () => {
+    mockGetOverview.mockResolvedValue({
+      profiles: 100,
+      journeys: 5,
+      campaigns: 10,
+      delivery_attempts: 500,
+      inapp_messages: 20,
+      connector_runs: 50,
+    });
+    mockListCampaigns.mockResolvedValue([{ id: "campaign-1", name: "Campaign 1" }]);
+    mockGetCampaignFunnelOverTimeReport.mockResolvedValue({
+      buckets: [
+        { funnel: { delivered: { total: 100 }, opened: { total: 50 }, clicked: { total: 25 } } },
+        { funnel: { delivered: { total: 120 }, opened: { total: 60 }, clicked: { total: 30 } } },
+      ],
+    });
+
+    const { container } = render(<Overview apiKey="test-key" baseURL="http://api" />);
+
+    await waitFor(() => {
+      const sparklines = container.querySelectorAll("svg[role='img'][aria-label*='trend']");
+      expect(sparklines.length).toBe(1);
+    }, { timeout: 2000 });
+
+    const sparklines = container.querySelectorAll("svg[role='img'][aria-label*='trend']");
+    expect(sparklines[0].getAttribute("aria-label")).toBe("Delivery Attempts trend");
+  });
+
+  it("does not render sparklines when data is missing", async () => {
+    mockGetOverview.mockResolvedValue({
+      profiles: 100,
+      journeys: 5,
+      campaigns: 10,
+      delivery_attempts: 500,
+      inapp_messages: 20,
+      connector_runs: 50,
+    });
+    mockListCampaigns.mockResolvedValue([]);
+
+    const { container } = render(<Overview apiKey="test-key" baseURL="http://api" />);
+
+    await waitFor(() => {
+      const headings = screen.queryAllByRole("heading", { level: 1, name: "Overview" });
+      expect(headings.length).toBeGreaterThan(0);
+    });
+
+    const sparklines = container.querySelectorAll("svg[role='img'][aria-label*='trend']");
+    expect(sparklines.length).toBe(0);
+  });
 });

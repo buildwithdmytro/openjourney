@@ -270,12 +270,12 @@ multipart upload.
    — add `Analytics.test.tsx` (vi.fn fetch stub) asserting it renders over-time/retention/cost charts and
    saves/loads a report.
    *Done when:* `Analytics.test.tsx` passes; the suite is green. — done: Analytics.test.tsx added; 11 tests pass; all 307 web tests pass.
-3. [ ] **Remove the faked Overview sparkline fallback.** `web/src/sections/Overview.tsx:107` still falls
+3. [x] **Remove the faked Overview sparkline fallback.** `web/src/sections/Overview.tsx:107` still falls
    back to synthesized `[value*0.6, value*0.8, value]`; real series is now wired
    (`getCampaignFunnelOverTimeReport` → `sparklineMap`). Drop the synthesized fallback — render no
    sparkline (or an empty affordance) when a card has no real series.
    *Done when:* no synthesized sparkline data remains in `Overview.tsx`; the section shows real trend data
-   or none; tests green.
+   or none; tests green. — done: sparkline fallback removed, renders only with real data; added 2 tests for sparkline behavior; all 309 web tests pass.
 4. [ ] **M14 review findings.** Fold any further concrete findings from the M14 review here (file:line +
    a proving test), mirroring `19.0`/`18.0`.
    *Done when:* every finding has a fix + a test, or is recorded verified-safe.

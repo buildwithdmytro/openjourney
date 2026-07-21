@@ -104,7 +104,7 @@ export default function Overview({ apiKey, baseURL }: { apiKey: string; baseURL:
               )}
             </div>
             <div className="card-value">{card.value.toLocaleString()}</div>
-            {card.value > 0 && <Sparkline data={card.sparklineData && card.sparklineData.length > 0 ? card.sparklineData : [card.value * 0.6, card.value * 0.8, card.value]} label={`${card.label} trend`} />}
+            {card.value > 0 && card.sparklineData && card.sparklineData.length > 0 && <Sparkline data={card.sparklineData} label={`${card.label} trend`} />}
           </Card>
         ))}
       </div>
