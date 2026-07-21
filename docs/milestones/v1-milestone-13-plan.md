@@ -424,11 +424,12 @@ registration. ConfirmDialog on publish + kill-switch toggle. Theme-aware; no new
    *Done when:* each property has a test (a tokenless cross-`external_id` evaluate blocked; a forged token
    rejected; a `flags:read` key 403 on write; a non-human publish 403; a version UPDATE rejected).
    — done: 7 security tests added: TestSecurityIDORCrossSubjectBlockedTokenlessAnonymous, TestSecurityTokenVerificationRequiredForExternalID, TestSecurityForgedTokenRejected, TestSecurityVersionsAppendOnly, TestSecurityExposureProjectorOnlyWriter, TestSecurityNonHumanPublishRejected/StatusChangeRejected/ScopeEnforcementReadOnly verify IDOR pin, token verification, human gate, append-only versions, and scope enforcement; 621 tests green
-3. [ ] **Run the suite**: `go build ./... && go vet ./... && go test ./...`, `go mod tidy`,
+3. [x] **Run the suite**: `go build ./... && go vet ./... && go test ./...`, `go mod tidy`,
    `cd web && npm run typecheck && npm run build && npm test`,
    `cd sdk/javascript && npm run build && npm test`.
    *Done when:* all green and `git diff go.mod go.sum web/package.json web/package-lock.json
    sdk/javascript/package.json` is empty of additions.
+   — done: go 621 tests green, web 273 tests green, SDK 30 tests green, no changes to package.json/package-lock.json/go.mod/go.sum
 4. [ ] **Audit doc** `docs/milestones/v1-milestone-13-audit.md` in the M2–M12 table format, one row per
    `18.x` task with evidence (file:line + test name).
    *Done when:* the doc exists with a row per task and its verifying test.
