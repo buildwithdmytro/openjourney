@@ -244,12 +244,13 @@ to a real time-series endpoint (kill the fake data `Overview.tsx:116`).
 > The post-M13 review was clean (621 Go / 273 web / 30 SDK green, zero new deps, IDOR-safe edge +
 > deterministic bucketing + projector-only exposure verified). These tasks VERIFY those properties hold;
 > a deeper review appends any findings.
-1. [ ] **Verify the evaluate edge is IDOR-safe.** Confirm `GET /v1/flags/evaluate` (`internal/httpapi/
+1. [x] **Verify the evaluate edge is IDOR-safe.** Confirm `GET /v1/flags/evaluate` (`internal/httpapi/
    flags.go`) resolves the subject with the `byExternalID` column-pin (`GetProfileIDBySubject(...,
    byExternalID)`) — anon matches `anonymous_id` only, known subjects require a valid `SignInAppToken` —
    and is IP rate-limited; NOT the `external_id OR anonymous_id` match.
    *Done when:* the M13 public-edge IDOR test passes (a tokenless `anonymous_id`=victim's `external_id`
    evaluate is blocked); a forged token is rejected. (Re-fix if regressed.)
+   — done: TestSecurityIDORCrossSubjectBlockedTokenlessAnonymous + TestSecurityForgedTokenRejected + TestSecurityTokenVerificationRequiredForExternalID + TestEvaluateFlagsRateLimiting all pass; byExternalID pin in GetProfileIDBySubject enforces single-column lookup (messages.go:116)
 2. [ ] **Verify deterministic bucketing + projector-only exposure.** Confirm `internal/flags/evaluate.go`
    reuses `experiment.BucketOf`/`Assign` with no `math/rand`/wall-clock, and that `feature_flag_exposures`
    is written ONLY by the `feature_flag.exposure` `ProjectEvent` case (`store.go`).
