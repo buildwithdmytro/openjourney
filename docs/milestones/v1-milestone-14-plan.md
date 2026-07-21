@@ -335,11 +335,12 @@ to a real time-series endpoint (kill the fake data `Overview.tsx:116`).
    *Done when:* the primitives render series to SVG; theme tokens style strokes/fills; `cd web && npm run
    typecheck && npm run build && npm test` green; no new dependency.
    — done: Chart.tsx created with LineChart/BarChart/FunnelChart/Sparkline components; uses currentColor for theme-aware styling; exported from components/index.ts; typecheck/build/test all green (273 tests pass); no new dependency
-2. [ ] **Retrofit Overview + Reports onto the primitive**: replace `Overview.SimpleSparkline`
+2. [x] **Retrofit Overview + Reports onto the primitive**: replace `Overview.SimpleSparkline`
    (`Overview.tsx:6`) and `Reports.FunnelBars` (`Reports.tsx:45`) with `<Sparkline>`/`<FunnelChart>`;
    migrate `Reports.tsx` controls to the M12 library (`Select`/`Card`/`EmptyState`).
    *Done when:* Overview and Reports render via the shared chart primitive with no visual regression;
    Reports uses M12 primitives; existing tests pass (updated only where markup changed intentionally).
+   — done: Overview uses Sparkline (Overview.tsx:88); Reports uses FunnelChart (Reports.tsx:203); Reports controls refactored to use Select/Card/Field/EmptyState/Spinner M12 components; all 273 web tests pass; typecheck + build green
 
 ### Milestone 19.9 — Analytics dashboard
 1. [ ] **Analytics section** (Recipe 6.83): `web/src/sections/Analytics.tsx` on the M12 library + `Chart`

@@ -13,7 +13,7 @@ import {
   ReportDeliverability,
   ReportFunnel,
 } from "../api";
-import { FunnelChart } from "../components";
+import { Card, EmptyState, Field, FunnelChart, Select, Spinner } from "../components";
 import { useTheme } from "../useTheme";
 
 type ReportType = "campaign" | "journey" | "experiment";
@@ -53,7 +53,7 @@ export function FunnelBars({ funnel }: { funnel: ReportFunnel }) {
 }
 
 export function VariantComparison({ report }: { report: ExperimentReport }) {
-  return <article className="report-card comparison-card">
+  return <Card className="comparison-card">
     <div className="report-card-heading">
       <div><span className="eyebrow">Experiment results</span><h2>Variant comparison</h2></div>
       {report.winner_variant && <span className="winner-pill">Advisory winner: {report.winner_variant}</span>}
@@ -74,7 +74,7 @@ export function VariantComparison({ report }: { report: ExperimentReport }) {
       </tr>;
     })}</tbody></table></div>
     <p className="report-note">The winner is advisory. Rollout remains a separate, approved action.</p>
-  </article>;
+  </Card>;
 }
 
 export default function Reports({ apiKey, baseURL }: { apiKey: string; baseURL: string }) {
@@ -152,31 +152,56 @@ export default function Reports({ apiKey, baseURL }: { apiKey: string; baseURL: 
     setSelectedID("");
   }
 
+  const typeOptions = [
+    { value: "campaign", label: "Campaign" },
+    { value: "journey", label: "Journey" },
+    { value: "experiment", label: "Experiment" },
+  ];
+
+  const subjectOptions = useMemo(() =>
+    subjects.map((subject) => ({ value: subject.id, label: subject.name })),
+    [subjects]
+  );
+
   return <section className="reports-view" data-theme={theme}>
-    <article className="report-controls">
-      <div className="report-selectors">
-        <label>Report type<select value={type} onChange={(event) => changeType(event.target.value as ReportType)}>
-          <option value="campaign">Campaign</option><option value="journey">Journey</option><option value="experiment">Experiment</option>
-        </select></label>
-        <label>Report subject<select value={selectedID} onChange={(event) => setSelectedID(event.target.value)} disabled={subjects.length === 0}>
-          {subjects.length === 0 && <option value="">No subjects available</option>}
-          {subjects.map((subject) => <option value={subject.id} key={subject.id}>{subject.name}</option>)}
-        </select></label>
+    <Card className="report-controls">
+      <div className="report-control-fields">
+        <Field label="Report type">
+          <Select
+            value={type}
+            onChange={(event) => changeType(event.target.value as ReportType)}
+            options={typeOptions}
+          />
+        </Field>
+        <Field label="Report subject">
+          <Select
+            value={selectedID}
+            onChange={(event) => setSelectedID(event.target.value)}
+            disabled={subjects.length === 0}
+            options={subjectOptions}
+          />
+        </Field>
       </div>
       <button type="button" className="report-theme-toggle" onClick={() => toggleTheme()}>
         Use {theme === "light" ? "dark" : "light"} theme
       </button>
-    </article>
+    </Card>
 
-    {loading && <p role="status" className="report-status">Loading report…</p>}
-    {error && <p role="alert" className="report-error">{error}</p>}
-    {!loading && !error && subjects.length === 0 && <article className="report-card"><p>No {type}s are available for reporting yet.</p></article>}
+    {loading && <div role="status" className="report-status"><Spinner /></div>}
+    {error && <div role="alert" className="report-error"><strong>Error:</strong> {error}</div>}
+    {!loading && !error && subjects.length === 0 && (
+      <EmptyState
+        icon="info"
+        title={`No ${type}s available`}
+        description={`There are no ${type}s created yet. Create one to generate a report.`}
+      />
+    )}
 
     {!loading && funnelReport && <>
-      <article className="report-card">
+      <Card>
         <div className="report-card-heading"><div><span className="eyebrow">Audience progression</span><h2>Performance funnel</h2></div></div>
         <FunnelBars funnel={funnelReport.funnel} />
-      </article>
+      </Card>
       <div className="deliverability-grid" aria-label="Deliverability metrics">
         <article className="metric-tile"><span>Bounce rate</span><strong>{percent(funnelReport.deliverability.bounce_rate)}</strong><small>{funnelReport.deliverability.bounced.total} bounced · {funnelReport.deliverability.bounced.unique} unique</small></article>
         <article className="metric-tile"><span>Complaint rate</span><strong>{percent(funnelReport.deliverability.complaint_rate)}</strong><small>{funnelReport.deliverability.complained.total} complained · {funnelReport.deliverability.complained.unique} unique</small></article>
