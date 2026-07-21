@@ -344,11 +344,12 @@ registration. ConfirmDialog on publish + kill-switch toggle. Theme-aware; no new
    — done: evaluate.go walks targeting_rules in order, calls evalAudience.Eval(), first match wins; integration test verifies empty-DSL and no-match fallback; unit tests verify targeting logic and priority; 598 tests green
 
 ### Milestone 18.4 — Publish, versioning, kill switch, human gate
-1. [ ] **Publish + freeze + version** (Recipe 6.71): `PublishFeatureFlag` canonical-marshals the ruleset →
+1. [x] **Publish + freeze + version** (Recipe 6.71): `PublishFeatureFlag` canonical-marshals the ruleset →
    `sha256` → `blobs.Put` → immutable `feature_flag_versions` row + `current_version_id` flip (copy
    `journeys.go:109-174`); human-actor gate on publish/enable; routes `flags:write`.
    *Done when:* a non-human actor is 403 on publish/enable; publishing writes an immutable version + blob
    with a stable sha for identical input; re-publishing identical config is idempotent; httpapi tests green.
+   — done: isHuman gate implemented in publishFeatureFlag handler; postgres PublishFeatureFlag creates immutable version with SHA256; manifest key digest guard ensures idempotency; 601 tests green including TestPublishFlagWithHumanGate
 2. [ ] **Kill switch**: `status='disabled'` short-circuits `Evaluate` to the default (copy `host.go:121`);
    flipping it is human-gated `flags:write` and immediate.
    *Done when:* disabling a flag makes every subject evaluate to the default within one request (no cached
