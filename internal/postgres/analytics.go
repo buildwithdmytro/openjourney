@@ -747,6 +747,97 @@ func (s *Store) GrowthReport(ctx context.Context, p domain.Principal, campaignID
 	return report, nil
 }
 
+// CostReport returns per-bucket cost totals and cost-per-send from engagement facts.
+// Requires ReportQuery with Start, End, and Granularity set. Returns empty buckets as zero.
+func (s *Store) CostReport(ctx context.Context, p domain.Principal, campaignID string, query domain.ReportQuery) (domain.CostReport, error) {
+	if err := s.requireCampaignSource(ctx, p, campaignID); err != nil {
+		return domain.CostReport{}, err
+	}
+
+	if query.Start.IsZero() || query.End.IsZero() {
+		return domain.CostReport{}, errors.New("time range start and end are required for cost report")
+	}
+
+	if query.Granularity == "" || query.Granularity == "none" {
+		return domain.CostReport{}, errors.New("granularity is required and must not be 'none' for cost report")
+	}
+
+	report := domain.CostReport{CampaignID: campaignID}
+
+	// Determine PostgreSQL interval string from granularity
+	interval := "1 day"
+	switch query.Granularity {
+	case "hour":
+		interval = "1 hour"
+	case "day":
+		interval = "1 day"
+	case "week":
+		interval = "1 week"
+	case "month":
+		interval = "1 month"
+	}
+
+	// Query engagement_facts for cost and send counts per bucket
+	sqlCost := fmt.Sprintf(`
+		WITH date_range AS (
+			SELECT * FROM generate_series($3, $4, '%s'::interval) AS bucket
+		),
+		bucketed_costs AS (
+			SELECT
+				date_trunc('%s', ef.occurred_at) AS bucket,
+				SUM(ef.cost_micros) AS total_cost_micros,
+				COUNT(*) AS send_count
+			FROM engagement_facts ef
+			WHERE ef.tenant_id=$1 AND ef.workspace_id=$2 AND ef.source_id=$5 AND ef.source_type='campaign'
+				AND ef.event_type='delivered'
+				AND ef.occurred_at BETWEEN $3 AND $4
+			GROUP BY bucket
+		)
+		SELECT
+			dr.bucket,
+			COALESCE(bc.total_cost_micros, 0) AS total_cost_micros,
+			COALESCE(bc.send_count, 0) AS send_count
+		FROM date_range dr
+		LEFT JOIN bucketed_costs bc ON dr.bucket = bc.bucket
+		ORDER BY dr.bucket
+	`, interval, strings.TrimSuffix(query.Granularity, "s"))
+
+	rows, err := s.pool.Query(ctx, sqlCost, p.TenantID, p.WorkspaceID, query.Start, query.End, campaignID)
+	if err != nil {
+		return domain.CostReport{}, err
+	}
+	defer rows.Close()
+
+	var buckets []domain.CostBucket
+	for rows.Next() {
+		var bucket time.Time
+		var totalCostMicros int64
+		var sendCount int64
+		if err := rows.Scan(&bucket, &totalCostMicros, &sendCount); err != nil {
+			return domain.CostReport{}, err
+		}
+
+		costPerSend := 0.0
+		if sendCount > 0 {
+			costPerSend = float64(totalCostMicros) / float64(sendCount)
+		}
+
+		cb := domain.CostBucket{
+			Time:            bucket,
+			TotalCostMicros: totalCostMicros,
+			SendCount:       sendCount,
+			CostPerSend:     costPerSend,
+		}
+		buckets = append(buckets, cb)
+	}
+	if err := rows.Err(); err != nil {
+		return domain.CostReport{}, err
+	}
+
+	report.Buckets = buckets
+	return report, nil
+}
+
 // ExperimentReport generates a statistical report for an experiment, comparing
 // each variant to the control variant on the primary goal and reporting guardrail rates.
 func (s *Store) ExperimentReport(ctx context.Context, p domain.Principal, experimentID string, reportQuery domain.ReportQuery) (domain.ExperimentReport, error) {

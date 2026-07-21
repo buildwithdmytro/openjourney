@@ -1004,3 +1004,200 @@ func TestGrowthReport(t *testing.T) {
 		t.Errorf("day 3 net_growth=%d, want 5", day3Bucket.NetGrowth)
 	}
 }
+
+func TestCostReport(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	key := fmt.Sprintf("cost-report-%d", time.Now().UnixNano())
+	if err := store.EnsureDevelopmentTenant(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	p, err := store.Authenticate(ctx, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	segment, err := store.CreateSegment(ctx, p, domain.Segment{
+		Name: "Cost audience", Type: "dynamic", DSL: json.RawMessage(`{}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	from := fmt.Sprintf("cost-report-%d@example.com", time.Now().UnixNano())
+	identity, err := store.CreateSendingIdentity(ctx, p, domain.SendingIdentity{
+		Channel: "email", FromAddress: &from, Provider: "ses", MaxSendRate: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	html := "Cost report"
+	template, err := store.CreateTemplate(ctx, p, domain.Template{
+		Name: "Cost template", Channel: "email", HTMLTemplate: &html,
+		SendingIdentityID: &identity.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	campaign, err := store.CreateCampaign(ctx, p, domain.Campaign{
+		Name: "Cost campaign", SegmentID: segment.ID, TemplateID: template.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create base times for 3 days
+	baseTime := time.Now().UTC().Truncate(time.Hour)
+	day1 := baseTime.Add(-2 * 24 * time.Hour)
+	day2 := baseTime.Add(-1 * 24 * time.Hour)
+	day3 := baseTime
+
+	// Seed profiles and delivery_attempts with cost_micros
+	// Day 1: 10 deliveries, 1000 micros each = 10000 total, 1000 cost-per-send
+	// Day 2: 15 deliveries, 2000 micros each = 30000 total, 2000 cost-per-send
+	// Day 3: 12 deliveries, 1500 micros each = 18000 total, 1500 cost-per-send
+	type recipient struct {
+		profileID  string
+		externalID string
+		endpoint   string
+		day        time.Time
+		costMicros int64
+	}
+
+	recipients := make([]recipient, 37)
+	for i := 0; i < 10; i++ {
+		recipients[i] = recipient{
+			externalID: fmt.Sprintf("cost-day1-%02d", i),
+			endpoint:   fmt.Sprintf("cost-day1-%02d@example.com", i),
+			day:        day1,
+			costMicros: 1000,
+		}
+	}
+	for i := 10; i < 25; i++ {
+		recipients[i] = recipient{
+			externalID: fmt.Sprintf("cost-day2-%02d", i-10),
+			endpoint:   fmt.Sprintf("cost-day2-%02d@example.com", i-10),
+			day:        day2,
+			costMicros: 2000,
+		}
+	}
+	for i := 25; i < 37; i++ {
+		recipients[i] = recipient{
+			externalID: fmt.Sprintf("cost-day3-%02d", i-25),
+			endpoint:   fmt.Sprintf("cost-day3-%02d@example.com", i-25),
+			day:        day3,
+			costMicros: 1500,
+		}
+	}
+
+	for i := range recipients {
+		if err := store.pool.QueryRow(ctx, `INSERT INTO profiles
+			(tenant_id,workspace_id,app_id,external_id) VALUES ($1,$2,$3,$4) RETURNING id`,
+			p.TenantID, p.WorkspaceID, p.AppID, recipients[i].externalID).Scan(&recipients[i].profileID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := store.pool.Exec(ctx, `INSERT INTO delivery_attempts
+			(campaign_id,tenant_id,profile_id,channel,endpoint,decision,attempted_at,cost_micros)
+			VALUES ($1,$2,$3,'email',$4,'sent',$5,$6)`, campaign.ID, p.TenantID,
+			recipients[i].profileID, recipients[i].endpoint, recipients[i].day, recipients[i].costMicros); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Seed engagement events (message.delivered) to project facts with cost_micros
+	events := make([]domain.Event, 0, 37)
+	addEvent := func(recipient recipient, suffix string) {
+		events = append(events, domain.Event{
+			Type: "message.delivered", SchemaVersion: 1, ExternalID: recipient.externalID,
+			IdempotencyKey: fmt.Sprintf("cost-%s-%s", recipient.externalID, suffix),
+			OccurredAt:     recipient.day,
+			Payload: json.RawMessage(fmt.Sprintf(`{"campaign_id":%q,"endpoint":%q}`,
+				campaign.ID, recipient.endpoint)),
+		})
+	}
+
+	for i := range recipients {
+		addEvent(recipients[i], "delivered")
+	}
+
+	ids, err := store.AcceptEvents(ctx, p, events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, event := range events {
+		accepted := domain.AcceptedEvent{
+			ID: ids[i], Principal: p, Type: event.Type, SchemaVersion: event.SchemaVersion,
+			ExternalID: event.ExternalID, IdempotencyKey: event.IdempotencyKey,
+			OccurredAt: event.OccurredAt, Payload: event.Payload,
+		}
+		if err := store.ProjectEvent(ctx, accepted); err != nil {
+			t.Fatalf("project %s for %s: %v", event.Type, event.ExternalID, err)
+		}
+	}
+
+	// Test with daily granularity, spanning 3 days
+	reportStart := day1.Truncate(24 * time.Hour)
+	reportEnd := day3.Truncate(24 * time.Hour).Add(24 * time.Hour)
+	costReport, err := store.CostReport(ctx, p, campaign.ID, domain.ReportQuery{
+		Start:       reportStart,
+		End:         reportEnd,
+		Granularity: "day",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(costReport.Buckets) != 3 {
+		t.Fatalf("buckets=%d, want 3", len(costReport.Buckets))
+	}
+
+	// Verify day 1: 10 sends, 10000 total cost, 1000 cost-per-send
+	day1Bucket := costReport.Buckets[0]
+	if day1Bucket.SendCount != 10 {
+		t.Fatalf("day 1 send_count=%d, want 10", day1Bucket.SendCount)
+	}
+	if day1Bucket.TotalCostMicros != 10000 {
+		t.Fatalf("day 1 total_cost_micros=%d, want 10000", day1Bucket.TotalCostMicros)
+	}
+	expectedDay1CostPerSend := 1000.0 // 10000 / 10
+	if day1Bucket.CostPerSend != expectedDay1CostPerSend {
+		t.Fatalf("day 1 cost_per_send=%v, want %v", day1Bucket.CostPerSend, expectedDay1CostPerSend)
+	}
+
+	// Verify day 2: 15 sends, 30000 total cost, 2000 cost-per-send
+	day2Bucket := costReport.Buckets[1]
+	if day2Bucket.SendCount != 15 {
+		t.Fatalf("day 2 send_count=%d, want 15", day2Bucket.SendCount)
+	}
+	if day2Bucket.TotalCostMicros != 30000 {
+		t.Fatalf("day 2 total_cost_micros=%d, want 30000", day2Bucket.TotalCostMicros)
+	}
+	expectedDay2CostPerSend := 2000.0 // 30000 / 15
+	if day2Bucket.CostPerSend != expectedDay2CostPerSend {
+		t.Fatalf("day 2 cost_per_send=%v, want %v", day2Bucket.CostPerSend, expectedDay2CostPerSend)
+	}
+
+	// Verify day 3: 12 sends, 18000 total cost, 1500 cost-per-send
+	day3Bucket := costReport.Buckets[2]
+	if day3Bucket.SendCount != 12 {
+		t.Fatalf("day 3 send_count=%d, want 12", day3Bucket.SendCount)
+	}
+	if day3Bucket.TotalCostMicros != 18000 {
+		t.Fatalf("day 3 total_cost_micros=%d, want 18000", day3Bucket.TotalCostMicros)
+	}
+	expectedDay3CostPerSend := 1500.0 // 18000 / 12
+	if day3Bucket.CostPerSend != expectedDay3CostPerSend {
+		t.Fatalf("day 3 cost_per_send=%v, want %v", day3Bucket.CostPerSend, expectedDay3CostPerSend)
+	}
+}

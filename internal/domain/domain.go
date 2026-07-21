@@ -1024,6 +1024,20 @@ type GrowthReport struct {
 	Buckets    []GrowthBucket `json:"buckets"`
 }
 
+// CostBucket represents cost metrics for a time period: total cost and cost per send.
+type CostBucket struct {
+	Time           time.Time `json:"time"`
+	TotalCostMicros int64     `json:"total_cost_micros"`
+	SendCount       int64     `json:"send_count"`
+	CostPerSend     float64   `json:"cost_per_send"`
+}
+
+// CostReport returns per-bucket cost totals and cost-per-send over time.
+type CostReport struct {
+	CampaignID string       `json:"campaign_id"`
+	Buckets    []CostBucket `json:"buckets"`
+}
+
 type ExperimentReport struct {
 	ExperimentID  string                    `json:"experiment_id"`
 	WinnerVariant *string                   `json:"winner_variant,omitempty"`

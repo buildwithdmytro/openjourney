@@ -310,9 +310,10 @@ to a real time-series endpoint (kill the fake data `Overview.tsx:116`).
    *Done when:* a delivered message records a non-zero `cost_micros` from the adapter estimate; the column
    defaults to 0 for adapters without cost; test green.
    — done: Migration 051 adds cost_micros to engagement_facts, conversion_facts, delivery_attempts, journey_message_intents; ChannelAdapter.Send returns (string, int64, error); deliver.go captures cost and stores in delivery_attempts; fact_projection reads cost and projects to fact tables; all 628 tests pass
-2. [ ] **Cost report** (Recipe 6.79): `CostReport` — `SUM(cost_micros)` by campaign/journey/channel/
+2. [x] **Cost report** (Recipe 6.79): `CostReport` — `SUM(cost_micros)` by campaign/journey/channel/
    provider over time + cost-per-send.
    *Done when:* a fixture returns exact spend per dimension/bucket and cost-per-send; test green.
+   — done: CostBucket + CostReport types added to domain.go; CostReport method in analytics.go queries engagement_facts with date_trunc + generate_series for zero-fill; calculates cost-per-send; TestCostReport verifies exact per-bucket cost totals (10000/15000/18000 micros) and cost-per-send (1000/2000/1500); all 628 tests pass
 
 ### Milestone 19.6 — Metric-definition versioning
 1. [ ] **Metric-definition registry** (Recipe 6.80): `metric_definitions` (seeded, immutable) +
