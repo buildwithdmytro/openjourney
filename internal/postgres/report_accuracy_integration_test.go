@@ -208,4 +208,77 @@ func TestReportAccuracyFromProjectedEvents(t *testing.T) {
 	if experimentReport.WinnerVariant == nil || *experimentReport.WinnerVariant != "treatment" {
 		t.Fatalf("winner=%v, want treatment", experimentReport.WinnerVariant)
 	}
+
+	// Test time-range filtering: query with range that includes no events should return zero counts
+	// but same structure as point-in-time report
+	futureStart := occurredAt.Add(time.Hour)
+	futureEnd := futureStart.Add(time.Hour)
+	emptyRangeReport, err := store.CampaignReport(ctx, p, campaign.ID, domain.ReportQuery{
+		Start: futureStart,
+		End:   futureEnd,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	emptyRangeFunnel := domain.ReportFunnel{
+		Targeted:  domain.ReportCount{Total: 0, Unique: 0},
+		Sent:      domain.ReportCount{Total: 0, Unique: 0},
+		Delivered: domain.ReportCount{Total: 0, Unique: 0},
+		Opened:    domain.ReportCount{Total: 0, Unique: 0},
+		Clicked:   domain.ReportCount{Total: 0, Unique: 0},
+		Converted: domain.ReportCount{Total: 0, Unique: 0},
+	}
+	if emptyRangeReport.Funnel != emptyRangeFunnel {
+		t.Fatalf("empty range funnel=%+v, want %+v", emptyRangeReport.Funnel, emptyRangeFunnel)
+	}
+
+	// Test time-range filtering: query with range that includes all events should match point-in-time
+	inclusiveStart := sentAt.Add(-time.Minute)
+	inclusiveEnd := occurredAt.Add(time.Minute)
+	inclusiveReport, err := store.CampaignReport(ctx, p, campaign.ID, domain.ReportQuery{
+		Start: inclusiveStart,
+		End:   inclusiveEnd,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inclusiveReport.Funnel != wantFunnel {
+		t.Fatalf("inclusive range funnel=%+v, want %+v", inclusiveReport.Funnel, wantFunnel)
+	}
+
+	// Test that ExperimentReport also supports time-range filtering
+	experimentReportFuture, err := store.ExperimentReport(ctx, p, experiment.ID, domain.ReportQuery{
+		Start: futureStart,
+		End:   futureEnd,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	futureVariants := make(map[string]domain.ExperimentVariantReport, len(experimentReportFuture.Variants))
+	for _, variant := range experimentReportFuture.Variants {
+		futureVariants[variant.Label] = variant
+	}
+	futureControl, futuretreatment := futureVariants["control"], futureVariants["treatment"]
+	if futureControl.Sent != 0 || futuretreatment.Sent != 0 {
+		t.Fatalf("future experiment sent control=%d treatment=%d, want both 0", futureControl.Sent, futuretreatment.Sent)
+	}
+
+	// Test that ExperimentReport with inclusive range returns all data
+	experimentReportInclusive, err := store.ExperimentReport(ctx, p, experiment.ID, domain.ReportQuery{
+		Start: inclusiveStart,
+		End:   inclusiveEnd,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inclusiveVariants := make(map[string]domain.ExperimentVariantReport, len(experimentReportInclusive.Variants))
+	for _, variant := range experimentReportInclusive.Variants {
+		inclusiveVariants[variant.Label] = variant
+	}
+	inclusiveControl, inclusiveTreatment := inclusiveVariants["control"], inclusiveVariants["treatment"]
+	if inclusiveControl.Sent != control.Sent || inclusiveControl.Conversions != control.Conversions ||
+		inclusiveTreatment.Sent != treatment.Sent || inclusiveTreatment.Conversions != treatment.Conversions {
+		t.Fatalf("inclusive experiment results differ from empty query: control=%+v vs %+v, treatment=%+v vs %+v",
+			inclusiveControl, control, inclusiveTreatment, treatment)
+	}
 }

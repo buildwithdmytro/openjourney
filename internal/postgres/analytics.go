@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 	"github.com/buildwithdmytro/openjourney/internal/experiment"
@@ -21,7 +22,20 @@ func (s *Store) CampaignReport(ctx context.Context, p domain.Principal, campaign
 	}
 
 	report := domain.CampaignReport{CampaignID: campaignID}
-	if err := s.pool.QueryRow(ctx, `
+
+	// Build WHERE clause for time filtering when query provides a range
+	whereClause := `WHERE c.tenant_id=$1 AND c.workspace_id=$2 AND c.id=$3
+		AND d.tenant_id=$1 AND d.campaign_id=$3`
+	args := []interface{}{p.TenantID, p.WorkspaceID, campaignID}
+	argIdx := 4
+
+	if !query.Start.IsZero() && !query.End.IsZero() {
+		whereClause += fmt.Sprintf(` AND d.attempted_at BETWEEN $%d AND $%d`, argIdx, argIdx+1)
+		args = append(args, query.Start, query.End)
+		argIdx += 2
+	}
+
+	sql := fmt.Sprintf(`
 		SELECT
 			COUNT(*), COUNT(DISTINCT d.profile_id),
 			COUNT(*) FILTER (WHERE d.decision='sent'), COUNT(DISTINCT d.profile_id) FILTER (WHERE d.decision='sent'),
@@ -34,8 +48,9 @@ func (s *Store) CampaignReport(ctx context.Context, p domain.Principal, campaign
 			COUNT(*) FILTER (WHERE d.decision='holdout'), COUNT(DISTINCT d.profile_id) FILTER (WHERE d.decision='holdout')
 		FROM delivery_attempts d
 		JOIN campaigns c ON c.id=d.campaign_id AND c.tenant_id=d.tenant_id
-		WHERE c.tenant_id=$1 AND c.workspace_id=$2 AND c.id=$3
-			AND d.tenant_id=$1 AND d.campaign_id=$3`, p.TenantID, p.WorkspaceID, campaignID).Scan(
+		%s`, whereClause)
+
+	if err := s.pool.QueryRow(ctx, sql, args...).Scan(
 		&report.Funnel.Targeted.Total, &report.Funnel.Targeted.Unique,
 		&report.Funnel.Sent.Total, &report.Funnel.Sent.Unique,
 		&report.Funnel.Suppressed.Total, &report.Funnel.Suppressed.Unique,
@@ -48,7 +63,7 @@ func (s *Store) CampaignReport(ctx context.Context, p domain.Principal, campaign
 	); err != nil {
 		return domain.CampaignReport{}, err
 	}
-	if err := s.readReportFacts(ctx, p, "campaign", campaignID, &report.Funnel, &report.Deliverability); err != nil {
+	if err := s.readReportFacts(ctx, p, "campaign", campaignID, query, &report.Funnel, &report.Deliverability); err != nil {
 		return domain.CampaignReport{}, err
 	}
 	setDeliverabilityRates(report.Funnel.Sent.Total, &report.Deliverability)
@@ -65,7 +80,19 @@ func (s *Store) JourneyReport(ctx context.Context, p domain.Principal, journeyID
 	}
 
 	report := domain.JourneyReport{JourneyID: journeyID}
-	if err := s.pool.QueryRow(ctx, `
+
+	// Build WHERE clause for time filtering when query provides a range
+	whereClause := `WHERE tenant_id=$1 AND workspace_id=$2 AND journey_id=$3`
+	args := []interface{}{p.TenantID, p.WorkspaceID, journeyID}
+	argIdx := 4
+
+	if !query.Start.IsZero() && !query.End.IsZero() {
+		whereClause += fmt.Sprintf(` AND updated_at BETWEEN $%d AND $%d`, argIdx, argIdx+1)
+		args = append(args, query.Start, query.End)
+		argIdx += 2
+	}
+
+	sql := fmt.Sprintf(`
 		SELECT
 			COUNT(*), COUNT(DISTINCT profile_id),
 			COUNT(*) FILTER (WHERE decision='sent'), COUNT(DISTINCT profile_id) FILTER (WHERE decision='sent'),
@@ -77,7 +104,9 @@ func (s *Store) JourneyReport(ctx context.Context, p domain.Principal, journeyID
 			COUNT(*) FILTER (WHERE decision='failed'), COUNT(DISTINCT profile_id) FILTER (WHERE decision='failed'),
 			COUNT(*) FILTER (WHERE decision='holdout'), COUNT(DISTINCT profile_id) FILTER (WHERE decision='holdout')
 		FROM journey_message_intents
-		WHERE tenant_id=$1 AND workspace_id=$2 AND journey_id=$3`, p.TenantID, p.WorkspaceID, journeyID).Scan(
+		%s`, whereClause)
+
+	if err := s.pool.QueryRow(ctx, sql, args...).Scan(
 		&report.Funnel.Targeted.Total, &report.Funnel.Targeted.Unique,
 		&report.Funnel.Sent.Total, &report.Funnel.Sent.Unique,
 		&report.Funnel.Suppressed.Total, &report.Funnel.Suppressed.Unique,
@@ -90,7 +119,7 @@ func (s *Store) JourneyReport(ctx context.Context, p domain.Principal, journeyID
 	); err != nil {
 		return domain.JourneyReport{}, err
 	}
-	if err := s.readReportFacts(ctx, p, "journey", journeyID, &report.Funnel, &report.Deliverability); err != nil {
+	if err := s.readReportFacts(ctx, p, "journey", journeyID, query, &report.Funnel, &report.Deliverability); err != nil {
 		return domain.JourneyReport{}, err
 	}
 	setDeliverabilityRates(report.Funnel.Sent.Total, &report.Deliverability)
@@ -117,8 +146,19 @@ func (s *Store) requireJourneySource(ctx context.Context, p domain.Principal, so
 	return err
 }
 
-func (s *Store) readReportFacts(ctx context.Context, p domain.Principal, sourceType, sourceID string, funnel *domain.ReportFunnel, deliverability *domain.ReportDeliverability) error {
-	if err := s.pool.QueryRow(ctx, `
+func (s *Store) readReportFacts(ctx context.Context, p domain.Principal, sourceType, sourceID string, query domain.ReportQuery, funnel *domain.ReportFunnel, deliverability *domain.ReportDeliverability) error {
+	// Build WHERE clause for engagement_facts
+	whereClauseEng := `WHERE tenant_id=$1 AND workspace_id=$2 AND source_id=$3 AND source_type=$4`
+	argsEng := []interface{}{p.TenantID, p.WorkspaceID, sourceID, sourceType}
+	argIdxEng := 5
+
+	if !query.Start.IsZero() && !query.End.IsZero() {
+		whereClauseEng += fmt.Sprintf(` AND occurred_at BETWEEN $%d AND $%d`, argIdxEng, argIdxEng+1)
+		argsEng = append(argsEng, query.Start, query.End)
+		argIdxEng += 2
+	}
+
+	sqlEng := fmt.Sprintf(`
 		SELECT
 			COUNT(*) FILTER (WHERE event_type='delivered'), COUNT(DISTINCT profile_id) FILTER (WHERE event_type='delivered'),
 			COUNT(*) FILTER (WHERE event_type='opened'), COUNT(DISTINCT profile_id) FILTER (WHERE event_type='opened'),
@@ -126,8 +166,9 @@ func (s *Store) readReportFacts(ctx context.Context, p domain.Principal, sourceT
 			COUNT(*) FILTER (WHERE event_type='bounced'), COUNT(DISTINCT profile_id) FILTER (WHERE event_type='bounced'),
 			COUNT(*) FILTER (WHERE event_type='complained'), COUNT(DISTINCT profile_id) FILTER (WHERE event_type='complained')
 		FROM engagement_facts
-		WHERE tenant_id=$1 AND workspace_id=$2 AND source_id=$3 AND source_type=$4`,
-		p.TenantID, p.WorkspaceID, sourceID, sourceType).Scan(
+		%s`, whereClauseEng)
+
+	if err := s.pool.QueryRow(ctx, sqlEng, argsEng...).Scan(
 		&funnel.Delivered.Total, &funnel.Delivered.Unique,
 		&funnel.Opened.Total, &funnel.Opened.Unique,
 		&funnel.Clicked.Total, &funnel.Clicked.Unique,
@@ -136,11 +177,24 @@ func (s *Store) readReportFacts(ctx context.Context, p domain.Principal, sourceT
 	); err != nil {
 		return err
 	}
-	return s.pool.QueryRow(ctx, `
+
+	// Build WHERE clause for conversion_facts
+	whereClauseConv := `WHERE tenant_id=$1 AND workspace_id=$2 AND source_id=$3 AND source_type=$4`
+	argsConv := []interface{}{p.TenantID, p.WorkspaceID, sourceID, sourceType}
+	argIdxConv := 5
+
+	if !query.Start.IsZero() && !query.End.IsZero() {
+		whereClauseConv += fmt.Sprintf(` AND occurred_at BETWEEN $%d AND $%d`, argIdxConv, argIdxConv+1)
+		argsConv = append(argsConv, query.Start, query.End)
+		argIdxConv += 2
+	}
+
+	sqlConv := fmt.Sprintf(`
 		SELECT COUNT(*), COUNT(DISTINCT profile_id)
 		FROM conversion_facts
-		WHERE tenant_id=$1 AND workspace_id=$2 AND source_id=$3 AND source_type=$4`,
-		p.TenantID, p.WorkspaceID, sourceID, sourceType).Scan(&funnel.Converted.Total, &funnel.Converted.Unique)
+		%s`, whereClauseConv)
+
+	return s.pool.QueryRow(ctx, sqlConv, argsConv...).Scan(&funnel.Converted.Total, &funnel.Converted.Unique)
 }
 
 func setDeliverabilityRates(sent int64, deliverability *domain.ReportDeliverability) {

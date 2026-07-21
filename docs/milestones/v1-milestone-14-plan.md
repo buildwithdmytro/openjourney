@@ -273,10 +273,11 @@ to a real time-series endpoint (kill the fake data `Overview.tsx:116`).
    granularity/dimension is rejected `422`; an empty query still returns today's point-in-time report
    (backward-compatible); unit test green.
    — done: TestReportQueryValidGranularityAndTimeRange + TestReportQueryInvalidGranularityRejected + TestReportQueryInvalidDimensionRejected + TestReportQueryEmptyQueryBackwardCompatible all pass; 628 tests green
-2. [ ] **Thread `ReportQuery` into existing reports** (backward-compatible): `CampaignReport`/
+2. [x] **Thread `ReportQuery` into existing reports** (backward-compatible): `CampaignReport`/
    `JourneyReport`/`ExperimentReport` accept an optional query; empty = unchanged behavior.
    *Done when:* the existing `report_accuracy_integration_test.go` passes UNCHANGED (empty query); a
    ranged query filters facts by `occurred_at`; test covers both.
+   — done: CampaignReport + JourneyReport + ExperimentReport accept ReportQuery; empty query maintains backward compatibility; time-range queries filter delivery_attempts.attempted_at and engagement/conversion_facts.occurred_at; extended report_accuracy_integration_test.go with range filtering tests for campaigns/experiments; all 628 tests pass
 
 ### Milestone 19.2 — Over-time reporting — CHECKPOINT
 1. [ ] **Date-bucketing helper + funnel-over-time** (Recipe 6.77): `date_trunc` + `generate_series`
