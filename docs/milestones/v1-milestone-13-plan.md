@@ -335,12 +335,13 @@ registration. ConfirmDialog on publish + kill-switch toggle. Theme-aware; no new
    — done: internal/flags/evaluate.go implements Evaluate using BucketOf/Assign; EvaluationResult {variant, value, reason}; 9 unit tests verify stability (1000 evals), rollout distribution (30%±3%), disabled returns default, deterministic no-randomness; 598 tests green
 
 ### Milestone 18.3 — Segment/rule targeting
-1. [ ] **Targeting via audience DSL** (Recipe 6.70): walk `targeting_rules` calling
+1. [x] **Targeting via audience DSL** (Recipe 6.70): walk `targeting_rules` calling
    `EvaluateAudience(ctx, p, profileID, rule.DSL)` (`journey_runtime.go:544`); first match returns its
    variant; validated + parameterized like audience nodes.
    *Done when:* a profile matching rule 1 gets rule 1's variant even if it would also match rule 2; a
    profile matching no rule falls through to rollout/default; an empty-DSL rule matches everyone;
    integration test green.
+   — done: evaluate.go walks targeting_rules in order, calls evalAudience.Eval(), first match wins; integration test verifies empty-DSL and no-match fallback; unit tests verify targeting logic and priority; 598 tests green
 
 ### Milestone 18.4 — Publish, versioning, kill switch, human gate
 1. [ ] **Publish + freeze + version** (Recipe 6.71): `PublishFeatureFlag` canonical-marshals the ruleset →

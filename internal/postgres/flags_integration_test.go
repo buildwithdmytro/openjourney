@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
+	"github.com/buildwithdmytro/openjourney/internal/flags"
 )
 
 func TestFeatureFlagStoreRoundTripAndDuplicateRejection(t *testing.T) {
@@ -319,6 +320,127 @@ func TestFeatureFlagValidation(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestFeatureFlagTargetingRulesIntegration(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.pool.Exec(ctx, "TRUNCATE tenants CASCADE"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.EnsureDevelopmentTenant(ctx, "flag-targeting"); err != nil {
+		t.Fatal(err)
+	}
+	p, err := store.Authenticate(ctx, "flag-targeting")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a flag with multiple targeting rules
+	// Rule 1: empty DSL -> matches everyone (rule-priority test)
+	// Rule 2: premium condition -> should only match if rule 1 is skipped
+	rule1, _ := json.Marshal(map[string]interface{}{})
+	rule2, _ := json.Marshal(map[string]interface{}{
+		"operator": "equals",
+		"field":    "attributes.plan",
+		"value":    "premium",
+	})
+
+	flag, err := store.CreateFeatureFlag(ctx, p, domain.FeatureFlag{
+		AppID:        p.AppID,
+		Environment:  "production",
+		Key:          "test-targeting-integration",
+		FlagType:     "string",
+		DefaultValue: json.RawMessage(`"default"`),
+		Variants: []domain.FlagVariant{
+			{Label: "variant-rule1", Value: json.RawMessage(`"rule1"`), Weight: 100},
+			{Label: "variant-rule2", Value: json.RawMessage(`"rule2"`), Weight: 100},
+		},
+		TargetingRules: []domain.FlagTargetingRule{
+			{DSL: json.RawMessage(rule1), Variant: "variant-rule1"},
+			{DSL: json.RawMessage(rule2), Variant: "variant-rule2"},
+		},
+		Seed:       "targeting-integration-seed",
+		Enabled:    true,
+		Status:     "published",
+		RolloutPct: 0, // No rollout, only targeting rules
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a wrapper that implements flags.EvalAudience using store.EvaluateAudience
+	evalAudience := &storeAudience{store: store, principal: p}
+
+	// Test: Empty-DSL rule matches everyone (first rule should win)
+	// Any profile should match rule 1 (empty DSL) and get variant-rule1
+	result, err := flags.Evaluate(ctx, &flag, "any-profile-id", evalAudience)
+	if err != nil {
+		t.Fatalf("Evaluate failed: %v", err)
+	}
+	if result.Variant != "variant-rule1" {
+		t.Errorf("Empty DSL rule should match everyone: expected variant-rule1, got %q", result.Variant)
+	}
+	if result.Reason != "targeted" {
+		t.Errorf("Expected reason 'targeted', got %q", result.Reason)
+	}
+
+	// Test: A flag with no matching rule falls back to default
+	flag2, err := store.CreateFeatureFlag(ctx, p, domain.FeatureFlag{
+		AppID:        p.AppID,
+		Environment:  "production",
+		Key:          "test-no-match",
+		FlagType:     "string",
+		DefaultValue: json.RawMessage(`"fallback"`),
+		Variants: []domain.FlagVariant{
+			{Label: "variant-premium", Value: json.RawMessage(`"premium"`), Weight: 100},
+		},
+		TargetingRules: []domain.FlagTargetingRule{
+			{DSL: json.RawMessage(rule2), Variant: "variant-premium"}, // Only matches premium
+		},
+		Seed:       "no-match-seed",
+		Enabled:    true,
+		Status:     "published",
+		RolloutPct: 0,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result2, err := flags.Evaluate(ctx, &flag2, "any-profile-id", evalAudience)
+	if err != nil {
+		t.Fatalf("Evaluate flag2 failed: %v", err)
+	}
+	if result2.Variant != "" {
+		t.Errorf("No matching rule should fall back to default: expected variant '', got %q", result2.Variant)
+	}
+	if result2.Reason != "rollout_excluded" {
+		t.Errorf("Expected reason 'rollout_excluded', got %q", result2.Reason)
+	}
+	if string(result2.Value) != `"fallback"` {
+		t.Errorf("Expected fallback value, got %s", result2.Value)
+	}
+}
+
+// storeAudience wraps store.EvaluateAudience to implement flags.EvalAudience interface
+type storeAudience struct {
+	store     *Store
+	principal domain.Principal
+}
+
+func (sa *storeAudience) Eval(ctx context.Context, profileID string, dsl json.RawMessage) (bool, error) {
+	return sa.store.EvaluateAudience(ctx, sa.principal, profileID, dsl)
 }
 
 func stringPtr(s string) *string {
