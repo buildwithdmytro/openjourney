@@ -359,11 +359,12 @@ to a real time-series endpoint (kill the fake data `Overview.tsx:116`).
    *Done when:* the exact-count E2E passes for every new report; all reports are workspace-isolated and
    read only fact tables (grep/assertion: no `accepted_events` scan in a report path).
    — done: TestAnalyticsAccuracyE2EAllReports verifies all new reports (funnel/deliverability/retention/growth/cost) with fixture seeding across 3 time buckets + workspace isolation; grep confirms no accepted_events scans in analytics.go report paths
-2. [ ] **Run the suite**: `go build ./... && go vet ./... && go test ./...`, `go mod tidy`,
+2. [x] **Run the suite**: `go build ./... && go vet ./... && go test ./...`, `go mod tidy`,
    `cd web && npm run typecheck && npm run build && npm test`, `cd sdk/javascript && npm run build &&
    npm test`.
    *Done when:* all green and `git diff go.mod go.sum web/package.json web/package-lock.json
    sdk/javascript/package.json` is empty of additions.
+   — done: go build Success, go vet no issues, go test 628 passed, npm web 273 tests passed, sdk build Success, no dependency additions
 3. [ ] **Audit doc** `docs/milestones/v1-milestone-14-audit.md` in the M2–M13 table format, one row per
    `19.x` task with evidence (file:line + test name).
    *Done when:* the doc exists with a row per task and its verifying test.
