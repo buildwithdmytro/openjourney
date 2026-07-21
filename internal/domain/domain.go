@@ -1492,3 +1492,45 @@ type SavedReport struct {
 	CreatedAt       time.Time       `json:"created_at"`
 	UpdatedAt       time.Time       `json:"updated_at"`
 }
+
+type Catalog struct {
+	ID            string    `json:"id"`
+	TenantID      string    `json:"tenant_id"`
+	WorkspaceID   string    `json:"workspace_id"`
+	AppID         string    `json:"app_id"`
+	Key           string    `json:"key"`
+	Name          string    `json:"name"`
+	Description   string    `json:"description"`
+	ItemKeyField  string    `json:"item_key_field"`
+	Status        string    `json:"status"` // active, archived
+	ItemCount     int64     `json:"item_count"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+type CatalogItem struct {
+	ID        string          `json:"id"`
+	CatalogID string          `json:"catalog_id"`
+	TenantID  string          `json:"tenant_id"`
+	AppID     string          `json:"app_id"`
+	ItemKey   string          `json:"item_key"`
+	Payload   json.RawMessage `json:"payload"`
+	UpdatedAt time.Time       `json:"updated_at"`
+}
+
+type ConnectedContentSource struct {
+	ID               string    `json:"id"`
+	TenantID         string    `json:"tenant_id"`
+	WorkspaceID      string    `json:"workspace_id"`
+	Name             string    `json:"name"`
+	AllowedHost      string    `json:"allowed_host"`
+	AuthHeaderName   string    `json:"auth_header_name,omitempty"`
+	AuthSecretRef    string    `json:"auth_secret_ref,omitempty"`
+	DefaultTTLSeconds int      `json:"default_ttl_seconds"`
+	TimeoutMs        int       `json:"timeout_ms"`
+	Enabled          bool      `json:"enabled"`
+	Status           string    `json:"status"` // draft, active, disabled
+	CreatedByUserID  *string   `json:"created_by_user_id,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+}

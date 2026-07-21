@@ -207,6 +207,20 @@ type Store interface {
 	ListSavedReports(ctx context.Context, p domain.Principal) ([]domain.SavedReport, error)
 	DeleteSavedReport(ctx context.Context, p domain.Principal, id string) error
 
+	CreateCatalog(ctx context.Context, p domain.Principal, cat domain.Catalog) (domain.Catalog, error)
+	GetCatalog(ctx context.Context, p domain.Principal, id string) (domain.Catalog, error)
+	ListCatalogs(ctx context.Context, p domain.Principal) ([]domain.Catalog, error)
+	UpdateCatalog(ctx context.Context, p domain.Principal, cat domain.Catalog) (domain.Catalog, error)
+	DeleteCatalog(ctx context.Context, p domain.Principal, id string) error
+	GetCatalogItem(ctx context.Context, p domain.Principal, catalogID, itemKey string) (domain.CatalogItem, error)
+	ListCatalogItems(ctx context.Context, p domain.Principal, catalogID string, limit int) ([]domain.CatalogItem, error)
+
+	CreateConnectedContentSource(ctx context.Context, p domain.Principal, src domain.ConnectedContentSource) (domain.ConnectedContentSource, error)
+	GetConnectedContentSource(ctx context.Context, p domain.Principal, id string) (domain.ConnectedContentSource, error)
+	ListConnectedContentSources(ctx context.Context, p domain.Principal) ([]domain.ConnectedContentSource, error)
+	UpdateConnectedContentSource(ctx context.Context, p domain.Principal, src domain.ConnectedContentSource) (domain.ConnectedContentSource, error)
+	DeleteConnectedContentSource(ctx context.Context, p domain.Principal, id string) error
+
 	CreateAIProviderConfig(ctx context.Context, p domain.Principal, cfg domain.AIProviderConfig) (domain.AIProviderConfig, error)
 	GetAIProviderConfig(ctx context.Context, p domain.Principal, id string) (domain.AIProviderConfig, error)
 	GetDefaultAIProviderConfig(ctx context.Context, p domain.Principal) (domain.AIProviderConfig, error)

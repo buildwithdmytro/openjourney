@@ -289,12 +289,12 @@ multipart upload.
    *Done when:* migration applies; CHECKs accept every `status` the code writes and reject an unknown one;
    `UNIQUE(catalog_id,item_key)` holds; `rbac.go` accepts the two scopes; `go test ./internal/postgres/...`
    green. — done: Migration 054_catalogs.sql created with all three tables + proper CHECKs + UNIQUE constraints; scopes added to rbac.go allowedPermissions + api_keys DEFAULT; go build/vet/test pass.
-2. [ ] **Domain + store CRUD** (Recipe 6.84): `domain.Catalog`/`CatalogItem`/`ConnectedContentSource`
+2. [x] **Domain + store CRUD** (Recipe 6.84): `domain.Catalog`/`CatalogItem`/`ConnectedContentSource`
    structs; `ports.Store` `CreateCatalog`/`GetCatalog`/`ListCatalogs`/`UpdateCatalog`/`DeleteCatalog` +
    `GetCatalogItem`/`ListCatalogItems`; `internal/postgres/catalogs.go` tenant+workspace-scoped;
    `pgx.ErrNoRows → ErrNotFound`.
    *Done when:* a catalog round-trips; a duplicate `(tenant,app,key)` is rejected; `GetCatalogItem`
-   resolves by `(catalog,item_key)`; unit + integration tests green.
+   resolves by `(catalog,item_key)`; unit + integration tests green. — done: domain.Catalog/CatalogItem/ConnectedContentSource structs added to internal/domain/domain.go; ports.Store interface methods added; internal/postgres/catalogs.go with full CRUD implementation; catalogs_integration_test.go with 7 tests covering round-trip, duplicate rejection, item lookup/list, source round-trip, raw secret rejection, duplicate source name rejection; go build/vet/test pass, no new dependencies.
 
 ### Milestone 20.2 — Catalog items: bulk ingest + by-key query
 1. [ ] **Bulk item upload** (Recipe 6.85): a multipart `POST /v1/catalogs/{id}/items:bulk` (copy
