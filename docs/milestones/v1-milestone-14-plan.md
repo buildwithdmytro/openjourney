@@ -365,9 +365,10 @@ to a real time-series endpoint (kill the fake data `Overview.tsx:116`).
    *Done when:* all green and `git diff go.mod go.sum web/package.json web/package-lock.json
    sdk/javascript/package.json` is empty of additions.
    — done: go build Success, go vet no issues, go test 628 passed, npm web 273 tests passed, sdk build Success, no dependency additions
-3. [ ] **Audit doc** `docs/milestones/v1-milestone-14-audit.md` in the M2–M13 table format, one row per
+3. [x] **Audit doc** `docs/milestones/v1-milestone-14-audit.md` in the M2–M13 table format, one row per
    `19.x` task with evidence (file:line + test name).
    *Done when:* the doc exists with a row per task and its verifying test.
+   — done: v1-milestone-14-audit.md created with 22 requirement rows (19.0.1–19.10.2) + summary; all tasks verified complete with test evidence
 
 ## 7. Carry-over hazards & invariants
 
