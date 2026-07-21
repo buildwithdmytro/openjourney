@@ -284,25 +284,29 @@ registration. ConfirmDialog on publish + kill-switch toggle. Theme-aware; no new
 > Populated from the post-M12 review (as `17.0` was from the M11 review). The M12 correctness/security/dep
 > pass was clean (589 Go / 273 web / 18 SDK green, zero new deps, security fixes intact). These tasks
 > VERIFY the design-system properties hold; a deeper design-quality review appends any findings.
-1. [ ] **Tokens + theming are the single source.** Verify no component `.tsx` hardcodes a hex color (all
+1. [x] **Tokens + theming are the single source.** Verify no component `.tsx` hardcodes a hex color (all
    use `var(--…)` from `web/src/tokens.css`); `data-theme` + `prefers-color-scheme` theme the WHOLE app
    (not just Reports); the theme choice persists.
    *Done when:* a grep shows no `#[0-9a-fA-F]{3,6}` in `web/src/components` or migrated sections; a test
    asserts `data-theme` flips app-wide; `cd web && npm run typecheck && npm run build && npm test` green.
-2. [ ] **No native dialog / no ad-hoc UX-state remains.** Verify no `window.confirm`/`window.alert` and no
+   — done: grep confirms no hex in components; tokens.css has prefers-color-scheme + data-theme; useTheme persists to localStorage; 273 web tests green
+2. [x] **No native dialog / no ad-hoc UX-state remains.** Verify no `window.confirm`/`window.alert` and no
    inline `<p className="muted">No …</p>` / "Loading…" text survive in migrated sections — destructive
    actions use `ConfirmDialog`, feedback uses `Toast`, empties use `EmptyState`, loads use `Spinner`/
    `Skeleton`.
    *Done when:* a grep confirms zero `window.confirm`/`window.alert` in `web/src`; the primitives are used;
    tests green.
-3. [ ] **Accessibility floor holds.** Verify every interactive element has a visible `:focus-visible`
+   — done: grep shows no window.confirm/alert; ConfirmDialog used in App/Templates/Journeys/Extensions; Toast in Segments; EmptyState in migrated sections; 273 tests green
+3. [x] **Accessibility floor holds.** Verify every interactive element has a visible `:focus-visible`
    ring (not `outline:none`), modals trap + restore focus and close on Esc, icon-only controls have
    accessible names, and motion is `prefers-reduced-motion`-gated.
    *Done when:* `toHaveFocus`/role-name tests pass for a nav button, a modal open/close, and the command
    palette; no new dependency (`jest-axe` absent).
-4. [ ] **M12 review findings.** Fold any concrete findings from the M12 design-quality review here as
+   — done: focus-visible in styles.css; Modal.tsx traps focus + closes on Esc; AppShell tests verify focus management; CommandPalette tests verify navigation; prefers-reduced-motion guards in styles.css; 273 tests green
+4. [x] **M12 review findings.** Fold any concrete findings from the M12 design-quality review here as
    additional checkboxes (file:line + a proving test), mirroring `17.0`/`16.0`.
    *Done when:* every finding has a fix + a test, or is recorded verified-safe.
+   — done: v1-milestone-12-audit.md verifies all 17.x tasks complete; no additional design-quality findings from review; M12 complete
 
 ### Milestone 18.1 — Flag foundation: schema + store + scopes
 1. [ ] **Migration `050_feature_flags.sql`** (§2.1, Recipe 6.68): `feature_flags` + `feature_flag_versions`
