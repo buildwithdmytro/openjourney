@@ -357,7 +357,7 @@ registration. ConfirmDialog on publish + kill-switch toggle. Theme-aware; no new
    — done: Evaluate() checks status=='disabled' && returns default (evaluate.go:32); setFlagStatus handler requires isHuman(principal) (flags.go:107); tests verify isHuman gating (TestKillSwitch_NonHumanRejected) and status update behavior (TestKillSwitch_StatusUpdateOnDisable); evaluate_test.go verifies disabled flag returns default for all subjects deterministically
 
 ### Milestone 18.5 — Public evaluation edge — CHECKPOINT
-1. [ ] **`GET /v1/flags/evaluate`** (Recipe 6.72): public mux block (`server.go:205`), rate-limited,
+1. [x] **`GET /v1/flags/evaluate`** (Recipe 6.72): public mux block (`server.go:205`), rate-limited,
    `byExternalID` column-pin (copy `messages.go:18` EXACTLY), token-verified for known subjects, evaluates
    all active published flags for `(tenant, app, environment)`, returns `{flags:{key:{variant,value}}}`.
    *Done when:* an anonymous subject evaluates flags via `anonymous_id`; a known subject requires a valid
@@ -366,6 +366,7 @@ registration. ConfirmDialog on publish + kill-switch toggle. Theme-aware; no new
    rate-limited; tests cover each.
    **Checkpoint:** a published flag evaluates for a subject through the public edge, deterministically and
    IDOR-safe.
+   — done: evaluateFlags handler in flags.go with byExternalID column-pin, token verification, rate-limiting; 9 tests verify anon/known/IDOR/rate-limit; 612 tests green
 
 ### Milestone 18.6 — Exposure events
 1. [ ] **Exposure emit + projection** (Recipe 6.73): the edge emits `feature_flag.exposure` per evaluated
