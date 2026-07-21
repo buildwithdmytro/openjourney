@@ -266,10 +266,10 @@ multipart upload.
    (roles/SVG output), per the M12 component-test discipline.
    *Done when:* `Chart.test.tsx` exists and passes; `cd web && npm run typecheck && npm run build &&
    npm test` green. — done: Chart.test.tsx added; 23 tests pass; all 296 web tests pass.
-2. [ ] **Test the analytics dashboard section.** `web/src/sections/Analytics.tsx` has no co-located test
+2. [x] **Test the analytics dashboard section.** `web/src/sections/Analytics.tsx` has no co-located test
    — add `Analytics.test.tsx` (vi.fn fetch stub) asserting it renders over-time/retention/cost charts and
    saves/loads a report.
-   *Done when:* `Analytics.test.tsx` passes; the suite is green.
+   *Done when:* `Analytics.test.tsx` passes; the suite is green. — done: Analytics.test.tsx added; 11 tests pass; all 307 web tests pass.
 3. [ ] **Remove the faked Overview sparkline fallback.** `web/src/sections/Overview.tsx:107` still falls
    back to synthesized `[value*0.6, value*0.8, value]`; real series is now wired
    (`getCampaignFunnelOverTimeReport` → `sparklineMap`). Drop the synthesized fallback — render no
