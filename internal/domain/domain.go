@@ -1469,3 +1469,14 @@ type ExtensionHealth struct {
 	OpenedAt            *time.Time `json:"opened_at,omitempty"`
 	UpdatedAt           time.Time  `json:"updated_at"`
 }
+
+type MetricDefinition struct {
+	ID        string     `json:"id"`
+	TenantID  *string    `json:"tenant_id,omitempty"`
+	Key       string     `json:"key"`
+	Version   int        `json:"version"`
+	Title     string     `json:"title"`
+	Semantics string     `json:"semantics"`
+	Unit      string     `json:"unit"`
+	CreatedAt time.Time  `json:"created_at"`
+}

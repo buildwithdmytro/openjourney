@@ -1092,3 +1092,46 @@ func recommendWinner(variants []domain.ExperimentVariantReport) *string {
 	}
 	return nil
 }
+
+// GetMetricDefinition returns the current (highest) version of a metric definition.
+func (s *Store) GetMetricDefinition(ctx context.Context, key string) (domain.MetricDefinition, error) {
+	var md domain.MetricDefinition
+	err := s.pool.QueryRow(ctx, `
+		SELECT id, tenant_id, key, version, title, semantics, unit, created_at
+		FROM metric_definitions
+		WHERE key=$1 AND tenant_id IS NULL
+		ORDER BY version DESC
+		LIMIT 1
+	`, key).Scan(&md.ID, &md.TenantID, &md.Key, &md.Version, &md.Title, &md.Semantics, &md.Unit, &md.CreatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.MetricDefinition{}, fmt.Errorf("metric definition not found: %s", key)
+		}
+		return domain.MetricDefinition{}, err
+	}
+	return md, nil
+}
+
+// ListMetricDefinitions returns all current (highest version) metric definitions (system-wide).
+func (s *Store) ListMetricDefinitions(ctx context.Context) ([]domain.MetricDefinition, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, tenant_id, key, version, title, semantics, unit, created_at
+		FROM metric_definitions
+		WHERE tenant_id IS NULL
+		ORDER BY key
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []domain.MetricDefinition
+	for rows.Next() {
+		var md domain.MetricDefinition
+		if err := rows.Scan(&md.ID, &md.TenantID, &md.Key, &md.Version, &md.Title, &md.Semantics, &md.Unit, &md.CreatedAt); err != nil {
+			return nil, err
+		}
+		result = append(result, md)
+	}
+	return result, rows.Err()
+}

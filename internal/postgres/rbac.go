@@ -16,7 +16,7 @@ var allowedPermissions = map[string]struct{}{
 	"segments:read": {}, "segments:write": {}, "templates:read": {}, "templates:write": {},
 	"campaigns:read": {}, "campaigns:write": {}, "suppressions:read": {}, "suppressions:write": {},
 	"journeys:read": {}, "journeys:write": {}, "journeys:publish": {},
-	"experiments:read": {}, "experiments:write": {}, "reports:read": {},
+	"experiments:read": {}, "experiments:write": {}, "reports:read": {}, "reports:write": {},
 	"device_tokens:read": {}, "device_tokens:write": {},
 	"ai:read": {}, "ai:configure": {}, "ai:invoke": {}, "prompts:read": {}, "prompts:write": {},
 	"scoring:read": {}, "scoring:write": {}, "scoring:compute": {},

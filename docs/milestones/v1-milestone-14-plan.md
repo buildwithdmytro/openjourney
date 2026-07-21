@@ -316,10 +316,11 @@ to a real time-series endpoint (kill the fake data `Overview.tsx:116`).
    — done: CostBucket + CostReport types added to domain.go; CostReport method in analytics.go queries engagement_facts with date_trunc + generate_series for zero-fill; calculates cost-per-send; TestCostReport verifies exact per-bucket cost totals (10000/15000/18000 micros) and cost-per-send (1000/2000/1500); all 628 tests pass
 
 ### Milestone 19.6 — Metric-definition versioning
-1. [ ] **Metric-definition registry** (Recipe 6.80): `metric_definitions` (seeded, immutable) +
+1. [x] **Metric-definition registry** (Recipe 6.80): `metric_definitions` (seeded, immutable) +
    `GetMetricDefinition`/`ListMetricDefinitions`; reports return the `metric_version` used.
    *Done when:* the canonical metrics are seeded at v1; a report response carries the metric version; a
    definition row rejects UPDATE/DELETE; test green.
+   — done: Migration 052_metric_definitions.sql adds immutable metric_definitions table with append-only trigger + REVOKE; 8 canonical metrics seeded at v1; GetMetricDefinition + ListMetricDefinitions methods added to analytics.go; reports:write scope added to rbac.go + migration; TestMetricDefinitionsSeeded + TestMetricDefinitionsImmutable verify seeding and immutability; all 628 tests pass
 
 ### Milestone 19.7 — Saved reports
 1. [ ] **Saved reports CRUD** (Recipe 6.81): the `saved_reports` vertical slice guarded by

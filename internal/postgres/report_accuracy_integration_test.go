@@ -1201,3 +1201,87 @@ func TestCostReport(t *testing.T) {
 		t.Fatalf("day 3 cost_per_send=%v, want %v", day3Bucket.CostPerSend, expectedDay3CostPerSend)
 	}
 }
+
+func TestMetricDefinitionsSeeded(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify canonical metrics are seeded at version 1
+	expected := []string{"delivered", "opened", "clicked", "converted", "bounce_rate", "complaint_rate", "conversion_rate", "spend"}
+	mds, err := store.ListMetricDefinitions(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(mds) != len(expected) {
+		t.Fatalf("expected %d seeded metrics, got %d", len(expected), len(mds))
+	}
+
+	for _, md := range mds {
+		if md.Version != 1 {
+			t.Fatalf("metric %s has version %d, want 1", md.Key, md.Version)
+		}
+		if md.TenantID != nil {
+			t.Fatalf("seeded metric %s should have NULL tenant_id", md.Key)
+		}
+	}
+
+	// Verify GetMetricDefinition for a known metric
+	deliv, err := store.GetMetricDefinition(ctx, "delivered")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deliv.Key != "delivered" || deliv.Version != 1 || deliv.Unit != "count" {
+		t.Fatalf("GetMetricDefinition(delivered) returned unexpected values: %+v", deliv)
+	}
+
+	// Verify unknown metric returns error
+	_, err = store.GetMetricDefinition(ctx, "unknown_metric")
+	if err == nil {
+		t.Fatal("expected error for unknown metric")
+	}
+}
+
+func TestMetricDefinitionsImmutable(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	// Attempt to UPDATE a metric definition (should fail)
+	_, err = store.pool.Exec(ctx, `
+		UPDATE metric_definitions SET title='Updated Title'
+		WHERE key='delivered'
+	`)
+	if err == nil {
+		t.Fatal("expected error when updating metric_definitions, got nil")
+	}
+
+	// Attempt to DELETE a metric definition (should fail)
+	_, err = store.pool.Exec(ctx, `
+		DELETE FROM metric_definitions WHERE key='delivered'
+	`)
+	if err == nil {
+		t.Fatal("expected error when deleting from metric_definitions, got nil")
+	}
+}
