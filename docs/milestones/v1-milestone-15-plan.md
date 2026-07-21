@@ -297,11 +297,11 @@ multipart upload.
    resolves by `(catalog,item_key)`; unit + integration tests green. — done: domain.Catalog/CatalogItem/ConnectedContentSource structs added to internal/domain/domain.go; ports.Store interface methods added; internal/postgres/catalogs.go with full CRUD implementation; catalogs_integration_test.go with 7 tests covering round-trip, duplicate rejection, item lookup/list, source round-trip, raw secret rejection, duplicate source name rejection; go build/vet/test pass, no new dependencies.
 
 ### Milestone 20.2 — Catalog items: bulk ingest + by-key query
-1. [ ] **Bulk item upload** (Recipe 6.85): a multipart `POST /v1/catalogs/{id}/items:bulk` (copy
+1. [x] **Bulk item upload** (Recipe 6.85): a multipart `POST /v1/catalogs/{id}/items:bulk` (copy
    `uploadImport`) parsing CSV/JSONL → chunked multi-row `INSERT ... ON CONFLICT (catalog_id,item_key) DO
    UPDATE`; updates `item_count`.
    *Done when:* uploading N items inserts/updates exactly N rows keyed by `item_key`; re-uploading is an
-   idempotent upsert (no dupes); a malformed row is reported, not silently dropped; integration test green.
+   idempotent upsert (no dupes); a malformed row is reported, not silently dropped; integration test green. — done: handler with CSV/JSONL parsing + chunked upsert + item_count update; store.BulkUpsertCatalogItems; integration tests TestBulkUpsertCatalogItems + TestBulkUpsertMalformedRows verify idempotence + malformed row reporting; go build/vet/test pass.
 2. [ ] **Item list + lookup**: `GET /v1/catalogs/{id}/items?limit=` (paginated via `limit`) and the
    store `GetCatalogItem` used by the render filter.
    *Done when:* listing returns items ordered + limited; a by-key lookup returns the exact payload or

@@ -1534,3 +1534,8 @@ type ConnectedContentSource struct {
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
 }
+
+type BulkUpsertResult struct {
+	InsertedCount int64
+	UpdatedCount  int64
+}

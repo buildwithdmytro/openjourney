@@ -214,6 +214,7 @@ type Store interface {
 	DeleteCatalog(ctx context.Context, p domain.Principal, id string) error
 	GetCatalogItem(ctx context.Context, p domain.Principal, catalogID, itemKey string) (domain.CatalogItem, error)
 	ListCatalogItems(ctx context.Context, p domain.Principal, catalogID string, limit int) ([]domain.CatalogItem, error)
+	BulkUpsertCatalogItems(ctx context.Context, p domain.Principal, items []domain.CatalogItem) (domain.BulkUpsertResult, error)
 
 	CreateConnectedContentSource(ctx context.Context, p domain.Principal, src domain.ConnectedContentSource) (domain.ConnectedContentSource, error)
 	GetConnectedContentSource(ctx context.Context, p domain.Principal, id string) (domain.ConnectedContentSource, error)
