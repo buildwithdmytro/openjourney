@@ -28,7 +28,7 @@ type Store interface {
 	ExportPrivacyData(context.Context, string) (domain.PrivacyData, error)
 	CompletePrivacyExport(context.Context, string, string) error
 	DeletePrivacyData(context.Context, string) ([]string, error)
-	EnforceRetention(context.Context, string) (domain.RetentionReport, error)
+	EnforceRetention(context.Context, string) (domain.DataRetentionReport, error)
 }
 
 type ImportStore interface {

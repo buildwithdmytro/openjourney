@@ -112,8 +112,8 @@ func (s *generationStore) CompletePrivacyExport(context.Context, string, string)
 func (s *generationStore) DeletePrivacyData(context.Context, string) ([]string, error) {
 	return nil, errors.New("unused")
 }
-func (s *generationStore) EnforceRetention(context.Context, string) (domain.RetentionReport, error) {
-	return domain.RetentionReport{}, errors.New("unused")
+func (s *generationStore) EnforceRetention(context.Context, string) (domain.DataRetentionReport, error) {
+	return domain.DataRetentionReport{}, errors.New("unused")
 }
 func (s *generationStore) GetAIGenerationJob(context.Context, string) (domain.AIGenerationJob, error) {
 	return s.job, nil

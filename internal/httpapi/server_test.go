@@ -190,8 +190,8 @@ func (f *fakeStore) ExportPrivacyData(context.Context, string) (domain.PrivacyDa
 }
 func (f *fakeStore) CompletePrivacyExport(context.Context, string, string) error { return nil }
 func (f *fakeStore) DeletePrivacyData(context.Context, string) ([]string, error) { return nil, nil }
-func (f *fakeStore) EnforceRetention(context.Context, string) (domain.RetentionReport, error) {
-	return domain.RetentionReport{}, nil
+func (f *fakeStore) EnforceRetention(context.Context, string) (domain.DataRetentionReport, error) {
+	return domain.DataRetentionReport{}, nil
 }
 func (f *fakeStore) VerifyReplay(context.Context, domain.Principal) (domain.ReplayReport, error) {
 	return domain.ReplayReport{Match: true}, nil

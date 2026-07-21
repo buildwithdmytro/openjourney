@@ -293,10 +293,11 @@ to a real time-series endpoint (kill the fake data `Overview.tsx:116`).
 	   — done: Extended TestFunnelOverTimeReport to seed bounce/complaint events; verified per-bucket Deliverability counts and BounceRate/ComplaintRate
 
 ### Milestone 19.3 — Cohort & retention
-1. [ ] **Retention matrix** (Recipe 6.78): `RetentionReport` — cohort by first-seen bucket × period
+1. [x] **Retention matrix** (Recipe 6.78): `RetentionReport` — cohort by first-seen bucket × period
    offset, distinct-subject counts from engagement/conversion facts.
    *Done when:* a fixture with known cohorts returns the exact retention matrix (cohort sizes + retained
    counts per offset); workspace-isolated; integration test green.
+   — done: RetentionReport type + method added to domain/analytics; TestRetentionReport fixture with 3 cohorts returns exact per-cohort retention sizes; all 628 tests pass
 
 ### Milestone 19.4 — Audience growth
 1. [ ] **Growth report** (Recipe 6.79): profiles created + segment membership over time by bucket.

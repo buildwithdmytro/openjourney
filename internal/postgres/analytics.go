@@ -450,6 +450,120 @@ func (s *Store) FunnelOverTimeReport(ctx context.Context, p domain.Principal, ca
 	return report, nil
 }
 
+// RetentionReport returns a cohort-based retention matrix showing distinct profile
+// counts per cohort bucket and period offset. Requires ReportQuery with Start, End,
+// and Granularity set. Cohorts are determined by a profile's first engagement event.
+func (s *Store) RetentionReport(ctx context.Context, p domain.Principal, campaignID string, query domain.ReportQuery) (domain.RetentionReport, error) {
+	if err := s.requireCampaignSource(ctx, p, campaignID); err != nil {
+		return domain.RetentionReport{}, err
+	}
+
+	if query.Start.IsZero() || query.End.IsZero() {
+		return domain.RetentionReport{}, errors.New("time range start and end are required for retention report")
+	}
+
+	if query.Granularity == "" || query.Granularity == "none" {
+		return domain.RetentionReport{}, errors.New("granularity is required and must not be 'none' for retention report")
+	}
+
+	report := domain.RetentionReport{CampaignID: campaignID, Granularity: query.Granularity}
+
+	// Query to compute cohort retention matrix from engagement and conversion facts
+	sqlRetention := fmt.Sprintf(`
+		WITH campaign_events AS (
+			-- Get all engagement events for the campaign in the time range
+			SELECT
+				profile_id,
+				occurred_at,
+				date_trunc('%s', occurred_at) AS event_bucket
+			FROM engagement_facts
+			WHERE tenant_id=$1 AND workspace_id=$2 AND source_id=$3 AND source_type='campaign'
+				AND occurred_at BETWEEN $4 AND $5
+			UNION ALL
+			-- Also include conversion events for retention tracking
+			SELECT
+				profile_id,
+				occurred_at,
+				date_trunc('%s', occurred_at) AS event_bucket
+			FROM conversion_facts
+			WHERE tenant_id=$1 AND workspace_id=$2 AND source_id=$3 AND source_type='campaign'
+				AND occurred_at BETWEEN $4 AND $5
+		),
+		profile_first_seen AS (
+			-- Find each profile's first engagement/conversion in the campaign
+			SELECT
+				profile_id,
+				MIN(occurred_at) AS first_seen_at,
+				date_trunc('%s', MIN(occurred_at)) AS cohort_bucket
+			FROM campaign_events
+			GROUP BY profile_id
+		),
+		retention_matrix AS (
+			-- For each cohort and period offset, count distinct retained profiles
+			SELECT
+				pfs.cohort_bucket,
+				(ce.event_bucket - pfs.cohort_bucket) AS period_offset,
+				COUNT(DISTINCT ce.profile_id) AS retained_count
+			FROM campaign_events ce
+			JOIN profile_first_seen pfs ON ce.profile_id = pfs.profile_id
+			GROUP BY pfs.cohort_bucket, period_offset
+		)
+		SELECT
+			cohorts.cohort_bucket,
+			array_agg(COALESCE(rm.retained_count, 0) ORDER BY rm.period_offset) AS retained_per_offset
+		FROM (SELECT DISTINCT cohort_bucket FROM retention_matrix) cohorts
+		LEFT JOIN retention_matrix rm ON cohorts.cohort_bucket = rm.cohort_bucket
+		GROUP BY cohorts.cohort_bucket
+		ORDER BY cohorts.cohort_bucket
+	`, strings.TrimSuffix(query.Granularity, "s"),
+		strings.TrimSuffix(query.Granularity, "s"),
+		strings.TrimSuffix(query.Granularity, "s"))
+
+	rows, err := s.pool.Query(ctx, sqlRetention, p.TenantID, p.WorkspaceID, campaignID, query.Start, query.End)
+	if err != nil {
+		return domain.RetentionReport{}, err
+	}
+	defer rows.Close()
+
+	cohortsMap := make(map[time.Time][]int64)
+	for rows.Next() {
+		var cohortBucket time.Time
+		var retainedArray []int64
+		if err := rows.Scan(&cohortBucket, &retainedArray); err != nil {
+			return domain.RetentionReport{}, err
+		}
+		cohortsMap[cohortBucket] = retainedArray
+	}
+	if err := rows.Err(); err != nil {
+		return domain.RetentionReport{}, err
+	}
+
+	// Sort cohort buckets and build result
+	var cohortTimes []time.Time
+	for t := range cohortsMap {
+		cohortTimes = append(cohortTimes, t)
+	}
+	// Sort times
+	for i := 0; i < len(cohortTimes); i++ {
+		for j := i + 1; j < len(cohortTimes); j++ {
+			if cohortTimes[j].Before(cohortTimes[i]) {
+				cohortTimes[i], cohortTimes[j] = cohortTimes[j], cohortTimes[i]
+			}
+		}
+	}
+
+	var cohorts []domain.CohortData
+	for _, t := range cohortTimes {
+		cohorts = append(cohorts, domain.CohortData{
+			CohortTime: t,
+			Sizes:      cohortsMap[t],
+		})
+	}
+
+	report.Cohorts = cohorts
+	return report, nil
+}
+
 // ExperimentReport generates a statistical report for an experiment, comparing
 // each variant to the control variant on the primary goal and reporting guardrail rates.
 func (s *Store) ExperimentReport(ctx context.Context, p domain.Principal, experimentID string, reportQuery domain.ReportQuery) (domain.ExperimentReport, error) {

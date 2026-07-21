@@ -607,3 +607,220 @@ func TestFunnelOverTimeReport(t *testing.T) {
 		t.Fatalf("day 3 complaint_rate=%v, want %v", day3Bucket.Deliverability.ComplaintRate, expectedDay3ComplaintRate)
 	}
 }
+
+func TestRetentionReport(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	key := fmt.Sprintf("retention-report-%d", time.Now().UnixNano())
+	if err := store.EnsureDevelopmentTenant(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	p, err := store.Authenticate(ctx, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create campaign and related resources
+	segment, err := store.CreateSegment(ctx, p, domain.Segment{
+		Name: "Retention audience", Type: "dynamic", DSL: json.RawMessage(`{}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	from := fmt.Sprintf("retention-report-%d@example.com", time.Now().UnixNano())
+	identity, err := store.CreateSendingIdentity(ctx, p, domain.SendingIdentity{
+		Channel: "email", FromAddress: &from, Provider: "ses", MaxSendRate: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	html := "Retention report"
+	template, err := store.CreateTemplate(ctx, p, domain.Template{
+		Name: "Retention template", Channel: "email", HTMLTemplate: &html,
+		SendingIdentityID: &identity.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	campaign, err := store.CreateCampaign(ctx, p, domain.Campaign{
+		Name: "Retention campaign", SegmentID: segment.ID, TemplateID: template.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create retention cohorts across 3 days
+	// Day 1: 5 profiles in cohort 1
+	// Day 2: 6 profiles in cohort 2
+	// Day 3: 4 profiles in cohort 3
+	baseTime := time.Now().UTC().Truncate(time.Hour)
+	day1 := baseTime.Add(-2 * 24 * time.Hour)
+	day2 := baseTime.Add(-1 * 24 * time.Hour)
+	day3 := baseTime
+
+	type profileEvent struct {
+		externalID string
+		eventDays  []int // which days to create events (0=cohort day, 1=day+1, 2=day+2)
+		cohortDay  time.Time
+	}
+
+	// Cohort 1 (day 1): 5 profiles
+	// Profile 1-1: events on days 1, 2, 3 (retained through day 3)
+	// Profile 1-2: events on days 1, 2 (retained through day 2)
+	// Profile 1-3: events on days 1, 2 (retained through day 2)
+	// Profile 1-4: events on day 1 only
+	// Profile 1-5: events on day 1 only
+	cohort1Events := []profileEvent{
+		{"cohort1-profile1", []int{0, 1, 2}, day1},
+		{"cohort1-profile2", []int{0, 1}, day1},
+		{"cohort1-profile3", []int{0, 1}, day1},
+		{"cohort1-profile4", []int{0}, day1},
+		{"cohort1-profile5", []int{0}, day1},
+	}
+
+	// Cohort 2 (day 2): 6 profiles
+	// Profile 2-1: events on days 2, 3 (retained through day 3)
+	// Profile 2-2: events on days 2, 3 (retained through day 3)
+	// Profile 2-3: events on day 2 only
+	// Profile 2-4: events on day 2 only
+	// Profile 2-5: events on day 2 only
+	// Profile 2-6: events on day 2 only
+	cohort2Events := []profileEvent{
+		{"cohort2-profile1", []int{0, 1}, day2},
+		{"cohort2-profile2", []int{0, 1}, day2},
+		{"cohort2-profile3", []int{0}, day2},
+		{"cohort2-profile4", []int{0}, day2},
+		{"cohort2-profile5", []int{0}, day2},
+		{"cohort2-profile6", []int{0}, day2},
+	}
+
+	// Cohort 3 (day 3): 4 profiles - all single-day
+	// Profile 3-1: event on day 3
+	// Profile 3-2: event on day 3
+	// Profile 3-3: event on day 3
+	// Profile 3-4: event on day 3
+	cohort3Events := []profileEvent{
+		{"cohort3-profile1", []int{0}, day3},
+		{"cohort3-profile2", []int{0}, day3},
+		{"cohort3-profile3", []int{0}, day3},
+		{"cohort3-profile4", []int{0}, day3},
+	}
+
+	allProfiles := append(cohort1Events, append(cohort2Events, cohort3Events...)...)
+
+	// Create profiles and seed engagement events
+	events := make([]domain.Event, 0)
+	for _, pe := range allProfiles {
+		var profileID string
+		if err := store.pool.QueryRow(ctx, `INSERT INTO profiles
+			(tenant_id,workspace_id,app_id,external_id) VALUES ($1,$2,$3,$4) RETURNING id`,
+			p.TenantID, p.WorkspaceID, p.AppID, pe.externalID).Scan(&profileID); err != nil {
+			t.Fatal(err)
+		}
+
+		// Create delivery attempt on cohort day
+		if _, err := store.pool.Exec(ctx, `INSERT INTO delivery_attempts
+			(campaign_id,tenant_id,profile_id,channel,endpoint,decision,attempted_at)
+			VALUES ($1,$2,$3,'email',$4,'sent',$5)`, campaign.ID, p.TenantID,
+			profileID, pe.externalID+"@example.com", pe.cohortDay); err != nil {
+			t.Fatal(err)
+		}
+
+		// Create engagement events on specified days
+		for _, dayOffset := range pe.eventDays {
+			eventTime := pe.cohortDay.Add(time.Duration(dayOffset*24) * time.Hour)
+			events = append(events, domain.Event{
+				Type:           "message.delivered",
+				SchemaVersion:  1,
+				ExternalID:     pe.externalID,
+				IdempotencyKey: fmt.Sprintf("retention-%s-d%d", pe.externalID, dayOffset),
+				OccurredAt:     eventTime,
+				Payload:        json.RawMessage(fmt.Sprintf(`{"campaign_id":%q,"endpoint":%q}`, campaign.ID, pe.externalID+"@example.com")),
+			})
+		}
+	}
+
+	// Accept and project events
+	ids, err := store.AcceptEvents(ctx, p, events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, event := range events {
+		accepted := domain.AcceptedEvent{
+			ID: ids[i], Principal: p, Type: event.Type, SchemaVersion: event.SchemaVersion,
+			ExternalID: event.ExternalID, IdempotencyKey: event.IdempotencyKey,
+			OccurredAt: event.OccurredAt, Payload: event.Payload,
+		}
+		if err := store.ProjectEvent(ctx, accepted); err != nil {
+			t.Fatalf("project %s for %s: %v", event.Type, event.ExternalID, err)
+		}
+	}
+
+	// Test retention report with daily granularity
+	reportStart := day1.Truncate(24 * time.Hour)
+	reportEnd := day3.Truncate(24 * time.Hour).Add(24 * time.Hour)
+	retentionReport, err := store.RetentionReport(ctx, p, campaign.ID, domain.ReportQuery{
+		Start:       reportStart,
+		End:         reportEnd,
+		Granularity: "day",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if retentionReport.CampaignID != campaign.ID {
+		t.Errorf("campaign_id = %q, want %q", retentionReport.CampaignID, campaign.ID)
+	}
+
+	if len(retentionReport.Cohorts) != 3 {
+		t.Fatalf("cohorts=%d, want 3", len(retentionReport.Cohorts))
+	}
+
+	// Verify Cohort 1 (day 1): [5 retained on day 0, 4 on day 1, 2 on day 2]
+	cohort1 := retentionReport.Cohorts[0]
+	expectedCohort1Sizes := []int64{5, 4, 2}
+	if len(cohort1.Sizes) != len(expectedCohort1Sizes) {
+		t.Fatalf("cohort 1 sizes length=%d, want %d; sizes=%v", len(cohort1.Sizes), len(expectedCohort1Sizes), cohort1.Sizes)
+	}
+	for i, expected := range expectedCohort1Sizes {
+		if cohort1.Sizes[i] != expected {
+			t.Errorf("cohort 1 day %d: size=%d, want %d", i, cohort1.Sizes[i], expected)
+		}
+	}
+
+	// Verify Cohort 2 (day 2): [6 retained on day 0, 2 on day 1]
+	cohort2 := retentionReport.Cohorts[1]
+	expectedCohort2Sizes := []int64{6, 2}
+	if len(cohort2.Sizes) != len(expectedCohort2Sizes) {
+		t.Fatalf("cohort 2 sizes length=%d, want %d; sizes=%v", len(cohort2.Sizes), len(expectedCohort2Sizes), cohort2.Sizes)
+	}
+	for i, expected := range expectedCohort2Sizes {
+		if cohort2.Sizes[i] != expected {
+			t.Errorf("cohort 2 day %d: size=%d, want %d", i, cohort2.Sizes[i], expected)
+		}
+	}
+
+	// Verify Cohort 3 (day 3): [4 retained on day 0]
+	cohort3 := retentionReport.Cohorts[2]
+	expectedCohort3Sizes := []int64{4}
+	if len(cohort3.Sizes) != len(expectedCohort3Sizes) {
+		t.Fatalf("cohort 3 sizes length=%d, want %d; sizes=%v", len(cohort3.Sizes), len(expectedCohort3Sizes), cohort3.Sizes)
+	}
+	for i, expected := range expectedCohort3Sizes {
+		if cohort3.Sizes[i] != expected {
+			t.Errorf("cohort 3 day %d: size=%d, want %d", i, cohort3.Sizes[i], expected)
+		}
+	}
+}

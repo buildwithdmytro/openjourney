@@ -266,11 +266,11 @@ func (s *Store) DeletePrivacyData(ctx context.Context, requestID string) ([]stri
 	return eventIDs, tx.Commit(ctx)
 }
 
-func (s *Store) EnforceRetention(ctx context.Context, tenantID string) (domain.RetentionReport, error) {
+func (s *Store) EnforceRetention(ctx context.Context, tenantID string) (domain.DataRetentionReport, error) {
 	var retentionDays int
 	if err := s.pool.QueryRow(ctx, `SELECT retention_days FROM tenant_quotas WHERE tenant_id=$1`, tenantID).
 		Scan(&retentionDays); err != nil {
-		return domain.RetentionReport{}, err
+		return domain.DataRetentionReport{}, err
 	}
 	cutoff := time.Now().UTC().AddDate(0, 0, -retentionDays)
 	var deletedEvents int64
@@ -282,9 +282,9 @@ func (s *Store) EnforceRetention(ctx context.Context, tenantID string) (domain.R
 			DELETE FROM accepted_events WHERE id IN (SELECT id FROM expired) RETURNING 1
 		)
 		SELECT count(*) FROM deleted_events`, tenantID, cutoff).Scan(&deletedEvents); err != nil {
-		return domain.RetentionReport{}, err
+		return domain.DataRetentionReport{}, err
 	}
-	return domain.RetentionReport{
+	return domain.DataRetentionReport{
 		TenantID: tenantID, RetentionDays: retentionDays, Cutoff: cutoff, DeletedEvents: deletedEvents,
 	}, nil
 }

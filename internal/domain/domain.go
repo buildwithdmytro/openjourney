@@ -601,11 +601,26 @@ type ReplayReport struct {
 	ProfileCount   int    `json:"profile_count"`
 }
 
-type RetentionReport struct {
+type DataRetentionReport struct {
 	TenantID      string    `json:"tenant_id"`
 	RetentionDays int       `json:"retention_days"`
 	Cutoff        time.Time `json:"cutoff"`
 	DeletedEvents int64     `json:"deleted_events"`
+}
+
+// RetentionReport is a cohort-based retention analysis report showing distinct profile
+// counts per cohort bucket and period offset from first engagement.
+type RetentionReport struct {
+	CampaignID  string       `json:"campaign_id"`
+	Granularity string       `json:"granularity"`
+	Cohorts     []CohortData `json:"cohorts"`
+}
+
+// CohortData represents a single cohort (profiles first-seen in a time bucket) and
+// their retention across period offsets.
+type CohortData struct {
+	CohortTime time.Time `json:"cohort_time"`
+	Sizes      []int64   `json:"sizes"` // distinct profiles per period offset
 }
 
 type Role struct {
