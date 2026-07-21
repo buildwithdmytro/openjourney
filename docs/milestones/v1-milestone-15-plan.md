@@ -281,12 +281,12 @@ multipart upload.
    *Done when:* every finding has a fix + a test, or is recorded verified-safe.
 
 ### Milestone 20.1 — Catalog foundation: schema + store + scopes
-1. [ ] **Migration `054_catalogs.sql`** (§2.1, Recipe 6.84): `catalogs` + `catalog_items` +
+1. [x] **Migration `054_catalogs.sql`** (§2.1, Recipe 6.84): `catalogs` + `catalog_items` +
    `connected_content_sources`; `catalogs:read`/`catalogs:write` in `rbac.go:12-32` **and** the
    re-declared `api_keys` DEFAULT array (copy `052:45-63`) **and** (noted for 20.8) `App.tsx:102`.
    *Done when:* migration applies; CHECKs accept every `status` the code writes and reject an unknown one;
    `UNIQUE(catalog_id,item_key)` holds; `rbac.go` accepts the two scopes; `go test ./internal/postgres/...`
-   green.
+   green. — done: Migration 054_catalogs.sql created with all three tables + proper CHECKs + UNIQUE constraints; scopes added to rbac.go allowedPermissions + api_keys DEFAULT; go build/vet/test pass.
 2. [ ] **Domain + store CRUD** (Recipe 6.84): `domain.Catalog`/`CatalogItem`/`ConnectedContentSource`
    structs; `ports.Store` `CreateCatalog`/`GetCatalog`/`ListCatalogs`/`UpdateCatalog`/`DeleteCatalog` +
    `GetCatalogItem`/`ListCatalogItems`; `internal/postgres/catalogs.go` tenant+workspace-scoped;
