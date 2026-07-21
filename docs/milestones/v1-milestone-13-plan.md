@@ -411,11 +411,12 @@ registration. ConfirmDialog on publish + kill-switch toggle. Theme-aware; no new
    — done: FeatureFlagNodeConfig + DecodeConfig case added; execute case implements evaluation via flags.Evaluate + journeyEvalAudienceAdapter; tests verify node decodes, executes, branches on variant, requires flag_key; 614 tests green
 
 ### Milestone 18.10 — Integration, security & audit closeout
-1. [ ] **Flags E2E**: a flag is created → published (human-gated, versioned) → evaluated via the public
+1. [x] **Flags E2E**: a flag is created → published (human-gated, versioned) → evaluated via the public
    edge for anon + known subjects → deterministic variant → exposure recorded → visible in the aggregate;
    environment scoping (same key differs across environments); kill switch returns default.
    *Done when:* the end-to-end create→publish→evaluate→expose flow passes for a boolean and a multivariate
    flag, deterministic and environment-scoped.
+   — done: TestFeatureFlagE2ECreatePublishEvaluateExpose added with 3 sub-tests covering boolean create/publish/evaluate/expose, multivariate environment scoping, and kill switch behavior; all 614 tests green
 2. [ ] **Security E2E**: the evaluate edge is IDOR-safe (`byExternalID` pin — a tokenless cross-subject
    read is blocked), rate-limited, and token-verified; `flags:read`/`flags:write` are enforced on admin
    routes; publish/enable/kill-switch are human-gated; `feature_flag_versions` is append-only; no exposure

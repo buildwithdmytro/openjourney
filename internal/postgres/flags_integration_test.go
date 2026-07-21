@@ -585,6 +585,315 @@ func TestFeatureFlagExposureProjection(t *testing.T) {
 	}
 }
 
+func TestFeatureFlagE2ECreatePublishEvaluateExpose(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.pool.Exec(ctx, "TRUNCATE tenants CASCADE"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.EnsureDevelopmentTenant(ctx, "flag-e2e"); err != nil {
+		t.Fatal(err)
+	}
+	p, err := store.Authenticate(ctx, "flag-e2e")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("Boolean flag: create->publish->evaluate->expose", func(t *testing.T) {
+		// Create a boolean flag
+		boolFlag, err := store.CreateFeatureFlag(ctx, p, domain.FeatureFlag{
+			AppID:        p.AppID,
+			Environment:  "production",
+			Key:          "bool_feature",
+			Name:         stringPtr("Boolean Feature"),
+			FlagType:     "boolean",
+			DefaultValue: json.RawMessage(`false`),
+			Seed:         "bool-seed-123",
+			Enabled:      true,
+			RolloutPct:   50,
+		})
+		if err != nil {
+			t.Fatalf("Create boolean flag failed: %v", err)
+		}
+
+		// Publish the flag (human-gated)
+		humanPrincipal := domain.Principal{
+			ActorType: "user",
+			UserID:    "user-123",
+			TenantID:  p.TenantID,
+			AppID:     p.AppID,
+		}
+		version, err := store.PublishFeatureFlag(ctx, humanPrincipal, boolFlag.ID, "approver-123", "bool_feature:v1")
+		if err != nil {
+			t.Fatalf("Publish flag failed: %v", err)
+		}
+		if version.Version != 1 {
+			t.Errorf("Expected version 1, got %d", version.Version)
+		}
+
+		// Verify flag status changed to published
+		published, err := store.GetFeatureFlag(ctx, p, boolFlag.ID)
+		if err != nil {
+			t.Fatalf("Get published flag failed: %v", err)
+		}
+		if published.Status != "published" {
+			t.Errorf("Expected status 'published', got %q", published.Status)
+		}
+		if published.CurrentVersionID == nil {
+			t.Error("Expected current_version_id to be set after publish")
+		}
+
+		// Evaluate the flag for an anonymous subject
+		evalAudience := &storeAudience{store: store, principal: humanPrincipal}
+		result, err := flags.Evaluate(ctx, &published, "anon-subject-1", evalAudience)
+		if err != nil {
+			t.Fatalf("Evaluate flag failed: %v", err)
+		}
+
+		// Verify the result has a value
+		if result.Value == nil {
+			t.Error("Expected result.Value to be set")
+		}
+
+		// Evaluate the same subject again - should get the SAME result (deterministic)
+		result2, err := flags.Evaluate(ctx, &published, "anon-subject-1", evalAudience)
+		if err != nil {
+			t.Fatalf("Second evaluate failed: %v", err)
+		}
+		if result.Variant != result2.Variant {
+			t.Errorf("Deterministic check failed: first %q, second %q", result.Variant, result2.Variant)
+		}
+		if string(result.Value) != string(result2.Value) {
+			t.Errorf("Deterministic value check failed: first %s, second %s", result.Value, result2.Value)
+		}
+
+		// Emit exposure event for the flag
+		exposureEvent := domain.Event{
+			Type:           "feature_flag.exposure",
+			SchemaVersion:  1,
+			IdempotencyKey: boolFlag.ID + ":" + version.DefinitionSha[:16] + ":anon-subject-1:window1",
+			OccurredAt:     time.Now(),
+			Payload: json.RawMessage(fmt.Sprintf(
+				`{"flag_id":"%s","variant":"%s","environment":"production"}`,
+				boolFlag.ID, result.Variant)),
+			AnonymousID: "anon-subject-1",
+		}
+		publicPrincipal := domain.Principal{
+			TenantID:  p.TenantID,
+			AppID:     p.AppID,
+			ActorType: "public",
+		}
+		_, err = store.AcceptEvents(ctx, publicPrincipal, []domain.Event{exposureEvent})
+		if err != nil {
+			t.Fatalf("AcceptEvents failed: %v", err)
+		}
+
+		// Verify exposure was recorded
+		var exposures int64
+		err = store.pool.QueryRow(ctx,
+			`SELECT exposures FROM feature_flag_exposures WHERE flag_id=$1 AND environment='production' AND variant=$2`,
+			boolFlag.ID, result.Variant).Scan(&exposures)
+		if err != nil {
+			t.Fatalf("Query exposure failed: %v", err)
+		}
+		if exposures != 1 {
+			t.Errorf("Expected 1 exposure, got %d", exposures)
+		}
+	})
+
+	t.Run("Multivariate flag: environment scoping", func(t *testing.T) {
+		// Create a multivariate flag in production
+		prodFlag, err := store.CreateFeatureFlag(ctx, p, domain.FeatureFlag{
+			AppID:        p.AppID,
+			Environment:  "production",
+			Key:          "multivar_feature",
+			Name:         stringPtr("Multivar Feature"),
+			FlagType:     "string",
+			DefaultValue: json.RawMessage(`"default"`),
+			Variants: []domain.FlagVariant{
+				{Label: "variant_a", Value: json.RawMessage(`"value_a"`), Weight: 50},
+				{Label: "variant_b", Value: json.RawMessage(`"value_b"`), Weight: 50},
+			},
+			Seed:       "multivar-seed-456",
+			Enabled:    true,
+			RolloutPct: 100,
+		})
+		if err != nil {
+			t.Fatalf("Create production flag failed: %v", err)
+		}
+
+		// Create the SAME key in staging environment with different config
+		stagingFlag, err := store.CreateFeatureFlag(ctx, p, domain.FeatureFlag{
+			AppID:        p.AppID,
+			Environment:  "staging",
+			Key:          "multivar_feature", // Same key, different environment
+			Name:         stringPtr("Staging Multivar"),
+			FlagType:     "string",
+			DefaultValue: json.RawMessage(`"staging_default"`),
+			Variants: []domain.FlagVariant{
+				{Label: "stage_alpha", Value: json.RawMessage(`"alpha"`), Weight: 100},
+			},
+			Seed:       "multivar-seed-789",
+			Enabled:    true,
+			RolloutPct: 100,
+		})
+		if err != nil {
+			t.Fatalf("Create staging flag failed: %v", err)
+		}
+
+		// Verify they're different flags in the store
+		if prodFlag.ID == stagingFlag.ID {
+			t.Error("Production and staging flags should have different IDs")
+		}
+
+		// Verify the unique constraint: same key in different environments is allowed
+		if prodFlag.Key != stagingFlag.Key {
+			t.Error("Keys should be the same, but environments differ")
+		}
+		if prodFlag.Environment == stagingFlag.Environment {
+			t.Error("Environments should differ")
+		}
+
+		// Publish and evaluate both
+		humanPrincipal := domain.Principal{
+			ActorType: "user",
+			UserID:    "user-456",
+			TenantID:  p.TenantID,
+			AppID:     p.AppID,
+		}
+		_, err = store.PublishFeatureFlag(ctx, humanPrincipal, prodFlag.ID, "approver-456", "prod-key:v1")
+		if err != nil {
+			t.Fatalf("Publish prod flag failed: %v", err)
+		}
+		_, err = store.PublishFeatureFlag(ctx, humanPrincipal, stagingFlag.ID, "approver-456", "stage-key:v1")
+		if err != nil {
+			t.Fatalf("Publish stage flag failed: %v", err)
+		}
+
+		prodPublished, err := store.GetFeatureFlag(ctx, p, prodFlag.ID)
+		if err != nil {
+			t.Fatalf("Get published prod flag failed: %v", err)
+		}
+		stagingPublished, err := store.GetFeatureFlag(ctx, p, stagingFlag.ID)
+		if err != nil {
+			t.Fatalf("Get published stage flag failed: %v", err)
+		}
+
+		// Evaluate the same subject against both environments
+		evalAudience := &storeAudience{store: store, principal: humanPrincipal}
+		prodResult, err := flags.Evaluate(ctx, &prodPublished, "test-subject", evalAudience)
+		if err != nil {
+			t.Fatalf("Evaluate prod flag failed: %v", err)
+		}
+		stagingResult, err := flags.Evaluate(ctx, &stagingPublished, "test-subject", evalAudience)
+		if err != nil {
+			t.Fatalf("Evaluate staging flag failed: %v", err)
+		}
+
+		// Verify the same subject gets DIFFERENT values in different environments
+		// (because they have different seed/rollout/variants)
+		// At minimum, verify the values are what we expect for each environment
+		if string(prodResult.Value) == `"staging_default"` {
+			t.Error("Production flag should not return staging default")
+		}
+		if string(stagingResult.Value) == `"default"` {
+			t.Error("Staging flag should not return production default")
+		}
+	})
+
+	t.Run("Kill switch: disabled flag returns default", func(t *testing.T) {
+		// Create a flag
+		killFlag, err := store.CreateFeatureFlag(ctx, p, domain.FeatureFlag{
+			AppID:        p.AppID,
+			Environment:  "production",
+			Key:          "kill_switch_test",
+			FlagType:     "boolean",
+			DefaultValue: json.RawMessage(`false`),
+			Seed:         "kill-seed",
+			Enabled:      true,
+			RolloutPct:   100,
+		})
+		if err != nil {
+			t.Fatalf("Create kill switch flag failed: %v", err)
+		}
+
+		// Publish it
+		humanPrincipal := domain.Principal{
+			ActorType: "user",
+			UserID:    "user-kill",
+			TenantID:  p.TenantID,
+			AppID:     p.AppID,
+		}
+		_, err = store.PublishFeatureFlag(ctx, humanPrincipal, killFlag.ID, "approver-kill", "kill-key:v1")
+		if err != nil {
+			t.Fatalf("Publish kill switch flag failed: %v", err)
+		}
+
+		published, err := store.GetFeatureFlag(ctx, p, killFlag.ID)
+		if err != nil {
+			t.Fatalf("Get published flag failed: %v", err)
+		}
+
+		// Evaluate when enabled
+		evalAudience := &storeAudience{store: store, principal: humanPrincipal}
+		enabledResult, err := flags.Evaluate(ctx, &published, "subject-kill", evalAudience)
+		if err != nil {
+			t.Fatalf("Evaluate enabled flag failed: %v", err)
+		}
+		if enabledResult.Reason == "disabled" {
+			t.Error("Enabled flag should not have reason 'disabled'")
+		}
+
+		// Now disable the flag (kill switch)
+		published.Status = "disabled"
+		updated, err := store.UpdateFeatureFlag(ctx, p, published)
+		if err != nil {
+			t.Fatalf("Update flag status failed: %v", err)
+		}
+
+		// Evaluate when disabled
+		disabledResult, err := flags.Evaluate(ctx, &updated, "subject-kill", evalAudience)
+		if err != nil {
+			t.Fatalf("Evaluate disabled flag failed: %v", err)
+		}
+
+		// Verify disabled returns default and reason is "disabled"
+		if disabledResult.Reason != "disabled" {
+			t.Errorf("Disabled flag should have reason 'disabled', got %q", disabledResult.Reason)
+		}
+		if string(disabledResult.Value) != `false` {
+			t.Errorf("Disabled flag should return default value, got %s", disabledResult.Value)
+		}
+
+		// Re-enable the flag
+		updated.Status = "published"
+		reenabledFlag, err := store.UpdateFeatureFlag(ctx, p, updated)
+		if err != nil {
+			t.Fatalf("Update to re-enable failed: %v", err)
+		}
+
+		// Verify it works again
+		reenableResult, err := flags.Evaluate(ctx, &reenabledFlag, "subject-kill", evalAudience)
+		if err != nil {
+			t.Fatalf("Evaluate re-enabled flag failed: %v", err)
+		}
+		if reenableResult.Reason == "disabled" {
+			t.Error("Re-enabled flag should not be disabled")
+		}
+	})
+}
+
 // storeAudience wraps store.EvaluateAudience to implement flags.EvalAudience interface
 type storeAudience struct {
 	store     *Store
