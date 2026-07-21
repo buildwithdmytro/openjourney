@@ -261,11 +261,11 @@ multipart upload.
 ### Milestone 20.0 — M14 Analytics & Reporting closeout — DO FIRST
 > The post-M14 review was clean on correctness/security/deps (628 Go / 273 web / 30 SDK green, reports
 > read fact tables only, exact-count, scopes enforced) but left low-severity FRONTEND gaps. These fold in.
-1. [ ] **Test the shared chart primitive.** `web/src/components/Chart.tsx` (used by Analytics, Reports,
+1. [x] **Test the shared chart primitive.** `web/src/components/Chart.tsx` (used by Analytics, Reports,
    Overview) has no co-located test — add `Chart.test.tsx` covering line/bar/funnel/sparkline rendering
    (roles/SVG output), per the M12 component-test discipline.
    *Done when:* `Chart.test.tsx` exists and passes; `cd web && npm run typecheck && npm run build &&
-   npm test` green.
+   npm test` green. — done: Chart.test.tsx added; 23 tests pass; all 296 web tests pass.
 2. [ ] **Test the analytics dashboard section.** `web/src/sections/Analytics.tsx` has no co-located test
    — add `Analytics.test.tsx` (vi.fn fetch stub) asserting it renders over-time/retention/cost charts and
    saves/loads a report.
