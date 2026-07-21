@@ -824,3 +824,183 @@ func TestRetentionReport(t *testing.T) {
 		}
 	}
 }
+
+func TestGrowthReport(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	key := fmt.Sprintf("growth-report-%d", time.Now().UnixNano())
+	if err := store.EnsureDevelopmentTenant(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	p, err := store.Authenticate(ctx, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	segment, err := store.CreateSegment(ctx, p, domain.Segment{
+		Name: "Growth audience", Type: "dynamic", DSL: json.RawMessage(`{}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	from := fmt.Sprintf("growth-report-%d@example.com", time.Now().UnixNano())
+	identity, err := store.CreateSendingIdentity(ctx, p, domain.SendingIdentity{
+		Channel: "email", FromAddress: &from, Provider: "ses", MaxSendRate: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	html := "Growth report"
+	template, err := store.CreateTemplate(ctx, p, domain.Template{
+		Name: "Growth template", Channel: "email", HTMLTemplate: &html,
+		SendingIdentityID: &identity.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	campaign, err := store.CreateCampaign(ctx, p, domain.Campaign{
+		Name: "Growth campaign", SegmentID: segment.ID, TemplateID: template.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create base times for 3 days
+	baseTime := time.Now().UTC().Truncate(time.Hour)
+	day1 := baseTime.Add(-2 * 24 * time.Hour)
+	day2 := baseTime.Add(-1 * 24 * time.Hour)
+	day3 := baseTime
+
+	// Seed profiles with created_at timestamps across 3 days
+	// Day 1: 5 profiles, Day 2: 8 profiles, Day 3: 7 profiles
+	profileIDs := make([]string, 0, 20)
+
+	for i := 0; i < 5; i++ {
+		var profileID string
+		externalID := fmt.Sprintf("growth-day1-%02d", i)
+		if err := store.pool.QueryRow(ctx, `INSERT INTO profiles
+			(tenant_id,workspace_id,app_id,external_id,created_at) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+			p.TenantID, p.WorkspaceID, p.AppID, externalID, day1).Scan(&profileID); err != nil {
+			t.Fatal(err)
+		}
+		profileIDs = append(profileIDs, profileID)
+	}
+
+	for i := 0; i < 8; i++ {
+		var profileID string
+		externalID := fmt.Sprintf("growth-day2-%02d", i)
+		if err := store.pool.QueryRow(ctx, `INSERT INTO profiles
+			(tenant_id,workspace_id,app_id,external_id,created_at) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+			p.TenantID, p.WorkspaceID, p.AppID, externalID, day2).Scan(&profileID); err != nil {
+			t.Fatal(err)
+		}
+		profileIDs = append(profileIDs, profileID)
+	}
+
+	for i := 0; i < 7; i++ {
+		var profileID string
+		externalID := fmt.Sprintf("growth-day3-%02d", i)
+		if err := store.pool.QueryRow(ctx, `INSERT INTO profiles
+			(tenant_id,workspace_id,app_id,external_id,created_at) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+			p.TenantID, p.WorkspaceID, p.AppID, externalID, day3).Scan(&profileID); err != nil {
+			t.Fatal(err)
+		}
+		profileIDs = append(profileIDs, profileID)
+	}
+
+	// Seed segment memberships
+	// Day 1: 4 memberships, Day 2: 6 memberships, Day 3: 5 memberships
+	// All with membership='include'
+
+	for i := 0; i < 4; i++ {
+		if _, err := store.pool.Exec(ctx, `INSERT INTO segment_members
+			(segment_id,profile_id,tenant_id,membership,created_at)
+			VALUES ($1,$2,$3,'include',$4)`, segment.ID, profileIDs[i], p.TenantID, day1); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for i := 0; i < 6; i++ {
+		if _, err := store.pool.Exec(ctx, `INSERT INTO segment_members
+			(segment_id,profile_id,tenant_id,membership,created_at)
+			VALUES ($1,$2,$3,'include',$4)`, segment.ID, profileIDs[5+i], p.TenantID, day2); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for i := 0; i < 5; i++ {
+		if _, err := store.pool.Exec(ctx, `INSERT INTO segment_members
+			(segment_id,profile_id,tenant_id,membership,created_at)
+			VALUES ($1,$2,$3,'include',$4)`, segment.ID, profileIDs[13+i], p.TenantID, day3); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Test with daily granularity, spanning 3 days
+	reportStart := day1.Truncate(24 * time.Hour)
+	reportEnd := day3.Truncate(24 * time.Hour).Add(24 * time.Hour)
+	growthReport, err := store.GrowthReport(ctx, p, campaign.ID, domain.ReportQuery{
+		Start:       reportStart,
+		End:         reportEnd,
+		Granularity: "day",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if growthReport.CampaignID != campaign.ID {
+		t.Errorf("campaign_id = %q, want %q", growthReport.CampaignID, campaign.ID)
+	}
+
+	if len(growthReport.Buckets) != 3 {
+		t.Fatalf("buckets=%d, want 3", len(growthReport.Buckets))
+	}
+
+	// Verify day 1: 5 new profiles, 4 segment memberships, 4 net growth
+	day1Bucket := growthReport.Buckets[0]
+	if day1Bucket.NewProfiles != 5 {
+		t.Errorf("day 1 new_profiles=%d, want 5", day1Bucket.NewProfiles)
+	}
+	if day1Bucket.SegmentMemberships != 4 {
+		t.Errorf("day 1 segment_memberships=%d, want 4", day1Bucket.SegmentMemberships)
+	}
+	if day1Bucket.NetGrowth != 4 {
+		t.Errorf("day 1 net_growth=%d, want 4", day1Bucket.NetGrowth)
+	}
+
+	// Verify day 2: 8 new profiles, 6 segment memberships, 6 net growth
+	day2Bucket := growthReport.Buckets[1]
+	if day2Bucket.NewProfiles != 8 {
+		t.Errorf("day 2 new_profiles=%d, want 8", day2Bucket.NewProfiles)
+	}
+	if day2Bucket.SegmentMemberships != 6 {
+		t.Errorf("day 2 segment_memberships=%d, want 6", day2Bucket.SegmentMemberships)
+	}
+	if day2Bucket.NetGrowth != 6 {
+		t.Errorf("day 2 net_growth=%d, want 6", day2Bucket.NetGrowth)
+	}
+
+	// Verify day 3: 7 new profiles, 5 segment memberships, 5 net growth
+	day3Bucket := growthReport.Buckets[2]
+	if day3Bucket.NewProfiles != 7 {
+		t.Errorf("day 3 new_profiles=%d, want 7", day3Bucket.NewProfiles)
+	}
+	if day3Bucket.SegmentMemberships != 5 {
+		t.Errorf("day 3 segment_memberships=%d, want 5", day3Bucket.SegmentMemberships)
+	}
+	if day3Bucket.NetGrowth != 5 {
+		t.Errorf("day 3 net_growth=%d, want 5", day3Bucket.NetGrowth)
+	}
+}

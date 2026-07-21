@@ -1009,6 +1009,21 @@ type JourneyOverTimeReport struct {
 	Buckets   []TimeBucket `json:"buckets"`
 }
 
+// GrowthBucket represents growth metrics for a time period: new profiles created
+// and new segment memberships added.
+type GrowthBucket struct {
+	Time                 time.Time `json:"time"`
+	NewProfiles          int64     `json:"new_profiles"`
+	NetGrowth            int64     `json:"net_growth"`
+	SegmentMemberships   int64     `json:"segment_memberships"`
+}
+
+// GrowthReport returns per-bucket profile and segment membership growth over time.
+type GrowthReport struct {
+	CampaignID string         `json:"campaign_id"`
+	Buckets    []GrowthBucket `json:"buckets"`
+}
+
 type ExperimentReport struct {
 	ExperimentID  string                    `json:"experiment_id"`
 	WinnerVariant *string                   `json:"winner_variant,omitempty"`

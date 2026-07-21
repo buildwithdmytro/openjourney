@@ -564,6 +564,189 @@ func (s *Store) RetentionReport(ctx context.Context, p domain.Principal, campaig
 	return report, nil
 }
 
+// GrowthReport returns per-bucket profile creation and segment membership growth
+// over a time range. Requires ReportQuery with Start, End, and Granularity set.
+func (s *Store) GrowthReport(ctx context.Context, p domain.Principal, campaignID string, query domain.ReportQuery) (domain.GrowthReport, error) {
+	if err := s.requireCampaignSource(ctx, p, campaignID); err != nil {
+		return domain.GrowthReport{}, err
+	}
+
+	if query.Start.IsZero() || query.End.IsZero() {
+		return domain.GrowthReport{}, errors.New("time range start and end are required for growth report")
+	}
+
+	if query.Granularity == "" || query.Granularity == "none" {
+		return domain.GrowthReport{}, errors.New("granularity is required and must not be 'none' for growth report")
+	}
+
+	report := domain.GrowthReport{CampaignID: campaignID}
+
+	// Determine PostgreSQL interval string from granularity
+	interval := "1 day"
+	switch query.Granularity {
+	case "hour":
+		interval = "1 hour"
+	case "day":
+		interval = "1 day"
+	case "week":
+		interval = "1 week"
+	case "month":
+		interval = "1 month"
+	}
+
+	// Query profiles created per bucket
+	sqlProfiles := fmt.Sprintf(`
+		WITH date_range AS (
+			SELECT * FROM generate_series($3, $4, '%s'::interval) AS bucket
+		),
+		bucketed_profiles AS (
+			SELECT
+				date_trunc('%s', p.created_at) AS bucket,
+				COUNT(*) AS new_profiles
+			FROM profiles p
+			WHERE p.tenant_id=$1 AND p.workspace_id=$2
+				AND p.created_at BETWEEN $3 AND $4
+			GROUP BY bucket
+		)
+		SELECT
+			dr.bucket,
+			COALESCE(bp.new_profiles, 0) AS new_profiles
+		FROM date_range dr
+		LEFT JOIN bucketed_profiles bp ON dr.bucket = bp.bucket
+		ORDER BY dr.bucket
+	`, interval, strings.TrimSuffix(query.Granularity, "s"))
+
+	rows, err := s.pool.Query(ctx, sqlProfiles, p.TenantID, p.WorkspaceID, query.Start, query.End)
+	if err != nil {
+		return domain.GrowthReport{}, err
+	}
+	defer rows.Close()
+
+	bucketsMap := make(map[time.Time]domain.GrowthBucket)
+	for rows.Next() {
+		var bucket time.Time
+		var newProfiles int64
+		if err := rows.Scan(&bucket, &newProfiles); err != nil {
+			return domain.GrowthReport{}, err
+		}
+		gb := domain.GrowthBucket{
+			Time:        bucket,
+			NewProfiles: newProfiles,
+		}
+		bucketsMap[bucket] = gb
+	}
+	if err := rows.Err(); err != nil {
+		return domain.GrowthReport{}, err
+	}
+
+	// Query segment memberships per bucket
+	sqlSegments := fmt.Sprintf(`
+		WITH date_range AS (
+			SELECT * FROM generate_series($3, $4, '%s'::interval) AS bucket
+		),
+		bucketed_segments AS (
+			SELECT
+				date_trunc('%s', sm.created_at) AS bucket,
+				COUNT(*) AS segment_memberships
+			FROM segment_members sm
+			WHERE sm.tenant_id=$1
+				AND sm.created_at BETWEEN $3 AND $4
+			GROUP BY bucket
+		)
+		SELECT
+			dr.bucket,
+			COALESCE(bs.segment_memberships, 0) AS segment_memberships
+		FROM date_range dr
+		LEFT JOIN bucketed_segments bs ON dr.bucket = bs.bucket
+		ORDER BY dr.bucket
+	`, interval, strings.TrimSuffix(query.Granularity, "s"))
+
+	segmentRows, err := s.pool.Query(ctx, sqlSegments, p.TenantID, p.WorkspaceID, query.Start, query.End)
+	if err != nil {
+		return domain.GrowthReport{}, err
+	}
+	defer segmentRows.Close()
+
+	for segmentRows.Next() {
+		var bucket time.Time
+		var segmentMemberships int64
+		if err := segmentRows.Scan(&bucket, &segmentMemberships); err != nil {
+			return domain.GrowthReport{}, err
+		}
+
+		gb := bucketsMap[bucket]
+		gb.SegmentMemberships = segmentMemberships
+		bucketsMap[bucket] = gb
+	}
+	if err := segmentRows.Err(); err != nil {
+		return domain.GrowthReport{}, err
+	}
+
+	// Calculate net growth: profiles with active segment membership in each bucket
+	sqlNetGrowth := fmt.Sprintf(`
+		WITH date_range AS (
+			SELECT * FROM generate_series($3, $4, '%s'::interval) AS bucket
+		),
+		bucketed_net_growth AS (
+			SELECT
+				date_trunc('%s', sm.created_at) AS bucket,
+				COUNT(DISTINCT sm.profile_id) AS net_growth
+			FROM segment_members sm
+			WHERE sm.tenant_id=$1 AND sm.membership='include'
+				AND sm.created_at BETWEEN $3 AND $4
+			GROUP BY bucket
+		)
+		SELECT
+			dr.bucket,
+			COALESCE(bng.net_growth, 0) AS net_growth
+		FROM date_range dr
+		LEFT JOIN bucketed_net_growth bng ON dr.bucket = bng.bucket
+		ORDER BY dr.bucket
+	`, interval, strings.TrimSuffix(query.Granularity, "s"))
+
+	netGrowthRows, err := s.pool.Query(ctx, sqlNetGrowth, p.TenantID, p.WorkspaceID, query.Start, query.End)
+	if err != nil {
+		return domain.GrowthReport{}, err
+	}
+	defer netGrowthRows.Close()
+
+	for netGrowthRows.Next() {
+		var bucket time.Time
+		var netGrowth int64
+		if err := netGrowthRows.Scan(&bucket, &netGrowth); err != nil {
+			return domain.GrowthReport{}, err
+		}
+
+		gb := bucketsMap[bucket]
+		gb.NetGrowth = netGrowth
+		bucketsMap[bucket] = gb
+	}
+	if err := netGrowthRows.Err(); err != nil {
+		return domain.GrowthReport{}, err
+	}
+
+	// Sort buckets by time and append to report
+	var buckets []domain.GrowthBucket
+	var times []time.Time
+	for t := range bucketsMap {
+		times = append(times, t)
+	}
+	// Sort times
+	for i := 0; i < len(times); i++ {
+		for j := i + 1; j < len(times); j++ {
+			if times[j].Before(times[i]) {
+				times[i], times[j] = times[j], times[i]
+			}
+		}
+	}
+	for _, t := range times {
+		buckets = append(buckets, bucketsMap[t])
+	}
+
+	report.Buckets = buckets
+	return report, nil
+}
+
 // ExperimentReport generates a statistical report for an experiment, comparing
 // each variant to the control variant on the primary goal and reporting guardrail rates.
 func (s *Store) ExperimentReport(ctx context.Context, p domain.Principal, experimentID string, reportQuery domain.ReportQuery) (domain.ExperimentReport, error) {

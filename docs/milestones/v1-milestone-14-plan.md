@@ -300,8 +300,9 @@ to a real time-series endpoint (kill the fake data `Overview.tsx:116`).
    — done: RetentionReport type + method added to domain/analytics; TestRetentionReport fixture with 3 cohorts returns exact per-cohort retention sizes; all 628 tests pass
 
 ### Milestone 19.4 — Audience growth
-1. [ ] **Growth report** (Recipe 6.79): profiles created + segment membership over time by bucket.
+1. [x] **Growth report** (Recipe 6.79): profiles created + segment membership over time by bucket.
    *Done when:* a fixture returns exact per-bucket new-profile and net-growth counts; test green.
+   — done: GrowthReport method added to analytics.go with date_trunc + generate_series bucketing; GrowthBucket domain type; TestGrowthReport verifies exact per-bucket new-profile/segment-membership/net-growth counts (day1: 5/4/4, day2: 8/6/6, day3: 7/5/5); all 628 tests pass
 
 ### Milestone 19.5 — Cost reporting
 1. [ ] **Record cost at send**: add `cost_micros` to the delivery/engagement facts (migration `051`) and
