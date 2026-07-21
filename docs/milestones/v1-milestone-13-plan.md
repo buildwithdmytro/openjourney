@@ -430,9 +430,10 @@ registration. ConfirmDialog on publish + kill-switch toggle. Theme-aware; no new
    *Done when:* all green and `git diff go.mod go.sum web/package.json web/package-lock.json
    sdk/javascript/package.json` is empty of additions.
    — done: go 621 tests green, web 273 tests green, SDK 30 tests green, no changes to package.json/package-lock.json/go.mod/go.sum
-4. [ ] **Audit doc** `docs/milestones/v1-milestone-13-audit.md` in the M2–M12 table format, one row per
+4. [x] **Audit doc** `docs/milestones/v1-milestone-13-audit.md` in the M2–M12 table format, one row per
    `18.x` task with evidence (file:line + test name).
    *Done when:* the doc exists with a row per task and its verifying test.
+   — done: v1-milestone-13-audit.md created with 19 rows per 18.0–18.10 tasks with evidence (file:line + test names)
 
 ## 7. Carry-over hazards & invariants
 
