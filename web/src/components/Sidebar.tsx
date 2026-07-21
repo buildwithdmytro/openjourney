@@ -1,6 +1,6 @@
 import React from "react";
 
-type View = "overview" | "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "copilots" | "governance" | "extensions" | "connectors" | "suppressions" | "sender-identities" | "device-tokens" | "acquisition" | "messaging";
+type View = "overview" | "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "copilots" | "governance" | "extensions" | "connectors" | "suppressions" | "sender-identities" | "device-tokens" | "acquisition" | "messaging" | "flags";
 
 interface NavGroup {
   label: string;
@@ -18,7 +18,7 @@ const navGroups: NavGroup[] = [
   },
   {
     label: "Messaging",
-    items: ["templates", "campaigns", "journeys", "experiments", "messaging", "connectors", "suppressions", "sender-identities", "device-tokens"],
+    items: ["templates", "campaigns", "journeys", "experiments", "flags", "messaging", "connectors", "suppressions", "sender-identities", "device-tokens"],
   },
   {
     label: "AI & Insights",

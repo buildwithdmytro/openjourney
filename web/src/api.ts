@@ -926,3 +926,73 @@ export async function retryJourneyDLQ(baseURL: string, apiKey: string, kind: str
     method: "POST",
   });
 }
+
+export type FlagVariant = {
+  label: string;
+  value: unknown;
+  weight: number;
+};
+
+export type FlagTargetingRule = {
+  dsl: Record<string, unknown>;
+  variant: string;
+};
+
+export type FeatureFlag = {
+  id: string;
+  tenant_id: string;
+  workspace_id: string;
+  app_id: string;
+  environment: string;
+  key: string;
+  name?: string;
+  description?: string;
+  flag_type: "boolean" | "string" | "number" | "json";
+  default_value: unknown;
+  variants?: FlagVariant[];
+  targeting_rules?: FlagTargetingRule[];
+  rollout_pct: number;
+  seed: string;
+  enabled: boolean;
+  status: "draft" | "published" | "disabled";
+  current_version_id?: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type FeatureFlagExposure = {
+  id: string;
+  tenant_id: string;
+  app_id: string;
+  flag_id: string;
+  environment: string;
+  variant: string;
+  exposures: number;
+  first_seen?: string;
+  last_seen?: string;
+};
+
+export async function listFeatureFlags(baseURL: string, apiKey: string): Promise<FeatureFlag[]> {
+  const result = await requestJSON<{ flags: FeatureFlag[] | null }>(baseURL, apiKey, "/v1/flags");
+  return Array.isArray(result.flags) ? result.flags : [];
+}
+
+export async function getFeatureFlag(baseURL: string, apiKey: string, id: string): Promise<FeatureFlag> {
+  return requestJSON<FeatureFlag>(baseURL, apiKey, `/v1/flags/${encodeURIComponent(id)}`);
+}
+
+export async function createFeatureFlag(baseURL: string, apiKey: string, input: Partial<FeatureFlag>): Promise<FeatureFlag> {
+  return requestJSON<FeatureFlag>(baseURL, apiKey, "/v1/flags", { method: "POST", body: JSON.stringify(input) });
+}
+
+export async function updateFeatureFlag(baseURL: string, apiKey: string, id: string, input: Partial<FeatureFlag>): Promise<FeatureFlag> {
+  return requestJSON<FeatureFlag>(baseURL, apiKey, `/v1/flags/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(input) });
+}
+
+export async function publishFeatureFlag(baseURL: string, apiKey: string, id: string): Promise<{ id: string; version: number }> {
+  return requestJSON<{ id: string; version: number }>(baseURL, apiKey, `/v1/flags/${encodeURIComponent(id)}/publish`, { method: "POST" });
+}
+
+export async function setFeatureFlagStatus(baseURL: string, apiKey: string, id: string, status: string): Promise<FeatureFlag> {
+  return requestJSON<FeatureFlag>(baseURL, apiKey, `/v1/flags/${encodeURIComponent(id)}/status`, { method: "PUT", body: JSON.stringify({ status }) });
+}

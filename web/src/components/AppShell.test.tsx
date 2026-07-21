@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { AppShell } from "./AppShell";
 
-type View = "overview" | "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "copilots" | "governance" | "extensions" | "connectors" | "suppressions" | "sender-identities" | "device-tokens" | "acquisition" | "messaging";
+type View = "overview" | "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "copilots" | "governance" | "extensions" | "connectors" | "suppressions" | "sender-identities" | "device-tokens" | "acquisition" | "messaging" | "flags";
 
 const viewTitles: Record<View, [string, string]> = {
   overview: ["Overview", "At a glance view of your workspace activity and resources."],
@@ -29,6 +29,7 @@ const viewTitles: Record<View, [string, string]> = {
   "device-tokens": ["Device Tokens", "Inspect and retire push device tokens per profile."],
   acquisition: ["Acquisition", "Build defended forms and immutable landing pages."],
   messaging: ["Messaging", "Create and manage in-app messages, content cards, and web push campaigns."],
+  flags: ["Feature Flags", "Create, publish, and toggle environment-scoped feature flags with targeting and exposure analytics."],
 };
 
 afterEach(cleanup);

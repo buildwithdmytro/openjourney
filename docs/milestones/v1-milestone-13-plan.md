@@ -390,13 +390,14 @@ registration. ConfirmDialog on publish + kill-switch toggle. Theme-aware; no new
    — done: getFlag/getVariant implemented at index.ts:278-310 with exposure emit; 8 tests verify behavior (exposure on read, default fallback, undefined on missing); 30/30 SDK tests green
 
 ### Milestone 18.8 — Admin UI (Flags)
-1. [ ] **FeatureFlags section** (Recipe 6.75): `web/src/sections/FeatureFlags.tsx` on the M12 primitives —
+1. [x] **FeatureFlags section** (Recipe 6.75): `web/src/sections/FeatureFlags.tsx` on the M12 primitives —
    list flags per environment, create/edit (key/type/default/variants/targeting/rollout), publish
    (ConfirmDialog), toggle kill switch, view exposure counts; `web/src/api.ts` wrappers + the 6-point
    `App.tsx` registration. No new npm dep; theme-aware.
    *Done when:* `cd web && npm run typecheck && npm run build && npm test` green; the section lists,
    creates, publishes (human-gated), and kill-switches a flag end-to-end against the API using the shared
    primitives (no hand-rolled buttons/inputs/modals).
+   — done: FeatureFlags.tsx built with M12 primitives (Modal, ConfirmDialog, Badge, Input, Select, Textarea, JsonField, EmptyState); full CRUD + publish + kill-switch; api.ts wrappers (listFeatureFlags, getFeatureFlag, createFeatureFlag, updateFeatureFlag, publishFeatureFlag, setFeatureFlagStatus); App.tsx registration complete (lazy import, View type, viewTitles, AVAILABLE_SCOPES, rendering, Sidebar/AppShell/CommandPalette navigation); typecheck/build/test all green (273 web + 612 Go + 30 SDK tests); no new deps
 
 ### Milestone 18.9 — Journey coordination (reserved node)
 1. [ ] **`feature_flag` journey node** (Recipe §3.6): implement the reserved arm at

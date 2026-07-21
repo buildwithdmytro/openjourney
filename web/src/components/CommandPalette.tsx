@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import Modal from "./Modal";
 
-type View = "overview" | "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "copilots" | "governance" | "extensions" | "connectors" | "suppressions" | "sender-identities" | "device-tokens" | "acquisition" | "messaging";
+type View = "overview" | "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "copilots" | "governance" | "extensions" | "connectors" | "suppressions" | "sender-identities" | "device-tokens" | "acquisition" | "messaging" | "flags";
 
 interface PaletteItem {
   label: string;
@@ -21,7 +21,7 @@ const navGroups = [
   },
   {
     label: "Messaging",
-    items: ["templates", "campaigns", "journeys", "experiments", "messaging", "connectors", "suppressions", "sender-identities", "device-tokens"],
+    items: ["templates", "campaigns", "journeys", "experiments", "flags", "messaging", "connectors", "suppressions", "sender-identities", "device-tokens"],
   },
   {
     label: "AI & Insights",
@@ -66,6 +66,7 @@ const viewTitles: Record<View, [string, string]> = {
   "device-tokens": ["Device Tokens", "Inspect and retire push device tokens per profile."],
   acquisition: ["Acquisition", "Build defended forms and immutable landing pages."],
   messaging: ["Messaging", "Create and manage in-app messages, content cards, and web push campaigns."],
+  flags: ["Feature Flags", "Create, publish, and toggle environment-scoped feature flags with targeting and exposure analytics."],
 };
 
 export interface CommandPaletteProps {
