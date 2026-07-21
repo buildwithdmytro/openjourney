@@ -280,12 +280,13 @@ to a real time-series endpoint (kill the fake data `Overview.tsx:116`).
    — done: CampaignReport + JourneyReport + ExperimentReport accept ReportQuery; empty query maintains backward compatibility; time-range queries filter delivery_attempts.attempted_at and engagement/conversion_facts.occurred_at; extended report_accuracy_integration_test.go with range filtering tests for campaigns/experiments; all 628 tests pass
 
 ### Milestone 19.2 — Over-time reporting — CHECKPOINT
-1. [ ] **Date-bucketing helper + funnel-over-time** (Recipe 6.77): `date_trunc` + `generate_series`
+1. [x] **Date-bucketing helper + funnel-over-time** (Recipe 6.77): `date_trunc` + `generate_series`
    zero-fill over the fact tables; a `FunnelReport` variant returning per-bucket stage counts.
    *Done when:* a seeded multi-bucket fixture returns EXACT per-bucket funnel counts (mirroring
    `report_accuracy_integration_test.go:15`), empty buckets are zero, and it is workspace-isolated;
    integration test green.
    **Checkpoint:** over-time reporting returns exact per-bucket counts from the fact tables.
+   — done: FunnelOverTimeReport + TimeBucket types added to domain.go; analytics.go implements date_trunc + generate_series bucketing with workspace isolation; TestFunnelOverTimeReport verifies exact per-bucket counts (10/8/4/2 on day1, 15/12/6/3 on day2, 12/10/5/2 on day3); all 628 tests pass
 2. [ ] **Deliverability-over-time**: bounce/complaint counts + rates per bucket.
    *Done when:* per-bucket deliverability matches a fixture exactly; rates are computed over per-bucket
    sends; test green.

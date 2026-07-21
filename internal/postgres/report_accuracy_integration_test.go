@@ -282,3 +282,248 @@ func TestReportAccuracyFromProjectedEvents(t *testing.T) {
 			inclusiveControl, control, inclusiveTreatment, treatment)
 	}
 }
+
+func TestFunnelOverTimeReport(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	key := fmt.Sprintf("funnel-over-time-%d", time.Now().UnixNano())
+	if err := store.EnsureDevelopmentTenant(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	p, err := store.Authenticate(ctx, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	segment, err := store.CreateSegment(ctx, p, domain.Segment{
+		Name: "Over-time audience", Type: "dynamic", DSL: json.RawMessage(`{}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	from := fmt.Sprintf("funnel-over-time-%d@example.com", time.Now().UnixNano())
+	identity, err := store.CreateSendingIdentity(ctx, p, domain.SendingIdentity{
+		Channel: "email", FromAddress: &from, Provider: "ses", MaxSendRate: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	html := "Over-time report"
+	template, err := store.CreateTemplate(ctx, p, domain.Template{
+		Name: "Over-time template", Channel: "email", HTMLTemplate: &html,
+		SendingIdentityID: &identity.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	campaign, err := store.CreateCampaign(ctx, p, domain.Campaign{
+		Name: "Over-time campaign", SegmentID: segment.ID, TemplateID: template.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create recipients and seed them with time-bucketed delivery attempts
+	// We'll use 3 days: day 1 has 10 sent, day 2 has 15 sent, day 3 has 12 sent
+	baseTime := time.Now().UTC().Truncate(time.Hour)
+	day1 := baseTime.Add(-2 * 24 * time.Hour)
+	day2 := baseTime.Add(-1 * 24 * time.Hour)
+	day3 := baseTime
+
+	type recipient struct {
+		profileID  string
+		externalID string
+		endpoint   string
+		day        time.Time
+	}
+
+	recipients := make([]recipient, 37)
+	for i := 0; i < 10; i++ {
+		recipients[i] = recipient{
+			externalID: fmt.Sprintf("over-time-day1-%02d", i),
+			endpoint:   fmt.Sprintf("over-time-day1-%02d@example.com", i),
+			day:        day1,
+		}
+	}
+	for i := 10; i < 25; i++ {
+		recipients[i] = recipient{
+			externalID: fmt.Sprintf("over-time-day2-%02d", i-10),
+			endpoint:   fmt.Sprintf("over-time-day2-%02d@example.com", i-10),
+			day:        day2,
+		}
+	}
+	for i := 25; i < 37; i++ {
+		recipients[i] = recipient{
+			externalID: fmt.Sprintf("over-time-day3-%02d", i-25),
+			endpoint:   fmt.Sprintf("over-time-day3-%02d@example.com", i-25),
+			day:        day3,
+		}
+	}
+
+	for i := range recipients {
+		if err := store.pool.QueryRow(ctx, `INSERT INTO profiles
+			(tenant_id,workspace_id,app_id,external_id) VALUES ($1,$2,$3,$4) RETURNING id`,
+			p.TenantID, p.WorkspaceID, p.AppID, recipients[i].externalID).Scan(&recipients[i].profileID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := store.pool.Exec(ctx, `INSERT INTO delivery_attempts
+			(campaign_id,tenant_id,profile_id,channel,endpoint,decision,attempted_at)
+			VALUES ($1,$2,$3,'email',$4,'sent',$5)`, campaign.ID, p.TenantID,
+			recipients[i].profileID, recipients[i].endpoint, recipients[i].day); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Seed engagement events spread across buckets
+	// Day 1: 8 delivered, 4 opened, 2 clicked
+	// Day 2: 12 delivered, 6 opened, 3 clicked
+	// Day 3: 10 delivered, 5 opened, 2 clicked
+	events := make([]domain.Event, 0, 60)
+	addEvent := func(eventType string, recipient recipient, suffix string, payload json.RawMessage) {
+		events = append(events, domain.Event{
+			Type: eventType, SchemaVersion: 1, ExternalID: recipient.externalID,
+			IdempotencyKey: fmt.Sprintf("over-time-%s-%s-%s", eventType, recipient.externalID, suffix),
+			OccurredAt:     recipient.day, Payload: payload,
+		})
+	}
+
+	// Day 1 events: 8 delivered, 4 opened, 2 clicked
+	for i := 0; i < 10; i++ {
+		addEvent("message.delivered", recipients[i], "delivered",
+			json.RawMessage(fmt.Sprintf(`{"campaign_id":%q,"endpoint":%q}`, campaign.ID, recipients[i].endpoint)))
+		if i < 4 {
+			addEvent("email.opened", recipients[i], "opened",
+				json.RawMessage(fmt.Sprintf(`{"template_id":%q,"dispatch_id":%q,"campaign_id":%q}`,
+					template.ID, fmt.Sprintf("open-d1-%02d", i), campaign.ID)))
+		}
+		if i < 2 {
+			addEvent("link.clicked", recipients[i], "clicked",
+				json.RawMessage(fmt.Sprintf(`{"template_id":%q,"dispatch_id":%q,"url":"https://example.com/offer","campaign_id":%q}`,
+					template.ID, fmt.Sprintf("click-d1-%02d", i), campaign.ID)))
+		}
+	}
+
+	// Day 2 events: 12 delivered, 6 opened, 3 clicked
+	for i := 10; i < 25; i++ {
+		addEvent("message.delivered", recipients[i], "delivered",
+			json.RawMessage(fmt.Sprintf(`{"campaign_id":%q,"endpoint":%q}`, campaign.ID, recipients[i].endpoint)))
+		if i < 16 {
+			addEvent("email.opened", recipients[i], "opened",
+				json.RawMessage(fmt.Sprintf(`{"template_id":%q,"dispatch_id":%q,"campaign_id":%q}`,
+					template.ID, fmt.Sprintf("open-d2-%02d", i-10), campaign.ID)))
+		}
+		if i < 13 {
+			addEvent("link.clicked", recipients[i], "clicked",
+				json.RawMessage(fmt.Sprintf(`{"template_id":%q,"dispatch_id":%q,"url":"https://example.com/offer","campaign_id":%q}`,
+					template.ID, fmt.Sprintf("click-d2-%02d", i-10), campaign.ID)))
+		}
+	}
+
+	// Day 3 events: 10 delivered, 5 opened, 2 clicked
+	for i := 25; i < 37; i++ {
+		addEvent("message.delivered", recipients[i], "delivered",
+			json.RawMessage(fmt.Sprintf(`{"campaign_id":%q,"endpoint":%q}`, campaign.ID, recipients[i].endpoint)))
+		if i < 30 {
+			addEvent("email.opened", recipients[i], "opened",
+				json.RawMessage(fmt.Sprintf(`{"template_id":%q,"dispatch_id":%q,"campaign_id":%q}`,
+					template.ID, fmt.Sprintf("open-d3-%02d", i-25), campaign.ID)))
+		}
+		if i < 27 {
+			addEvent("link.clicked", recipients[i], "clicked",
+				json.RawMessage(fmt.Sprintf(`{"template_id":%q,"dispatch_id":%q,"url":"https://example.com/offer","campaign_id":%q}`,
+					template.ID, fmt.Sprintf("click-d3-%02d", i-25), campaign.ID)))
+		}
+	}
+
+	if len(events) != 60 {
+		t.Fatalf("events=%d, want 60", len(events))
+	}
+
+	ids, err := store.AcceptEvents(ctx, p, events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, event := range events {
+		accepted := domain.AcceptedEvent{
+			ID: ids[i], Principal: p, Type: event.Type, SchemaVersion: event.SchemaVersion,
+			ExternalID: event.ExternalID, IdempotencyKey: event.IdempotencyKey,
+			OccurredAt: event.OccurredAt, Payload: event.Payload,
+		}
+		if err := store.ProjectEvent(ctx, accepted); err != nil {
+			t.Fatalf("project %s for %s: %v", event.Type, event.ExternalID, err)
+		}
+	}
+
+	// Test with daily granularity, spanning 3 days
+	reportStart := day1.Truncate(24 * time.Hour)
+	reportEnd := day3.Truncate(24 * time.Hour).Add(24 * time.Hour)
+	overTimeReport, err := store.FunnelOverTimeReport(ctx, p, campaign.ID, domain.ReportQuery{
+		Start:       reportStart,
+		End:         reportEnd,
+		Granularity: "day",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(overTimeReport.Buckets) != 3 {
+		t.Fatalf("buckets=%d, want 3", len(overTimeReport.Buckets))
+	}
+
+	// Verify day 1: 10 sent, 8 delivered, 4 opened, 2 clicked
+	day1Bucket := overTimeReport.Buckets[0]
+	if day1Bucket.Funnel.Sent.Total != 10 || day1Bucket.Funnel.Sent.Unique != 10 {
+		t.Fatalf("day 1 sent=%+v, want {Total:10, Unique:10}", day1Bucket.Funnel.Sent)
+	}
+	if day1Bucket.Funnel.Delivered.Total != 8 || day1Bucket.Funnel.Delivered.Unique != 8 {
+		t.Fatalf("day 1 delivered=%+v, want {Total:8, Unique:8}", day1Bucket.Funnel.Delivered)
+	}
+	if day1Bucket.Funnel.Opened.Total != 4 || day1Bucket.Funnel.Opened.Unique != 4 {
+		t.Fatalf("day 1 opened=%+v, want {Total:4, Unique:4}", day1Bucket.Funnel.Opened)
+	}
+	if day1Bucket.Funnel.Clicked.Total != 2 || day1Bucket.Funnel.Clicked.Unique != 2 {
+		t.Fatalf("day 1 clicked=%+v, want {Total:2, Unique:2}", day1Bucket.Funnel.Clicked)
+	}
+
+	// Verify day 2: 15 sent, 12 delivered, 6 opened, 3 clicked
+	day2Bucket := overTimeReport.Buckets[1]
+	if day2Bucket.Funnel.Sent.Total != 15 || day2Bucket.Funnel.Sent.Unique != 15 {
+		t.Fatalf("day 2 sent=%+v, want {Total:15, Unique:15}", day2Bucket.Funnel.Sent)
+	}
+	if day2Bucket.Funnel.Delivered.Total != 12 || day2Bucket.Funnel.Delivered.Unique != 12 {
+		t.Fatalf("day 2 delivered=%+v, want {Total:12, Unique:12}", day2Bucket.Funnel.Delivered)
+	}
+	if day2Bucket.Funnel.Opened.Total != 6 || day2Bucket.Funnel.Opened.Unique != 6 {
+		t.Fatalf("day 2 opened=%+v, want {Total:6, Unique:6}", day2Bucket.Funnel.Opened)
+	}
+	if day2Bucket.Funnel.Clicked.Total != 3 || day2Bucket.Funnel.Clicked.Unique != 3 {
+		t.Fatalf("day 2 clicked=%+v, want {Total:3, Unique:3}", day2Bucket.Funnel.Clicked)
+	}
+
+	// Verify day 3: 12 sent, 10 delivered, 5 opened, 2 clicked
+	day3Bucket := overTimeReport.Buckets[2]
+	if day3Bucket.Funnel.Sent.Total != 12 || day3Bucket.Funnel.Sent.Unique != 12 {
+		t.Fatalf("day 3 sent=%+v, want {Total:12, Unique:12}", day3Bucket.Funnel.Sent)
+	}
+	if day3Bucket.Funnel.Delivered.Total != 10 || day3Bucket.Funnel.Delivered.Unique != 10 {
+		t.Fatalf("day 3 delivered=%+v, want {Total:10, Unique:10}", day3Bucket.Funnel.Delivered)
+	}
+	if day3Bucket.Funnel.Opened.Total != 5 || day3Bucket.Funnel.Opened.Unique != 5 {
+		t.Fatalf("day 3 opened=%+v, want {Total:5, Unique:5}", day3Bucket.Funnel.Opened)
+	}
+	if day3Bucket.Funnel.Clicked.Total != 2 || day3Bucket.Funnel.Clicked.Unique != 2 {
+		t.Fatalf("day 3 clicked=%+v, want {Total:2, Unique:2}", day3Bucket.Funnel.Clicked)
+	}
+}

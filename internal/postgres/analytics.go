@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 	"github.com/buildwithdmytro/openjourney/internal/experiment"
@@ -203,6 +205,249 @@ func setDeliverabilityRates(sent int64, deliverability *domain.ReportDeliverabil
 	}
 	deliverability.BounceRate = float64(deliverability.Bounced.Total) / float64(sent)
 	deliverability.ComplaintRate = float64(deliverability.Complained.Total) / float64(sent)
+}
+
+// FunnelOverTimeReport returns per-bucket funnel and deliverability counts over a time range.
+// Requires ReportQuery with Start, End, and Granularity set. Returns empty buckets as zero.
+func (s *Store) FunnelOverTimeReport(ctx context.Context, p domain.Principal, campaignID string, query domain.ReportQuery) (domain.FunnelOverTimeReport, error) {
+	if err := s.requireCampaignSource(ctx, p, campaignID); err != nil {
+		return domain.FunnelOverTimeReport{}, err
+	}
+
+	if query.Start.IsZero() || query.End.IsZero() {
+		return domain.FunnelOverTimeReport{}, errors.New("time range start and end are required for funnel-over-time report")
+	}
+
+	if query.Granularity == "" || query.Granularity == "none" {
+		return domain.FunnelOverTimeReport{}, errors.New("granularity is required and must not be 'none' for funnel-over-time report")
+	}
+
+	report := domain.FunnelOverTimeReport{CampaignID: campaignID}
+
+	// Determine PostgreSQL interval string from granularity
+	interval := "1 day"
+	switch query.Granularity {
+	case "hour":
+		interval = "1 hour"
+	case "day":
+		interval = "1 day"
+	case "week":
+		interval = "1 week"
+	case "month":
+		interval = "1 month"
+	}
+
+	// Query delivery_attempts bucketed by attempted_at
+	sqlDelivery := fmt.Sprintf(`
+		WITH date_range AS (
+			SELECT * FROM generate_series($3, $4, '%s'::interval) AS bucket
+		),
+		bucketed_deliveries AS (
+			SELECT
+				date_trunc('%s', d.attempted_at) AS bucket,
+				COUNT(*) FILTER (WHERE d.decision='sent') AS sent_total,
+				COUNT(DISTINCT d.profile_id) FILTER (WHERE d.decision='sent') AS sent_unique,
+				COUNT(*) AS targeted_total,
+				COUNT(DISTINCT d.profile_id) AS targeted_unique,
+				COUNT(*) FILTER (WHERE d.decision='suppressed') AS suppressed_total,
+				COUNT(DISTINCT d.profile_id) FILTER (WHERE d.decision='suppressed') AS suppressed_unique,
+				COUNT(*) FILTER (WHERE d.decision='no_consent') AS no_consent_total,
+				COUNT(DISTINCT d.profile_id) FILTER (WHERE d.decision='no_consent') AS no_consent_unique,
+				COUNT(*) FILTER (WHERE d.decision='fatigued') AS fatigued_total,
+				COUNT(DISTINCT d.profile_id) FILTER (WHERE d.decision='fatigued') AS fatigued_unique,
+				COUNT(*) FILTER (WHERE d.decision='render_failed') AS render_failed_total,
+				COUNT(DISTINCT d.profile_id) FILTER (WHERE d.decision='render_failed') AS render_failed_unique,
+				COUNT(*) FILTER (WHERE d.decision='send_failed') AS send_failed_total,
+				COUNT(DISTINCT d.profile_id) FILTER (WHERE d.decision='send_failed') AS send_failed_unique,
+				COUNT(*) FILTER (WHERE d.decision='failed') AS failed_total,
+				COUNT(DISTINCT d.profile_id) FILTER (WHERE d.decision='failed') AS failed_unique,
+				COUNT(*) FILTER (WHERE d.decision='holdout') AS holdout_total,
+				COUNT(DISTINCT d.profile_id) FILTER (WHERE d.decision='holdout') AS holdout_unique
+			FROM delivery_attempts d
+			JOIN campaigns c ON c.id=d.campaign_id AND c.tenant_id=d.tenant_id
+			WHERE c.tenant_id=$1 AND c.workspace_id=$2 AND c.id=$5
+				AND d.attempted_at BETWEEN $3 AND $4
+			GROUP BY bucket
+		)
+		SELECT
+			dr.bucket,
+			COALESCE(bd.targeted_total, 0), COALESCE(bd.targeted_unique, 0),
+			COALESCE(bd.sent_total, 0), COALESCE(bd.sent_unique, 0),
+			COALESCE(bd.suppressed_total, 0), COALESCE(bd.suppressed_unique, 0),
+			COALESCE(bd.no_consent_total, 0), COALESCE(bd.no_consent_unique, 0),
+			COALESCE(bd.fatigued_total, 0), COALESCE(bd.fatigued_unique, 0),
+			COALESCE(bd.render_failed_total, 0), COALESCE(bd.render_failed_unique, 0),
+			COALESCE(bd.send_failed_total, 0), COALESCE(bd.send_failed_unique, 0),
+			COALESCE(bd.failed_total, 0), COALESCE(bd.failed_unique, 0),
+			COALESCE(bd.holdout_total, 0), COALESCE(bd.holdout_unique, 0)
+		FROM date_range dr
+		LEFT JOIN bucketed_deliveries bd ON dr.bucket = bd.bucket
+		ORDER BY dr.bucket
+	`, interval, strings.TrimSuffix(query.Granularity, "s"))
+
+	rows, err := s.pool.Query(ctx, sqlDelivery, p.TenantID, p.WorkspaceID, query.Start, query.End, campaignID)
+	if err != nil {
+		return domain.FunnelOverTimeReport{}, err
+	}
+	defer rows.Close()
+
+	bucketsMap := make(map[time.Time]domain.TimeBucket)
+	for rows.Next() {
+		var bucket time.Time
+		var tb domain.TimeBucket
+		if err := rows.Scan(
+			&bucket,
+			&tb.Funnel.Targeted.Total, &tb.Funnel.Targeted.Unique,
+			&tb.Funnel.Sent.Total, &tb.Funnel.Sent.Unique,
+			&tb.Funnel.Suppressed.Total, &tb.Funnel.Suppressed.Unique,
+			&tb.Funnel.NoConsent.Total, &tb.Funnel.NoConsent.Unique,
+			&tb.Funnel.Fatigued.Total, &tb.Funnel.Fatigued.Unique,
+			&tb.Funnel.RenderFailed.Total, &tb.Funnel.RenderFailed.Unique,
+			&tb.Funnel.SendFailed.Total, &tb.Funnel.SendFailed.Unique,
+			&tb.Funnel.Failed.Total, &tb.Funnel.Failed.Unique,
+			&tb.Funnel.Holdout.Total, &tb.Funnel.Holdout.Unique,
+		); err != nil {
+			return domain.FunnelOverTimeReport{}, err
+		}
+		tb.Time = bucket
+		bucketsMap[bucket] = tb
+	}
+	if err := rows.Err(); err != nil {
+		return domain.FunnelOverTimeReport{}, err
+	}
+
+	// Query engagement_facts for delivered/opened/clicked
+	sqlEngagement := fmt.Sprintf(`
+		WITH date_range AS (
+			SELECT * FROM generate_series($3, $4, '%s'::interval) AS bucket
+		),
+		bucketed_engagement AS (
+			SELECT
+				date_trunc('%s', ef.occurred_at) AS bucket,
+				COUNT(*) FILTER (WHERE ef.event_type='delivered') AS delivered_total,
+				COUNT(DISTINCT ef.profile_id) FILTER (WHERE ef.event_type='delivered') AS delivered_unique,
+				COUNT(*) FILTER (WHERE ef.event_type='opened') AS opened_total,
+				COUNT(DISTINCT ef.profile_id) FILTER (WHERE ef.event_type='opened') AS opened_unique,
+				COUNT(*) FILTER (WHERE ef.event_type='clicked') AS clicked_total,
+				COUNT(DISTINCT ef.profile_id) FILTER (WHERE ef.event_type='clicked') AS clicked_unique,
+				COUNT(*) FILTER (WHERE ef.event_type='bounced') AS bounced_total,
+				COUNT(DISTINCT ef.profile_id) FILTER (WHERE ef.event_type='bounced') AS bounced_unique,
+				COUNT(*) FILTER (WHERE ef.event_type='complained') AS complained_total,
+				COUNT(DISTINCT ef.profile_id) FILTER (WHERE ef.event_type='complained') AS complained_unique
+			FROM engagement_facts ef
+			WHERE ef.tenant_id=$1 AND ef.workspace_id=$2 AND ef.source_id=$5 AND ef.source_type='campaign'
+				AND ef.occurred_at BETWEEN $3 AND $4
+			GROUP BY bucket
+		)
+		SELECT
+			dr.bucket,
+			COALESCE(be.delivered_total, 0), COALESCE(be.delivered_unique, 0),
+			COALESCE(be.opened_total, 0), COALESCE(be.opened_unique, 0),
+			COALESCE(be.clicked_total, 0), COALESCE(be.clicked_unique, 0),
+			COALESCE(be.bounced_total, 0), COALESCE(be.bounced_unique, 0),
+			COALESCE(be.complained_total, 0), COALESCE(be.complained_unique, 0)
+		FROM date_range dr
+		LEFT JOIN bucketed_engagement be ON dr.bucket = be.bucket
+		ORDER BY dr.bucket
+	`, interval, strings.TrimSuffix(query.Granularity, "s"))
+
+	engagementRows, err := s.pool.Query(ctx, sqlEngagement, p.TenantID, p.WorkspaceID, query.Start, query.End, campaignID)
+	if err != nil {
+		return domain.FunnelOverTimeReport{}, err
+	}
+	defer engagementRows.Close()
+
+	for engagementRows.Next() {
+		var bucket time.Time
+		var delivered, opened, clicked, bounced, complained domain.ReportCount
+		if err := engagementRows.Scan(
+			&bucket,
+			&delivered.Total, &delivered.Unique,
+			&opened.Total, &opened.Unique,
+			&clicked.Total, &clicked.Unique,
+			&bounced.Total, &bounced.Unique,
+			&complained.Total, &complained.Unique,
+		); err != nil {
+			return domain.FunnelOverTimeReport{}, err
+		}
+
+		tb := bucketsMap[bucket]
+		tb.Funnel.Delivered = delivered
+		tb.Funnel.Opened = opened
+		tb.Funnel.Clicked = clicked
+		tb.Deliverability.Bounced = bounced
+		tb.Deliverability.Complained = complained
+		setDeliverabilityRates(tb.Funnel.Sent.Total, &tb.Deliverability)
+		bucketsMap[bucket] = tb
+	}
+	if err := engagementRows.Err(); err != nil {
+		return domain.FunnelOverTimeReport{}, err
+	}
+
+	// Query conversion_facts
+	sqlConversion := fmt.Sprintf(`
+		WITH date_range AS (
+			SELECT * FROM generate_series($3, $4, '%s'::interval) AS bucket
+		),
+		bucketed_conversion AS (
+			SELECT
+				date_trunc('%s', cf.occurred_at) AS bucket,
+				COUNT(*) AS total,
+				COUNT(DISTINCT cf.profile_id) AS unique
+			FROM conversion_facts cf
+			WHERE cf.tenant_id=$1 AND cf.workspace_id=$2 AND cf.source_id=$5 AND cf.source_type='campaign'
+				AND cf.occurred_at BETWEEN $3 AND $4
+			GROUP BY bucket
+		)
+		SELECT
+			dr.bucket,
+			COALESCE(bc.total, 0), COALESCE(bc.unique, 0)
+		FROM date_range dr
+		LEFT JOIN bucketed_conversion bc ON dr.bucket = bc.bucket
+		ORDER BY dr.bucket
+	`, interval, strings.TrimSuffix(query.Granularity, "s"))
+
+	conversionRows, err := s.pool.Query(ctx, sqlConversion, p.TenantID, p.WorkspaceID, query.Start, query.End, campaignID)
+	if err != nil {
+		return domain.FunnelOverTimeReport{}, err
+	}
+	defer conversionRows.Close()
+
+	for conversionRows.Next() {
+		var bucket time.Time
+		var converted domain.ReportCount
+		if err := conversionRows.Scan(&bucket, &converted.Total, &converted.Unique); err != nil {
+			return domain.FunnelOverTimeReport{}, err
+		}
+
+		tb := bucketsMap[bucket]
+		tb.Funnel.Converted = converted
+		bucketsMap[bucket] = tb
+	}
+	if err := conversionRows.Err(); err != nil {
+		return domain.FunnelOverTimeReport{}, err
+	}
+
+	// Sort buckets by time and append to report
+	var buckets []domain.TimeBucket
+	var times []time.Time
+	for t := range bucketsMap {
+		times = append(times, t)
+	}
+	// Sort times
+	for i := 0; i < len(times); i++ {
+		for j := i + 1; j < len(times); j++ {
+			if times[j].Before(times[i]) {
+				times[i], times[j] = times[j], times[i]
+			}
+		}
+	}
+	for _, t := range times {
+		buckets = append(buckets, bucketsMap[t])
+	}
+
+	report.Buckets = buckets
+	return report, nil
 }
 
 // ExperimentReport generates a statistical report for an experiment, comparing

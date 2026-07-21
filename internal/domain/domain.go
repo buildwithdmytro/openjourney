@@ -975,6 +975,25 @@ type JourneyReport struct {
 	Deliverability ReportDeliverability `json:"deliverability"`
 }
 
+// TimeBucket represents aggregated funnel and deliverability data for a time period.
+type TimeBucket struct {
+	Time           time.Time            `json:"time"`
+	Funnel         ReportFunnel         `json:"funnel"`
+	Deliverability ReportDeliverability `json:"deliverability"`
+}
+
+// FunnelOverTimeReport returns per-bucket funnel and deliverability counts over time.
+type FunnelOverTimeReport struct {
+	CampaignID string       `json:"campaign_id"`
+	Buckets    []TimeBucket `json:"buckets"`
+}
+
+// JourneyOverTimeReport returns per-bucket journey funnel and deliverability counts over time.
+type JourneyOverTimeReport struct {
+	JourneyID string       `json:"journey_id"`
+	Buckets   []TimeBucket `json:"buckets"`
+}
+
 type ExperimentReport struct {
 	ExperimentID  string                    `json:"experiment_id"`
 	WinnerVariant *string                   `json:"winner_variant,omitempty"`
