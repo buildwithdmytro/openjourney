@@ -330,11 +330,11 @@ multipart upload.
    render batch is served from cache; integration test green. — done: added GetCatalogByKey to store interface and postgres implementation; implemented catalog_item filter with cache-first lookup, fallback on miss; added 5 comprehensive tests (real item rendering, caching, missing catalog/item, no-cache backward compat); all render/postgres tests pass (41/41).
 
 ### Milestone 20.6 — Connected Content sources (governed)
-1. [ ] **Sources CRUD + governance** (Recipe 6.88): `connected_content_sources` slice (`catalogs:write`);
+1. [x] **Sources CRUD + governance** (Recipe 6.88): `connected_content_sources` slice (`catalogs:write`);
    `auth_secret_ref` required (raw secret rejected, mirror `security.go:11`); redact on read
    (`security.go:61`); publish/enable human-actor-gated (`identity.go:85`).
    *Done when:* a source round-trips; a raw `auth_secret` (not `_ref`) is rejected; `GET` never returns the
-   secret; a non-human enable is 403; tests cover each.
+   secret; a non-human enable is 403; tests cover each. — done: HTTP handlers for CRUD + governance added (catalogs.go); 7 tests pass covering round-trip, secret redaction, human-gating, validation; routes registered (server.go); no new dependencies.
 
 ### Milestone 20.7 — Connected Content tag (SSRF-safe fetch) — SECURITY CHECKPOINT
 1. [ ] **Guarded fetcher + `connected_content` tag** (Recipes 6.89, 6.90): the SSRF-guarded fetcher
