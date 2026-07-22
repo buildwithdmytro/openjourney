@@ -280,9 +280,9 @@ M12 library; 6-point registration across `App.tsx`/`Sidebar.tsx`/`CommandPalette
    `maxSteps` + timeout + budget (a forced loop terminates), uses only read-only tools (no mutation), and
    audits every step; a tool without scope is `denied_scope`.
    *Done when:* the M16 agent bound/scope/audit tests pass. (Re-fix if regressed.) — done: verified M16 agent bound/scope/audit tests pass in internal/ai/agent (TestAgentNeverExceedsMaxSteps, TestAgentDeniedScopeAudited, TestAgentBudgetCapTerminates)
-2. [ ] **Verify grounded insights + human-gated prompt publish.** Insights reject an ungrounded metric;
+2. [x] **Verify grounded insights + human-gated prompt publish.** Insights reject an ungrounded metric;
    prompt publish requires an authenticated user + eval pass.
-   *Done when:* the insights-grounding + prompt-publish-gate tests pass; no new dependency from M16.
+   *Done when:* the insights-grounding + prompt-publish-gate tests pass; no new dependency from M16. — done: verified insights-grounding and prompt-publish-gate tests pass (TestAIDepthSecurityE2E/UngroundedInsight_Rejected, TestAIDepthSecurityE2E/NonHumanPromptPublish_Forbidden) with zero new dependencies
 3. [ ] **M16 review findings.** Fold any concrete findings here (file:line + a proving test).
    *Done when:* every finding has a fix + a test, or is recorded verified-safe (a no-op is marked done).
 
