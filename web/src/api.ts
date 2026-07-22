@@ -1101,6 +1101,39 @@ export type ConnectedContentSource = {
   updated_at: string;
 };
 
+export type Prompt = {
+  id: string;
+  tenant_id: string;
+  workspace_id: string;
+  name: string;
+  task_type: string;
+  current_version_id?: string;
+  latest_version: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PromptVersion = {
+  id: string;
+  prompt_id: string;
+  tenant_id: string;
+  version: number;
+  template: string;
+  input_schema: Record<string, unknown>;
+  output_schema: Record<string, unknown>;
+  provider: string;
+  model: string;
+  params: Record<string, unknown>;
+  safety_policy: Record<string, unknown>;
+  manifest_key?: string;
+  status: "draft" | "active" | "archived" | string;
+  eval_status: "pending" | "passed" | "failed" | string;
+  published_by?: string;
+  published_at?: string;
+  created_at: string;
+};
+
+
 export async function getCampaignFunnelOverTimeReport(
   baseURL: string,
   apiKey: string,
@@ -1263,3 +1296,83 @@ export async function enableConnectedContentSource(baseURL: string, apiKey: stri
 export async function deleteConnectedContentSource(baseURL: string, apiKey: string, id: string): Promise<void> {
   await requestJSON<void>(baseURL, apiKey, `/v1/connected-content-sources/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
+
+export async function listPrompts(baseURL: string, apiKey: string): Promise<Prompt[]> {
+  return (await requestJSON<{ prompts: Prompt[] | null }>(baseURL, apiKey, "/v1/ai/prompts")).prompts ?? [];
+}
+
+export async function createPrompt(
+  baseURL: string,
+  apiKey: string,
+  input: { name: string; task_type: string },
+): Promise<Prompt> {
+  return requestJSON<Prompt>(baseURL, apiKey, "/v1/ai/prompts", { method: "POST", body: JSON.stringify(input) });
+}
+
+export async function getPrompt(baseURL: string, apiKey: string, id: string): Promise<Prompt> {
+  return requestJSON<Prompt>(baseURL, apiKey, `/v1/ai/prompts/${encodeURIComponent(id)}`);
+}
+
+export async function updatePrompt(
+  baseURL: string,
+  apiKey: string,
+  id: string,
+  input: Partial<{ name: string; task_type: string }>,
+): Promise<Prompt> {
+  return requestJSON<Prompt>(baseURL, apiKey, `/v1/ai/prompts/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(input) });
+}
+
+export async function deletePrompt(baseURL: string, apiKey: string, id: string): Promise<void> {
+  await requestJSON<void>(baseURL, apiKey, `/v1/ai/prompts/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export async function listPromptVersions(baseURL: string, apiKey: string, promptID: string): Promise<PromptVersion[]> {
+  return (await requestJSON<{ versions: PromptVersion[] | null }>(baseURL, apiKey, `/v1/ai/prompts/${encodeURIComponent(promptID)}/versions`)).versions ?? [];
+}
+
+export async function createPromptVersion(
+  baseURL: string,
+  apiKey: string,
+  promptID: string,
+  input: Partial<Omit<PromptVersion, "id" | "prompt_id" | "tenant_id" | "version" | "status" | "eval_status" | "created_at">>,
+): Promise<PromptVersion> {
+  return requestJSON<PromptVersion>(baseURL, apiKey, `/v1/ai/prompts/${encodeURIComponent(promptID)}/versions`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function getPromptVersion(
+  baseURL: string,
+  apiKey: string,
+  promptID: string,
+  versionOrID: string | number,
+): Promise<PromptVersion> {
+  return requestJSON<PromptVersion>(baseURL, apiKey, `/v1/ai/prompts/${encodeURIComponent(promptID)}/versions/${encodeURIComponent(String(versionOrID))}`);
+}
+
+export async function setPromptVersionEvalStatus(
+  baseURL: string,
+  apiKey: string,
+  promptID: string,
+  versionOrID: string | number,
+  evalStatus: string,
+): Promise<PromptVersion> {
+  return requestJSON<PromptVersion>(baseURL, apiKey, `/v1/ai/prompts/${encodeURIComponent(promptID)}/versions/${encodeURIComponent(String(versionOrID))}/eval`, {
+    method: "POST",
+    body: JSON.stringify({ eval_status: evalStatus }),
+  });
+}
+
+export async function publishPromptVersion(
+  baseURL: string,
+  apiKey: string,
+  promptID: string,
+  versionOrID: string | number,
+): Promise<PromptVersion> {
+  return requestJSON<PromptVersion>(baseURL, apiKey, `/v1/ai/prompts/${encodeURIComponent(promptID)}/versions/${encodeURIComponent(String(versionOrID))}/publish`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+

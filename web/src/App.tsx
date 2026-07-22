@@ -37,6 +37,7 @@ const Connectors = lazy(() => import("./sections/Connectors"));
 const Messaging = lazy(() => import("./sections/Messaging"));
 const FeatureFlags = lazy(() => import("./sections/FeatureFlags"));
 const Catalogs = lazy(() => import("./sections/Catalogs"));
+const Prompts = lazy(() => import("./sections/Prompts"));
 
 const apiBase = import.meta.env.VITE_API_BASE_URL || "/api";
 
@@ -65,7 +66,7 @@ function SuspenseLoader() {
   return <div style={{ display: "flex", gap: "12px", alignItems: "center" }} role="status"><Skeleton height="24px" width="100%" /></div>;
 }
 
-type View = "overview" | "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "analytics" | "copilots" | "governance" | "extensions" | "connectors" | "suppressions" | "sender-identities" | "device-tokens" | "acquisition" | "messaging" | "flags" | "catalogs";
+type View = "overview" | "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "analytics" | "copilots" | "governance" | "extensions" | "connectors" | "suppressions" | "sender-identities" | "device-tokens" | "acquisition" | "messaging" | "flags" | "catalogs" | "prompts";
 type CredentialSource = "manual" | "session" | "oidc";
 
 const viewTitles: Record<View, [string, string]> = {
@@ -96,6 +97,7 @@ const viewTitles: Record<View, [string, string]> = {
   messaging: ["Messaging", "Create and manage in-app messages, content cards, and web push campaigns."],
   flags: ["Feature Flags", "Create, publish, and toggle environment-scoped feature flags with targeting and exposure analytics."],
   catalogs: ["Catalogs", "Manage reference data catalogs and governed connected content sources."],
+  prompts: ["Prompts", "Author, version, evaluate, and publish governed prompt templates."],
 };
 
 function currentHashView(): View | null {
@@ -142,6 +144,8 @@ const AVAILABLE_SCOPES = [
   "flags:write",
   "catalogs:read",
   "catalogs:write",
+  "prompts:read",
+  "prompts:write",
 ];
 
 export function App() {
@@ -324,6 +328,7 @@ export function App() {
           {view === "audit" && <Audit apiKey={apiKey} />}
           {view === "flags" && <Suspense fallback={<SuspenseLoader />}><FeatureFlags apiKey={apiKey} baseURL={apiBase} /></Suspense>}
           {view === "catalogs" && <Suspense fallback={<SuspenseLoader />}><Catalogs apiKey={apiKey} baseURL={apiBase} /></Suspense>}
+          {view === "prompts" && <Suspense fallback={<SuspenseLoader />}><Prompts apiKey={apiKey} baseURL={apiBase} /></Suspense>}
         </UIErrorBoundary>
       </AppShell>
     </ToastProvider>

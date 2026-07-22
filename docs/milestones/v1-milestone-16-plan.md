@@ -272,12 +272,12 @@ Vertical slice over existing `prompts`/`prompt_versions` store methods (`prompts
    key is 403 on write; httpapi + integration tests green. — done: GET/POST/PUT/DELETE /v1/ai/prompts, version creation/listing, eval status route, and human-gated publish route implemented and tested with prompts:read/write scope checks
 
 ### Milestone 21.5 — Prompt management (UI)
-1. [ ] **Prompts section** (Recipe 6.96): `web/src/sections/Prompts.tsx` on the M12 library (list prompts
+1. [x] **Prompts section** (Recipe 6.96): `web/src/sections/Prompts.tsx` on the M12 library (list prompts
    → versions → author/edit params + schemas via `JsonField` → run eval → publish via `ConfirmDialog`) +
    `api.ts` wrappers + 6-point registration.
    *Done when:* `cd web && npm run typecheck && npm run build && npm test` green; the section lists,
    authors, evals, and publishes a prompt version (human-gated) end-to-end on the shared primitives;
-   `Prompts.test.tsx` covers the flow.
+   `Prompts.test.tsx` covers the flow. — done: Prompts UI section implemented on M12 primitives, author/eval/publish flow working end-to-end, 6-point registration complete, tested in Prompts.test.tsx, web build & tests green
 
 ### Milestone 21.6 — Copilot UI refresh
 1. [ ] **Migrate Copilots.tsx to M12 + inline draft review**: refactor `web/src/sections/Copilots.tsx`

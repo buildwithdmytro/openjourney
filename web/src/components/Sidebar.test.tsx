@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { Sidebar } from "./Sidebar";
 
-type View = "overview" | "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "analytics" | "copilots" | "governance" | "extensions" | "connectors" | "suppressions" | "sender-identities" | "device-tokens" | "acquisition" | "messaging" | "flags" | "catalogs";
+type View = "overview" | "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "analytics" | "copilots" | "governance" | "extensions" | "connectors" | "suppressions" | "sender-identities" | "device-tokens" | "acquisition" | "messaging" | "flags" | "catalogs" | "prompts";
 
 const viewTitles: Record<View, [string, string]> = {
   overview: ["Overview", "At a glance view of your workspace activity and resources."],
@@ -32,6 +32,7 @@ const viewTitles: Record<View, [string, string]> = {
   messaging: ["Messaging", "Create and manage in-app messages, content cards, and web push campaigns."],
   flags: ["Feature Flags", "Create, publish, and toggle environment-scoped feature flags with targeting and exposure analytics."],
   catalogs: ["Catalogs", "Manage reference data catalogs and governed connected content sources."],
+  prompts: ["Prompts", "Author, version, evaluate, and publish governed prompt templates."],
 };
 
 afterEach(cleanup);

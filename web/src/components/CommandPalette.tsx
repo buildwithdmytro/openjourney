@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import Modal from "./Modal";
 
-type View = "overview" | "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "analytics" | "copilots" | "governance" | "extensions" | "connectors" | "suppressions" | "sender-identities" | "device-tokens" | "acquisition" | "messaging" | "flags" | "catalogs";
+type View = "overview" | "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "analytics" | "copilots" | "governance" | "extensions" | "connectors" | "suppressions" | "sender-identities" | "device-tokens" | "acquisition" | "messaging" | "flags" | "catalogs" | "prompts";
 
 interface PaletteItem {
   label: string;
@@ -25,7 +25,7 @@ const navGroups = [
   },
   {
     label: "AI & Insights",
-    items: ["copilots", "governance", "reports", "analytics"],
+    items: ["copilots", "governance", "prompts", "reports", "analytics"],
   },
   {
     label: "Data",
@@ -69,6 +69,7 @@ const viewTitles: Record<View, [string, string]> = {
   messaging: ["Messaging", "Create and manage in-app messages, content cards, and web push campaigns."],
   flags: ["Feature Flags", "Create, publish, and toggle environment-scoped feature flags with targeting and exposure analytics."],
   catalogs: ["Catalogs", "Manage reference data catalogs and governed connected content sources."],
+  prompts: ["Prompts", "Author, version, evaluate, and publish governed prompt templates."],
 };
 
 export interface CommandPaletteProps {
