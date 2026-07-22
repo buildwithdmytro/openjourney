@@ -276,10 +276,10 @@ M12 library; 6-point registration across `App.tsx`/`Sidebar.tsx`/`CommandPalette
 > intersected + audited, grounded insights, human-gated prompt publish, no new deps). These verify the
 > properties hold; a deeper review appends findings. (A conditional no-op task here is marked done with a
 > note, never skipped.)
-1. [ ] **Verify the agent loop is bounded + read-only + audited.** Confirm `internal/ai/agent` caps at
+1. [x] **Verify the agent loop is bounded + read-only + audited.** Confirm `internal/ai/agent` caps at
    `maxSteps` + timeout + budget (a forced loop terminates), uses only read-only tools (no mutation), and
    audits every step; a tool without scope is `denied_scope`.
-   *Done when:* the M16 agent bound/scope/audit tests pass. (Re-fix if regressed.)
+   *Done when:* the M16 agent bound/scope/audit tests pass. (Re-fix if regressed.) — done: verified M16 agent bound/scope/audit tests pass in internal/ai/agent (TestAgentNeverExceedsMaxSteps, TestAgentDeniedScopeAudited, TestAgentBudgetCapTerminates)
 2. [ ] **Verify grounded insights + human-gated prompt publish.** Insights reject an ungrounded metric;
    prompt publish requires an authenticated user + eval pass.
    *Done when:* the insights-grounding + prompt-publish-gate tests pass; no new dependency from M16.
