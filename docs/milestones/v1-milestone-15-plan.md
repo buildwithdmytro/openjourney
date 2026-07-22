@@ -377,9 +377,9 @@ multipart upload.
    `cd sdk/javascript && npm run build && npm test`.
    *Done when:* all green and `git diff go.mod go.sum web/package.json web/package-lock.json
    sdk/javascript/package.json` is empty of additions. — done: Go build/vet/test pass, go mod tidy diff empty, web build/typecheck/tests pass (310/310), JS SDK build/tests pass (30/30), dependency files diff clean.
-4. [ ] **Audit doc** `docs/milestones/v1-milestone-15-audit.md` in the M2–M14 table format, one row per
+4. [x] **Audit doc** `docs/milestones/v1-milestone-15-audit.md` in the M2–M14 table format, one row per
    `20.x` task with evidence (file:line + test name).
-   *Done when:* the doc exists with a row per task and its verifying test.
+   *Done when:* the doc exists with a row per task and its verifying test. — done: v1-milestone-15-audit.md created with a row per 20.x task and its verifying test.
 
 ## 7. Carry-over hazards & invariants
 
