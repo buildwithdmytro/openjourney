@@ -170,7 +170,7 @@ func TestBulkUploadCSV(t *testing.T) {
 	req := httptest.NewRequest("POST", "/v1/catalogs/cat-123/items:bulk", &formBuf)
 	req.Header.Set("Content-Type", formWriter.FormDataContentType())
 	req.Header.Set("Authorization", "Bearer test-key")
-	req.Header.Set("id", "cat-123")
+	req.SetPathValue("id", "cat-123")
 	req = req.WithContext(req.Context())
 
 	w := httptest.NewRecorder()
@@ -217,6 +217,7 @@ func TestBulkUploadJSON(t *testing.T) {
 	req := httptest.NewRequest("POST", "/v1/catalogs/cat-456/items:bulk", &formBuf)
 	req.Header.Set("Content-Type", formWriter.FormDataContentType())
 	req.Header.Set("Authorization", "Bearer test-key")
+	req.SetPathValue("id", "cat-456")
 	req = req.WithContext(req.Context())
 
 	w := httptest.NewRecorder()

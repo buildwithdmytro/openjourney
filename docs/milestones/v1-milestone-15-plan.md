@@ -365,13 +365,13 @@ multipart upload.
    tag against an enabled source merges external JSON into the render; both are cached across recipients.
    *Done when:* the end-to-end personalize-with-catalog and personalize-with-connected-content flows pass
    for a delivered message, both cached. — done: TestCatalogsAndConnectedContentE2E in internal/httpapi/catalogs_e2e_integration_test.go covers catalog creation, bulk upsert, catalog-item filter rendering, caching across deliveries, connected-content source CRUD; delivery flow renders templates with catalog items; caching verified with TTL cache.
-2. [ ] **Security E2E**: connected content is SSRF-safe (private-IP host blocked), allowlist-enforced
+2. [x] **Security E2E**: connected content is SSRF-safe (private-IP host blocked), allowlist-enforced
    (unlisted host refused), `*_ref`-only (raw secret rejected + redacted on read), bounded (timeout/
    circuit-breaker), kill-switchable, and audited; catalog + source scopes are enforced; render failures
    degrade to fallbacks (never a failed send).
    *Done when:* each property has a test (a private-IP connected-content fetch blocked; an unlisted host
    refused; a raw secret rejected; a `catalogs:read` key 403 on write; a broken source falls back and is
-   audited).
+   audited). — done: TestSecurityE2E in internal/httpapi/catalogs_security_e2e_integration_test.go covers SSRF block, allowlist enforcement, raw secret rejection, scope 403 checks, and fallback degradation with audit logging.
 3. [ ] **Run the suite**: `go build ./... && go vet ./... && go test ./... -race` (the cache is
    concurrent), `go mod tidy`, `cd web && npm run typecheck && npm run build && npm test`,
    `cd sdk/javascript && npm run build && npm test`.
