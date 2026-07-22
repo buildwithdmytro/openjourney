@@ -32,6 +32,23 @@ var allowedPermissions = map[string]struct{}{
 	"catalogs:read": {}, "catalogs:write": {},
 }
 
+func (s *Store) ListPermissions(ctx context.Context, p domain.Principal) ([]domain.Permission, error) {
+	rows, err := s.pool.Query(ctx, `SELECT key,resource,verb,description,system,created_at FROM permissions ORDER BY key`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var result []domain.Permission
+	for rows.Next() {
+		var item domain.Permission
+		if err := rows.Scan(&item.Key, &item.Resource, &item.Verb, &item.Description, &item.System, &item.CreatedAt); err != nil {
+			return nil, err
+		}
+		result = append(result, item)
+	}
+	return result, rows.Err()
+}
+
 func (s *Store) ListRoles(ctx context.Context, p domain.Principal) ([]domain.Role, error) {
 	rows, err := s.pool.Query(ctx, `SELECT id,name,permissions,system,created_at
 		FROM roles WHERE tenant_id=$1 ORDER BY name`, p.TenantID)
@@ -55,7 +72,12 @@ func (s *Store) CreateRole(ctx context.Context, p domain.Principal, name string,
 		return domain.Role{}, errors.New("name and permissions are required")
 	}
 	for _, permission := range permissions {
-		if _, exists := allowedPermissions[permission]; !exists {
+		var exists bool
+		err := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM permissions WHERE key=$1)`, permission).Scan(&exists)
+		if err != nil {
+			return domain.Role{}, err
+		}
+		if !exists {
 			return domain.Role{}, errors.New("unknown permission: " + permission)
 		}
 	}

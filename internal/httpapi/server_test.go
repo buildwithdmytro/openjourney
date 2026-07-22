@@ -196,6 +196,9 @@ func (f *fakeStore) EnforceRetention(context.Context, string) (domain.DataRetent
 func (f *fakeStore) VerifyReplay(context.Context, domain.Principal) (domain.ReplayReport, error) {
 	return domain.ReplayReport{Match: true}, nil
 }
+func (f *fakeStore) ListPermissions(context.Context, domain.Principal) ([]domain.Permission, error) {
+	return []domain.Permission{{Key: "roles:read", Resource: "roles", Verb: "read"}}, nil
+}
 func (f *fakeStore) ListRoles(context.Context, domain.Principal) ([]domain.Role, error) {
 	return nil, nil
 }
@@ -2029,3 +2032,18 @@ func TestDeviceTokensAPI(t *testing.T) {
 		}
 	})
 }
+
+func TestListPermissionsEndpoint(t *testing.T) {
+	server := New(&fakeStore{scopes: []string{"roles:read"}}, 75)
+	req := httptest.NewRequest(http.MethodGet, "/v1/permissions", nil)
+	req.Header.Set("Authorization", "Bearer test-key")
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d body=%s", res.Code, res.Body.String())
+	}
+	if !strings.Contains(res.Body.String(), `"permissions"`) {
+		t.Fatalf("expected response body to contain permissions, got %s", res.Body.String())
+	}
+}
+

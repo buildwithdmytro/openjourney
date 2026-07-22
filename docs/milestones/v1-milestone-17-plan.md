@@ -287,12 +287,12 @@ M12 library; 6-point registration across `App.tsx`/`Sidebar.tsx`/`CommandPalette
    *Done when:* every finding has a fix + a test, or is recorded verified-safe (a no-op is marked done). — done: no additional M16 findings; post-M16 review verified clean with all AI depth E2E and unit tests passing
 
 ### Milestone 22.1 — Permission catalog + custom role CRUD
-1. [ ] **Migration `056` + permission catalog** (Recipe 6.100): `permissions` table seeded from
+1. [x] **Migration `056` + permission catalog** (Recipe 6.100): `permissions` table seeded from
    `allowedPermissions` (`rbac.go:12`); `CreateRole` validates against it; `GET /v1/permissions`
    (`roles:read`).
    *Done when:* the catalog is seeded with the full current scope list; `CreateRole` rejects a permission
    not in the catalog; the two former lists no longer drift (a test asserts catalog == the code list);
-   `go test ./internal/postgres/...` green.
+   `go test ./internal/postgres/...` green. — done: created migration 056 permissions catalog table, added ListPermissions, updated CreateRole validation against DB permissions, GET /v1/permissions endpoint, and verified with TestPermissionCatalogAndRoleValidation and TestListPermissionsEndpoint
 2. [ ] **`UpdateRole` + `DeleteRole`** (Recipe 6.100): add the missing role mutation methods + routes
    (`roles:write`), system-role-guarded.
    *Done when:* a custom role's permissions can be updated and the role deleted; a `system` role cannot be

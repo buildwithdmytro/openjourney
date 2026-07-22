@@ -248,6 +248,7 @@ func (s *Server) buildMux() http.Handler {
 	mux.Handle("POST /v1/operations/dlq/{queue}/{id}/retry", s.authenticate("operations:write", http.HandlerFunc(s.retryDeadLetter)))
 	mux.Handle("POST /v1/operations/dlq/{queue}/{id}/discard", s.authenticate("operations:write", http.HandlerFunc(s.discardDeadLetter)))
 	mux.Handle("POST /v1/operations/replay/verify", s.authenticate("operations:read", http.HandlerFunc(s.verifyReplay)))
+	mux.Handle("GET /v1/permissions", s.authenticate("roles:read", http.HandlerFunc(s.listPermissions)))
 	mux.Handle("GET /v1/roles", s.authenticate("roles:read", http.HandlerFunc(s.listRoles)))
 	mux.Handle("POST /v1/roles", s.authenticate("roles:write", http.HandlerFunc(s.createRole)))
 	mux.Handle("GET /v1/users", s.authenticate("users:read", http.HandlerFunc(s.listUsers)))
@@ -623,6 +624,19 @@ func (s *Server) verifyReplay(w http.ResponseWriter, r *http.Request) {
 		status = http.StatusConflict
 	}
 	writeJSON(w, status, report)
+}
+
+func (s *Server) listPermissions(w http.ResponseWriter, r *http.Request) {
+	principal := principalFrom(r)
+	items, err := s.store.ListPermissions(r.Context(), principal)
+	if err != nil {
+		internalError(w, err, "list permissions", principal)
+		return
+	}
+	if items == nil {
+		items = []domain.Permission{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"permissions": items})
 }
 
 func (s *Server) listRoles(w http.ResponseWriter, r *http.Request) {

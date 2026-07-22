@@ -66,6 +66,7 @@ type Store interface {
 	DeletePrivacyData(context.Context, string) ([]string, error)
 	EnforceRetention(context.Context, string) (domain.DataRetentionReport, error)
 	VerifyReplay(context.Context, domain.Principal) (domain.ReplayReport, error)
+	ListPermissions(context.Context, domain.Principal) ([]domain.Permission, error)
 	ListRoles(context.Context, domain.Principal) ([]domain.Role, error)
 	CreateRole(context.Context, domain.Principal, string, []string) (domain.Role, error)
 	ListUsers(context.Context, domain.Principal) ([]domain.User, error)

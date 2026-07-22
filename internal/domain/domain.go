@@ -623,6 +623,15 @@ type CohortData struct {
 	Sizes      []int64   `json:"sizes"` // distinct profiles per period offset
 }
 
+type Permission struct {
+	Key         string    `json:"key"`
+	Resource    string    `json:"resource"`
+	Verb        string    `json:"verb"`
+	Description string    `json:"description"`
+	System      bool      `json:"system"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
 type Role struct {
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`

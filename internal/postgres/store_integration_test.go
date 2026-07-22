@@ -1676,6 +1676,68 @@ func TestMessageEngagementProjection(t *testing.T) {
 	}
 }
 
+func TestPermissionCatalogAndRoleValidation(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	key := fmt.Sprintf("perm-catalog-%d", time.Now().UnixNano())
+	if err := store.EnsureDevelopmentTenant(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	p, err := store.Authenticate(ctx, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	perms, err := store.ListPermissions(ctx, p)
+	if err != nil {
+		t.Fatalf("ListPermissions: %v", err)
+	}
+	if len(perms) == 0 {
+		t.Fatal("expected permissions catalog to be seeded, got empty")
+	}
+
+	permMap := make(map[string]bool)
+	for _, perm := range perms {
+		permMap[perm.Key] = true
+	}
+
+	// Assert catalog matches allowedPermissions map exactly (no drift)
+	if len(permMap) != len(allowedPermissions) {
+		t.Fatalf("catalog size (%d) != allowedPermissions size (%d)", len(permMap), len(allowedPermissions))
+	}
+	for codeKey := range allowedPermissions {
+		if !permMap[codeKey] {
+			t.Fatalf("permission key %q in code but missing from catalog DB", codeKey)
+		}
+	}
+
+	// CreateRole with valid permission should succeed
+	role, err := store.CreateRole(ctx, p, "Valid Catalog Role", []string{"profiles:read", "events:write"})
+	if err != nil {
+		t.Fatalf("CreateRole valid: %v", err)
+	}
+	if role.ID == "" {
+		t.Fatal("expected non-empty role ID")
+	}
+
+	// CreateRole with invalid permission should be rejected
+	_, err = store.CreateRole(ctx, p, "Invalid Catalog Role", []string{"nonexistent:permission"})
+	if err == nil || !strings.Contains(err.Error(), "unknown permission") {
+		t.Fatalf("CreateRole invalid expected unknown permission error, got %v", err)
+	}
+}
+
 func TestMain(m *testing.M) {
 	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
 	if databaseURL != "" {
