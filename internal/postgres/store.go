@@ -194,10 +194,20 @@ func (s *Store) authenticateSession(ctx context.Context, tokenHash []byte) (doma
 			COALESCE(array_agg(DISTINCT permission) FILTER (WHERE permission IS NOT NULL),'{}')
 		FROM matched m
 		JOIN users u ON u.id=m.user_id AND u.tenant_id=m.tenant_id AND u.disabled_at IS NULL
-		JOIN role_bindings b ON b.user_id=u.id AND b.tenant_id=u.tenant_id
-			AND (b.workspace_id IS NULL OR b.workspace_id=m.workspace_id)
-		JOIN roles r ON r.id=b.role_id AND r.tenant_id=u.tenant_id
-		LEFT JOIN LATERAL unnest(r.permissions) permission ON true
+		JOIN LATERAL (
+			SELECT r.permissions
+			FROM role_bindings b JOIN roles r ON r.id=b.role_id AND r.tenant_id=u.tenant_id
+			WHERE b.user_id=u.id AND b.tenant_id=u.tenant_id
+			  AND (b.workspace_id IS NULL OR b.workspace_id=m.workspace_id)
+			UNION ALL
+			SELECT r.permissions
+			FROM team_members tm
+			JOIN teams t ON t.id=tm.team_id AND t.tenant_id=u.tenant_id AND t.workspace_id=m.workspace_id
+			JOIN team_roles tr ON tr.team_id=t.id
+			JOIN roles r ON r.id=tr.role_id AND r.tenant_id=u.tenant_id
+			WHERE tm.user_id=u.id
+		) effective_roles ON true
+		LEFT JOIN LATERAL unnest(effective_roles.permissions) permission ON true
 		GROUP BY m.tenant_id,m.workspace_id,m.app_id,m.user_id`, tokenHash).
 		Scan(&p.TenantID, &p.WorkspaceID, &p.AppID, &p.UserID, &p.Scopes)
 	if errors.Is(err, pgx.ErrNoRows) {

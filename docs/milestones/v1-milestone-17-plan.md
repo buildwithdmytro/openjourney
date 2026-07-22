@@ -303,10 +303,12 @@ M12 library; 6-point registration across `App.tsx`/`Sidebar.tsx`/`CommandPalette
    handlers (`teams:read`/`teams:write`).
    *Done when:* a team round-trips, members + roles attach; workspace-scoped; tests green.
    — done: added migration 057, tenant/workspace-scoped team CRUD with member/role attachment, and verified route auth plus round-trip/isolation coverage (TestTeamsRoutesRequireTeamScopes, TestTeamRoundTripAndTenantIsolation)
-2. [ ] **Team-derived scope resolution**: widen the user scope-aggregation (`auth.go:22`, `store.go:193`)
+2. [x] **Team-derived scope resolution**: widen the user scope-aggregation (`auth.go:22`, `store.go:193`)
    to union roles granted via team membership.
    *Done when:* a user in a team with role R has R's scopes on their principal (in addition to direct
-   bindings); a test proves team roles are enforced at a guarded route; no cross-tenant leak.
+   bindings); a test proves team roles are enforced at a guarded route; no cross-tenant leak. — done:
+   widened OIDC, local-session, and bearer-session scope aggregation to tenant/workspace-scoped team roles;
+   TestTeamRolesResolveIntoUserAuthenticationScopes covers inherited scopes and cross-tenant isolation
 
 ### Milestone 22.3 — SCIM 2.0 provisioning
 1. [ ] **SCIM Users + bearer auth** (Recipe 6.102): `scim_tokens` (in `058`) + a SCIM bearer middleware;
