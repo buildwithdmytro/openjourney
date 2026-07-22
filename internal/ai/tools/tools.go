@@ -8,8 +8,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
+	"github.com/buildwithdmytro/openjourney/internal/flags"
 	"github.com/buildwithdmytro/openjourney/internal/ports"
 	"github.com/buildwithdmytro/openjourney/internal/schemas"
 )
@@ -26,6 +28,14 @@ type Store interface {
 	CampaignReport(context.Context, domain.Principal, string, domain.ReportQuery) (domain.CampaignReport, error)
 	JourneyReport(context.Context, domain.Principal, string, domain.ReportQuery) (domain.JourneyReport, error)
 	ExperimentReport(context.Context, domain.Principal, string, domain.ReportQuery) (domain.ExperimentReport, error)
+	FunnelOverTimeReport(context.Context, domain.Principal, string, domain.ReportQuery) (domain.FunnelOverTimeReport, error)
+	RetentionReport(context.Context, domain.Principal, string, domain.ReportQuery) (domain.RetentionReport, error)
+	GrowthReport(context.Context, domain.Principal, string, domain.ReportQuery) (domain.GrowthReport, error)
+	CostReport(context.Context, domain.Principal, string, domain.ReportQuery) (domain.CostReport, error)
+	GetCatalogItem(context.Context, domain.Principal, string, string) (domain.CatalogItem, error)
+	GetFeatureFlag(context.Context, domain.Principal, string) (domain.FeatureFlag, error)
+	EvaluateAudience(context.Context, domain.Principal, string, json.RawMessage) (bool, error)
+	GetJourney(context.Context, domain.Principal, string) (domain.Journey, error)
 }
 
 // Tool describes a typed, purpose-bound operation. Input and output are JSON
@@ -226,9 +236,201 @@ func (reportReadTool) Run(ctx context.Context, store Store, p domain.Principal, 
 	return json.Marshal(value)
 }
 
+type reportTimeseriesTool struct{}
+
+func (reportTimeseriesTool) Definition() Definition {
+	return Definition{
+		Name:    "report.timeseries",
+		Purpose: "read time-series reports over funnels, retention, growth, or costs",
+		InputSchema: json.RawMessage(`{
+			"type": "object",
+			"required": ["report_type", "campaign_id"],
+			"additionalProperties": false,
+			"properties": {
+				"report_type": {"type": "string", "enum": ["funnel_over_time", "retention", "growth", "cost"]},
+				"campaign_id": {"type": "string", "minLength": 1},
+				"granularity": {"type": "string"},
+				"start": {"type": "string"},
+				"end": {"type": "string"}
+			}
+		}`),
+		OutputSchema:   json.RawMessage(`{"type":"object"}`),
+		RequiredScopes: []string{"reports:read"},
+	}
+}
+
+func (reportTimeseriesTool) Run(ctx context.Context, store Store, p domain.Principal, input json.RawMessage) (json.RawMessage, error) {
+	var in struct {
+		ReportType  string `json:"report_type"`
+		CampaignID  string `json:"campaign_id"`
+		Granularity string `json:"granularity"`
+		Start       string `json:"start"`
+		End         string `json:"end"`
+	}
+	if err := json.Unmarshal(input, &in); err != nil {
+		return nil, err
+	}
+	var query domain.ReportQuery
+	query.Granularity = in.Granularity
+	if in.Start != "" {
+		t, err := time.Parse(time.RFC3339, in.Start)
+		if err == nil {
+			query.Start = t
+		}
+	}
+	if in.End != "" {
+		t, err := time.Parse(time.RFC3339, in.End)
+		if err == nil {
+			query.End = t
+		}
+	}
+	var value any
+	var err error
+	switch in.ReportType {
+	case "funnel_over_time":
+		value, err = store.FunnelOverTimeReport(ctx, p, in.CampaignID, query)
+	case "retention":
+		value, err = store.RetentionReport(ctx, p, in.CampaignID, query)
+	case "growth":
+		value, err = store.GrowthReport(ctx, p, in.CampaignID, query)
+	case "cost":
+		value, err = store.CostReport(ctx, p, in.CampaignID, query)
+	default:
+		err = fmt.Errorf("unsupported report_type %q", in.ReportType)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(value)
+}
+
+type catalogLookupTool struct{}
+
+func (catalogLookupTool) Definition() Definition {
+	return Definition{
+		Name:    "catalog.lookup",
+		Purpose: "lookup catalog item by catalog ID and item key",
+		InputSchema: json.RawMessage(`{
+			"type": "object",
+			"required": ["catalog_id", "item_key"],
+			"additionalProperties": false,
+			"properties": {
+				"catalog_id": {"type": "string", "minLength": 1},
+				"item_key": {"type": "string", "minLength": 1}
+			}
+		}`),
+		OutputSchema:   json.RawMessage(`{"type":"object"}`),
+		RequiredScopes: []string{"catalogs:read"},
+	}
+}
+
+func (catalogLookupTool) Run(ctx context.Context, store Store, p domain.Principal, input json.RawMessage) (json.RawMessage, error) {
+	var in struct {
+		CatalogID string `json:"catalog_id"`
+		ItemKey   string `json:"item_key"`
+	}
+	if err := json.Unmarshal(input, &in); err != nil {
+		return nil, err
+	}
+	item, err := store.GetCatalogItem(ctx, p, in.CatalogID, in.ItemKey)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(item)
+}
+
+type evalAudienceAdapter struct {
+	store Store
+	p     domain.Principal
+}
+
+func (a evalAudienceAdapter) Eval(ctx context.Context, profileID string, dsl json.RawMessage) (bool, error) {
+	return a.store.EvaluateAudience(ctx, a.p, profileID, dsl)
+}
+
+type flagEvaluateTool struct{}
+
+func (flagEvaluateTool) Definition() Definition {
+	return Definition{
+		Name:    "flag.evaluate",
+		Purpose: "evaluate feature flag for a subject profile",
+		InputSchema: json.RawMessage(`{
+			"type": "object",
+			"required": ["flag_id", "profile_id"],
+			"additionalProperties": false,
+			"properties": {
+				"flag_id": {"type": "string", "minLength": 1},
+				"profile_id": {"type": "string", "minLength": 1}
+			}
+		}`),
+		OutputSchema:   json.RawMessage(`{"type":"object"}`),
+		RequiredScopes: []string{"flags:read"},
+	}
+}
+
+func (flagEvaluateTool) Run(ctx context.Context, store Store, p domain.Principal, input json.RawMessage) (json.RawMessage, error) {
+	var in struct {
+		FlagID    string `json:"flag_id"`
+		ProfileID string `json:"profile_id"`
+	}
+	if err := json.Unmarshal(input, &in); err != nil {
+		return nil, err
+	}
+	flag, err := store.GetFeatureFlag(ctx, p, in.FlagID)
+	if err != nil {
+		return nil, err
+	}
+	res, err := flags.Evaluate(ctx, &flag, in.ProfileID, evalAudienceAdapter{store: store, p: p})
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(res)
+}
+
+type journeyInspectTool struct{}
+
+func (journeyInspectTool) Definition() Definition {
+	return Definition{
+		Name:    "journey.inspect",
+		Purpose: "inspect journey definition by ID",
+		InputSchema: json.RawMessage(`{
+			"type": "object",
+			"required": ["journey_id"],
+			"additionalProperties": false,
+			"properties": {
+				"journey_id": {"type": "string", "minLength": 1}
+			}
+		}`),
+		OutputSchema:   json.RawMessage(`{"type":"object"}`),
+		RequiredScopes: []string{"journeys:read"},
+	}
+}
+
+func (journeyInspectTool) Run(ctx context.Context, store Store, p domain.Principal, input json.RawMessage) (json.RawMessage, error) {
+	var in struct {
+		JourneyID string `json:"journey_id"`
+	}
+	if err := json.Unmarshal(input, &in); err != nil {
+		return nil, err
+	}
+	journey, err := store.GetJourney(ctx, p, in.JourneyID)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(journey)
+}
+
 // ReadOnlyTools returns the initial governed tool registry.
 func ReadOnlyTools() []Tool {
-	return []Tool{schemaInspectTool{}, segmentPreviewTool{}, reportReadTool{}}
+	return []Tool{
+		schemaInspectTool{},
+		segmentPreviewTool{},
+		reportReadTool{},
+		reportTimeseriesTool{},
+		catalogLookupTool{},
+		flagEvaluateTool{},
+		journeyInspectTool{},
+	}
 }
 
 var _ Store = (ports.Store)(nil)

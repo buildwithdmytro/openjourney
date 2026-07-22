@@ -197,6 +197,8 @@ type Store interface {
 	ExperimentReport(ctx context.Context, p domain.Principal, experimentID string, query domain.ReportQuery) (domain.ExperimentReport, error)
 	FunnelOverTimeReport(ctx context.Context, p domain.Principal, campaignID string, query domain.ReportQuery) (domain.FunnelOverTimeReport, error)
 	RetentionReport(ctx context.Context, p domain.Principal, campaignID string, query domain.ReportQuery) (domain.RetentionReport, error)
+	GrowthReport(ctx context.Context, p domain.Principal, campaignID string, query domain.ReportQuery) (domain.GrowthReport, error)
+	CostReport(ctx context.Context, p domain.Principal, campaignID string, query domain.ReportQuery) (domain.CostReport, error)
 	GetOverview(ctx context.Context, p domain.Principal) (domain.Overview, error)
 	ProposeExperimentOptimization(ctx context.Context, p domain.Principal, experimentID string) (domain.OptimizationProposal, error)
 	ApproveExperimentOptimization(ctx context.Context, p domain.Principal, experimentID, proposalID string) (domain.ExperimentVersion, error)

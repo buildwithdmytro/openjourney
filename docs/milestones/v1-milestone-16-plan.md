@@ -249,12 +249,12 @@ Vertical slice over existing `prompts`/`prompt_versions` store methods (`prompts
    **Security checkpoint:** the loop is bounded, read-only, scope-intersected, and fully audited.
 
 ### Milestone 21.2 — Expanded read-only tools
-1. [ ] **Report + platform tools** (Recipe 6.93): `report.timeseries` (M14 `FunnelOverTime`/`Retention`/
+1. [x] **Report + platform tools** (Recipe 6.93): `report.timeseries` (M14 `FunnelOverTime`/`Retention`/
    `Growth`/`Cost` reports, `analytics.go:212/456/569/752`, scope `reports:read`), `catalog.lookup`
    (`catalogs:read`), `flag.evaluate` (`flags:read`), `journey.inspect` (`journeys:read`); added to
    `ReadOnlyTools()`.
    *Done when:* each tool resolves real data via its store read, validates input/output schema, enforces
-   its scope (denied without it), audits the call, and mutates nothing; unit tests per tool green.
+   its scope (denied without it), audits the call, and mutates nothing; unit tests per tool green. — done: report.timeseries, catalog.lookup, flag.evaluate, and journey.inspect tools implemented, added to ReadOnlyTools(), scope-checked and audited, tested in TestExpandedReadOnlyTools
 
 ### Milestone 21.3 — Analytics-insight copilot
 1. [ ] **Insights copilot** (Recipe 6.94): `POST /v1/ai/copilots/insights` driving the agent over the
