@@ -372,11 +372,11 @@ multipart upload.
    *Done when:* each property has a test (a private-IP connected-content fetch blocked; an unlisted host
    refused; a raw secret rejected; a `catalogs:read` key 403 on write; a broken source falls back and is
    audited). — done: TestSecurityE2E in internal/httpapi/catalogs_security_e2e_integration_test.go covers SSRF block, allowlist enforcement, raw secret rejection, scope 403 checks, and fallback degradation with audit logging.
-3. [ ] **Run the suite**: `go build ./... && go vet ./... && go test ./... -race` (the cache is
+3. [x] **Run the suite**: `go build ./... && go vet ./... && go test ./... -race` (the cache is
    concurrent), `go mod tidy`, `cd web && npm run typecheck && npm run build && npm test`,
    `cd sdk/javascript && npm run build && npm test`.
    *Done when:* all green and `git diff go.mod go.sum web/package.json web/package-lock.json
-   sdk/javascript/package.json` is empty of additions.
+   sdk/javascript/package.json` is empty of additions. — done: Go build/vet/test pass, go mod tidy diff empty, web build/typecheck/tests pass (310/310), JS SDK build/tests pass (30/30), dependency files diff clean.
 4. [ ] **Audit doc** `docs/milestones/v1-milestone-15-audit.md` in the M2–M14 table format, one row per
    `20.x` task with evidence (file:line + test name).
    *Done when:* the doc exists with a row per task and its verifying test.
