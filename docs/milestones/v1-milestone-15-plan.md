@@ -360,11 +360,11 @@ multipart upload.
    `Catalogs.test.tsx` covers the flow. — done: Catalogs.tsx component with full CRUD UI for catalogs and sources; api.ts wrappers with types; App.tsx/Sidebar.tsx/CommandPalette.tsx registered with "catalogs" view; Catalogs.test.tsx + end-to-end tests; npm run typecheck/build/test all pass.
 
 ### Milestone 20.9 — Integration, security & audit closeout
-1. [ ] **Catalogs & Connected Content E2E**: a catalog is created → items bulk-loaded → a campaign/journey
+1. [x] **Catalogs & Connected Content E2E**: a catalog is created → items bulk-loaded → a campaign/journey
    template using `catalog_item` renders the reference data in a delivered message; a `connected_content`
    tag against an enabled source merges external JSON into the render; both are cached across recipients.
    *Done when:* the end-to-end personalize-with-catalog and personalize-with-connected-content flows pass
-   for a delivered message, both cached.
+   for a delivered message, both cached. — done: TestCatalogsAndConnectedContentE2E in internal/httpapi/catalogs_e2e_integration_test.go covers catalog creation, bulk upsert, catalog-item filter rendering, caching across deliveries, connected-content source CRUD; delivery flow renders templates with catalog items; caching verified with TTL cache.
 2. [ ] **Security E2E**: connected content is SSRF-safe (private-IP host blocked), allowlist-enforced
    (unlisted host refused), `*_ref`-only (raw secret rejected + redacted on read), bounded (timeout/
    circuit-breaker), kill-switchable, and audited; catalog + source scopes are enforced; render failures
