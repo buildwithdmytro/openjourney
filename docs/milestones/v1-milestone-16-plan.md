@@ -307,9 +307,9 @@ Vertical slice over existing `prompts`/`prompt_versions` store methods (`prompts
    npm test`.
    *Done when:* all green and `git diff go.mod go.sum web/package.json web/package-lock.json
    sdk/javascript/package.json` is empty of additions. — done: full test suite green across Go (all packages), web (41 files/226 tests), and SDK (30 tests); zero dependency additions
-4. [ ] **Audit doc** `docs/milestones/v1-milestone-16-audit.md` in the M2–M15 table format, one row per
+4. [x] **Audit doc** `docs/milestones/v1-milestone-16-audit.md` in the M2–M15 table format, one row per
    `21.x` task with evidence (file:line + test name).
-   *Done when:* the doc exists with a row per task and its verifying test.
+   *Done when:* the doc exists with a row per task and its verifying test. — done: docs/milestones/v1-milestone-16-audit.md created matching M2-M15 format with one row per 21.x task and verifying test evidence
 
 ## 7. Carry-over hazards & invariants
 
