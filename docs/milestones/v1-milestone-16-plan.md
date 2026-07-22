@@ -238,14 +238,14 @@ Vertical slice over existing `prompts`/`prompt_versions` store methods (`prompts
    *Done when:* every finding has a fix + a test, or is recorded verified-safe. — done: post-M15 review clean (670 Go / 310 web / 30 SDK tests pass, -race clean, no new deps); verified safe with no additional findings to fold
 
 ### Milestone 21.1 — Bounded agentic assistant — SECURITY CHECKPOINT
-1. [ ] **Agent loop foundation** (Recipe 6.92): `internal/ai/agent` — a bounded ReAct loop wiring
+1. [x] **Agent loop foundation** (Recipe 6.92): `internal/ai/agent` — a bounded ReAct loop wiring
    `gateway.Generate` + `tools.Runner.Call`, capped by `maxSteps` + a hard timeout + the Gateway budget;
    structured-output tool selection; read-only tools only; every step audited; `ai_agent_runs` trace
    (or `ai_activity`).
    *Done when:* the agent answers a question using ≥1 tool call and terminates; it NEVER exceeds
    `maxSteps` (a forced-loop prompt terminates at the cap with a partial answer); a tool the caller lacks
    scope for is `denied_scope` + audited; no tool mutates state; a budget/timeout cap terminates
-   deterministically; unit + integration tests prove each.
+   deterministically; unit + integration tests prove each. — done: internal/ai/agent ReAct loop bounded by maxSteps/timeout/budget, read-only tools, scope-checked and audited, tested in agent_test.go
    **Security checkpoint:** the loop is bounded, read-only, scope-intersected, and fully audited.
 
 ### Milestone 21.2 — Expanded read-only tools
