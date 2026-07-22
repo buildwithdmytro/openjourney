@@ -291,10 +291,10 @@ Vertical slice over existing `prompts`/`prompt_versions` store methods (`prompts
    *Done when:* the suite is green; the assistant answers an analytics question, shows the grounded answer + the tool trace, and links each step to its `ai_activity`; `Assistant.test.tsx` covers it. — done: Assistant section implemented on M12 primitives, displaying grounded answers and audited tool trace with activity IDs, 6-point registration complete, tested in Assistant.test.tsx, web build & test suite green
 
 ### Milestone 21.8 — Integration, security & audit closeout
-1. [ ] **AI-depth E2E**: an assistant question runs a bounded multi-step tool loop → grounded answer; the
+1. [x] **AI-depth E2E**: an assistant question runs a bounded multi-step tool loop → grounded answer; the
    insights copilot produces citation-grounded insights over the M14 reports; a prompt is authored →
    evaluated → published (human-gated) → used by a copilot.
-   *Done when:* the end-to-end agent→answer, insights→grounded, and prompt→publish→use flows pass.
+   *Done when:* the end-to-end agent→answer, insights→grounded, and prompt→publish→use flows pass. — done: TestAIDepthE2E passes end-to-end agent->answer, insights->grounded, and prompt->publish->use flows
 2. [ ] **Security E2E**: the agent loop is bounded (max-steps + budget + timeout enforced — a forced loop
    can't run away), read-only (no tool mutates; a mutation attempt is impossible/denied), scope-
    intersected (`denied_scope` for a missing scope), and fully audited (every tool + LLM call in append-
