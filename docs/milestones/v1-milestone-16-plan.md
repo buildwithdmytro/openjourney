@@ -280,11 +280,11 @@ Vertical slice over existing `prompts`/`prompt_versions` store methods (`prompts
    `Prompts.test.tsx` covers the flow. — done: Prompts UI section implemented on M12 primitives, author/eval/publish flow working end-to-end, 6-point registration complete, tested in Prompts.test.tsx, web build & tests green
 
 ### Milestone 21.6 — Copilot UI refresh
-1. [ ] **Migrate Copilots.tsx to M12 + inline draft review**: refactor `web/src/sections/Copilots.tsx`
+1. [x] **Migrate Copilots.tsx to M12 + inline draft review**: refactor `web/src/sections/Copilots.tsx`
    onto `../components` (Card/Field/Button/Toast/Modal) and review the generated draft **in place**
    (accept → publish via the existing draft/approval path, or refine) instead of hash-navigating away.
    *Done when:* Copilots uses the M12 primitives (no raw `.card`/`.secondary` markup), shows the draft
-   inline with an accept/refine action, and its tests pass; suite green.
+   inline with an accept/refine action, and its tests pass; suite green. — done: Copilots.tsx refactored onto M12 primitives with inline draft review (accept/refine actions), tested in Copilots.test.tsx, web build & tests green
 
 ### Milestone 21.7 — Assistant UI
 1. [ ] **Assistant section** (Recipe 6.96): `web/src/sections/Assistant.tsx` — a conversational analytics

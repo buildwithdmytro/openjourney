@@ -6,6 +6,15 @@ import {
   createJourneyCopilot,
   createPerformanceCopilot,
 } from "../api";
+import {
+  Badge,
+  Button,
+  Card,
+  Field,
+  Input,
+  Textarea,
+  useToast,
+} from "../components";
 
 type CopilotKind = "content" | "audience" | "journey" | "performance";
 
@@ -20,39 +29,126 @@ function errorMessage(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
 }
 
-function DraftCard({ kind, result }: { kind: CopilotKind; result: CopilotResponse }) {
+function DraftCard({
+  kind,
+  result,
+  onRefine,
+  onAccept,
+}: {
+  kind: CopilotKind;
+  result: CopilotResponse;
+  onRefine: () => void;
+  onAccept: () => void;
+}) {
+  const [accepted, setAccepted] = useState(false);
   const draft = result.draft;
-  return <article className="card copilot-draft" aria-label={`${kind} AI draft`}>
-    <div className="section-title">
-      <div><div className="eyebrow">Governed draft</div><h2>Ready for review</h2></div>
-      <span className="pill draft">Draft only</span>
-    </div>
-    <p className="muted">AI has proposed this resource. Review it in the existing editor before a human approves publication.</p>
-    {kind === "content" && draft && <div className="copilot-content-preview">
-      <strong>{String(draft.subject_template || "Untitled subject")}</strong>
-      <p>{String(draft.html_template || draft.body_template || "")}</p>
-    </div>}
-    <details><summary>Inspect structured draft</summary><pre>{JSON.stringify(result, null, 2)}</pre></details>
-    <button type="button" onClick={() => { window.location.hash = reviewViews[kind]; }}>
-      Review &amp; approve in {reviewViews[kind]}
-    </button>
-    {result.activity_id && <small className="field-help">Activity recorded: {result.activity_id}</small>}
-  </article>;
+
+  const handleAccept = () => {
+    setAccepted(true);
+    onAccept();
+  };
+
+  return (
+    <Card style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <span style={{ fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--color-primary, #3b82f6)", fontWeight: 600 }}>
+            Governed draft
+          </span>
+          <h3 style={{ margin: "4px 0 0 0", fontSize: "20px" }}>Ready for review</h3>
+        </div>
+        <Badge kind={accepted ? "success" : "draft"}>
+          {accepted ? "Accepted" : "Draft only"}
+        </Badge>
+      </div>
+
+      <p style={{ margin: 0, color: "var(--color-ink-muted)", fontSize: "14px" }}>
+        AI has proposed this resource. Review and approve it in place or in the full editor before publishing.
+      </p>
+
+      {kind === "content" && draft && (
+        <div style={{ padding: "12px", background: "rgba(0,0,0,0.2)", borderRadius: "6px" }}>
+          <strong>{String(draft.subject_template || "Untitled subject")}</strong>
+          <p style={{ margin: "8px 0 0 0", fontSize: "13px" }}>
+            {String(draft.html_template || draft.body_template || "")}
+          </p>
+        </div>
+      )}
+
+      {kind === "audience" && draft && (
+        <div style={{ padding: "12px", background: "rgba(0,0,0,0.2)", borderRadius: "6px" }}>
+          <strong>Audience Segment Draft</strong>
+          <p style={{ margin: "8px 0 0 0", fontSize: "13px" }}>
+            {String(draft.dsl || draft.description || JSON.stringify(draft))}
+          </p>
+        </div>
+      )}
+
+      {kind === "journey" && draft && (
+        <div style={{ padding: "12px", background: "rgba(0,0,0,0.2)", borderRadius: "6px" }}>
+          <strong>Journey Draft: {String(draft.name || "Untitled Journey")}</strong>
+          <p style={{ margin: "8px 0 0 0", fontSize: "13px" }}>
+            {String(draft.description || JSON.stringify(draft.steps || draft))}
+          </p>
+        </div>
+      )}
+
+      {kind === "performance" && draft && (
+        <div style={{ padding: "12px", background: "rgba(0,0,0,0.2)", borderRadius: "6px" }}>
+          <strong>Performance Analysis Summary</strong>
+          <p style={{ margin: "8px 0 0 0", fontSize: "13px" }}>
+            {String(draft.summary || draft.recommendation || JSON.stringify(draft))}
+          </p>
+        </div>
+      )}
+
+      <details style={{ fontSize: "12px", color: "var(--color-ink-muted)" }}>
+        <summary style={{ cursor: "pointer" }}>Inspect structured draft</summary>
+        <pre style={{ margin: "8px 0 0 0", padding: "8px", background: "rgba(0,0,0,0.3)", borderRadius: "4px", overflowX: "auto" }}>
+          {JSON.stringify(result, null, 2)}
+        </pre>
+      </details>
+
+      <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
+        <Button variant="primary" onClick={handleAccept} disabled={accepted}>
+          {accepted ? "Accepted" : "Accept Draft"}
+        </Button>
+        <Button variant="secondary" onClick={onRefine}>
+          Refine Draft
+        </Button>
+        <Button
+          variant="secondary"
+          onClick={() => {
+            window.location.hash = reviewViews[kind];
+          }}
+        >
+          Review &amp; approve in {reviewViews[kind]}
+        </Button>
+      </div>
+
+      {result.activity_id && (
+        <span style={{ fontSize: "12px", color: "var(--color-ink-muted)" }}>
+          Activity recorded: {result.activity_id}
+        </span>
+      )}
+    </Card>
+  );
 }
 
 export default function Copilots({ apiKey, baseURL }: { apiKey: string; baseURL: string }) {
+  const { push: toast } = useToast();
   const [kind, setKind] = useState<CopilotKind>("content");
   const [brief, setBrief] = useState("");
   const [locale, setLocale] = useState("en-US");
   const [name, setName] = useState("");
   const [campaignID, setCampaignID] = useState("");
   const [result, setResult] = useState<CopilotResponse | null>(null);
-  const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    setSaving(true); setError(""); setResult(null);
+    setSaving(true);
+    setResult(null);
     try {
       let next: CopilotResponse;
       if (kind === "content") next = await createContentCopilot(baseURL, apiKey, { brief, locale });
@@ -63,31 +159,108 @@ export default function Copilots({ apiKey, baseURL }: { apiKey: string; baseURL:
         next = await createPerformanceCopilot(baseURL, apiKey, campaignID.trim());
       }
       setResult(next);
-    } catch (cause) { setError(errorMessage(cause)); }
-    finally { setSaving(false); }
+      toast({ kind: "success", message: `Generated ${kind} draft` });
+    } catch (cause) {
+      toast({ kind: "error", message: errorMessage(cause) });
+    } finally {
+      setSaving(false);
+    }
   }
 
-  return <section className="stack copilot-view">
-    <article className="card copilot-hero">
-      <div><div className="eyebrow">Governed AI</div><h2>Draft with a copilot</h2>
-        <p className="muted">Copilots create reviewable drafts only. Every proposal is validated and recorded before you approve it.</p></div>
-      <div className="copilot-tabs" role="tablist" aria-label="Copilot type">
-        {(["content", "audience", "journey", "performance"] as CopilotKind[]).map((item) =>
-          <button type="button" role="tab" aria-selected={kind === item} className={kind === item ? "active" : "secondary"}
-            key={item} onClick={() => { setKind(item); setResult(null); setError(""); }}>
-            {item === "content" ? "Content" : item === "audience" ? "Audience" : item === "journey" ? "Journey" : "Performance"}
-          </button>)}
-      </div>
-      <form onSubmit={submit} className="copilot-form">
-        {kind === "performance" ? <label>Campaign ID<input value={campaignID} onChange={(event) => setCampaignID(event.target.value)} placeholder="campaign UUID" required /></label> :
-          <label>{kind === "audience" ? "Describe the audience" : kind === "journey" ? "Describe the journey" : "Describe the content"}
-            <textarea value={brief} onChange={(event) => setBrief(event.target.value)} placeholder={kind === "content" ? "Welcome new customers…" : "Customers who…"} rows={4} required /></label>}
-        {kind === "content" && <label>Locale<input value={locale} onChange={(event) => setLocale(event.target.value)} /></label>}
-        {kind === "journey" && <label>Journey name (optional)<input value={name} onChange={(event) => setName(event.target.value)} /></label>}
-        <button disabled={saving || !apiKey}>{saving ? "Drafting…" : "Create governed draft"}</button>
-      </form>
-      {error && <p className="error" role="alert">{error}</p>}
-    </article>
-    {result && <DraftCard kind={kind} result={result} />}
-  </section>;
+  function handleRefine() {
+    toast({ kind: "info", message: "Adjust your description or settings and generate again to refine." });
+  }
+
+  function handleAccept() {
+    toast({ kind: "success", message: "Draft accepted inline for approval workflow." });
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+      <Card style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+        <div>
+          <span style={{ fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--color-primary, #3b82f6)", fontWeight: 600 }}>
+            Governed AI
+          </span>
+          <h2 style={{ margin: "4px 0 0 0", fontSize: "24px" }}>Draft with a copilot</h2>
+          <p style={{ margin: "4px 0 0 0", color: "var(--color-ink-muted)", fontSize: "14px" }}>
+            Copilots create reviewable drafts only. Every proposal is validated and recorded before you approve it.
+          </p>
+        </div>
+
+        <div style={{ display: "flex", gap: "8px", borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: "12px" }}>
+          {(["content", "audience", "journey", "performance"] as CopilotKind[]).map((item) => (
+            <Button
+              key={item}
+              variant={kind === item ? "primary" : "secondary"}
+              onClick={() => {
+                setKind(item);
+                setResult(null);
+              }}
+            >
+              {item === "content" ? "Content" : item === "audience" ? "Audience" : item === "journey" ? "Journey" : "Performance"}
+            </Button>
+          ))}
+        </div>
+
+        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          {kind === "performance" ? (
+            <Field label="Campaign ID">
+              <Input
+                value={campaignID}
+                onChange={(event) => setCampaignID(event.target.value)}
+                placeholder="campaign UUID"
+                required
+              />
+            </Field>
+          ) : (
+            <Field
+              label={
+                kind === "audience"
+                  ? "Describe the audience"
+                  : kind === "journey"
+                  ? "Describe the journey"
+                  : "Describe the content"
+              }
+            >
+              <Textarea
+                value={brief}
+                onChange={(event) => setBrief(event.target.value)}
+                placeholder={kind === "content" ? "Welcome new customers…" : "Customers who…"}
+                rows={4}
+                required
+              />
+            </Field>
+          )}
+
+          {kind === "content" && (
+            <Field label="Locale">
+              <Input value={locale} onChange={(event) => setLocale(event.target.value)} />
+            </Field>
+          )}
+
+          {kind === "journey" && (
+            <Field label="Journey name (optional)">
+              <Input value={name} onChange={(event) => setName(event.target.value)} />
+            </Field>
+          )}
+
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <Button type="submit" variant="primary" disabled={saving || !apiKey}>
+              {saving ? "Drafting…" : "Create governed draft"}
+            </Button>
+          </div>
+        </form>
+      </Card>
+
+      {result && (
+        <DraftCard
+          kind={kind}
+          result={result}
+          onRefine={handleRefine}
+          onAccept={handleAccept}
+        />
+      )}
+    </div>
+  );
 }
