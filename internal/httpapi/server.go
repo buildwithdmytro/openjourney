@@ -286,6 +286,7 @@ func (s *Server) buildMux() http.Handler {
 	mux.Handle("POST /v1/ai/copilots/audience", s.authenticate("ai:invoke", http.HandlerFunc(s.createAudienceCopilot)))
 	mux.Handle("POST /v1/ai/copilots/journey", s.authenticate("ai:invoke", http.HandlerFunc(s.createJourneyCopilot)))
 	mux.Handle("POST /v1/ai/copilots/performance/{campaignId}", s.authenticate("ai:invoke", http.HandlerFunc(s.createPerformanceCopilot)))
+	mux.Handle("POST /v1/ai/copilots/insights", s.authenticate("ai:invoke", http.HandlerFunc(s.createInsightsCopilot)))
 	return otelhttp.NewHandler(requestLog(s.cors(mux)), "openjourney-api")
 }
 

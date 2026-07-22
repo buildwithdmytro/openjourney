@@ -257,11 +257,11 @@ Vertical slice over existing `prompts`/`prompt_versions` store methods (`prompts
    its scope (denied without it), audits the call, and mutates nothing; unit tests per tool green. — done: report.timeseries, catalog.lookup, flag.evaluate, and journey.inspect tools implemented, added to ReadOnlyTools(), scope-checked and audited, tested in TestExpandedReadOnlyTools
 
 ### Milestone 21.3 — Analytics-insight copilot
-1. [ ] **Insights copilot** (Recipe 6.94): `POST /v1/ai/copilots/insights` driving the agent over the
+1. [x] **Insights copilot** (Recipe 6.94): `POST /v1/ai/copilots/insights` driving the agent over the
    report tools; seed an `analytics-insight` prompt; citation-grounded via `reportContainsValue`.
    *Done when:* an insights request returns a summary + insights whose every numeric claim is grounded in
    a retrieved report value (an ungrounded number is rejected/repaired); the response includes the
-   `activity_id` + tool trace; integration test green.
+   `activity_id` + tool trace; integration test green. — done: POST /v1/ai/copilots/insights implemented driving agent loop over report tools, seeded analytics-insight prompt, grounded metric verification, integration tests green
 
 ### Milestone 21.4 — Prompt management (backend)
 1. [ ] **Prompt CRUD + eval + publish routes** (Recipe 6.95): `GET/POST /v1/ai/prompts`, `.../{id}/
