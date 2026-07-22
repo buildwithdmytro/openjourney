@@ -73,6 +73,11 @@ type Store interface {
 	DeleteRole(ctx context.Context, p domain.Principal, id string) error
 	ListUsers(context.Context, domain.Principal) ([]domain.User, error)
 	CreateUser(context.Context, domain.Principal, domain.User) (domain.User, error)
+	CreateTeam(ctx context.Context, p domain.Principal, input domain.Team) (domain.Team, error)
+	GetTeam(ctx context.Context, p domain.Principal, id string) (domain.Team, error)
+	UpdateTeam(ctx context.Context, p domain.Principal, input domain.Team) (domain.Team, error)
+	DeleteTeam(ctx context.Context, p domain.Principal, id string) error
+	ListTeams(ctx context.Context, p domain.Principal) ([]domain.Team, error)
 	ListAuditEvents(context.Context, domain.Principal, int) ([]domain.AuditEvent, error)
 	CreateSegment(context.Context, domain.Principal, domain.Segment) (domain.Segment, error)
 	GetSegment(context.Context, domain.Principal, string) (domain.Segment, error)

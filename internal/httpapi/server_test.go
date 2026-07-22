@@ -230,6 +230,31 @@ func (f *fakeStore) CreateUser(_ context.Context, _ domain.Principal, user domai
 	user.ID = "user-1"
 	return user, nil
 }
+func (f *fakeStore) CreateTeam(_ context.Context, _ domain.Principal, input domain.Team) (domain.Team, error) {
+	input.ID = "team-1"
+	return input, nil
+}
+func (f *fakeStore) GetTeam(_ context.Context, _ domain.Principal, id string) (domain.Team, error) {
+	if id == "nonexistent" {
+		return domain.Team{}, ports.ErrNotFound
+	}
+	return domain.Team{ID: id, Name: "Test Team"}, nil
+}
+func (f *fakeStore) UpdateTeam(_ context.Context, _ domain.Principal, input domain.Team) (domain.Team, error) {
+	if input.ID == "nonexistent" {
+		return domain.Team{}, ports.ErrNotFound
+	}
+	return input, nil
+}
+func (f *fakeStore) DeleteTeam(_ context.Context, _ domain.Principal, id string) error {
+	if id == "nonexistent" {
+		return ports.ErrNotFound
+	}
+	return nil
+}
+func (f *fakeStore) ListTeams(context.Context, domain.Principal) ([]domain.Team, error) {
+	return []domain.Team{{ID: "team-1", Name: "Test Team"}}, nil
+}
 func (f *fakeStore) ListAuditEvents(context.Context, domain.Principal, int) ([]domain.AuditEvent, error) {
 	return nil, nil
 }

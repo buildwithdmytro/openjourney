@@ -640,6 +640,19 @@ type Role struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
+type Team struct {
+	ID          string    `json:"id"`
+	TenantID    string    `json:"tenant_id"`
+	WorkspaceID string    `json:"workspace_id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	MemberIDs   []string  `json:"member_ids,omitempty"`
+	RoleIDs     []string  `json:"role_ids,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+
 type User struct {
 	ID          string    `json:"id"`
 	OIDCIssuer  string    `json:"oidc_issuer"`

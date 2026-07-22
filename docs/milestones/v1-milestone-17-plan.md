@@ -299,9 +299,10 @@ M12 library; 6-point registration across `App.tsx`/`Sidebar.tsx`/`CommandPalette
    deleted; changes emit an audit row; httpapi + integration tests green. — done: implemented UpdateRole and DeleteRole in store and httpapi with system-role protection and audit logging, verified with TestUpdateAndDeleteRoleEndpoints and TestRoleMutationAndSystemGuards
 
 ### Milestone 22.2 — Teams
-1. [ ] **Migration `057` + team model** (Recipe 6.101): `teams`/`team_members`/`team_roles`; CRUD store +
+1. [x] **Migration `057` + team model** (Recipe 6.101): `teams`/`team_members`/`team_roles`; CRUD store +
    handlers (`teams:read`/`teams:write`).
    *Done when:* a team round-trips, members + roles attach; workspace-scoped; tests green.
+   — done: added migration 057, tenant/workspace-scoped team CRUD with member/role attachment, and verified route auth plus round-trip/isolation coverage (TestTeamsRoutesRequireTeamScopes, TestTeamRoundTripAndTenantIsolation)
 2. [ ] **Team-derived scope resolution**: widen the user scope-aggregation (`auth.go:22`, `store.go:193`)
    to union roles granted via team membership.
    *Done when:* a user in a team with role R has R's scopes on their principal (in addition to direct
