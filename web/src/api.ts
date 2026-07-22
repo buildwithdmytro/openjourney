@@ -1059,6 +1059,48 @@ export type SavedReport = {
   updated_at: string;
 };
 
+export type Catalog = {
+  id: string;
+  tenant_id: string;
+  workspace_id: string;
+  app_id: string;
+  key: string;
+  name: string;
+  description?: string;
+  item_key_field: string;
+  status: "active" | "archived";
+  item_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CatalogItem = {
+  id: string;
+  catalog_id: string;
+  tenant_id: string;
+  app_id: string;
+  item_key: string;
+  payload: Record<string, unknown>;
+  updated_at: string;
+};
+
+export type ConnectedContentSource = {
+  id: string;
+  tenant_id: string;
+  workspace_id: string;
+  name: string;
+  allowed_host: string;
+  auth_header_name?: string;
+  auth_secret_ref?: string;
+  default_ttl_seconds: number;
+  timeout_ms: number;
+  enabled: boolean;
+  status: "draft" | "active" | "disabled";
+  created_by_user_id?: string;
+  created_at: string;
+  updated_at: string;
+};
+
 export async function getCampaignFunnelOverTimeReport(
   baseURL: string,
   apiKey: string,
@@ -1165,4 +1207,59 @@ export async function getSavedReport(baseURL: string, apiKey: string, id: string
 
 export async function deleteSavedReport(baseURL: string, apiKey: string, id: string): Promise<void> {
   await requestJSON<void>(baseURL, apiKey, `/v1/saved-reports/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export async function listCatalogs(baseURL: string, apiKey: string): Promise<Catalog[]> {
+  return (await requestJSON<{ catalogs: Catalog[] | null }>(baseURL, apiKey, "/v1/catalogs")).catalogs ?? [];
+}
+
+export async function createCatalog(baseURL: string, apiKey: string, input: Omit<Catalog, "id" | "tenant_id" | "workspace_id" | "item_count" | "created_at" | "updated_at">): Promise<Catalog> {
+  return requestJSON<Catalog>(baseURL, apiKey, "/v1/catalogs", { method: "POST", body: JSON.stringify(input) });
+}
+
+export async function getCatalog(baseURL: string, apiKey: string, id: string): Promise<Catalog> {
+  return requestJSON<Catalog>(baseURL, apiKey, `/v1/catalogs/${encodeURIComponent(id)}`);
+}
+
+export async function updateCatalog(baseURL: string, apiKey: string, id: string, input: Partial<Omit<Catalog, "id" | "tenant_id" | "workspace_id" | "created_at" | "updated_at">>): Promise<Catalog> {
+  return requestJSON<Catalog>(baseURL, apiKey, `/v1/catalogs/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(input) });
+}
+
+export async function deleteCatalog(baseURL: string, apiKey: string, id: string): Promise<void> {
+  await requestJSON<void>(baseURL, apiKey, `/v1/catalogs/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export async function listCatalogItems(baseURL: string, apiKey: string, catalogID: string, limit = 100): Promise<CatalogItem[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  return (await requestJSON<{ items: CatalogItem[] | null }>(baseURL, apiKey, `/v1/catalogs/${encodeURIComponent(catalogID)}/items?${params}`)).items ?? [];
+}
+
+export async function bulkUploadCatalogItems(baseURL: string, apiKey: string, catalogID: string, file: File): Promise<void> {
+  const body = new FormData(); body.append("file", file);
+  const response = await fetch(`${baseURL}/v1/catalogs/${encodeURIComponent(catalogID)}/items:bulk`, { method: "POST", headers: { Authorization: `Bearer ${apiKey}` }, body });
+  if (!response.ok) throw new Error(`Request failed (${response.status})`);
+}
+
+export async function listConnectedContentSources(baseURL: string, apiKey: string): Promise<ConnectedContentSource[]> {
+  return (await requestJSON<{ sources: ConnectedContentSource[] | null }>(baseURL, apiKey, "/v1/connected-content-sources")).sources ?? [];
+}
+
+export async function createConnectedContentSource(baseURL: string, apiKey: string, input: Omit<ConnectedContentSource, "id" | "tenant_id" | "workspace_id" | "created_by_user_id" | "created_at" | "updated_at">): Promise<ConnectedContentSource> {
+  return requestJSON<ConnectedContentSource>(baseURL, apiKey, "/v1/connected-content-sources", { method: "POST", body: JSON.stringify(input) });
+}
+
+export async function getConnectedContentSource(baseURL: string, apiKey: string, id: string): Promise<ConnectedContentSource> {
+  return requestJSON<ConnectedContentSource>(baseURL, apiKey, `/v1/connected-content-sources/${encodeURIComponent(id)}`);
+}
+
+export async function updateConnectedContentSource(baseURL: string, apiKey: string, id: string, input: Partial<Omit<ConnectedContentSource, "id" | "tenant_id" | "workspace_id" | "created_by_user_id" | "created_at" | "updated_at">>): Promise<ConnectedContentSource> {
+  return requestJSON<ConnectedContentSource>(baseURL, apiKey, `/v1/connected-content-sources/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(input) });
+}
+
+export async function enableConnectedContentSource(baseURL: string, apiKey: string, id: string): Promise<ConnectedContentSource> {
+  return requestJSON<ConnectedContentSource>(baseURL, apiKey, `/v1/connected-content-sources/${encodeURIComponent(id)}/enable`, { method: "POST", body: JSON.stringify({}) });
+}
+
+export async function deleteConnectedContentSource(baseURL: string, apiKey: string, id: string): Promise<void> {
+  await requestJSON<void>(baseURL, apiKey, `/v1/connected-content-sources/${encodeURIComponent(id)}`, { method: "DELETE" });
 }

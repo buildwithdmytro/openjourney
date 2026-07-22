@@ -15,6 +15,85 @@ import (
 	"github.com/buildwithdmytro/openjourney/internal/postgres"
 )
 
+func (s *Server) createCatalog(w http.ResponseWriter, r *http.Request) {
+	principal := principalFrom(r)
+	var cat domain.Catalog
+	if err := decodeJSON(w, r, &cat); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_json", err.Error())
+		return
+	}
+	res, err := s.store.CreateCatalog(r.Context(), principal, cat)
+	if err != nil {
+		internalError(w, err, "create catalog", principal)
+		return
+	}
+	writeJSON(w, http.StatusCreated, res)
+}
+
+func (s *Server) getCatalog(w http.ResponseWriter, r *http.Request) {
+	principal := principalFrom(r)
+	id := r.PathValue("id")
+	res, err := s.store.GetCatalog(r.Context(), principal, id)
+	if errors.Is(err, postgres.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "catalog not found")
+		return
+	}
+	if err != nil {
+		internalError(w, err, "get catalog", principal)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+func (s *Server) listCatalogs(w http.ResponseWriter, r *http.Request) {
+	principal := principalFrom(r)
+	res, err := s.store.ListCatalogs(r.Context(), principal)
+	if err != nil {
+		internalError(w, err, "list catalogs", principal)
+		return
+	}
+	if res == nil {
+		res = []domain.Catalog{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"catalogs": res})
+}
+
+func (s *Server) updateCatalog(w http.ResponseWriter, r *http.Request) {
+	principal := principalFrom(r)
+	id := r.PathValue("id")
+	var cat domain.Catalog
+	if err := decodeJSON(w, r, &cat); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_json", err.Error())
+		return
+	}
+	cat.ID = id
+	res, err := s.store.UpdateCatalog(r.Context(), principal, cat)
+	if errors.Is(err, postgres.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "catalog not found")
+		return
+	}
+	if err != nil {
+		internalError(w, err, "update catalog", principal)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+func (s *Server) deleteCatalog(w http.ResponseWriter, r *http.Request) {
+	principal := principalFrom(r)
+	id := r.PathValue("id")
+	err := s.store.DeleteCatalog(r.Context(), principal, id)
+	if errors.Is(err, postgres.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "catalog not found")
+		return
+	}
+	if err != nil {
+		internalError(w, err, "delete catalog", principal)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) bulkUploadCatalogItems(w http.ResponseWriter, r *http.Request) {
 	principal := principalFrom(r)
 	catalogID := r.PathValue("id")

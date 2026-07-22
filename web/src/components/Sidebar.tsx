@@ -1,6 +1,6 @@
 import React from "react";
 
-type View = "overview" | "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "analytics" | "copilots" | "governance" | "extensions" | "connectors" | "suppressions" | "sender-identities" | "device-tokens" | "acquisition" | "messaging" | "flags";
+type View = "overview" | "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "analytics" | "copilots" | "governance" | "extensions" | "connectors" | "suppressions" | "sender-identities" | "device-tokens" | "acquisition" | "messaging" | "flags" | "catalogs";
 
 interface NavGroup {
   label: string;
@@ -18,7 +18,7 @@ const navGroups: NavGroup[] = [
   },
   {
     label: "Messaging",
-    items: ["templates", "campaigns", "journeys", "experiments", "flags", "messaging", "connectors", "suppressions", "sender-identities", "device-tokens"],
+    items: ["templates", "campaigns", "journeys", "experiments", "flags", "messaging", "catalogs", "connectors", "suppressions", "sender-identities", "device-tokens"],
   },
   {
     label: "AI & Insights",

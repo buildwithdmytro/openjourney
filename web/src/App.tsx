@@ -13,6 +13,8 @@ import {
   listCampaigns, getCampaign, createCampaign, updateCampaign, Campaign,
   listJourneys, createJourney, Journey, listScoringModels, ScoringModel,
   listFeatureFlags, getFeatureFlag, createFeatureFlag, updateFeatureFlag, publishFeatureFlag, setFeatureFlagStatus, FeatureFlag, FeatureFlagExposure,
+  listCatalogs, createCatalog, getCatalog, updateCatalog, deleteCatalog, listCatalogItems, bulkUploadCatalogItems, Catalog, CatalogItem,
+  listConnectedContentSources, createConnectedContentSource, getConnectedContentSource, updateConnectedContentSource, enableConnectedContentSource, deleteConnectedContentSource, ConnectedContentSource,
 } from "./api";
 import { oidcConfigured, restoreOIDCSession, signIn, signOut } from "./auth";
 import { staticColors, defaultAccentColor, defaultBackgroundColor } from "./tokens";
@@ -34,6 +36,7 @@ const Acquisition = lazy(() => import("./sections/Acquisition"));
 const Connectors = lazy(() => import("./sections/Connectors"));
 const Messaging = lazy(() => import("./sections/Messaging"));
 const FeatureFlags = lazy(() => import("./sections/FeatureFlags"));
+const Catalogs = lazy(() => import("./sections/Catalogs"));
 
 const apiBase = import.meta.env.VITE_API_BASE_URL || "/api";
 
@@ -62,7 +65,7 @@ function SuspenseLoader() {
   return <div style={{ display: "flex", gap: "12px", alignItems: "center" }} role="status"><Skeleton height="24px" width="100%" /></div>;
 }
 
-type View = "overview" | "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "analytics" | "copilots" | "governance" | "extensions" | "connectors" | "suppressions" | "sender-identities" | "device-tokens" | "acquisition" | "messaging" | "flags";
+type View = "overview" | "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "analytics" | "copilots" | "governance" | "extensions" | "connectors" | "suppressions" | "sender-identities" | "device-tokens" | "acquisition" | "messaging" | "flags" | "catalogs";
 type CredentialSource = "manual" | "session" | "oidc";
 
 const viewTitles: Record<View, [string, string]> = {
@@ -92,6 +95,7 @@ const viewTitles: Record<View, [string, string]> = {
   acquisition: ["Acquisition", "Build defended forms and immutable landing pages."],
   messaging: ["Messaging", "Create and manage in-app messages, content cards, and web push campaigns."],
   flags: ["Feature Flags", "Create, publish, and toggle environment-scoped feature flags with targeting and exposure analytics."],
+  catalogs: ["Catalogs", "Manage reference data catalogs and governed connected content sources."],
 };
 
 function currentHashView(): View | null {
@@ -136,6 +140,8 @@ const AVAILABLE_SCOPES = [
   "connectors:run",
   "flags:read",
   "flags:write",
+  "catalogs:read",
+  "catalogs:write",
 ];
 
 export function App() {
@@ -317,6 +323,7 @@ export function App() {
           {view === "operations" && <Operations apiKey={apiKey} />}
           {view === "audit" && <Audit apiKey={apiKey} />}
           {view === "flags" && <Suspense fallback={<SuspenseLoader />}><FeatureFlags apiKey={apiKey} baseURL={apiBase} /></Suspense>}
+          {view === "catalogs" && <Suspense fallback={<SuspenseLoader />}><Catalogs apiKey={apiKey} baseURL={apiBase} /></Suspense>}
         </UIErrorBoundary>
       </AppShell>
     </ToastProvider>

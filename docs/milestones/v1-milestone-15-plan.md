@@ -350,14 +350,14 @@ multipart upload.
    — done: DefaultConnectedContentFetcher with SSRF-guarded transport + circuit breaker + per-source timeout + TTL cache + audit; connected_content tag registered with URL/save:/ttl: parsing + cache-first fetching + fallback on error; delivery paths wired (campaigns/journey/preview); render tests pass 34/34.
 
 ### Milestone 20.8 — Admin UI (Catalogs)
-1. [ ] **Catalogs section** (Recipe 6.91): `web/src/sections/Catalogs.tsx` on the M12 library (catalog
+1. [x] **Catalogs section** (Recipe 6.91): `web/src/sections/Catalogs.tsx` on the M12 library (catalog
    list → detail with items `DataTable` + `JsonField` editor + bulk upload; connected-content sources
    sub-view) + `api.ts` wrappers (+ multipart upload) + the 6-point `App.tsx` registration (incl. the
    `Sidebar.tsx` View-union duplicate and `AVAILABLE_SCOPES`). No new npm dep; theme-aware.
    *Done when:* `cd web && npm run typecheck && npm run build && npm test` green; the section lists
    catalogs, creates one, bulk-uploads items, edits an item payload, and registers a connected-content
    source end-to-end against the API using the shared primitives (no hand-rolled controls);
-   `Catalogs.test.tsx` covers the flow.
+   `Catalogs.test.tsx` covers the flow. — done: Catalogs.tsx component with full CRUD UI for catalogs and sources; api.ts wrappers with types; App.tsx/Sidebar.tsx/CommandPalette.tsx registered with "catalogs" view; Catalogs.test.tsx + end-to-end tests; npm run typecheck/build/test all pass.
 
 ### Milestone 20.9 — Integration, security & audit closeout
 1. [ ] **Catalogs & Connected Content E2E**: a catalog is created → items bulk-loaded → a campaign/journey
