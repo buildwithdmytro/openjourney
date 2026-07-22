@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import Modal from "./Modal";
 
-type View = "overview" | "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "analytics" | "copilots" | "governance" | "extensions" | "connectors" | "suppressions" | "sender-identities" | "device-tokens" | "acquisition" | "messaging" | "flags" | "catalogs" | "prompts";
+type View = "overview" | "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "analytics" | "copilots" | "assistant" | "governance" | "extensions" | "connectors" | "suppressions" | "sender-identities" | "device-tokens" | "acquisition" | "messaging" | "flags" | "catalogs" | "prompts";
 
 interface PaletteItem {
   label: string;
@@ -25,7 +25,7 @@ const navGroups = [
   },
   {
     label: "AI & Insights",
-    items: ["copilots", "governance", "prompts", "reports", "analytics"],
+    items: ["copilots", "assistant", "governance", "prompts", "reports", "analytics"],
   },
   {
     label: "Data",
@@ -59,6 +59,7 @@ const viewTitles: Record<View, [string, string]> = {
   reports: ["Reports", "Compare delivery, conversion, and experiment performance."],
   analytics: ["Analytics", "Explore time-series trends, retention cohorts, audience growth, and spending."],
   copilots: ["AI Copilots", "Create governed drafts for review and human approval."],
+  assistant: ["AI Assistant", "Conversational analytics assistant grounded in report data and audited tools."],
   governance: ["AI Governance", "Manage providers, budgets, redaction, and AI activity."],
   extensions: ["Extensions", "Install signed providers, configure grants, and review extension health."],
   connectors: ["Connectors", "Move data through governed sources, sinks, exports, and identity commands."],

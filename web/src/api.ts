@@ -511,6 +511,33 @@ export function createPerformanceCopilot(baseURL: string, apiKey: string, campai
   return invokeCopilot(baseURL, apiKey, `/v1/ai/copilots/performance/${encodeURIComponent(campaignID)}`);
 }
 
+export type InsightsCopilotResponse = {
+  summary: string;
+  insights: string[];
+  key_metrics: Array<{
+    name: string;
+    value: any;
+    source: string;
+  }>;
+  activity_id?: string;
+  trace: Array<{
+    step: number;
+    action: string;
+    tool?: string;
+    args?: Record<string, unknown>;
+    result?: string;
+    activity_id?: string;
+  }>;
+  status: string;
+};
+
+export function createInsightsCopilot(baseURL: string, apiKey: string, question: string, query?: Record<string, unknown>): Promise<InsightsCopilotResponse> {
+  return requestJSON<InsightsCopilotResponse>(baseURL, apiKey, "/v1/ai/copilots/insights", {
+    method: "POST",
+    body: JSON.stringify({ question, query }),
+  });
+}
+
 export async function previewTemplate(baseURL: string, apiKey: string, id: string, externalId: string): Promise<TemplatePreview> {
   return requestJSON(baseURL, apiKey, `/v1/templates/${encodeURIComponent(id)}/preview`, {
     method: "POST",

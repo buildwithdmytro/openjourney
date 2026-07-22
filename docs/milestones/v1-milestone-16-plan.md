@@ -287,12 +287,8 @@ Vertical slice over existing `prompts`/`prompt_versions` store methods (`prompts
    inline with an accept/refine action, and its tests pass; suite green. — done: Copilots.tsx refactored onto M12 primitives with inline draft review (accept/refine actions), tested in Copilots.test.tsx, web build & tests green
 
 ### Milestone 21.7 — Assistant UI
-1. [ ] **Assistant section** (Recipe 6.96): `web/src/sections/Assistant.tsx` — a conversational analytics
-   assistant that calls the insights/agent endpoint and renders the grounded answer + the audited
-   tool-use trace (which tools ran, with `activity_id`s), on the M12 library + Chart primitives for any
-   inline metrics; 6-point registration.
-   *Done when:* the suite is green; the assistant answers an analytics question, shows the grounded answer
-   + the tool trace, and links each step to its `ai_activity`; `Assistant.test.tsx` covers it.
+1. [x] **Assistant section** (Recipe 6.96): `web/src/sections/Assistant.tsx` — a conversational analytics assistant that calls the insights/agent endpoint and renders the grounded answer + the audited tool-use trace (which tools ran, with `activity_id`s), on the M12 library + Chart primitives for any inline metrics; 6-point registration.
+   *Done when:* the suite is green; the assistant answers an analytics question, shows the grounded answer + the tool trace, and links each step to its `ai_activity`; `Assistant.test.tsx` covers it. — done: Assistant section implemented on M12 primitives, displaying grounded answers and audited tool trace with activity IDs, 6-point registration complete, tested in Assistant.test.tsx, web build & test suite green
 
 ### Milestone 21.8 — Integration, security & audit closeout
 1. [ ] **AI-depth E2E**: an assistant question runs a bounded multi-step tool loop → grounded answer; the

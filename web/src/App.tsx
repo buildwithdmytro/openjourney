@@ -29,6 +29,7 @@ const Experiments = lazy(() => import("./sections/Experiments"));
 const Reports = lazy(() => import("./sections/Reports"));
 const Analytics = lazy(() => import("./sections/Analytics"));
 const Copilots = lazy(() => import("./sections/Copilots"));
+const Assistant = lazy(() => import("./sections/Assistant"));
 const Governance = lazy(() => import("./sections/Governance"));
 const Extensions = lazy(() => import("./sections/Extensions"));
 const Scoring = lazy(() => import("./sections/Scoring"));
@@ -66,7 +67,7 @@ function SuspenseLoader() {
   return <div style={{ display: "flex", gap: "12px", alignItems: "center" }} role="status"><Skeleton height="24px" width="100%" /></div>;
 }
 
-type View = "overview" | "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "analytics" | "copilots" | "governance" | "extensions" | "connectors" | "suppressions" | "sender-identities" | "device-tokens" | "acquisition" | "messaging" | "flags" | "catalogs" | "prompts";
+type View = "overview" | "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "analytics" | "copilots" | "assistant" | "governance" | "extensions" | "connectors" | "suppressions" | "sender-identities" | "device-tokens" | "acquisition" | "messaging" | "flags" | "catalogs" | "prompts";
 type CredentialSource = "manual" | "session" | "oidc";
 
 const viewTitles: Record<View, [string, string]> = {
@@ -87,6 +88,7 @@ const viewTitles: Record<View, [string, string]> = {
   reports: ["Reports", "Compare delivery, conversion, and experiment performance."],
   analytics: ["Analytics", "Explore time-series trends, retention cohorts, audience growth, and spending."],
   copilots: ["AI Copilots", "Create governed drafts for review and human approval."],
+  assistant: ["AI Assistant", "Conversational analytics assistant grounded in report data and audited tools."],
   governance: ["AI Governance", "Manage providers, budgets, redaction, and AI activity."],
   extensions: ["Extensions", "Install signed providers, configure grants, and review extension health."],
   connectors: ["Connectors", "Move data through governed sources, sinks, exports, and identity commands."],
@@ -314,6 +316,7 @@ export function App() {
           {view === "analytics" && <Suspense fallback={<p role="status">Loading analytics…</p>}><Analytics apiKey={apiKey} baseURL={apiBase} /></Suspense>}
           {view === "messaging" && <Suspense fallback={<p role="status">Loading messaging…</p>}><Messaging apiKey={apiKey} baseURL={apiBase} /></Suspense>}
           {view === "copilots" && <Suspense fallback={<p role="status">Loading AI copilots…</p>}><Copilots apiKey={apiKey} baseURL={apiBase} /></Suspense>}
+          {view === "assistant" && <Suspense fallback={<p role="status">Loading AI assistant…</p>}><Assistant apiKey={apiKey} baseURL={apiBase} /></Suspense>}
           {view === "governance" && <Suspense fallback={<p role="status">Loading AI governance…</p>}><Governance apiKey={apiKey} baseURL={apiBase} /></Suspense>}
           {view === "extensions" && <Suspense fallback={<p role="status">Loading extensions…</p>}><Extensions apiKey={apiKey} baseURL={apiBase} /></Suspense>}
           {view === "connectors" && <Suspense fallback={<p role="status">Loading connectors…</p>}><Connectors apiKey={apiKey} baseURL={apiBase} /></Suspense>}

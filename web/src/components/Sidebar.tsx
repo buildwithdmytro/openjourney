@@ -1,6 +1,6 @@
 import React from "react";
 
-type View = "overview" | "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "analytics" | "copilots" | "governance" | "extensions" | "connectors" | "suppressions" | "sender-identities" | "device-tokens" | "acquisition" | "messaging" | "flags" | "catalogs" | "prompts";
+type View = "overview" | "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "analytics" | "copilots" | "assistant" | "governance" | "extensions" | "connectors" | "suppressions" | "sender-identities" | "device-tokens" | "acquisition" | "messaging" | "flags" | "catalogs" | "prompts";
 
 interface NavGroup {
   label: string;
@@ -22,7 +22,7 @@ const navGroups: NavGroup[] = [
   },
   {
     label: "AI & Insights",
-    items: ["copilots", "governance", "prompts", "reports", "analytics"],
+    items: ["copilots", "assistant", "governance", "prompts", "reports", "analytics"],
   },
   {
     label: "Data",
