@@ -302,11 +302,11 @@ Vertical slice over existing `prompts`/`prompt_versions` store methods (`prompts
    *Done when:* each property has a test (a runaway loop terminates at the cap; an over-scoped tool call
    is denied + audited; an ungrounded insight is rejected; a non-human prompt publish 403; a redaction
    check on a restricted field). — done: TestAIDepthSecurityE2E passes all 5 security property tests (runaway loop cap, over-scoped tool denied+audited, ungrounded insight 422, non-human prompt publish 403, PII redacted before egress)
-3. [ ] **Run the suite**: `go build ./... && go vet ./... && go test ./...`, `go mod tidy`,
+3. [x] **Run the suite**: `go build ./... && go vet ./... && go test ./...`, `go mod tidy`,
    `cd web && npm run typecheck && npm run build && npm test`, `cd sdk/javascript && npm run build &&
    npm test`.
    *Done when:* all green and `git diff go.mod go.sum web/package.json web/package-lock.json
-   sdk/javascript/package.json` is empty of additions.
+   sdk/javascript/package.json` is empty of additions. — done: full test suite green across Go (all packages), web (41 files/226 tests), and SDK (30 tests); zero dependency additions
 4. [ ] **Audit doc** `docs/milestones/v1-milestone-16-audit.md` in the M2–M15 table format, one row per
    `21.x` task with evidence (file:line + test name).
    *Done when:* the doc exists with a row per task and its verifying test.
