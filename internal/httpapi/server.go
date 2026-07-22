@@ -287,6 +287,16 @@ func (s *Server) buildMux() http.Handler {
 	mux.Handle("POST /v1/ai/copilots/journey", s.authenticate("ai:invoke", http.HandlerFunc(s.createJourneyCopilot)))
 	mux.Handle("POST /v1/ai/copilots/performance/{campaignId}", s.authenticate("ai:invoke", http.HandlerFunc(s.createPerformanceCopilot)))
 	mux.Handle("POST /v1/ai/copilots/insights", s.authenticate("ai:invoke", http.HandlerFunc(s.createInsightsCopilot)))
+	mux.Handle("GET /v1/ai/prompts", s.authenticate("prompts:read", http.HandlerFunc(s.listPrompts)))
+	mux.Handle("POST /v1/ai/prompts", s.authenticate("prompts:write", http.HandlerFunc(s.createPrompt)))
+	mux.Handle("GET /v1/ai/prompts/{id}", s.authenticate("prompts:read", http.HandlerFunc(s.getPrompt)))
+	mux.Handle("PUT /v1/ai/prompts/{id}", s.authenticate("prompts:write", http.HandlerFunc(s.updatePrompt)))
+	mux.Handle("DELETE /v1/ai/prompts/{id}", s.authenticate("prompts:write", http.HandlerFunc(s.deletePrompt)))
+	mux.Handle("GET /v1/ai/prompts/{id}/versions", s.authenticate("prompts:read", http.HandlerFunc(s.listPromptVersions)))
+	mux.Handle("POST /v1/ai/prompts/{id}/versions", s.authenticate("prompts:write", http.HandlerFunc(s.createPromptVersion)))
+	mux.Handle("GET /v1/ai/prompts/{id}/versions/{vid}", s.authenticate("prompts:read", http.HandlerFunc(s.getPromptVersion)))
+	mux.Handle("POST /v1/ai/prompts/{id}/versions/{vid}/eval", s.authenticate("prompts:write", http.HandlerFunc(s.setPromptVersionEvalStatus)))
+	mux.Handle("POST /v1/ai/prompts/{id}/versions/{vid}/publish", s.authenticate("prompts:write", http.HandlerFunc(s.publishPromptVersion)))
 	return otelhttp.NewHandler(requestLog(s.cors(mux)), "openjourney-api")
 }
 

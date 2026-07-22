@@ -264,12 +264,12 @@ Vertical slice over existing `prompts`/`prompt_versions` store methods (`prompts
    `activity_id` + tool trace; integration test green. — done: POST /v1/ai/copilots/insights implemented driving agent loop over report tools, seeded analytics-insight prompt, grounded metric verification, integration tests green
 
 ### Milestone 21.4 — Prompt management (backend)
-1. [ ] **Prompt CRUD + eval + publish routes** (Recipe 6.95): `GET/POST /v1/ai/prompts`, `.../{id}/
+1. [x] **Prompt CRUD + eval + publish routes** (Recipe 6.95): `GET/POST /v1/ai/prompts`, `.../{id}/
    versions`, an eval-run route, and `.../versions/{vid}/publish` (human-gated) over the existing
    `prompts`/`prompt_versions` tables; `prompts:read`/`prompts:write`.
    *Done when:* a prompt + version round-trips; publishing requires an authenticated user (non-human
    403) and an eval pass; only `active`+`eval_passed` versions are usable by copilots; a `prompts:read`
-   key is 403 on write; httpapi + integration tests green.
+   key is 403 on write; httpapi + integration tests green. — done: GET/POST/PUT/DELETE /v1/ai/prompts, version creation/listing, eval status route, and human-gated publish route implemented and tested with prompts:read/write scope checks
 
 ### Milestone 21.5 — Prompt management (UI)
 1. [ ] **Prompts section** (Recipe 6.96): `web/src/sections/Prompts.tsx` on the M12 library (list prompts
