@@ -283,8 +283,8 @@ M12 library; 6-point registration across `App.tsx`/`Sidebar.tsx`/`CommandPalette
 2. [x] **Verify grounded insights + human-gated prompt publish.** Insights reject an ungrounded metric;
    prompt publish requires an authenticated user + eval pass.
    *Done when:* the insights-grounding + prompt-publish-gate tests pass; no new dependency from M16. — done: verified insights-grounding and prompt-publish-gate tests pass (TestAIDepthSecurityE2E/UngroundedInsight_Rejected, TestAIDepthSecurityE2E/NonHumanPromptPublish_Forbidden) with zero new dependencies
-3. [ ] **M16 review findings.** Fold any concrete findings here (file:line + a proving test).
-   *Done when:* every finding has a fix + a test, or is recorded verified-safe (a no-op is marked done).
+3. [x] **M16 review findings.** Fold any concrete findings here (file:line + a proving test).
+   *Done when:* every finding has a fix + a test, or is recorded verified-safe (a no-op is marked done). — done: no additional M16 findings; post-M16 review verified clean with all AI depth E2E and unit tests passing
 
 ### Milestone 22.1 — Permission catalog + custom role CRUD
 1. [ ] **Migration `056` + permission catalog** (Recipe 6.100): `permissions` table seeded from
