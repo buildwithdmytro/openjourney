@@ -53,17 +53,17 @@ func TestReadTasksTracksMultilineDoneNotes(t *testing.T) {
 }
 
 func TestCurrentMilestonePlanParsesInDocumentOrder(t *testing.T) {
-	tasks, err := readTasks(filepath.Join("..", "..", "docs", "milestones", "v1-milestone-15-plan.md"))
+	tasks, err := readTasks(filepath.Join("..", "..", "docs", "milestones", "v1-milestone-16-plan.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tasks) != 18 {
-		t.Fatalf("got %d tasks, want 18", len(tasks))
+	if len(tasks) != 14 {
+		t.Fatalf("got %d tasks, want 14", len(tasks))
 	}
-	if tasks[0].ID != "20.0.1" {
+	if tasks[0].ID != "21.0.1" {
 		t.Fatalf("first task = %#v", tasks[0])
 	}
-	if tasks[len(tasks)-1].ID != "20.9.4" {
+	if tasks[len(tasks)-1].ID != "21.8.4" {
 		t.Fatalf("last task = %#v", tasks[len(tasks)-1])
 	}
 }
@@ -126,7 +126,7 @@ func TestClaudeStreamDisplaysLiveOutputAndCapturesUsage(t *testing.T) {
 }
 
 func TestProviderCommandsAreFreshAndUseLockedModels(t *testing.T) {
-	cfg := config{root: "/repo", codexModel: "gpt-5.6-luna", antigravityModel: "Gemini 3.5 Flash (Medium)", claudeModel: "haiku", attemptTimeout: 2 * time.Hour}
+	cfg := config{root: "/repo", codexModel: "gpt-5.6-luna", antigravityModel: "gemini-3.6-flash-medium", claudeModel: "haiku", attemptTimeout: 2 * time.Hour}
 	codex := providerCommand(context.Background(), cfg, "codex", "mission")
 	joined := strings.Join(codex.Args, " ")
 	if !strings.Contains(joined, "exec --json --model gpt-5.6-luna") || !strings.Contains(joined, "--dangerously-bypass-approvals-and-sandbox") {
@@ -134,7 +134,7 @@ func TestProviderCommandsAreFreshAndUseLockedModels(t *testing.T) {
 	}
 	agy := providerCommand(context.Background(), cfg, "antigravity", "mission")
 	joined = strings.Join(agy.Args, " ")
-	if !strings.Contains(joined, "Gemini 3.5 Flash (Medium)") || !strings.Contains(joined, "--dangerously-skip-permissions") || !strings.Contains(joined, "--print mission") {
+	if !strings.Contains(joined, "gemini-3.6-flash-medium") || !strings.Contains(joined, "--dangerously-skip-permissions") || !strings.Contains(joined, "--print mission") {
 		t.Fatalf("unexpected Antigravity command: %s", joined)
 	}
 	claude := providerCommand(context.Background(), cfg, "claude", "mission")
@@ -180,7 +180,7 @@ exit 17
 `)
 	writeExecutable(t, filepath.Join(binDir, "agy"), `#!/bin/sh
 if [ "$1" = "models" ]; then
-  printf '%s\n' 'Gemini 3.5 Flash (Medium)'
+  printf '%s\n' 'gemini-3.6-flash-medium'
   exit 0
 fi
 sed -i 's/^1\. \*\*One/1. [x] **One/' plan.md
@@ -210,7 +210,7 @@ printf '%s\n' '11.0.1 complete'
 		maxIterations:    1,
 		attemptTimeout:   time.Minute,
 		codexModel:       "gpt-5.6-luna",
-		antigravityModel: "Gemini 3.5 Flash (Medium)",
+		antigravityModel: "gemini-3.6-flash-medium",
 		unsafe:           true,
 	}
 	if err := run(context.Background(), cfg); err != nil {
