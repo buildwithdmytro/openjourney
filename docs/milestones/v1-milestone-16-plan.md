@@ -295,13 +295,13 @@ Vertical slice over existing `prompts`/`prompt_versions` store methods (`prompts
    insights copilot produces citation-grounded insights over the M14 reports; a prompt is authored →
    evaluated → published (human-gated) → used by a copilot.
    *Done when:* the end-to-end agent→answer, insights→grounded, and prompt→publish→use flows pass. — done: TestAIDepthE2E passes end-to-end agent->answer, insights->grounded, and prompt->publish->use flows
-2. [ ] **Security E2E**: the agent loop is bounded (max-steps + budget + timeout enforced — a forced loop
+2. [x] **Security E2E**: the agent loop is bounded (max-steps + budget + timeout enforced — a forced loop
    can't run away), read-only (no tool mutates; a mutation attempt is impossible/denied), scope-
    intersected (`denied_scope` for a missing scope), and fully audited (every tool + LLM call in append-
    only `ai_activity`); prompt publish is human- + eval-gated; PII is redacted before egress.
    *Done when:* each property has a test (a runaway loop terminates at the cap; an over-scoped tool call
    is denied + audited; an ungrounded insight is rejected; a non-human prompt publish 403; a redaction
-   check on a restricted field).
+   check on a restricted field). — done: TestAIDepthSecurityE2E passes all 5 security property tests (runaway loop cap, over-scoped tool denied+audited, ungrounded insight 422, non-human prompt publish 403, PII redacted before egress)
 3. [ ] **Run the suite**: `go build ./... && go vet ./... && go test ./...`, `go mod tidy`,
    `cd web && npm run typecheck && npm run build && npm test`, `cd sdk/javascript && npm run build &&
    npm test`.
