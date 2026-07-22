@@ -48,6 +48,10 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 
 	slog.Info("processing journey message intent", "intent_id", intent.ID, "run_id", intent.RunID, "tenant_id", intent.TenantID)
 
+	// Create a TTL cache and fetcher for this message intent
+	cache := render.NewTTLCache(1000, render.SystemClock{})
+	fetcher := render.NewDefaultConnectedContentFetcher(store, cache)
+
 	p := domain.Principal{
 		TenantID:    intent.TenantID,
 		WorkspaceID: intent.WorkspaceID,
@@ -332,7 +336,7 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 
 			subject := "Journey Message"
 			if template.SubjectTemplate != nil && *template.SubjectTemplate != "" {
-				deps := render.RenderDeps{Store: store, Principal: p, Fetcher: nil}
+				deps := render.RenderDeps{Store: store, Principal: p, Fetcher: fetcher, Cache: cache}
 				subject, err = render.RenderWithContext(ctx, *template.SubjectTemplate, vars, deps)
 				if err != nil {
 					slog.Error("failed to render subject template", "error", err)
@@ -348,7 +352,7 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 
 			var htmlBody string
 			if template.HTMLTemplate != nil && *template.HTMLTemplate != "" {
-				deps := render.RenderDeps{Store: store, Principal: p, Fetcher: nil}
+				deps := render.RenderDeps{Store: store, Principal: p, Fetcher: fetcher, Cache: cache}
 				htmlBody, err = render.RenderWithContext(ctx, *template.HTMLTemplate, vars, deps)
 				if err != nil {
 					slog.Error("failed to render HTML template", "error", err)
@@ -364,7 +368,7 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 
 			var textBody string
 			if template.TextTemplate != nil && *template.TextTemplate != "" {
-				deps := render.RenderDeps{Store: store, Principal: p, Fetcher: nil}
+				deps := render.RenderDeps{Store: store, Principal: p, Fetcher: fetcher, Cache: cache}
 				textBody, err = render.RenderWithContext(ctx, *template.TextTemplate, vars, deps)
 				if err != nil {
 					slog.Error("failed to render text template", "error", err)
@@ -380,7 +384,7 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 
 			var bodyPayload string
 			if template.BodyTemplate != nil && *template.BodyTemplate != "" {
-				deps := render.RenderDeps{Store: store, Principal: p, Fetcher: nil}
+				deps := render.RenderDeps{Store: store, Principal: p, Fetcher: fetcher, Cache: cache}
 				bodyPayload, err = render.RenderWithContext(ctx, *template.BodyTemplate, vars, deps)
 				if err != nil {
 					slog.Error("failed to render body template", "error", err)

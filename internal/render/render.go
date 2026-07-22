@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
@@ -41,6 +43,9 @@ func Render(tmpl string, vars map[string]any) (string, error) {
 func RenderWithContext(ctx context.Context, tmpl string, vars map[string]any, deps RenderDeps) (string, error) {
 	engine := NewEngine()
 
+	// Capture the context for use in tag/filter closures
+	renderCtx := ctx
+
 	// Register the catalog_item filter
 	RegisterFilter(engine, "catalog_item", func(value interface{}, args ...interface{}) (interface{}, error) {
 		if len(args) == 0 {
@@ -68,14 +73,14 @@ func RenderWithContext(ctx context.Context, tmpl string, vars map[string]any, de
 		}
 
 		// Look up catalog by key
-		catalog, err := deps.Store.GetCatalogByKey(ctx, deps.Principal, catalogKey)
+		catalog, err := deps.Store.GetCatalogByKey(renderCtx, deps.Principal, catalogKey)
 		if err != nil {
 			// Missing catalog: fallback to empty, never fail the render
 			return "", nil
 		}
 
 		// Look up catalog item
-		item, err := deps.Store.GetCatalogItem(ctx, deps.Principal, catalog.ID, itemKey)
+		item, err := deps.Store.GetCatalogItem(renderCtx, deps.Principal, catalog.ID, itemKey)
 		if err != nil {
 			// Missing item: fallback to empty, never fail the render
 			return "", nil
@@ -96,10 +101,110 @@ func RenderWithContext(ctx context.Context, tmpl string, vars map[string]any, de
 		return payload, nil
 	})
 
-	// Register the connected_content tag (stub)
+	// Register the connected_content tag
 	RegisterTag(engine, "connected_content", func(ctx liquidrender.Context) (string, error) {
-		// For now, return empty string (tag renders nothing, it binds vars)
-		// Full implementation in 20.7
+		// TagArgs returns a string like: "url" save: var ttl: 300
+		// We need to parse this carefully to handle quoted strings
+		argStr := ctx.TagArgs()
+		if argStr == "" {
+			// No URL provided, fallback silently
+			return "", nil
+		}
+
+		// Parse the first argument as the URL (should be quoted)
+		// Look for the first quoted string
+		var urlExpr string
+		var restArgs string
+		if strings.HasPrefix(argStr, `"`) {
+			// Find the closing quote, handling escapes
+			idx := 1
+			for idx < len(argStr) {
+				if argStr[idx] == '"' && (idx == 0 || argStr[idx-1] != '\\') {
+					urlExpr = argStr[1:idx]
+					if idx+1 < len(argStr) {
+						restArgs = strings.TrimSpace(argStr[idx+1:])
+					}
+					break
+				}
+				idx++
+			}
+		} else if strings.HasPrefix(argStr, "'") {
+			// Handle single quotes as well
+			idx := 1
+			for idx < len(argStr) {
+				if argStr[idx] == '\'' && (idx == 0 || argStr[idx-1] != '\\') {
+					urlExpr = argStr[1:idx]
+					if idx+1 < len(argStr) {
+						restArgs = strings.TrimSpace(argStr[idx+1:])
+					}
+					break
+				}
+				idx++
+			}
+		}
+
+		if urlExpr == "" {
+			return "", nil
+		}
+
+		// Evaluate the URL expression
+		urlValue, err := ctx.EvaluateString(urlExpr)
+		if err != nil {
+			return "", nil
+		}
+
+		fetchURL, ok := urlValue.(string)
+		if !ok || fetchURL == "" {
+			return "", nil
+		}
+
+		// Parse options: save: var ttl: 300
+		saveVar := ""
+		ttl := 300
+
+		parts := strings.Fields(restArgs)
+		i := 0
+		for i < len(parts) {
+			if parts[i] == "save:" && i+1 < len(parts) {
+				saveVar = parts[i+1]
+				i += 2
+			} else if parts[i] == "ttl:" && i+1 < len(parts) {
+				ttlVal, err := ctx.EvaluateString(parts[i+1])
+				if err == nil {
+					if f, ok := ttlVal.(float64); ok {
+						ttl = int(f)
+					} else if s, ok := ttlVal.(string); ok {
+						if parsed, err := strconv.Atoi(s); err == nil {
+							ttl = parsed
+						}
+					}
+				}
+				i += 2
+			} else {
+				i++
+			}
+		}
+
+		if deps.Fetcher == nil {
+			return "", nil
+		}
+
+		// Fetch the data
+		data, err := deps.Fetcher.Fetch(renderCtx, deps.Principal, fetchURL, ttl)
+		if err != nil {
+			return "", nil
+		}
+
+		if data == nil {
+			return "", nil
+		}
+
+		// Bind the result to the save: variable if specified
+		if saveVar != "" {
+			bindings := ctx.Bindings()
+			bindings[saveVar] = data
+		}
+
 		return "", nil
 	})
 

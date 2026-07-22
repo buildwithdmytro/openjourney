@@ -135,6 +135,10 @@ func (s *Server) previewTemplate(w http.ResponseWriter, r *http.Request) {
 	principal := principalFrom(r)
 	id := r.PathValue("id")
 
+	// Create a TTL cache and fetcher for this preview request
+	cache := render.NewTTLCache(1000, render.SystemClock{})
+	fetcher := render.NewDefaultConnectedContentFetcher(s.store, cache)
+
 	tmpl, err := s.store.GetTemplate(r.Context(), principal, id)
 	if errors.Is(err, postgres.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "not_found", "template not found")
@@ -207,7 +211,7 @@ func (s *Server) previewTemplate(w http.ResponseWriter, r *http.Request) {
 
 	subject := ""
 	if tmpl.Channel != "push" && tmpl.Channel != "in_app" {
-		deps := render.RenderDeps{Store: s.store, Principal: principal, Fetcher: nil}
+		deps := render.RenderDeps{Store: s.store, Principal: principal, Fetcher: fetcher, Cache: cache}
 		subject, err = render.RenderWithContext(r.Context(), subjectTmpl, vars, deps)
 		if err != nil {
 			writeError(w, http.StatusUnprocessableEntity, "render_error", fmt.Sprintf("subject: %v", err))
@@ -225,7 +229,7 @@ func (s *Server) previewTemplate(w http.ResponseWriter, r *http.Request) {
 
 	title := ""
 	if (tmpl.Channel == "push" || tmpl.Channel == "in_app") && tmpl.TitleTemplate != nil {
-		deps := render.RenderDeps{Store: s.store, Principal: principal, Fetcher: nil}
+		deps := render.RenderDeps{Store: s.store, Principal: principal, Fetcher: fetcher, Cache: cache}
 		title, err = render.RenderWithContext(r.Context(), *tmpl.TitleTemplate, vars, deps)
 		if err != nil {
 			writeError(w, http.StatusUnprocessableEntity, "render_error", fmt.Sprintf("title: %v", err))
@@ -236,7 +240,7 @@ func (s *Server) previewTemplate(w http.ResponseWriter, r *http.Request) {
 	renderedPushData := make(map[string]string)
 	if tmpl.Channel == "push" && tmpl.PushData != nil {
 		for k, v := range tmpl.PushData {
-			deps := render.RenderDeps{Store: s.store, Principal: principal, Fetcher: nil}
+			deps := render.RenderDeps{Store: s.store, Principal: principal, Fetcher: fetcher, Cache: cache}
 			renderedVal, err := render.RenderWithContext(r.Context(), v, vars, deps)
 			if err != nil {
 				writeError(w, http.StatusUnprocessableEntity, "render_error", fmt.Sprintf("push_data[%s]: %v", k, err))

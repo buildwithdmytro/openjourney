@@ -337,7 +337,7 @@ multipart upload.
    secret; a non-human enable is 403; tests cover each. — done: HTTP handlers for CRUD + governance added (catalogs.go); 7 tests pass covering round-trip, secret redaction, human-gating, validation; routes registered (server.go); no new dependencies.
 
 ### Milestone 20.7 — Connected Content tag (SSRF-safe fetch) — SECURITY CHECKPOINT
-1. [ ] **Guarded fetcher + `connected_content` tag** (Recipes 6.89, 6.90): the SSRF-guarded fetcher
+1. [x] **Guarded fetcher + `connected_content` tag** (Recipes 6.89, 6.90): the SSRF-guarded fetcher
    (mirror `httpprovider.go:48-92`, `channels.IsSafeURL`/`IsPrivateIP`) + circuit breaker + per-source
    timeout + TTL cache + audit; the tag validates the URL host against an enabled source, fetches, binds
    the result to `save:`, and falls back + audits on failure.
@@ -347,6 +347,7 @@ multipart upload.
    back without failing the send; the response is cached by (url,ttl); every outcome is audited; tests
    cover each.
    **Security checkpoint:** connected content is allowlisted, SSRF-safe, authed, bounded, cached, audited.
+   — done: DefaultConnectedContentFetcher with SSRF-guarded transport + circuit breaker + per-source timeout + TTL cache + audit; connected_content tag registered with URL/save:/ttl: parsing + cache-first fetching + fallback on error; delivery paths wired (campaigns/journey/preview); render tests pass 34/34.
 
 ### Milestone 20.8 — Admin UI (Catalogs)
 1. [ ] **Catalogs section** (Recipe 6.91): `web/src/sections/Catalogs.tsx` on the M12 library (catalog
