@@ -161,7 +161,7 @@ func (s *Store) DeleteRole(ctx context.Context, p domain.Principal, id string) e
 func (s *Store) ListUsers(ctx context.Context, p domain.Principal) ([]domain.User, error) {
 	rows, err := s.pool.Query(ctx, `SELECT u.id,u.oidc_issuer,u.oidc_subject,COALESCE(u.email,''),
 		COALESCE(u.display_name,''),(u.password_hash IS NOT NULL),u.created_at,
-		COALESCE(array_agg(b.role_id::text) FILTER (WHERE b.role_id IS NOT NULL),'{}')
+		COALESCE(array_agg(b.role_id::text) FILTER (WHERE b.role_id IS NOT NULL),'{}'),u.disabled_at
 		FROM users u LEFT JOIN role_bindings b ON b.user_id=u.id
 		WHERE u.tenant_id=$1 GROUP BY u.id ORDER BY u.created_at`, p.TenantID)
 	if err != nil {
@@ -172,7 +172,7 @@ func (s *Store) ListUsers(ctx context.Context, p domain.Principal) ([]domain.Use
 	for rows.Next() {
 		var item domain.User
 		if err := rows.Scan(&item.ID, &item.OIDCIssuer, &item.OIDCSubject, &item.Email,
-			&item.DisplayName, &item.Local, &item.CreatedAt, &item.RoleIDs); err != nil {
+			&item.DisplayName, &item.Local, &item.CreatedAt, &item.RoleIDs, &item.DisabledAt); err != nil {
 			return nil, err
 		}
 		result = append(result, item)

@@ -652,17 +652,17 @@ type Team struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
-
 type User struct {
-	ID          string    `json:"id"`
-	OIDCIssuer  string    `json:"oidc_issuer"`
-	OIDCSubject string    `json:"oidc_subject"`
-	Email       string    `json:"email,omitempty"`
-	DisplayName string    `json:"display_name,omitempty"`
-	Password    string    `json:"password,omitempty"`
-	Local       bool      `json:"local"`
-	RoleIDs     []string  `json:"role_ids"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID          string     `json:"id"`
+	OIDCIssuer  string     `json:"oidc_issuer"`
+	OIDCSubject string     `json:"oidc_subject"`
+	Email       string     `json:"email,omitempty"`
+	DisplayName string     `json:"display_name,omitempty"`
+	Password    string     `json:"password,omitempty"`
+	Local       bool       `json:"local"`
+	RoleIDs     []string   `json:"role_ids"`
+	CreatedAt   time.Time  `json:"created_at"`
+	DisabledAt  *time.Time `json:"-"`
 }
 
 type AuthSession struct {
@@ -803,25 +803,25 @@ type FlagTargetingRule struct {
 }
 
 type FeatureFlag struct {
-	ID              string                  `json:"id"`
-	TenantID        string                  `json:"tenant_id"`
-	WorkspaceID     string                  `json:"workspace_id"`
-	AppID           string                  `json:"app_id"`
-	Environment     string                  `json:"environment"` // development, staging, production
-	Key             string                  `json:"key"`
-	Name            *string                 `json:"name,omitempty"`
-	Description     *string                 `json:"description,omitempty"`
-	FlagType        string                  `json:"flag_type"` // boolean, string, number, json
-	DefaultValue    json.RawMessage         `json:"default_value"`
-	Variants        []FlagVariant           `json:"variants,omitempty"`
-	TargetingRules  []FlagTargetingRule     `json:"targeting_rules,omitempty"`
-	RolloutPct      int                     `json:"rollout_pct"` // 0-100
-	Seed            string                  `json:"seed"`
-	Enabled         bool                    `json:"enabled"`
-	Status          string                  `json:"status"` // draft, published, disabled
-	CurrentVersionID *string                `json:"current_version_id,omitempty"`
-	CreatedAt       time.Time               `json:"created_at"`
-	UpdatedAt       time.Time               `json:"updated_at"`
+	ID               string              `json:"id"`
+	TenantID         string              `json:"tenant_id"`
+	WorkspaceID      string              `json:"workspace_id"`
+	AppID            string              `json:"app_id"`
+	Environment      string              `json:"environment"` // development, staging, production
+	Key              string              `json:"key"`
+	Name             *string             `json:"name,omitempty"`
+	Description      *string             `json:"description,omitempty"`
+	FlagType         string              `json:"flag_type"` // boolean, string, number, json
+	DefaultValue     json.RawMessage     `json:"default_value"`
+	Variants         []FlagVariant       `json:"variants,omitempty"`
+	TargetingRules   []FlagTargetingRule `json:"targeting_rules,omitempty"`
+	RolloutPct       int                 `json:"rollout_pct"` // 0-100
+	Seed             string              `json:"seed"`
+	Enabled          bool                `json:"enabled"`
+	Status           string              `json:"status"` // draft, published, disabled
+	CurrentVersionID *string             `json:"current_version_id,omitempty"`
+	CreatedAt        time.Time           `json:"created_at"`
+	UpdatedAt        time.Time           `json:"updated_at"`
 }
 
 type FeatureFlagVersion struct {
@@ -944,11 +944,11 @@ type ReportDeliverability struct {
 // report aggregation. Empty query returns today's point-in-time report
 // (backward-compatible). Granularity is one of: none, hour, day, week, month.
 type ReportQuery struct {
-	Start      time.Time         `json:"start,omitempty"`
-	End        time.Time         `json:"end,omitempty"`
+	Start       time.Time         `json:"start,omitempty"`
+	End         time.Time         `json:"end,omitempty"`
 	Granularity string            `json:"granularity,omitempty"`
-	Dimensions []string          `json:"dimensions,omitempty"`
-	Filters    map[string]string `json:"filters,omitempty"`
+	Dimensions  []string          `json:"dimensions,omitempty"`
+	Filters     map[string]string `json:"filters,omitempty"`
 }
 
 // ValidateGranularity returns an error if granularity is not recognized.
@@ -1034,10 +1034,10 @@ type JourneyOverTimeReport struct {
 // GrowthBucket represents growth metrics for a time period: new profiles created
 // and new segment memberships added.
 type GrowthBucket struct {
-	Time                 time.Time `json:"time"`
-	NewProfiles          int64     `json:"new_profiles"`
-	NetGrowth            int64     `json:"net_growth"`
-	SegmentMemberships   int64     `json:"segment_memberships"`
+	Time               time.Time `json:"time"`
+	NewProfiles        int64     `json:"new_profiles"`
+	NetGrowth          int64     `json:"net_growth"`
+	SegmentMemberships int64     `json:"segment_memberships"`
 }
 
 // GrowthReport returns per-bucket profile and segment membership growth over time.
@@ -1048,7 +1048,7 @@ type GrowthReport struct {
 
 // CostBucket represents cost metrics for a time period: total cost and cost per send.
 type CostBucket struct {
-	Time           time.Time `json:"time"`
+	Time            time.Time `json:"time"`
 	TotalCostMicros int64     `json:"total_cost_micros"`
 	SendCount       int64     `json:"send_count"`
 	CostPerSend     float64   `json:"cost_per_send"`
@@ -1077,12 +1077,12 @@ type ExperimentRollout struct {
 }
 
 type Overview struct {
-	Profiles           int64 `json:"profiles"`
-	Journeys           int64 `json:"journeys"`
-	Campaigns          int64 `json:"campaigns"`
-	DeliveryAttempts   int64 `json:"delivery_attempts"`
-	InAppMessages      int64 `json:"inapp_messages"`
-	ConnectorRuns      int64 `json:"connector_runs"`
+	Profiles         int64 `json:"profiles"`
+	Journeys         int64 `json:"journeys"`
+	Campaigns        int64 `json:"campaigns"`
+	DeliveryAttempts int64 `json:"delivery_attempts"`
+	InAppMessages    int64 `json:"inapp_messages"`
+	ConnectorRuns    int64 `json:"connector_runs"`
 }
 
 type ExperimentVariantReport struct {
@@ -1493,41 +1493,41 @@ type ExtensionHealth struct {
 }
 
 type MetricDefinition struct {
-	ID        string     `json:"id"`
-	TenantID  *string    `json:"tenant_id,omitempty"`
-	Key       string     `json:"key"`
-	Version   int        `json:"version"`
-	Title     string     `json:"title"`
-	Semantics string     `json:"semantics"`
-	Unit      string     `json:"unit"`
-	CreatedAt time.Time  `json:"created_at"`
+	ID        string    `json:"id"`
+	TenantID  *string   `json:"tenant_id,omitempty"`
+	Key       string    `json:"key"`
+	Version   int       `json:"version"`
+	Title     string    `json:"title"`
+	Semantics string    `json:"semantics"`
+	Unit      string    `json:"unit"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type SavedReport struct {
-	ID              string          `json:"id"`
-	TenantID        string          `json:"tenant_id"`
-	WorkspaceID     string          `json:"workspace_id"`
-	Name            string          `json:"name"`
-	ReportType      string          `json:"report_type"` // funnel, deliverability, retention, cohort, growth, cost, experiment
-	Query           ReportQuery     `json:"query"`
-	CreatedByUserID *string         `json:"created_by_user_id,omitempty"`
-	CreatedAt       time.Time       `json:"created_at"`
-	UpdatedAt       time.Time       `json:"updated_at"`
+	ID              string      `json:"id"`
+	TenantID        string      `json:"tenant_id"`
+	WorkspaceID     string      `json:"workspace_id"`
+	Name            string      `json:"name"`
+	ReportType      string      `json:"report_type"` // funnel, deliverability, retention, cohort, growth, cost, experiment
+	Query           ReportQuery `json:"query"`
+	CreatedByUserID *string     `json:"created_by_user_id,omitempty"`
+	CreatedAt       time.Time   `json:"created_at"`
+	UpdatedAt       time.Time   `json:"updated_at"`
 }
 
 type Catalog struct {
-	ID            string    `json:"id"`
-	TenantID      string    `json:"tenant_id"`
-	WorkspaceID   string    `json:"workspace_id"`
-	AppID         string    `json:"app_id"`
-	Key           string    `json:"key"`
-	Name          string    `json:"name"`
-	Description   string    `json:"description"`
-	ItemKeyField  string    `json:"item_key_field"`
-	Status        string    `json:"status"` // active, archived
-	ItemCount     int64     `json:"item_count"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID           string    `json:"id"`
+	TenantID     string    `json:"tenant_id"`
+	WorkspaceID  string    `json:"workspace_id"`
+	AppID        string    `json:"app_id"`
+	Key          string    `json:"key"`
+	Name         string    `json:"name"`
+	Description  string    `json:"description"`
+	ItemKeyField string    `json:"item_key_field"`
+	Status       string    `json:"status"` // active, archived
+	ItemCount    int64     `json:"item_count"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 type CatalogItem struct {
@@ -1541,20 +1541,20 @@ type CatalogItem struct {
 }
 
 type ConnectedContentSource struct {
-	ID               string    `json:"id"`
-	TenantID         string    `json:"tenant_id"`
-	WorkspaceID      string    `json:"workspace_id"`
-	Name             string    `json:"name"`
-	AllowedHost      string    `json:"allowed_host"`
-	AuthHeaderName   string    `json:"auth_header_name,omitempty"`
-	AuthSecretRef    string    `json:"auth_secret_ref,omitempty"`
-	DefaultTTLSeconds int      `json:"default_ttl_seconds"`
-	TimeoutMs        int       `json:"timeout_ms"`
-	Enabled          bool      `json:"enabled"`
-	Status           string    `json:"status"` // draft, active, disabled
-	CreatedByUserID  *string   `json:"created_by_user_id,omitempty"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	ID                string    `json:"id"`
+	TenantID          string    `json:"tenant_id"`
+	WorkspaceID       string    `json:"workspace_id"`
+	Name              string    `json:"name"`
+	AllowedHost       string    `json:"allowed_host"`
+	AuthHeaderName    string    `json:"auth_header_name,omitempty"`
+	AuthSecretRef     string    `json:"auth_secret_ref,omitempty"`
+	DefaultTTLSeconds int       `json:"default_ttl_seconds"`
+	TimeoutMs         int       `json:"timeout_ms"`
+	Enabled           bool      `json:"enabled"`
+	Status            string    `json:"status"` // draft, active, disabled
+	CreatedByUserID   *string   `json:"created_by_user_id,omitempty"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
 
 type BulkUpsertResult struct {

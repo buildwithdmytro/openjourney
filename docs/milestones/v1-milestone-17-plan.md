@@ -311,10 +311,10 @@ M12 library; 6-point registration across `App.tsx`/`Sidebar.tsx`/`CommandPalette
    TestTeamRolesResolveIntoUserAuthenticationScopes covers inherited scopes and cross-tenant isolation
 
 ### Milestone 22.3 — SCIM 2.0 provisioning
-1. [ ] **SCIM Users + bearer auth** (Recipe 6.102): `scim_tokens` (in `058`) + a SCIM bearer middleware;
+1. [x] **SCIM Users + bearer auth** (Recipe 6.102): `scim_tokens` (in `058`) + a SCIM bearer middleware;
    `/v1/scim/v2/Users` list/get/create/patch/delete → `CreateUser`/update/`disabled_at`.
    *Done when:* an IdP can create, update, and DEPROVISION (deactivate) a user via SCIM; a disabled user
-   fails auth; an invalid/again SCIM token is 401; the endpoints are tenant-scoped; tests cover each.
+   fails auth; an invalid/again SCIM token is 401; the endpoints are tenant-scoped; tests cover each. — done: added migration 058, hashed tenant-scoped SCIM bearer middleware, Users list/get/create/replace/patch/delete with disabled_at deprovisioning, and verified invalid-token 401 plus deprovision tests (TestSCIMBearerIsDedicatedAndInvalidTokensAre401, TestSCIMDeleteDeprovisionsUser)
 2. [ ] **SCIM Groups → teams** (Recipe 6.102): `/v1/scim/v2/Groups` + `scim_group_mappings`; a SCIM group
    maps to a team, and membership changes sync `team_members`.
    *Done when:* a SCIM group create/patch provisions a team and its members get the team's roles; removing
