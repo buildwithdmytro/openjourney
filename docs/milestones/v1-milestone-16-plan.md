@@ -225,12 +225,12 @@ Vertical slice over existing `prompts`/`prompt_versions` store methods (`prompts
 > The post-M15 review was clean (670 Go / 310 web / SDK green, `-race` clean, no new deps; the
 > connected-content fetcher is allowlist-deny + SSRF-block + audit + fallback). These verify the
 > properties hold; a deeper review appends findings.
-1. [ ] **Verify connected-content is SSRF-safe + allowlisted + fallback.** Confirm the fetcher
+1. [x] **Verify connected-content is SSRF-safe + allowlisted + fallback.** Confirm the fetcher
    (`internal/render/fetcher.go`) validates the URL host against an enabled `connected_content_sources`
    row, blocks private/loopback/CGNAT IPs via `channels.IsSafeURL`/`IsPrivateIP`, and degrades to a
    fallback (never a failed send) on deny/timeout/circuit-open.
    *Done when:* the M15 security E2E passes (private-IP blocked, unlisted host refused, fallback on
-   failure); `go test -race ./internal/render/` is clean. (Re-fix if regressed.)
+   failure); `go test -race ./internal/render/` is clean. (Re-fix if regressed.) — done: TestSecurityE2E passes (private-IP blocked, unlisted host refused, fallback verified) and go test -race ./internal/render/ clean
 2. [ ] **Verify secrets ref-only + cache bounded.** Connected-content `auth_secret_ref` rejects a raw
    secret and redacts on read; the TTL cache is size-bounded and race-free.
    *Done when:* the raw-secret-rejection + GET-redaction tests pass; the cache bound/expiry tests pass.
