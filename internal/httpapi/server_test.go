@@ -205,6 +205,24 @@ func (f *fakeStore) ListRoles(context.Context, domain.Principal) ([]domain.Role,
 func (f *fakeStore) CreateRole(_ context.Context, _ domain.Principal, name string, permissions []string) (domain.Role, error) {
 	return domain.Role{ID: "role-1", Name: name, Permissions: permissions}, nil
 }
+func (f *fakeStore) UpdateRole(_ context.Context, _ domain.Principal, id string, name string, permissions []string) (domain.Role, error) {
+	if id == "system-role-1" {
+		return domain.Role{}, errors.New("cannot update system role")
+	}
+	if id == "nonexistent-role" {
+		return domain.Role{}, errors.New("role not found")
+	}
+	return domain.Role{ID: id, Name: name, Permissions: permissions}, nil
+}
+func (f *fakeStore) DeleteRole(_ context.Context, _ domain.Principal, id string) error {
+	if id == "system-role-1" {
+		return errors.New("cannot delete system role")
+	}
+	if id == "nonexistent-role" {
+		return errors.New("role not found")
+	}
+	return nil
+}
 func (f *fakeStore) ListUsers(context.Context, domain.Principal) ([]domain.User, error) {
 	return nil, nil
 }
@@ -2045,5 +2063,56 @@ func TestListPermissionsEndpoint(t *testing.T) {
 	if !strings.Contains(res.Body.String(), `"permissions"`) {
 		t.Fatalf("expected response body to contain permissions, got %s", res.Body.String())
 	}
+}
+
+func TestUpdateAndDeleteRoleEndpoints(t *testing.T) {
+	server := New(&fakeStore{scopes: []string{"roles:write"}}, 75)
+
+	t.Run("Update custom role success", func(t *testing.T) {
+		body := `{"name":"Updated Role","permissions":["profiles:read"]}`
+		req := httptest.NewRequest(http.MethodPut, "/v1/roles/custom-role-1", strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer test-key")
+		req.Header.Set("Content-Type", "application/json")
+		res := httptest.NewRecorder()
+		server.ServeHTTP(res, req)
+		if res.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK, got %d body=%s", res.Code, res.Body.String())
+		}
+		if !strings.Contains(res.Body.String(), `"Updated Role"`) {
+			t.Fatalf("expected response body to contain updated role name, got %s", res.Body.String())
+		}
+	})
+
+	t.Run("Update system role fails 403", func(t *testing.T) {
+		body := `{"name":"Hacked System Role","permissions":["*"]}`
+		req := httptest.NewRequest(http.MethodPut, "/v1/roles/system-role-1", strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer test-key")
+		req.Header.Set("Content-Type", "application/json")
+		res := httptest.NewRecorder()
+		server.ServeHTTP(res, req)
+		if res.Code != http.StatusForbidden {
+			t.Fatalf("expected 403 Forbidden, got %d body=%s", res.Code, res.Body.String())
+		}
+	})
+
+	t.Run("Delete custom role success", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodDelete, "/v1/roles/custom-role-1", nil)
+		req.Header.Set("Authorization", "Bearer test-key")
+		res := httptest.NewRecorder()
+		server.ServeHTTP(res, req)
+		if res.Code != http.StatusNoContent {
+			t.Fatalf("expected 204 No Content, got %d body=%s", res.Code, res.Body.String())
+		}
+	})
+
+	t.Run("Delete system role fails 403", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodDelete, "/v1/roles/system-role-1", nil)
+		req.Header.Set("Authorization", "Bearer test-key")
+		res := httptest.NewRecorder()
+		server.ServeHTTP(res, req)
+		if res.Code != http.StatusForbidden {
+			t.Fatalf("expected 403 Forbidden, got %d body=%s", res.Code, res.Body.String())
+		}
+	})
 }
 

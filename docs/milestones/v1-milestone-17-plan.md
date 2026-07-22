@@ -293,10 +293,10 @@ M12 library; 6-point registration across `App.tsx`/`Sidebar.tsx`/`CommandPalette
    *Done when:* the catalog is seeded with the full current scope list; `CreateRole` rejects a permission
    not in the catalog; the two former lists no longer drift (a test asserts catalog == the code list);
    `go test ./internal/postgres/...` green. — done: created migration 056 permissions catalog table, added ListPermissions, updated CreateRole validation against DB permissions, GET /v1/permissions endpoint, and verified with TestPermissionCatalogAndRoleValidation and TestListPermissionsEndpoint
-2. [ ] **`UpdateRole` + `DeleteRole`** (Recipe 6.100): add the missing role mutation methods + routes
+2. [x] **`UpdateRole` + `DeleteRole`** (Recipe 6.100): add the missing role mutation methods + routes
    (`roles:write`), system-role-guarded.
    *Done when:* a custom role's permissions can be updated and the role deleted; a `system` role cannot be
-   deleted; changes emit an audit row; httpapi + integration tests green.
+   deleted; changes emit an audit row; httpapi + integration tests green. — done: implemented UpdateRole and DeleteRole in store and httpapi with system-role protection and audit logging, verified with TestUpdateAndDeleteRoleEndpoints and TestRoleMutationAndSystemGuards
 
 ### Milestone 22.2 — Teams
 1. [ ] **Migration `057` + team model** (Recipe 6.101): `teams`/`team_members`/`team_roles`; CRUD store +

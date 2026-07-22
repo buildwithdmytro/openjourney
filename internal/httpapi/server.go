@@ -251,6 +251,8 @@ func (s *Server) buildMux() http.Handler {
 	mux.Handle("GET /v1/permissions", s.authenticate("roles:read", http.HandlerFunc(s.listPermissions)))
 	mux.Handle("GET /v1/roles", s.authenticate("roles:read", http.HandlerFunc(s.listRoles)))
 	mux.Handle("POST /v1/roles", s.authenticate("roles:write", http.HandlerFunc(s.createRole)))
+	mux.Handle("PUT /v1/roles/{id}", s.authenticate("roles:write", http.HandlerFunc(s.updateRole)))
+	mux.Handle("DELETE /v1/roles/{id}", s.authenticate("roles:write", http.HandlerFunc(s.deleteRole)))
 	mux.Handle("GET /v1/users", s.authenticate("users:read", http.HandlerFunc(s.listUsers)))
 	mux.Handle("POST /v1/users", s.authenticate("users:write", http.HandlerFunc(s.createUser)))
 	mux.Handle("GET /v1/audit", s.authenticate("operations:read", http.HandlerFunc(s.listAudit)))
@@ -668,6 +670,52 @@ func (s *Server) createRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, item)
+}
+
+func (s *Server) updateRole(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var input struct {
+		Name        string   `json:"name"`
+		Permissions []string `json:"permissions"`
+	}
+	if err := decodeJSON(w, r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_json", err.Error())
+		return
+	}
+	principal := principalFrom(r)
+	item, err := s.store.UpdateRole(r.Context(), principal, id, input.Name, input.Permissions)
+	if err != nil {
+		if strings.Contains(err.Error(), "role not found") {
+			writeError(w, http.StatusNotFound, "role_not_found", err.Error())
+			return
+		}
+		if strings.Contains(err.Error(), "cannot update system role") {
+			writeError(w, http.StatusForbidden, "system_role_protected", err.Error())
+			return
+		}
+		writeError(w, http.StatusUnprocessableEntity, "invalid_role", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, item)
+}
+
+func (s *Server) deleteRole(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	principal := principalFrom(r)
+	err := s.store.DeleteRole(r.Context(), principal, id)
+	if err != nil {
+		if strings.Contains(err.Error(), "role not found") {
+			writeError(w, http.StatusNotFound, "role_not_found", err.Error())
+			return
+		}
+		if strings.Contains(err.Error(), "cannot delete system role") {
+			writeError(w, http.StatusForbidden, "system_role_protected", err.Error())
+			return
+		}
+		internalError(w, err, "delete role", principal)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) listUsers(w http.ResponseWriter, r *http.Request) {

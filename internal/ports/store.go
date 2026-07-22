@@ -69,6 +69,8 @@ type Store interface {
 	ListPermissions(context.Context, domain.Principal) ([]domain.Permission, error)
 	ListRoles(context.Context, domain.Principal) ([]domain.Role, error)
 	CreateRole(context.Context, domain.Principal, string, []string) (domain.Role, error)
+	UpdateRole(ctx context.Context, p domain.Principal, id string, name string, permissions []string) (domain.Role, error)
+	DeleteRole(ctx context.Context, p domain.Principal, id string) error
 	ListUsers(context.Context, domain.Principal) ([]domain.User, error)
 	CreateUser(context.Context, domain.Principal, domain.User) (domain.User, error)
 	ListAuditEvents(context.Context, domain.Principal, int) ([]domain.AuditEvent, error)

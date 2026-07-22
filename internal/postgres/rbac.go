@@ -93,6 +93,70 @@ func (s *Store) CreateRole(ctx context.Context, p domain.Principal, name string,
 	return role, nil
 }
 
+func (s *Store) UpdateRole(ctx context.Context, p domain.Principal, id string, name string, permissions []string) (domain.Role, error) {
+	if id == "" || name == "" || len(permissions) == 0 {
+		return domain.Role{}, errors.New("id, name, and permissions are required")
+	}
+	for _, permission := range permissions {
+		var exists bool
+		err := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM permissions WHERE key=$1)`, permission).Scan(&exists)
+		if err != nil {
+			return domain.Role{}, err
+		}
+		if !exists {
+			return domain.Role{}, errors.New("unknown permission: " + permission)
+		}
+	}
+	var system bool
+	err := s.pool.QueryRow(ctx, `SELECT system FROM roles WHERE tenant_id=$1 AND id=$2`, p.TenantID, id).Scan(&system)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Role{}, errors.New("role not found")
+	} else if err != nil {
+		return domain.Role{}, err
+	}
+	if system {
+		return domain.Role{}, errors.New("cannot update system role")
+	}
+
+	var role domain.Role
+	err = s.pool.QueryRow(ctx, `UPDATE roles SET name=$1, permissions=$2
+		WHERE tenant_id=$3 AND id=$4 AND system=false
+		RETURNING id,name,permissions,system,created_at`,
+		name, permissions, p.TenantID, id).
+		Scan(&role.ID, &role.Name, &role.Permissions, &role.System, &role.CreatedAt)
+	if err != nil {
+		return domain.Role{}, err
+	}
+	_ = s.audit(ctx, p, "role.update", "role", role.ID, map[string]any{"name": name, "permissions": permissions})
+	return role, nil
+}
+
+func (s *Store) DeleteRole(ctx context.Context, p domain.Principal, id string) error {
+	if id == "" {
+		return errors.New("id is required")
+	}
+	var system bool
+	err := s.pool.QueryRow(ctx, `SELECT system FROM roles WHERE tenant_id=$1 AND id=$2`, p.TenantID, id).Scan(&system)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return errors.New("role not found")
+	} else if err != nil {
+		return err
+	}
+	if system {
+		return errors.New("cannot delete system role")
+	}
+
+	tag, err := s.pool.Exec(ctx, `DELETE FROM roles WHERE tenant_id=$1 AND id=$2 AND system=false`, p.TenantID, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return errors.New("role not found")
+	}
+	_ = s.audit(ctx, p, "role.delete", "role", id, nil)
+	return nil
+}
+
 func (s *Store) ListUsers(ctx context.Context, p domain.Principal) ([]domain.User, error) {
 	rows, err := s.pool.Query(ctx, `SELECT u.id,u.oidc_issuer,u.oidc_subject,COALESCE(u.email,''),
 		COALESCE(u.display_name,''),(u.password_hash IS NOT NULL),u.created_at,

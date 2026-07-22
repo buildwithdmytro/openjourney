@@ -1736,6 +1736,73 @@ func TestPermissionCatalogAndRoleValidation(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "unknown permission") {
 		t.Fatalf("CreateRole invalid expected unknown permission error, got %v", err)
 	}
+
+	// Update custom role permissions
+	updatedRole, err := store.UpdateRole(ctx, p, role.ID, "Updated Valid Role", []string{"events:write", "schemas:read"})
+	if err != nil {
+		t.Fatalf("UpdateRole custom role: %v", err)
+	}
+	if updatedRole.Name != "Updated Valid Role" || len(updatedRole.Permissions) != 2 {
+		t.Fatalf("UpdateRole result mismatch: %+v", updatedRole)
+	}
+
+	// Update custom role with unknown permission should be rejected
+	_, err = store.UpdateRole(ctx, p, role.ID, "Updated Invalid", []string{"invalid:scope"})
+	if err == nil || !strings.Contains(err.Error(), "unknown permission") {
+		t.Fatalf("UpdateRole with invalid scope expected error, got %v", err)
+	}
+
+	// Fetch system role
+	roles, err := store.ListRoles(ctx, p)
+	if err != nil {
+		t.Fatalf("ListRoles: %v", err)
+	}
+	var sysRole domain.Role
+	for _, r := range roles {
+		if r.System {
+			sysRole = r
+			break
+		}
+	}
+	if sysRole.ID == "" {
+		t.Fatal("expected system role Administrator to exist")
+	}
+
+	// Update system role should be blocked
+	_, err = store.UpdateRole(ctx, p, sysRole.ID, "Hacked System Role", []string{"*"})
+	if err == nil || !strings.Contains(err.Error(), "cannot update system role") {
+		t.Fatalf("UpdateRole system role expected error, got %v", err)
+	}
+
+	// Delete system role should be blocked
+	err = store.DeleteRole(ctx, p, sysRole.ID)
+	if err == nil || !strings.Contains(err.Error(), "cannot delete system role") {
+		t.Fatalf("DeleteRole system role expected error, got %v", err)
+	}
+
+	// Delete custom role should succeed
+	err = store.DeleteRole(ctx, p, role.ID)
+	if err != nil {
+		t.Fatalf("DeleteRole custom role: %v", err)
+	}
+
+	// Verify audit log entries for role mutation
+	audits, err := store.ListAuditEvents(ctx, p, 50)
+	if err != nil {
+		t.Fatalf("ListAuditEvents: %v", err)
+	}
+	hasUpdateAudit, hasDeleteAudit := false, false
+	for _, a := range audits {
+		if a.Action == "role.update" && a.ResourceID == role.ID {
+			hasUpdateAudit = true
+		}
+		if a.Action == "role.delete" && a.ResourceID == role.ID {
+			hasDeleteAudit = true
+		}
+	}
+	if !hasUpdateAudit || !hasDeleteAudit {
+		t.Fatalf("expected audit events for role update and delete, got update=%v delete=%v", hasUpdateAudit, hasDeleteAudit)
+	}
 }
 
 func TestMain(m *testing.M) {
