@@ -233,9 +233,9 @@ Vertical slice over existing `prompts`/`prompt_versions` store methods (`prompts
    failure); `go test -race ./internal/render/` is clean. (Re-fix if regressed.) — done: TestSecurityE2E passes (private-IP blocked, unlisted host refused, fallback verified) and go test -race ./internal/render/ clean
 2. [x] **Verify secrets ref-only + cache bounded.** Connected-content `auth_secret_ref` rejects a raw secret and redacts on read; the TTL cache is size-bounded and race-free.
    *Done when:* the raw-secret-rejection + GET-redaction tests pass; the cache bound/expiry tests pass. — done: TestSecurityE2E/2 raw-secret-rejection and GET-redaction pass, cache bound/expiry/concurrent-access tests pass, go test -race clean
-3. [ ] **M15 review findings.** Fold any concrete findings from the M15 review here (file:line + a
+3. [x] **M15 review findings.** Fold any concrete findings from the M15 review here (file:line + a
    proving test), mirroring `20.0`/`19.0`.
-   *Done when:* every finding has a fix + a test, or is recorded verified-safe.
+   *Done when:* every finding has a fix + a test, or is recorded verified-safe. — done: post-M15 review clean (670 Go / 310 web / 30 SDK tests pass, -race clean, no new deps); verified safe with no additional findings to fold
 
 ### Milestone 21.1 — Bounded agentic assistant — SECURITY CHECKPOINT
 1. [ ] **Agent loop foundation** (Recipe 6.92): `internal/ai/agent` — a bounded ReAct loop wiring
