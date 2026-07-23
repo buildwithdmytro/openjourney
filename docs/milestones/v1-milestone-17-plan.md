@@ -344,13 +344,13 @@ M12 library; 6-point registration across `App.tsx`/`Sidebar.tsx`/`CommandPalette
 
 
 ### Milestone 22.6 — Tamper-evident audit log — SECURITY CHECKPOINT
-1. [ ] **Append-only + hash chain** (Recipe 6.105): migration `059` (block-mutation trigger + REVOKE, copy
+1. [x] **Append-only + hash chain** (Recipe 6.105): migration `059` (block-mutation trigger + REVOKE, copy
    `045`; `seq`/`prev_hash`/`row_hash` + backfill); `audit()` (`admin.go:560`) computes the per-tenant
    hash chain in-tx; `GET /v1/audit/verify` recomputes and reports the first break.
    *Done when:* `UPDATE`/`DELETE` on `audit_events` is rejected (trigger + REVOKE); each row chains to the
    prior (`row_hash = sha256(prev_hash||row)`); `verify` returns ok for an intact chain and pinpoints a
    tampered row (simulated via a superuser edit in the test); concurrent writes keep a consistent chain
-   (`go test -race`).
+   (`go test -race`). — done: added migration 059 append-only trigger/REVOKE and per-tenant hash chain in audit() with GET /v1/audit/verify, verified by TestAuditAppendOnlyAndHashChain and TestAuditConcurrentWrites
    **Security checkpoint:** audit tampering is cryptographically detectable.
 2. [ ] **Broaden audit coverage**: emit `audit_events` on role/team/user provisioning, publish/enable,
    SCIM/SAML identity events, and DSR actions.

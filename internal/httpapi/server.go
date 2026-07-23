@@ -283,6 +283,7 @@ func (s *Server) buildMux() http.Handler {
 	mux.Handle("GET /v1/teams/{id}", s.authenticate("teams:read", http.HandlerFunc(s.getTeam)))
 	mux.Handle("PUT /v1/teams/{id}", s.authenticate("teams:write", http.HandlerFunc(s.updateTeam)))
 	mux.Handle("DELETE /v1/teams/{id}", s.authenticate("teams:write", http.HandlerFunc(s.deleteTeam)))
+	mux.Handle("GET /v1/audit/verify", s.authenticate("operations:read", http.HandlerFunc(s.verifyAudit)))
 	mux.Handle("GET /v1/audit", s.authenticate("operations:read", http.HandlerFunc(s.listAudit)))
 	mux.Handle("GET /v1/ai/activity", s.authenticate("ai:read", http.HandlerFunc(s.listAIActivity)))
 	mux.Handle("GET /v1/extensions/{id}/activity", s.authenticate("extensions:read", http.HandlerFunc(s.listExtensionActivity)))
@@ -791,6 +792,16 @@ func (s *Server) listAudit(w http.ResponseWriter, r *http.Request) {
 		items = []domain.AuditEvent{}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"audit_events": items})
+}
+
+func (s *Server) verifyAudit(w http.ResponseWriter, r *http.Request) {
+	principal := principalFrom(r)
+	result, err := s.store.VerifyAuditChain(r.Context(), principal)
+	if err != nil {
+		internalError(w, err, "verify audit chain", principal)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 func principalFrom(r *http.Request) domain.Principal {

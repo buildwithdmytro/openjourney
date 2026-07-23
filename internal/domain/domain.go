@@ -716,7 +716,20 @@ type AuditEvent struct {
 	ResourceID   string          `json:"resource_id,omitempty"`
 	Metadata     json.RawMessage `json:"metadata"`
 	OccurredAt   time.Time       `json:"occurred_at"`
+	Seq          int64           `json:"seq,omitempty"`
+	PrevHash     string          `json:"prev_hash,omitempty"`
+	RowHash      string          `json:"row_hash,omitempty"`
 }
+
+type AuditVerificationResult struct {
+	Status         string `json:"status"`
+	Intact         bool   `json:"intact"`
+	TotalEvents    int64  `json:"total_events"`
+	FirstBrokenSeq *int64 `json:"first_broken_seq,omitempty"`
+	FirstBrokenID  string `json:"first_broken_id,omitempty"`
+	Reason         string `json:"reason,omitempty"`
+}
+
 
 type Suppression struct {
 	ID            string    `json:"id"`

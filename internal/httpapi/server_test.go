@@ -43,6 +43,7 @@ type fakeStore struct {
 	listAIActivityFunc                     func(ctx context.Context, p domain.Principal, limit int) ([]domain.AIActivity, error)
 	listExtensionActivitiesFunc            func(ctx context.Context, p domain.Principal, extensionID string, limit int) ([]domain.ExtensionActivity, error)
 	getExtensionHealthFunc                 func(ctx context.Context, p domain.Principal, extensionID string) (domain.ExtensionHealth, error)
+	verifyAuditChainFunc                   func(ctx context.Context, p domain.Principal) (domain.AuditVerificationResult, error)
 }
 
 type fakeBlobStore struct {
@@ -195,6 +196,12 @@ func (f *fakeStore) EnforceRetention(context.Context, string) (domain.DataRetent
 }
 func (f *fakeStore) VerifyReplay(context.Context, domain.Principal) (domain.ReplayReport, error) {
 	return domain.ReplayReport{Match: true}, nil
+}
+func (f *fakeStore) VerifyAuditChain(ctx context.Context, p domain.Principal) (domain.AuditVerificationResult, error) {
+	if f.verifyAuditChainFunc != nil {
+		return f.verifyAuditChainFunc(ctx, p)
+	}
+	return domain.AuditVerificationResult{Status: "ok", Intact: true, TotalEvents: 0}, nil
 }
 func (f *fakeStore) ListPermissions(context.Context, domain.Principal) ([]domain.Permission, error) {
 	return []domain.Permission{{Key: "roles:read", Resource: "roles", Verb: "read"}}, nil
@@ -2139,5 +2146,21 @@ func TestUpdateAndDeleteRoleEndpoints(t *testing.T) {
 			t.Fatalf("expected 403 Forbidden, got %d body=%s", res.Code, res.Body.String())
 		}
 	})
+}
+
+func TestVerifyAuditChainEndpoint(t *testing.T) {
+	server := New(&fakeStore{scopes: []string{"operations:read"}}, 75)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/audit/verify", nil)
+	req.Header.Set("Authorization", "Bearer test-key")
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d body=%s", res.Code, res.Body.String())
+	}
+	if !strings.Contains(res.Body.String(), `"status":"ok"`) || !strings.Contains(res.Body.String(), `"intact":true`) {
+		t.Fatalf("expected status ok intact true, got %s", res.Body.String())
+	}
 }
 

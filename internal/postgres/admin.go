@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 	"github.com/buildwithdmytro/openjourney/internal/schemas"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -533,12 +535,32 @@ func (s *Store) updateDeadLetter(ctx context.Context, p domain.Principal, queue,
 	return tag.RowsAffected(), err
 }
 
+func ComputeAuditRowHash(prevHash, id, tenantID, workspaceID, appID, actorType, actorID, action, resourceType, resourceID string, metadata []byte, occurredAt time.Time, seq int64) string {
+	canonical := fmt.Sprintf("%s|%d|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s",
+		prevHash,
+		seq,
+		id,
+		tenantID,
+		workspaceID,
+		appID,
+		actorType,
+		actorID,
+		action,
+		resourceType,
+		resourceID,
+		string(metadata),
+		occurredAt.UTC().Format(time.RFC3339Nano),
+	)
+	h := sha256.Sum256([]byte(canonical))
+	return hex.EncodeToString(h[:])
+}
+
 func (s *Store) ListAuditEvents(ctx context.Context, p domain.Principal, limit int) ([]domain.AuditEvent, error) {
 	if limit < 1 || limit > 500 {
 		limit = 100
 	}
 	rows, err := s.pool.Query(ctx, `SELECT id,actor_type,actor_id,action,resource_type,
-		COALESCE(resource_id,''),metadata,occurred_at FROM audit_events
+		COALESCE(resource_id,''),metadata,occurred_at,COALESCE(seq,0),COALESCE(prev_hash,''),COALESCE(row_hash,'') FROM audit_events
 		WHERE tenant_id=$1 AND workspace_id=$2 ORDER BY occurred_at DESC,id DESC LIMIT $3`,
 		p.TenantID, p.WorkspaceID, limit)
 	if err != nil {
@@ -549,7 +571,8 @@ func (s *Store) ListAuditEvents(ctx context.Context, p domain.Principal, limit i
 	for rows.Next() {
 		var item domain.AuditEvent
 		if err := rows.Scan(&item.ID, &item.ActorType, &item.ActorID, &item.Action,
-			&item.ResourceType, &item.ResourceID, &item.Metadata, &item.OccurredAt); err != nil {
+			&item.ResourceType, &item.ResourceID, &item.Metadata, &item.OccurredAt,
+			&item.Seq, &item.PrevHash, &item.RowHash); err != nil {
 			return nil, err
 		}
 		result = append(result, item)
@@ -557,16 +580,113 @@ func (s *Store) ListAuditEvents(ctx context.Context, p domain.Principal, limit i
 	return result, rows.Err()
 }
 
+func (s *Store) VerifyAuditChain(ctx context.Context, p domain.Principal) (domain.AuditVerificationResult, error) {
+	rows, err := s.pool.Query(ctx, `SELECT id, tenant_id, workspace_id, COALESCE(app_id::text, ''), actor_type, actor_id, action, resource_type, COALESCE(resource_id, ''), metadata, occurred_at, seq, prev_hash, row_hash
+		FROM audit_events WHERE tenant_id = $1 ORDER BY seq ASC`, p.TenantID)
+	if err != nil {
+		return domain.AuditVerificationResult{}, err
+	}
+	defer rows.Close()
+
+	var total int64
+	expectedPrevHash := ""
+
+	for rows.Next() {
+		total++
+		var (
+			id, tenantID, workspaceID, appID, actType, actID, act, resType, resID, prevHash, rowHash string
+			metadata                                                                                 []byte
+			occurredAt                                                                               time.Time
+			seq                                                                                      int64
+		)
+		if err := rows.Scan(&id, &tenantID, &workspaceID, &appID, &actType, &actID, &act, &resType, &resID, &metadata, &occurredAt, &seq, &prevHash, &rowHash); err != nil {
+			return domain.AuditVerificationResult{}, err
+		}
+
+		if prevHash != expectedPrevHash {
+			return domain.AuditVerificationResult{
+				Status:         "tampered",
+				Intact:         false,
+				TotalEvents:    total,
+				FirstBrokenSeq: &seq,
+				FirstBrokenID:  id,
+				Reason:         fmt.Sprintf("prev_hash mismatch at seq %d", seq),
+			}, nil
+		}
+
+		computedHash := ComputeAuditRowHash(prevHash, id, tenantID, workspaceID, appID, actType, actID, act, resType, resID, metadata, occurredAt, seq)
+		if rowHash != computedHash {
+			return domain.AuditVerificationResult{
+				Status:         "tampered",
+				Intact:         false,
+				TotalEvents:    total,
+				FirstBrokenSeq: &seq,
+				FirstBrokenID:  id,
+				Reason:         fmt.Sprintf("row_hash mismatch at seq %d", seq),
+			}, nil
+		}
+
+		expectedPrevHash = rowHash
+	}
+
+	if err := rows.Err(); err != nil {
+		return domain.AuditVerificationResult{}, err
+	}
+
+	return domain.AuditVerificationResult{
+		Status:      "ok",
+		Intact:      true,
+		TotalEvents: total,
+	}, nil
+}
+
 func (s *Store) audit(ctx context.Context, p domain.Principal, action, resourceType, resourceID string, metadata map[string]any) error {
 	if metadata == nil {
 		metadata = map[string]any{}
 	}
 	data, _ := json.Marshal(metadata)
-	_, err := s.pool.Exec(ctx, `INSERT INTO audit_events
-		(tenant_id,workspace_id,app_id,actor_type,actor_id,action,resource_type,resource_id,metadata)
-		VALUES($1,$2,NULLIF($3,'')::uuid,$4,$5,$6,$7,$8,$9)`,
-		p.TenantID, p.WorkspaceID, p.AppID, actorType(p), actorID(p), action, resourceType, resourceID, data)
-	return err
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	var lockKey int64
+	err = tx.QueryRow(ctx, "SELECT hashtext('audit:' || $1)", p.TenantID).Scan(&lockKey)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1)", lockKey); err != nil {
+		return err
+	}
+
+	var lastSeq int64
+	var lastHash string
+	err = tx.QueryRow(ctx, `SELECT seq, row_hash FROM audit_events WHERE tenant_id = $1 ORDER BY seq DESC LIMIT 1`, p.TenantID).Scan(&lastSeq, &lastHash)
+	if errors.Is(err, pgx.ErrNoRows) {
+		lastSeq = 0
+		lastHash = ""
+	} else if err != nil {
+		return err
+	}
+
+	nextSeq := lastSeq + 1
+	prevHash := lastHash
+	eventID := uuid.NewString()
+	occurredAt := time.Now().UTC()
+
+	rowHash := ComputeAuditRowHash(prevHash, eventID, p.TenantID, p.WorkspaceID, p.AppID, actorType(p), actorID(p), action, resourceType, resourceID, data, occurredAt, nextSeq)
+
+	_, err = tx.Exec(ctx, `INSERT INTO audit_events
+		(id, tenant_id, workspace_id, app_id, actor_type, actor_id, action, resource_type, resource_id, metadata, occurred_at, seq, prev_hash, row_hash)
+		VALUES($1, $2, $3, NULLIF($4,'')::uuid, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+		eventID, p.TenantID, p.WorkspaceID, p.AppID, actorType(p), actorID(p), action, resourceType, resourceID, data, occurredAt, nextSeq, prevHash, rowHash)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
 }
 
 func actorID(p domain.Principal) string {
