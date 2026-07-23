@@ -352,10 +352,10 @@ M12 library; 6-point registration across `App.tsx`/`Sidebar.tsx`/`CommandPalette
    tampered row (simulated via a superuser edit in the test); concurrent writes keep a consistent chain
    (`go test -race`). — done: added migration 059 append-only trigger/REVOKE and per-tenant hash chain in audit() with GET /v1/audit/verify, verified by TestAuditAppendOnlyAndHashChain and TestAuditConcurrentWrites
    **Security checkpoint:** audit tampering is cryptographically detectable.
-2. [ ] **Broaden audit coverage**: emit `audit_events` on role/team/user provisioning, publish/enable,
+2. [x] **Broaden audit coverage**: emit `audit_events` on role/team/user provisioning, publish/enable,
    SCIM/SAML identity events, and DSR actions.
    *Done when:* each governed mutation writes an audit row with actor/resource/action; a test asserts
-   coverage for a representative set; no PII leaks into `metadata`.
+   coverage for a representative set; no PII leaks into `metadata`. — done: emitted audit events across role/team/user/SAML/SCIM/policy/DSR mutations and verified with TestGovernedMutationsBroadenAuditCoverage with zero PII leakage
 
 ### Milestone 22.7 — Audit viewer UI
 1. [ ] **Filterable audit viewer** (Recipe 6.107): `GET /v1/audit` gains actor/resource/action/time

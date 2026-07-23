@@ -164,9 +164,17 @@ func (s *Store) ExportPrivacyData(ctx context.Context, requestID string) (domain
 }
 
 func (s *Store) CompletePrivacyExport(ctx context.Context, requestID, artifactKey string) error {
-	_, err := s.pool.Exec(ctx, `UPDATE privacy_requests SET status='complete',artifact_key=$2,
-		completed_at=now() WHERE id=$1`, requestID, artifactKey)
-	return err
+	var tenantID, workspaceID, appID string
+	err := s.pool.QueryRow(ctx, `UPDATE privacy_requests SET status='complete',artifact_key=$2,
+		completed_at=now() WHERE id=$1 RETURNING tenant_id, workspace_id, app_id`, requestID, artifactKey).
+		Scan(&tenantID, &workspaceID, &appID)
+	if err != nil {
+		return err
+	}
+	_ = s.audit(ctx, domain.Principal{
+		TenantID: tenantID, WorkspaceID: workspaceID, AppID: appID, ActorType: "system",
+	}, "privacy.export.complete", "privacy_request", requestID, map[string]any{"artifact_key": artifactKey})
+	return nil
 }
 
 func (s *Store) DeletePrivacyData(ctx context.Context, requestID string) ([]string, error) {
@@ -263,7 +271,13 @@ func (s *Store) DeletePrivacyData(ctx context.Context, requestID string) ([]stri
 		WHERE id=$1`, requestID); err != nil {
 		return nil, err
 	}
-	return eventIDs, tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	_ = s.audit(ctx, domain.Principal{
+		TenantID: tenantID, WorkspaceID: workspaceID, AppID: appID, ActorType: "system",
+	}, "privacy.delete.complete", "privacy_request", requestID, map[string]any{"deleted_event_count": len(eventIDs)})
+	return eventIDs, nil
 }
 
 func (s *Store) EnforceRetention(ctx context.Context, tenantID string) (domain.DataRetentionReport, error) {
