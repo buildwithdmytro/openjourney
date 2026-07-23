@@ -103,7 +103,12 @@ func (s *Server) publishForm(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "human_approval_required", err.Error())
 		return
 	}
+	if errors.Is(err, postgres.ErrSelfApproval) || errors.Is(err, publishing.ErrSelfApproval) {
+		writeError(w, http.StatusForbidden, "self_approval_forbidden", err.Error())
+		return
+	}
 	if errors.Is(err, postgres.ErrNotFound) {
+
 		writeError(w, http.StatusNotFound, "not_found", "form not found")
 		return
 	}

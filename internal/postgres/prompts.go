@@ -269,6 +269,10 @@ func (s *Store) PublishPromptVersion(ctx context.Context, p domain.Principal, pr
 	if p.ActorType != "user" || p.UserID == "" {
 		return domain.PromptVersion{}, ErrUnauthorized
 	}
+	if err := s.CheckMakerChecker(ctx, p, "prompts", promptID, ""); err != nil {
+		return domain.PromptVersion{}, err
+	}
+
 
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {

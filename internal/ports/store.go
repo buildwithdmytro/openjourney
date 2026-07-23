@@ -340,7 +340,13 @@ type Store interface {
 	GetExtensionBudgetUsage(ctx context.Context, tenantID, workspaceID, extensionID, period string) (int64, error)
 	GetExtensionInvocationCountLastMin(ctx context.Context, tenantID, workspaceID, extensionID string) (int, error)
 	ListActiveIngestionTransforms(ctx context.Context, p domain.Principal, eventType string) ([]domain.Extension, error)
+
+	GetMakerCheckerPolicy(ctx context.Context, p domain.Principal, resourceType string) (bool, error)
+	SetMakerCheckerPolicy(ctx context.Context, p domain.Principal, resourceType string, requireChecker bool) (domain.MakerCheckerPolicy, error)
+	ListMakerCheckerPolicies(ctx context.Context, p domain.Principal) ([]domain.MakerCheckerPolicy, error)
+	CheckMakerChecker(ctx context.Context, p domain.Principal, resourceType, resourceID string, creatorOrEditorID string) error
 }
+
 
 // AIActivityRecorder is implemented by stores that persist the immutable AI
 // activity record and its corresponding ai.action audit event.

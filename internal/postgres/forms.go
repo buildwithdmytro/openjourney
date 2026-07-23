@@ -78,6 +78,10 @@ func (s *Store) PublishForm(ctx context.Context, p domain.Principal, id, publish
 	if publishedBy == "" || manifestKey == "" || len(definition) == 0 {
 		return domain.FormVersion{}, errors.New("publisher, manifest, and definition are required")
 	}
+	if err := s.CheckMakerChecker(ctx, p, "forms", id, ""); err != nil {
+		return domain.FormVersion{}, err
+	}
+
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return domain.FormVersion{}, err

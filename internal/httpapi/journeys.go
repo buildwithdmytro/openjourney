@@ -8,6 +8,7 @@ import (
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 	journeyflow "github.com/buildwithdmytro/openjourney/internal/journey"
 	"github.com/buildwithdmytro/openjourney/internal/postgres"
+	"github.com/buildwithdmytro/openjourney/internal/publishing"
 )
 
 func (s *Server) createJourney(w http.ResponseWriter, r *http.Request) {
@@ -104,6 +105,11 @@ func (s *Server) publishJourney(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "human_approval_required", "publishing requires an authenticated user")
 		return
 	}
+	if errors.Is(err, postgres.ErrSelfApproval) || errors.Is(err, publishing.ErrSelfApproval) {
+		writeError(w, http.StatusForbidden, "self_approval_forbidden", err.Error())
+		return
+	}
+
 	if err != nil {
 		internalError(w, err, "publish journey", principal)
 		return

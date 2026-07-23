@@ -202,6 +202,10 @@ func (s *Store) PublishFeatureFlag(ctx context.Context, p domain.Principal, flag
 	if manifestKey == "" {
 		return domain.FeatureFlagVersion{}, errors.New("manifest key is required")
 	}
+	if err := s.CheckMakerChecker(ctx, p, "flags", flagID, ""); err != nil {
+		return domain.FeatureFlagVersion{}, err
+	}
+
 
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {

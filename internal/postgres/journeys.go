@@ -113,6 +113,10 @@ func (s *Store) PublishJourney(ctx context.Context, p domain.Principal, journeyI
 	if manifestKey == "" {
 		return domain.JourneyVersion{}, errors.New("manifest key is required")
 	}
+	if err := s.CheckMakerChecker(ctx, p, "journeys", journeyID, ""); err != nil {
+		return domain.JourneyVersion{}, err
+	}
+
 
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {

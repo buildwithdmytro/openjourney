@@ -73,6 +73,10 @@ func (s *Store) PublishLandingPage(ctx context.Context, p domain.Principal, id, 
 	if publishedBy == "" || manifestKey == "" || len(definition) == 0 {
 		return domain.PageVersion{}, errors.New("publisher, manifest, and definition are required")
 	}
+	if err := s.CheckMakerChecker(ctx, p, "pages", id, ""); err != nil {
+		return domain.PageVersion{}, err
+	}
+
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return domain.PageVersion{}, err

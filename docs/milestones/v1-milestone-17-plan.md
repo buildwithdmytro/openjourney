@@ -333,14 +333,15 @@ M12 library; 6-point registration across `App.tsx`/`Sidebar.tsx`/`CommandPalette
    **Security checkpoint:** signature verification is library-owned; a forged assertion never authenticates. — done: added saml_providers config in 058, integrated crewjam/saml library, metadata/login/ACS endpoints, and verified valid, tampered, unsigned, and disabled provider/user assertions with TestSAMLSSO_E2E
 
 ### Milestone 22.5 — Maker-checker (separation of duties)
-1. [ ] **Creator ≠ approver enforcement** (Recipe 6.104): `maker_checker_policies` (in `060`); the
+1. [x] **Creator ≠ approver enforcement** (Recipe 6.104): `maker_checker_policies` (in `060`); the
    governed publish path (`publishing.go:33` + per-resource handlers) rejects self-approval
    (`principal.UserID` == creator/last-editor) when the policy requires a checker; the approver is recorded
    (the now-live `approver_user_id`) + audited.
    *Done when:* for a maker-checker-required resource, the creator publishing their own draft is 403
    `self_approval_forbidden`; a different authorized user can approve/publish it; the approver id is
    recorded + audited; the human-actor gate still applies; tests cover self-approval-blocked and
-   distinct-approver-allowed.
+   distinct-approver-allowed. — done: added migration 060 maker_checker_policies table, CheckMakerChecker store logic & HTTP handlers returning 403 self_approval_forbidden for creator self-approval while allowing distinct user approval with audit logging, verified by TestMakerCheckerPoliciesAndEnforcement and TestMakerCheckerHTTPEndpoints
+
 
 ### Milestone 22.6 — Tamper-evident audit log — SECURITY CHECKPOINT
 1. [ ] **Append-only + hash chain** (Recipe 6.105): migration `059` (block-mutation trigger + REVOKE, copy

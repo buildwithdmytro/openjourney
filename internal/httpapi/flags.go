@@ -12,6 +12,7 @@ import (
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 	"github.com/buildwithdmytro/openjourney/internal/flags"
 	"github.com/buildwithdmytro/openjourney/internal/postgres"
+	"github.com/buildwithdmytro/openjourney/internal/publishing"
 )
 
 func (s *Server) createFeatureFlag(w http.ResponseWriter, r *http.Request) {
@@ -100,6 +101,11 @@ func (s *Server) publishFeatureFlag(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "flag not found")
 		return
 	}
+	if errors.Is(err, postgres.ErrSelfApproval) || errors.Is(err, publishing.ErrSelfApproval) {
+		writeError(w, http.StatusForbidden, "self_approval_forbidden", err.Error())
+		return
+	}
+
 	if err != nil {
 		internalError(w, err, "publish flag", principal)
 		return

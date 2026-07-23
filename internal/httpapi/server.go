@@ -224,6 +224,11 @@ func (s *Server) buildMux() http.Handler {
 	mux.Handle("GET /v1/messages/{id}", s.authenticate("messages:read", http.HandlerFunc(s.getMessage)))
 	mux.Handle("GET /v1/profiles/{profileId}/inbox", s.authenticate("messages:read", http.HandlerFunc(s.getProfileInbox)))
 
+	mux.Handle("GET /v1/maker-checker/policies", s.authenticate("roles:read", http.HandlerFunc(s.listMakerCheckerPolicies)))
+	mux.Handle("GET /v1/maker-checker/policies/{resource_type}", s.authenticate("roles:read", http.HandlerFunc(s.getMakerCheckerPolicy)))
+	mux.Handle("PUT /v1/maker-checker/policies/{resource_type}", s.authenticate("roles:write", http.HandlerFunc(s.setMakerCheckerPolicy)))
+
+
 	mux.HandleFunc("GET /r/{token}", s.redirectLink)
 	mux.HandleFunc("GET /s/{slug}", s.redirectShortLink)
 	mux.HandleFunc("GET /o/{token}", s.openPixel)

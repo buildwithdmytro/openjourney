@@ -1597,3 +1597,13 @@ type BulkUpsertResult struct {
 	InsertedCount int64
 	UpdatedCount  int64
 }
+
+type MakerCheckerPolicy struct {
+	ID             string    `json:"id"`
+	TenantID       string    `json:"tenant_id"`
+	ResourceType   string    `json:"resource_type"`
+	RequireChecker bool      `json:"require_checker"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
