@@ -261,6 +261,13 @@ func (s *Server) buildMux() http.Handler {
 	mux.Handle("PUT /v1/scim/v2/Users/{id}", s.scimAuthenticate(http.HandlerFunc(s.replaceSCIMUser)))
 	mux.Handle("PATCH /v1/scim/v2/Users/{id}", s.scimAuthenticate(http.HandlerFunc(s.replaceSCIMUser)))
 	mux.Handle("DELETE /v1/scim/v2/Users/{id}", s.scimAuthenticate(http.HandlerFunc(s.deleteSCIMUser)))
+	mux.Handle("GET /v1/scim/v2/Groups", s.scimAuthenticate(http.HandlerFunc(s.listSCIMGroups)))
+	mux.Handle("POST /v1/scim/v2/Groups", s.scimAuthenticate(http.HandlerFunc(s.createSCIMGroup)))
+	mux.Handle("GET /v1/scim/v2/Groups/{id}", s.scimAuthenticate(http.HandlerFunc(s.getSCIMGroup)))
+	mux.Handle("PUT /v1/scim/v2/Groups/{id}", s.scimAuthenticate(http.HandlerFunc(s.replaceSCIMGroup)))
+	mux.Handle("PATCH /v1/scim/v2/Groups/{id}", s.scimAuthenticate(http.HandlerFunc(s.patchSCIMGroup)))
+	mux.Handle("DELETE /v1/scim/v2/Groups/{id}", s.scimAuthenticate(http.HandlerFunc(s.deleteSCIMGroup)))
+
 	mux.Handle("GET /v1/teams", s.authenticate("teams:read", http.HandlerFunc(s.listTeams)))
 	mux.Handle("POST /v1/teams", s.authenticate("teams:write", http.HandlerFunc(s.createTeam)))
 	mux.Handle("GET /v1/teams/{id}", s.authenticate("teams:read", http.HandlerFunc(s.getTeam)))

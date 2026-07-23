@@ -9,3 +9,15 @@ CREATE TABLE IF NOT EXISTS scim_tokens (
     disabled_at timestamptz
 );
 CREATE INDEX IF NOT EXISTS scim_tokens_tenant_idx ON scim_tokens(tenant_id);
+
+CREATE TABLE IF NOT EXISTS scim_group_mappings (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    external_group text NOT NULL,
+    team_id uuid NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE(tenant_id, external_group)
+);
+CREATE INDEX IF NOT EXISTS scim_group_mappings_tenant_idx ON scim_group_mappings(tenant_id);
+

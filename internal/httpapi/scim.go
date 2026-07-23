@@ -17,7 +17,14 @@ type scimStore interface {
 	GetSCIMUser(context.Context, string, string) (domain.User, error)
 	CreateSCIMUser(context.Context, domain.Principal, domain.User, bool) (domain.User, error)
 	UpdateSCIMUser(context.Context, domain.Principal, string, domain.User, bool) (domain.User, error)
+	ListSCIMGroups(context.Context, string) ([]domain.SCIMGroup, error)
+	GetSCIMGroup(context.Context, string, string) (domain.SCIMGroup, error)
+	CreateSCIMGroup(context.Context, domain.Principal, domain.SCIMGroup) (domain.SCIMGroup, error)
+	UpdateSCIMGroup(context.Context, domain.Principal, string, domain.SCIMGroup) (domain.SCIMGroup, error)
+	PatchSCIMGroup(context.Context, domain.Principal, string, domain.SCIMGroupPatch) (domain.SCIMGroup, error)
+	DeleteSCIMGroup(context.Context, domain.Principal, string) error
 }
+
 
 func (s *Server) scimAuthenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -158,3 +165,180 @@ func (s *Server) deleteSCIMUser(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, scimUserResponse(updated))
 }
+
+type scimGroupMemberResponse struct {
+	Value   string `json:"value"`
+	Display string `json:"display,omitempty"`
+	Ref     string `json:"$ref,omitempty"`
+}
+
+type scimGroupResponse struct {
+	Schemas     []string                  `json:"schemas"`
+	ID          string                    `json:"id"`
+	DisplayName string                    `json:"displayName"`
+	Members     []scimGroupMemberResponse `json:"members"`
+}
+
+func scimGroupToResponse(g domain.SCIMGroup) scimGroupResponse {
+	members := make([]scimGroupMemberResponse, 0, len(g.Members))
+	for _, m := range g.Members {
+		members = append(members, scimGroupMemberResponse{
+			Value:   m.Value,
+			Display: m.Display,
+			Ref:     m.Ref,
+		})
+	}
+	return scimGroupResponse{
+		Schemas:     []string{"urn:ietf:params:scim:schemas:core:2.0:Group"},
+		ID:          g.ID,
+		DisplayName: g.DisplayName,
+		Members:     members,
+	}
+}
+
+func (s *Server) listSCIMGroups(w http.ResponseWriter, r *http.Request) {
+	p := principalFrom(r)
+	groups, err := s.store.(scimStore).ListSCIMGroups(r.Context(), p.TenantID)
+	if err != nil {
+		internalError(w, err, "list SCIM groups", p)
+		return
+	}
+	resources := make([]scimGroupResponse, 0, len(groups))
+	for _, group := range groups {
+		resources = append(resources, scimGroupToResponse(group))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"schemas":      []string{"urn:ietf:params:scim:api:messages:2.0:ListResponse"},
+		"totalResults": len(resources),
+		"Resources":    resources,
+	})
+}
+
+func (s *Server) getSCIMGroup(w http.ResponseWriter, r *http.Request) {
+	p := principalFrom(r)
+	group, err := s.store.(scimStore).GetSCIMGroup(r.Context(), p.TenantID, r.PathValue("id"))
+	if errors.Is(err, postgres.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "SCIM group not found")
+		return
+	}
+	if err != nil {
+		internalError(w, err, "get SCIM group", p)
+		return
+	}
+	writeJSON(w, http.StatusOK, scimGroupToResponse(group))
+}
+
+func (s *Server) createSCIMGroup(w http.ResponseWriter, r *http.Request) {
+	var in scimGroupResponse
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_json", err.Error())
+		return
+	}
+	members := make([]domain.SCIMGroupMember, 0, len(in.Members))
+	for _, m := range in.Members {
+		members = append(members, domain.SCIMGroupMember{Value: m.Value, Display: m.Display, Ref: m.Ref})
+	}
+	g := domain.SCIMGroup{
+		DisplayName: in.DisplayName,
+		Members:     members,
+	}
+	p := principalFrom(r)
+	created, err := s.store.(scimStore).CreateSCIMGroup(r.Context(), p, g)
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "invalid_group", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, scimGroupToResponse(created))
+}
+
+func (s *Server) replaceSCIMGroup(w http.ResponseWriter, r *http.Request) {
+	var in scimGroupResponse
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_json", err.Error())
+		return
+	}
+	members := make([]domain.SCIMGroupMember, 0, len(in.Members))
+	for _, m := range in.Members {
+		members = append(members, domain.SCIMGroupMember{Value: m.Value, Display: m.Display, Ref: m.Ref})
+	}
+	g := domain.SCIMGroup{
+		DisplayName: in.DisplayName,
+		Members:     members,
+	}
+	p := principalFrom(r)
+	updated, err := s.store.(scimStore).UpdateSCIMGroup(r.Context(), p, r.PathValue("id"), g)
+	if errors.Is(err, postgres.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "SCIM group not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "invalid_group", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, scimGroupToResponse(updated))
+}
+
+func (s *Server) patchSCIMGroup(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Schemas    []string `json:"schemas,omitempty"`
+		Operations []struct {
+			Op    string          `json:"op"`
+			Path  string          `json:"path,omitempty"`
+			Value json.RawMessage `json:"value,omitempty"`
+		} `json:"Operations,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_json", err.Error())
+		return
+	}
+
+	patch := domain.SCIMGroupPatch{}
+	for _, op := range body.Operations {
+		var members []domain.SCIMGroupMember
+		if len(op.Value) > 0 {
+			var memberList []scimGroupMemberResponse
+			if err := json.Unmarshal(op.Value, &memberList); err == nil {
+				for _, m := range memberList {
+					members = append(members, domain.SCIMGroupMember{Value: m.Value, Display: m.Display, Ref: m.Ref})
+				}
+			} else {
+				var singleMember scimGroupMemberResponse
+				if err := json.Unmarshal(op.Value, &singleMember); err == nil {
+					members = append(members, domain.SCIMGroupMember{Value: singleMember.Value, Display: singleMember.Display, Ref: singleMember.Ref})
+				}
+			}
+		}
+		patch.Operations = append(patch.Operations, domain.SCIMGroupOperation{
+			Op:    op.Op,
+			Path:  op.Path,
+			Value: members,
+		})
+	}
+
+	p := principalFrom(r)
+	updated, err := s.store.(scimStore).PatchSCIMGroup(r.Context(), p, r.PathValue("id"), patch)
+	if errors.Is(err, postgres.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "SCIM group not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "invalid_patch", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, scimGroupToResponse(updated))
+}
+
+func (s *Server) deleteSCIMGroup(w http.ResponseWriter, r *http.Request) {
+	p := principalFrom(r)
+	err := s.store.(scimStore).DeleteSCIMGroup(r.Context(), p, r.PathValue("id"))
+	if errors.Is(err, postgres.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "SCIM group not found")
+		return
+	}
+	if err != nil {
+		internalError(w, err, "delete SCIM group", p)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+

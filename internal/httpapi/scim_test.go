@@ -38,6 +38,25 @@ func (s *scimTestStore) UpdateSCIMUser(_ context.Context, _ domain.Principal, id
 	s.updatedActive = active
 	return domain.User{ID: id, OIDCSubject: "alice"}, nil
 }
+func (s *scimTestStore) ListSCIMGroups(context.Context, string) ([]domain.SCIMGroup, error) {
+	return nil, nil
+}
+func (s *scimTestStore) GetSCIMGroup(context.Context, string, string) (domain.SCIMGroup, error) {
+	return domain.SCIMGroup{ID: "g-1", DisplayName: "DevOps"}, nil
+}
+func (s *scimTestStore) CreateSCIMGroup(context.Context, domain.Principal, domain.SCIMGroup) (domain.SCIMGroup, error) {
+	return domain.SCIMGroup{ID: "g-1", DisplayName: "DevOps"}, nil
+}
+func (s *scimTestStore) UpdateSCIMGroup(context.Context, domain.Principal, string, domain.SCIMGroup) (domain.SCIMGroup, error) {
+	return domain.SCIMGroup{ID: "g-1", DisplayName: "DevOps"}, nil
+}
+func (s *scimTestStore) PatchSCIMGroup(context.Context, domain.Principal, string, domain.SCIMGroupPatch) (domain.SCIMGroup, error) {
+	return domain.SCIMGroup{ID: "g-1", DisplayName: "DevOps"}, nil
+}
+func (s *scimTestStore) DeleteSCIMGroup(context.Context, domain.Principal, string) error {
+	return nil
+}
+
 
 func TestSCIMBearerIsDedicatedAndInvalidTokensAre401(t *testing.T) {
 	store := &scimTestStore{principal: domain.Principal{TenantID: "tenant-1", ActorType: "scim"}}

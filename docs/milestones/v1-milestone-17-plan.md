@@ -315,10 +315,11 @@ M12 library; 6-point registration across `App.tsx`/`Sidebar.tsx`/`CommandPalette
    `/v1/scim/v2/Users` list/get/create/patch/delete → `CreateUser`/update/`disabled_at`.
    *Done when:* an IdP can create, update, and DEPROVISION (deactivate) a user via SCIM; a disabled user
    fails auth; an invalid/again SCIM token is 401; the endpoints are tenant-scoped; tests cover each. — done: added migration 058, hashed tenant-scoped SCIM bearer middleware, Users list/get/create/replace/patch/delete with disabled_at deprovisioning, and verified invalid-token 401 plus deprovision tests (TestSCIMBearerIsDedicatedAndInvalidTokensAre401, TestSCIMDeleteDeprovisionsUser)
-2. [ ] **SCIM Groups → teams** (Recipe 6.102): `/v1/scim/v2/Groups` + `scim_group_mappings`; a SCIM group
+2. [x] **SCIM Groups → teams** (Recipe 6.102): `/v1/scim/v2/Groups` + `scim_group_mappings`; a SCIM group
    maps to a team, and membership changes sync `team_members`.
    *Done when:* a SCIM group create/patch provisions a team and its members get the team's roles; removing
-   a member revokes the team scopes; integration test green.
+   a member revokes the team scopes; integration test green. — done: added scim_group_mappings table, /v1/scim/v2/Groups CRUD & patch endpoints, team member syncing, and verified with TestSCIMGroupsProvisionTeamsAndSyncScopes
+
 
 ### Milestone 22.4 — SAML SSO — SECURITY CHECKPOINT
 1. [ ] **SAML SP + ACS (library)** (Recipe 6.103): add the vetted SAML library (the ONE allowed dep,

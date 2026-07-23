@@ -665,6 +665,29 @@ type User struct {
 	DisabledAt  *time.Time `json:"-"`
 }
 
+type SCIMGroupMember struct {
+	Value   string `json:"value"`
+	Display string `json:"display,omitempty"`
+	Ref     string `json:"$ref,omitempty"`
+}
+
+type SCIMGroup struct {
+	ID          string            `json:"id,omitempty"`
+	DisplayName string            `json:"displayName"`
+	Members     []SCIMGroupMember `json:"members"`
+}
+
+type SCIMGroupOperation struct {
+	Op    string            `json:"op"`
+	Path  string            `json:"path,omitempty"`
+	Value []SCIMGroupMember `json:"value,omitempty"`
+}
+
+type SCIMGroupPatch struct {
+	Operations []SCIMGroupOperation `json:"operations"`
+}
+
+
 type AuthSession struct {
 	AccessToken string    `json:"access_token"`
 	TokenType   string    `json:"token_type"`
