@@ -556,13 +556,51 @@ func ComputeAuditRowHash(prevHash, id, tenantID, workspaceID, appID, actorType, 
 }
 
 func (s *Store) ListAuditEvents(ctx context.Context, p domain.Principal, limit int) ([]domain.AuditEvent, error) {
+	return s.ListAuditEventsFiltered(ctx, p, domain.AuditFilter{Limit: limit})
+}
+
+func (s *Store) ListAuditEventsFiltered(ctx context.Context, p domain.Principal, filter domain.AuditFilter) ([]domain.AuditEvent, error) {
+	limit := filter.Limit
 	if limit < 1 || limit > 500 {
 		limit = 100
 	}
-	rows, err := s.pool.Query(ctx, `SELECT id,actor_type,actor_id,action,resource_type,
+	var sb strings.Builder
+	sb.WriteString(`SELECT id,actor_type,actor_id,action,resource_type,
 		COALESCE(resource_id,''),metadata,occurred_at,COALESCE(seq,0),COALESCE(prev_hash,''),COALESCE(row_hash,'') FROM audit_events
-		WHERE tenant_id=$1 AND workspace_id=$2 ORDER BY occurred_at DESC,id DESC LIMIT $3`,
-		p.TenantID, p.WorkspaceID, limit)
+		WHERE tenant_id=$1 AND workspace_id=$2`)
+	args := []any{p.TenantID, p.WorkspaceID}
+	paramIdx := 3
+
+	if filter.ActorID != "" {
+		sb.WriteString(fmt.Sprintf(" AND actor_id=$%d", paramIdx))
+		args = append(args, filter.ActorID)
+		paramIdx++
+	}
+	if filter.ResourceType != "" {
+		sb.WriteString(fmt.Sprintf(" AND resource_type=$%d", paramIdx))
+		args = append(args, filter.ResourceType)
+		paramIdx++
+	}
+	if filter.Action != "" {
+		sb.WriteString(fmt.Sprintf(" AND action=$%d", paramIdx))
+		args = append(args, filter.Action)
+		paramIdx++
+	}
+	if filter.StartTime != nil {
+		sb.WriteString(fmt.Sprintf(" AND occurred_at >= $%d", paramIdx))
+		args = append(args, *filter.StartTime)
+		paramIdx++
+	}
+	if filter.EndTime != nil {
+		sb.WriteString(fmt.Sprintf(" AND occurred_at <= $%d", paramIdx))
+		args = append(args, *filter.EndTime)
+		paramIdx++
+	}
+
+	sb.WriteString(fmt.Sprintf(" ORDER BY occurred_at DESC, id DESC LIMIT $%d", paramIdx))
+	args = append(args, limit)
+
+	rows, err := s.pool.Query(ctx, sb.String(), args...)
 	if err != nil {
 		return nil, err
 	}

@@ -358,12 +358,12 @@ M12 library; 6-point registration across `App.tsx`/`Sidebar.tsx`/`CommandPalette
    coverage for a representative set; no PII leaks into `metadata`. — done: emitted audit events across role/team/user/SAML/SCIM/policy/DSR mutations and verified with TestGovernedMutationsBroadenAuditCoverage with zero PII leakage
 
 ### Milestone 22.7 — Audit viewer UI
-1. [ ] **Filterable audit viewer** (Recipe 6.107): `GET /v1/audit` gains actor/resource/action/time
+1. [x] **Filterable audit viewer** (Recipe 6.107): `GET /v1/audit` gains actor/resource/action/time
    filters (scope `audit:read`, moved off `operations:read`); an `AuditViewer` section on the M12 library
    with filters + a chain-verify indicator.
    *Done when:* `cd web && npm run typecheck && npm run build && npm test` green; the viewer filters by
    actor/resource/action/time and shows the chain-verification status; `audit:read` gates it; a
-   `operations:read`-only key no longer sees audit (scope moved); test covers filtering + the scope change.
+   `operations:read`-only key no longer sees audit (scope moved); test covers filtering + the scope change. — done: updated GET /v1/audit route to audit:read scope with actor/resource/action/time filters, created M12 AuditViewer section and test suite, and verified with web typecheck/build/test and TestListAuditEventsEndpointWithFiltersAndScope
 
 ### Milestone 22.8 — Data-subject-request workflow
 1. [ ] **DSR verification + SLA + reject** (Recipe 6.106): migration `060` DSR columns; extend

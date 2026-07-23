@@ -730,6 +730,16 @@ type AuditVerificationResult struct {
 	Reason         string `json:"reason,omitempty"`
 }
 
+type AuditFilter struct {
+	ActorID      string
+	ResourceType string
+	Action       string
+	StartTime    *time.Time
+	EndTime      *time.Time
+	Limit        int
+}
+
+
 
 type Suppression struct {
 	ID            string    `json:"id"`

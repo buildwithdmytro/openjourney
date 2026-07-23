@@ -283,8 +283,8 @@ func (s *Server) buildMux() http.Handler {
 	mux.Handle("GET /v1/teams/{id}", s.authenticate("teams:read", http.HandlerFunc(s.getTeam)))
 	mux.Handle("PUT /v1/teams/{id}", s.authenticate("teams:write", http.HandlerFunc(s.updateTeam)))
 	mux.Handle("DELETE /v1/teams/{id}", s.authenticate("teams:write", http.HandlerFunc(s.deleteTeam)))
-	mux.Handle("GET /v1/audit/verify", s.authenticate("operations:read", http.HandlerFunc(s.verifyAudit)))
-	mux.Handle("GET /v1/audit", s.authenticate("operations:read", http.HandlerFunc(s.listAudit)))
+	mux.Handle("GET /v1/audit/verify", s.authenticate("audit:read", http.HandlerFunc(s.verifyAudit)))
+	mux.Handle("GET /v1/audit", s.authenticate("audit:read", http.HandlerFunc(s.listAudit)))
 	mux.Handle("GET /v1/ai/activity", s.authenticate("ai:read", http.HandlerFunc(s.listAIActivity)))
 	mux.Handle("GET /v1/extensions/{id}/activity", s.authenticate("extensions:read", http.HandlerFunc(s.listExtensionActivity)))
 	mux.Handle("GET /v1/extensions", s.authenticate("extensions:read", http.HandlerFunc(s.listExtensions)))
@@ -783,7 +783,38 @@ func (s *Server) listAudit(w http.ResponseWriter, r *http.Request) {
 			limit = parsed
 		}
 	}
-	items, err := s.store.ListAuditEvents(r.Context(), principal, limit)
+	filter := domain.AuditFilter{
+		Limit:        limit,
+		ActorID:      r.URL.Query().Get("actor_id"),
+		ResourceType: r.URL.Query().Get("resource_type"),
+		Action:       r.URL.Query().Get("action"),
+	}
+	if filter.ActorID == "" {
+		filter.ActorID = r.URL.Query().Get("actor")
+	}
+	if filter.ResourceType == "" {
+		filter.ResourceType = r.URL.Query().Get("resource")
+	}
+	if raw := r.URL.Query().Get("start_time"); raw != "" {
+		if t, err := time.Parse(time.RFC3339, raw); err == nil {
+			filter.StartTime = &t
+		}
+	} else if raw := r.URL.Query().Get("from"); raw != "" {
+		if t, err := time.Parse(time.RFC3339, raw); err == nil {
+			filter.StartTime = &t
+		}
+	}
+	if raw := r.URL.Query().Get("end_time"); raw != "" {
+		if t, err := time.Parse(time.RFC3339, raw); err == nil {
+			filter.EndTime = &t
+		}
+	} else if raw := r.URL.Query().Get("to"); raw != "" {
+		if t, err := time.Parse(time.RFC3339, raw); err == nil {
+			filter.EndTime = &t
+		}
+	}
+
+	items, err := s.store.ListAuditEventsFiltered(r.Context(), principal, filter)
 	if err != nil {
 		internalError(w, err, "list audit events", principal)
 		return

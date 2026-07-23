@@ -44,6 +44,7 @@ type fakeStore struct {
 	listExtensionActivitiesFunc            func(ctx context.Context, p domain.Principal, extensionID string, limit int) ([]domain.ExtensionActivity, error)
 	getExtensionHealthFunc                 func(ctx context.Context, p domain.Principal, extensionID string) (domain.ExtensionHealth, error)
 	verifyAuditChainFunc                   func(ctx context.Context, p domain.Principal) (domain.AuditVerificationResult, error)
+	listAuditEventsFilteredFunc            func(ctx context.Context, p domain.Principal, filter domain.AuditFilter) ([]domain.AuditEvent, error)
 }
 
 type fakeBlobStore struct {
@@ -262,7 +263,13 @@ func (f *fakeStore) DeleteTeam(_ context.Context, _ domain.Principal, id string)
 func (f *fakeStore) ListTeams(context.Context, domain.Principal) ([]domain.Team, error) {
 	return []domain.Team{{ID: "team-1", Name: "Test Team"}}, nil
 }
-func (f *fakeStore) ListAuditEvents(context.Context, domain.Principal, int) ([]domain.AuditEvent, error) {
+func (f *fakeStore) ListAuditEvents(ctx context.Context, p domain.Principal, limit int) ([]domain.AuditEvent, error) {
+	return f.ListAuditEventsFiltered(ctx, p, domain.AuditFilter{Limit: limit})
+}
+func (f *fakeStore) ListAuditEventsFiltered(ctx context.Context, p domain.Principal, filter domain.AuditFilter) ([]domain.AuditEvent, error) {
+	if f.listAuditEventsFilteredFunc != nil {
+		return f.listAuditEventsFilteredFunc(ctx, p, filter)
+	}
 	return nil, nil
 }
 func (f *fakeStore) ListAIActivity(ctx context.Context, p domain.Principal, limit int) ([]domain.AIActivity, error) {
@@ -2149,7 +2156,7 @@ func TestUpdateAndDeleteRoleEndpoints(t *testing.T) {
 }
 
 func TestVerifyAuditChainEndpoint(t *testing.T) {
-	server := New(&fakeStore{scopes: []string{"operations:read"}}, 75)
+	server := New(&fakeStore{scopes: []string{"audit:read"}}, 75)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/audit/verify", nil)
 	req.Header.Set("Authorization", "Bearer test-key")
@@ -2162,5 +2169,46 @@ func TestVerifyAuditChainEndpoint(t *testing.T) {
 	if !strings.Contains(res.Body.String(), `"status":"ok"`) || !strings.Contains(res.Body.String(), `"intact":true`) {
 		t.Fatalf("expected status ok intact true, got %s", res.Body.String())
 	}
+}
+
+func TestListAuditEventsEndpointWithFiltersAndScope(t *testing.T) {
+	t.Run("operations:read only fails with 403", func(t *testing.T) {
+		server := New(&fakeStore{scopes: []string{"operations:read"}}, 75)
+		req := httptest.NewRequest(http.MethodGet, "/v1/audit", nil)
+		req.Header.Set("Authorization", "Bearer test-key")
+		res := httptest.NewRecorder()
+		server.ServeHTTP(res, req)
+		if res.Code != http.StatusForbidden {
+			t.Fatalf("expected 403 Forbidden, got %d body=%s", res.Code, res.Body.String())
+		}
+	})
+
+	t.Run("audit:read passes and filters are received", func(t *testing.T) {
+		var capturedFilter domain.AuditFilter
+		st := &fakeStore{
+			scopes: []string{"audit:read"},
+			listAuditEventsFilteredFunc: func(_ context.Context, _ domain.Principal, filter domain.AuditFilter) ([]domain.AuditEvent, error) {
+				capturedFilter = filter
+				return []domain.AuditEvent{
+					{ID: "audit-123", ActorType: "user", ActorID: "usr-1", Action: "team.create", ResourceType: "team", ResourceID: "team-1"},
+				}, nil
+			},
+		}
+		server := New(st, 75)
+		req := httptest.NewRequest(http.MethodGet, "/v1/audit?actor_id=usr-1&resource_type=team&action=team.create&limit=50", nil)
+		req.Header.Set("Authorization", "Bearer test-key")
+		res := httptest.NewRecorder()
+		server.ServeHTTP(res, req)
+
+		if res.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK, got %d body=%s", res.Code, res.Body.String())
+		}
+		if capturedFilter.ActorID != "usr-1" || capturedFilter.ResourceType != "team" || capturedFilter.Action != "team.create" || capturedFilter.Limit != 50 {
+			t.Fatalf("unexpected filter passed: %+v", capturedFilter)
+		}
+		if !strings.Contains(res.Body.String(), `"audit-123"`) {
+			t.Fatalf("expected body to contain audit-123, got %s", res.Body.String())
+		}
+	})
 }
 

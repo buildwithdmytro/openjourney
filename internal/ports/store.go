@@ -83,6 +83,7 @@ type Store interface {
 	ListSAMLProviders(ctx context.Context, tenantID string) ([]domain.SAMLProvider, error)
 	UpsertSAMLUserAndCreateSession(ctx context.Context, tenantID, idpEntityID, nameID, email, displayName string) (domain.AuthSession, error)
 	ListAuditEvents(context.Context, domain.Principal, int) ([]domain.AuditEvent, error)
+	ListAuditEventsFiltered(context.Context, domain.Principal, domain.AuditFilter) ([]domain.AuditEvent, error)
 	VerifyAuditChain(ctx context.Context, p domain.Principal) (domain.AuditVerificationResult, error)
 	CreateSegment(context.Context, domain.Principal, domain.Segment) (domain.Segment, error)
 	GetSegment(context.Context, domain.Principal, string) (domain.Segment, error)

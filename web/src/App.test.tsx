@@ -46,6 +46,7 @@ const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
   if (url.includes("/v1/users")) return jsonResponse({ users: [] });
   if (url.includes("/v1/operations/queues")) return jsonResponse({ queues: [{ queue: "projection", pending: 1, processing: 0, dead: 0 }] });
   if (url.includes("/v1/operations/dlq")) return jsonResponse({ dead_letters: [] });
+  if (url.includes("/v1/audit/verify")) return jsonResponse({ status: "ok", intact: true, total_events: 1 });
   if (url.includes("/v1/audit")) return jsonResponse({ audit_events: [{ id: "audit-1", actor_type: "api_key", actor_id: "key-1", action: "events.accept", resource_type: "event_batch", metadata: {}, occurred_at: "2026-01-01T00:00:00Z" }] });
   if (url.includes("/v1/suppressions")) return jsonResponse(null);
   if (url.includes("/v1/campaigns")) return jsonResponse([{

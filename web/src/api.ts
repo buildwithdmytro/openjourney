@@ -61,6 +61,23 @@ export type UserInput = {
 export type AuditEvent = {
   id: string; actor_type: string; actor_id: string; action: string; resource_type: string;
   resource_id?: string; metadata: Record<string, unknown>; occurred_at: string;
+  seq?: number; prev_hash?: string; row_hash?: string;
+};
+export type AuditFilter = {
+  actor_id?: string;
+  resource_type?: string;
+  action?: string;
+  start_time?: string;
+  end_time?: string;
+  limit?: number;
+};
+export type AuditVerificationResult = {
+  status: string;
+  intact: boolean;
+  total_events: number;
+  first_broken_seq?: number;
+  first_broken_id?: string;
+  reason?: string;
 };
 export type AuthSession = { access_token: string; token_type: "Bearer"; expires_at: string };
 
@@ -209,8 +226,20 @@ export async function listUsers(baseURL: string, apiKey: string): Promise<User[]
 export async function createUser(baseURL: string, apiKey: string, user: UserInput): Promise<User> {
   return requestJSON(baseURL, apiKey, "/v1/users", { method: "POST", body: JSON.stringify(user) });
 }
-export async function listAuditEvents(baseURL: string, apiKey: string, limit = 100): Promise<AuditEvent[]> {
-  return (await requestJSON<{ audit_events: AuditEvent[] | null }>(baseURL, apiKey, `/v1/audit?limit=${limit}`)).audit_events ?? [];
+export async function listAuditEvents(baseURL: string, apiKey: string, filters?: AuditFilter): Promise<AuditEvent[]> {
+  const params = new URLSearchParams();
+  if (filters?.limit) params.set("limit", String(filters.limit));
+  else params.set("limit", "100");
+  if (filters?.actor_id) params.set("actor_id", filters.actor_id);
+  if (filters?.resource_type) params.set("resource_type", filters.resource_type);
+  if (filters?.action) params.set("action", filters.action);
+  if (filters?.start_time) params.set("start_time", filters.start_time);
+  if (filters?.end_time) params.set("end_time", filters.end_time);
+
+  return (await requestJSON<{ audit_events: AuditEvent[] | null }>(baseURL, apiKey, `/v1/audit?${params.toString()}`)).audit_events ?? [];
+}
+export async function verifyAuditChain(baseURL: string, apiKey: string): Promise<AuditVerificationResult> {
+  return requestJSON<AuditVerificationResult>(baseURL, apiKey, "/v1/audit/verify");
 }
 
 export type Segment = {

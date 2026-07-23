@@ -22,6 +22,7 @@ import { useTheme } from "./useTheme";
 import { useForm } from "./useForm";
 import { Skeleton, Spinner, ToastProvider, useToast, ConfirmDialog, Field, Input, Select, Textarea, JsonField, AppShell, ScopeSelector, EmptyState } from "./components";
 import { message } from "./errors";
+import AuditViewer from "./sections/AuditViewer";
 
 const Overview = lazy(() => import("./sections/Overview"));
 const Journeys = lazy(() => import("./sections/Journeys"));
@@ -148,6 +149,7 @@ const AVAILABLE_SCOPES = [
   "catalogs:write",
   "prompts:read",
   "prompts:write",
+  "audit:read",
 ];
 
 export function App() {
@@ -328,7 +330,7 @@ export function App() {
           {view === "privacy" && <Privacy apiKey={apiKey} />}
           {view === "access" && <Access apiKey={apiKey} />}
           {view === "operations" && <Operations apiKey={apiKey} />}
-          {view === "audit" && <Audit apiKey={apiKey} />}
+          {view === "audit" && <AuditViewer apiKey={apiKey} baseURL={apiBase} />}
           {view === "flags" && <Suspense fallback={<SuspenseLoader />}><FeatureFlags apiKey={apiKey} baseURL={apiBase} /></Suspense>}
           {view === "catalogs" && <Suspense fallback={<SuspenseLoader />}><Catalogs apiKey={apiKey} baseURL={apiBase} /></Suspense>}
           {view === "prompts" && <Suspense fallback={<SuspenseLoader />}><Prompts apiKey={apiKey} baseURL={apiBase} /></Suspense>}
@@ -640,22 +642,6 @@ function Operations({ apiKey }: { apiKey: string }) {
   </section>;
 }
 
-function Audit({ apiKey }: { apiKey: string }) {
-  const [items, setItems] = useState<AuditEvent[]>([]);
-  const [error, setError] = useState("");
-  async function refresh() {
-    try { setItems(await listAuditEvents(apiBase, apiKey)); setError(""); }
-    catch (cause) { setError(message(cause)); }
-  }
-  useEffect(() => { if (apiKey) void refresh(); }, [apiKey]);
-  return <section className="card"><div className="section-title"><div><div className="eyebrow">Activity</div>
-    <h2>Audit events</h2></div><button onClick={() => void refresh()}>Refresh</button></div>
-    <ErrorMessage value={error} />
-    <ResourceTable headers={["When", "Actor", "Action", "Resource"]} rows={items.map((item) => [
-      new Date(item.occurred_at).toLocaleString(), `${item.actor_type}:${item.actor_id}`,
-      item.action, `${item.resource_type}:${item.resource_id || ""}`,
-    ])} /></section>;
-}
 
 function Segments({ apiKey }: { apiKey: string }) {
   const { push: pushToast } = useToast();
