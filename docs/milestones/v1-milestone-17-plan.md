@@ -412,9 +412,9 @@ M12 library; 6-point registration across `App.tsx`/`Sidebar.tsx`/`CommandPalette
    is empty — M17 never touched those tests).
    *Done when:* all green; `git diff web/package.json web/package-lock.json sdk/javascript/package.json`
    is empty of additions and `go.mod` shows only the SAML library + its transitive closure.
-4. [ ] **Audit doc** `docs/milestones/v1-milestone-17-audit.md` in the M2–M16 table format, one row per
+4. [x] **Audit doc** `docs/milestones/v1-milestone-17-audit.md` in the M2–M16 table format, one row per
    `22.x` task with evidence (file:line + test name).
-   *Done when:* the doc exists with a row per task and its verifying test.
+   *Done when:* the doc exists with a row per task and its verifying test. — done: created the M2–M16-format audit table with evidence for all 21 tasks (22.0.1–22.10.4), including file:line references and test names
 
 ## 7. Carry-over hazards & invariants
 
