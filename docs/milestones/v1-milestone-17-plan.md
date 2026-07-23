@@ -322,7 +322,7 @@ M12 library; 6-point registration across `App.tsx`/`Sidebar.tsx`/`CommandPalette
 
 
 ### Milestone 22.4 — SAML SSO — SECURITY CHECKPOINT
-1. [ ] **SAML SP + ACS (library)** (Recipe 6.103): add the vetted SAML library (the ONE allowed dep,
+1. [x] **SAML SP + ACS (library)** (Recipe 6.103): add the vetted SAML library (the ONE allowed dep,
    D.D. 1); `saml_providers` config (in `058`); `internal/auth/saml.go`; public metadata/login/ACS routes
    (`server.go:114`); ACS verifies the signed assertion via the library, maps it to a user (upsert,
    `rbac.go:204`), and mints a `user_sessions` row.
@@ -330,7 +330,7 @@ M12 library; 6-point registration across `App.tsx`/`Sidebar.tsx`/`CommandPalette
    route; a **tampered or unsigned** assertion is REJECTED (library signature check); an assertion for a
    disabled provider is refused; `go mod tidy` shows ONLY the SAML library added; tests cover valid +
    tampered + unsigned + disabled.
-   **Security checkpoint:** signature verification is library-owned; a forged assertion never authenticates.
+   **Security checkpoint:** signature verification is library-owned; a forged assertion never authenticates. — done: added saml_providers config in 058, integrated crewjam/saml library, metadata/login/ACS endpoints, and verified valid, tampered, unsigned, and disabled provider/user assertions with TestSAMLSSO_E2E
 
 ### Milestone 22.5 — Maker-checker (separation of duties)
 1. [ ] **Creator ≠ approver enforcement** (Recipe 6.104): `maker_checker_policies` (in `060`); the

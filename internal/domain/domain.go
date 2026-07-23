@@ -687,6 +687,19 @@ type SCIMGroupPatch struct {
 	Operations []SCIMGroupOperation `json:"operations"`
 }
 
+type SAMLProvider struct {
+	ID            string    `json:"id"`
+	TenantID      string    `json:"tenant_id"`
+	IDPEntityID   string    `json:"idp_entity_id"`
+	IDPSSOURL     string    `json:"idp_sso_url"`
+	IDPCert       string    `json:"idp_cert"`
+	SPEntityID    string    `json:"sp_entity_id"`
+	DefaultRoleID *string   `json:"default_role_id,omitempty"`
+	Enabled       bool      `json:"enabled"`
+	Status        string    `json:"status"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
 
 type AuthSession struct {
 	AccessToken string    `json:"access_token"`

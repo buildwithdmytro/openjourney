@@ -78,6 +78,10 @@ type Store interface {
 	UpdateTeam(ctx context.Context, p domain.Principal, input domain.Team) (domain.Team, error)
 	DeleteTeam(ctx context.Context, p domain.Principal, id string) error
 	ListTeams(ctx context.Context, p domain.Principal) ([]domain.Team, error)
+	CreateSAMLProvider(ctx context.Context, p domain.Principal, input domain.SAMLProvider) (domain.SAMLProvider, error)
+	GetSAMLProvider(ctx context.Context, tenantID, idpEntityID string) (domain.SAMLProvider, error)
+	ListSAMLProviders(ctx context.Context, tenantID string) ([]domain.SAMLProvider, error)
+	UpsertSAMLUserAndCreateSession(ctx context.Context, tenantID, idpEntityID, nameID, email, displayName string) (domain.AuthSession, error)
 	ListAuditEvents(context.Context, domain.Principal, int) ([]domain.AuditEvent, error)
 	CreateSegment(context.Context, domain.Principal, domain.Segment) (domain.Segment, error)
 	GetSegment(context.Context, domain.Principal, string) (domain.Segment, error)
