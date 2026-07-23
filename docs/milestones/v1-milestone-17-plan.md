@@ -388,10 +388,11 @@ M12 library; 6-point registration across `App.tsx`/`Sidebar.tsx`/`CommandPalette
    the shared primitives; tests cover the flows. — done: added M12-based Access and Privacy consoles with typed role/team/permission/DSR wrappers, consistent enterprise scopes, and verified Access/Privacy section flows in Access.test.tsx and Privacy.test.tsx; web typecheck/build/all 317 tests pass
 
 ### Milestone 22.10 — Integration, security & audit closeout
-1. [ ] **Enterprise E2E**: SCIM provisions a user + group→team→role → the user authenticates (SAML session)
+1. [x] **Enterprise E2E**: SCIM provisions a user + group→team→role → the user authenticates (SAML session)
    → hits a guarded route with team-derived scopes; a maker-checker resource blocks self-approval; a DSR
    runs verify → export/download → erase with audit linkage.
    *Done when:* the SCIM→SAML→authz, maker-checker, and DSR flows pass end-to-end.
+   — done: added TestEnterpriseE2E covering SCIM group/team role resolution into a SAML session, maker-checker self-approval/distinct approval, verified DSR export/erase, and audit linkage
 2. [ ] **Security E2E**: a forged/unsigned SAML assertion is rejected; a bad SCIM token is 401; a disabled/
    deprovisioned user fails auth; self-approval is blocked; `audit_events` rejects UPDATE/DELETE and the
    chain verifies (and detects tampering); erasure stays GUC-gated; the new scopes gate their routes.
