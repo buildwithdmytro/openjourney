@@ -371,12 +371,12 @@ M12 library; 6-point registration across `App.tsx`/`Sidebar.tsx`/`CommandPalette
    `verify`/`reject` endpoint (`privacy:approve`).
    *Done when:* an unverified request does not run the export/delete job; verifying it enqueues the job; a
    rejected request is terminal; the SLA due date is set; tests cover the lifecycle. — done: added DSR verification token, 30-day SLA due date, verify/reject store methods & endpoints gated by privacy:approve, verified by TestDSRVerificationSLAAndRejectLifecycle and TestDSRHTTPVerifyAndRejectScopes
-2. [ ] **Export download + audit linkage** (Recipe 6.106): an authenticated `GET /v1/privacy/requests/{id}/
+2. [x] **Export download + audit linkage** (Recipe 6.106): an authenticated `GET /v1/privacy/requests/{id}/
    download` streaming the export blob (`privacy:read`); `ExportPrivacyData`/`DeletePrivacyData`
    (`operations.go:111`/`:172`) emit an `audit_events` row on completion.
    *Done when:* a completed export is downloadable by an authorized user (and not by an unauthorized one);
    erasure and export each write an audit row on completion; erasure stays behind the GUC trigger; tests
-   cover download-authz + audit-linkage.
+   cover download-authz + audit-linkage. — done: added privacy:read-gated completed-export download with tenant scoping and verified authorization/completion behavior in TestDSRDownloadRequiresScopeAndCompletedExport; existing completion audit coverage remains green in TestGovernedMutationsBroadenAuditCoverage
 
 ### Milestone 22.9 — Enterprise console UI
 1. [ ] **Access + DSR console** (Recipe 6.107): an `Access` section (roles/teams/users/permission catalog

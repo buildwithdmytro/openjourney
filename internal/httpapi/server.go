@@ -228,7 +228,6 @@ func (s *Server) buildMux() http.Handler {
 	mux.Handle("GET /v1/maker-checker/policies/{resource_type}", s.authenticate("roles:read", http.HandlerFunc(s.getMakerCheckerPolicy)))
 	mux.Handle("PUT /v1/maker-checker/policies/{resource_type}", s.authenticate("roles:write", http.HandlerFunc(s.setMakerCheckerPolicy)))
 
-
 	mux.HandleFunc("GET /r/{token}", s.redirectLink)
 	mux.HandleFunc("GET /s/{slug}", s.redirectShortLink)
 	mux.HandleFunc("GET /o/{token}", s.openPixel)
@@ -253,6 +252,7 @@ func (s *Server) buildMux() http.Handler {
 	mux.Handle("DELETE /v1/api-keys/{id}", s.authenticate("api_keys:write", http.HandlerFunc(s.revokeAPIKey)))
 	mux.Handle("POST /v1/privacy/requests", s.authenticate("privacy:write", http.HandlerFunc(s.createPrivacyRequest)))
 	mux.Handle("GET /v1/privacy/requests/{id}", s.authenticate("privacy:read", http.HandlerFunc(s.getPrivacyRequest)))
+	mux.Handle("GET /v1/privacy/requests/{id}/download", s.authenticate("privacy:read", http.HandlerFunc(s.downloadPrivacyRequest)))
 	mux.Handle("POST /v1/privacy/requests/{id}/verify", s.authenticate("privacy:approve", http.HandlerFunc(s.verifyPrivacyRequest)))
 	mux.Handle("POST /v1/privacy/requests/{id}/reject", s.authenticate("privacy:approve", http.HandlerFunc(s.rejectPrivacyRequest)))
 	mux.Handle("GET /v1/operations/queues", s.authenticate("operations:read", http.HandlerFunc(s.queueStatus)))
@@ -583,6 +583,36 @@ func (s *Server) getPrivacyRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, item)
+}
+
+func (s *Server) downloadPrivacyRequest(w http.ResponseWriter, r *http.Request) {
+	principal := principalFrom(r)
+	item, err := s.store.GetPrivacyRequest(r.Context(), principal, r.PathValue("id"))
+	if errors.Is(err, postgres.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "privacy request was not found")
+		return
+	}
+	if err != nil {
+		internalError(w, err, "get privacy request for download", principal)
+		return
+	}
+	if item.RequestType != "export" || item.Status != "complete" || item.ArtifactKey == "" || s.blobStore == nil {
+		writeError(w, http.StatusNotFound, "not_found", "completed privacy export was not found")
+		return
+	}
+	data, err := s.blobStore.Get(r.Context(), item.ArtifactKey)
+	if errors.Is(err, postgres.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "completed privacy export was not found")
+		return
+	}
+	if err != nil {
+		internalError(w, err, "download privacy export", principal)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Disposition", "attachment; filename=privacy-export.json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
 }
 
 func (s *Server) verifyPrivacyRequest(w http.ResponseWriter, r *http.Request) {
