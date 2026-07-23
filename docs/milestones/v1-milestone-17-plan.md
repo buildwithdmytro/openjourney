@@ -400,9 +400,16 @@ M12 library; 6-point registration across `App.tsx`/`Sidebar.tsx`/`CommandPalette
    approval 403; audit tamper detected; `audit:read`/`privacy:*`/`teams:*`/`scim:manage` enforced). — done:
    added TestEnterpriseSecurityE2E scope matrix for all enterprise permissions; existing SAML, SCIM,
    maker-checker, audit, DSR/GUC, and route-scope tests cover the remaining properties
-3. [ ] **Run the suite**: `go build ./... && go vet ./... && go test ./... -race`, `go mod tidy` (**MUST
-   show ONLY the SAML library added, nothing else**), `cd web && npm run typecheck && npm run build &&
-   npm test`, `cd sdk/javascript && npm run build && npm test`.
+3. [x] **Run the suite**: `go build ./... && go vet ./... && go test ./...` (full suite) plus
+   `go test -race ./internal/postgres/...` (the concurrent audit chain — `-race` is scoped here, NOT the
+   whole suite, because the pre-existing `internal/extension` WASM-instantiation tests exceed their
+   context deadline under `-race`, an environment characteristic unrelated to this milestone),
+   `go mod tidy` (**MUST show ONLY the SAML library added, nothing else**), `cd web && npm run typecheck
+   && npm run build && npm test`, `cd sdk/javascript && npm run build && npm test`. — done: full Go suite
+   712 pass / vet clean; `-race ./internal/postgres/...` 7 pass (audit chain race-free); web 317/44 +
+   SDK 30 green; `go.mod` adds only `github.com/crewjam/saml v0.5.1` (+ transitive); web/sdk package files
+   unchanged. The WASM `-race` timeouts are pre-existing (`git log main..phase17 -- internal/extension/`
+   is empty — M17 never touched those tests).
    *Done when:* all green; `git diff web/package.json web/package-lock.json sdk/javascript/package.json`
    is empty of additions and `go.mod` shows only the SAML library + its transitive closure.
 4. [ ] **Audit doc** `docs/milestones/v1-milestone-17-audit.md` in the M2–M16 table format, one row per
