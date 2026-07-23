@@ -392,6 +392,9 @@ func TestPlatformKernelIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := store.VerifyPrivacyRequest(ctx, tenantA, exportRequest.ID, exportRequest.VerificationToken); err != nil {
+		t.Fatal(err)
+	}
 	if count, err := operations.Drain(ctx, store, blobs, 1, false); err != nil || count != 1 {
 		t.Fatalf("export drain count=%d err=%v", count, err)
 	}
@@ -405,6 +408,9 @@ func TestPlatformKernelIntegration(t *testing.T) {
 
 	deleteRequest, err := store.CreatePrivacyRequest(ctx, tenantA, "customer-a", "delete")
 	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.VerifyPrivacyRequest(ctx, tenantA, deleteRequest.ID, deleteRequest.VerificationToken); err != nil {
 		t.Fatal(err)
 	}
 	if count, err := operations.Drain(ctx, store, blobs, 1, false); err != nil || count != 1 {

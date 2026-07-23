@@ -252,7 +252,9 @@ func (s *Server) buildMux() http.Handler {
 	mux.Handle("POST /v1/api-keys", s.authenticate("api_keys:write", http.HandlerFunc(s.createAPIKey)))
 	mux.Handle("DELETE /v1/api-keys/{id}", s.authenticate("api_keys:write", http.HandlerFunc(s.revokeAPIKey)))
 	mux.Handle("POST /v1/privacy/requests", s.authenticate("privacy:write", http.HandlerFunc(s.createPrivacyRequest)))
-	mux.Handle("GET /v1/privacy/requests/{id}", s.authenticate("privacy:write", http.HandlerFunc(s.getPrivacyRequest)))
+	mux.Handle("GET /v1/privacy/requests/{id}", s.authenticate("privacy:read", http.HandlerFunc(s.getPrivacyRequest)))
+	mux.Handle("POST /v1/privacy/requests/{id}/verify", s.authenticate("privacy:approve", http.HandlerFunc(s.verifyPrivacyRequest)))
+	mux.Handle("POST /v1/privacy/requests/{id}/reject", s.authenticate("privacy:approve", http.HandlerFunc(s.rejectPrivacyRequest)))
 	mux.Handle("GET /v1/operations/queues", s.authenticate("operations:read", http.HandlerFunc(s.queueStatus)))
 	mux.Handle("GET /v1/operations/dlq", s.authenticate("operations:read", http.HandlerFunc(s.listDeadLetters)))
 	mux.Handle("POST /v1/operations/dlq/{queue}/{id}/retry", s.authenticate("operations:write", http.HandlerFunc(s.retryDeadLetter)))
@@ -578,6 +580,46 @@ func (s *Server) getPrivacyRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		internalError(w, err, "get privacy request", principal)
+		return
+	}
+	writeJSON(w, http.StatusOK, item)
+}
+
+func (s *Server) verifyPrivacyRequest(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Token string `json:"token"`
+	}
+	_ = decodeJSON(w, r, &input)
+	principal := principalFrom(r)
+	item, err := s.store.VerifyPrivacyRequest(r.Context(), principal, r.PathValue("id"), input.Token)
+	if errors.Is(err, postgres.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "privacy request was not found")
+		return
+	}
+	if errors.Is(err, postgres.ErrUnauthorized) {
+		writeError(w, http.StatusUnauthorized, "unauthorized", "invalid verification token")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "invalid_verification", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, item)
+}
+
+func (s *Server) rejectPrivacyRequest(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Reason string `json:"reason"`
+	}
+	_ = decodeJSON(w, r, &input)
+	principal := principalFrom(r)
+	item, err := s.store.RejectPrivacyRequest(r.Context(), principal, r.PathValue("id"), input.Reason)
+	if errors.Is(err, postgres.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "privacy request was not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "invalid_rejection", err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, item)

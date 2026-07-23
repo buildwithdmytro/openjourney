@@ -49,6 +49,8 @@ type Store interface {
 	RevokeAPIKey(context.Context, domain.Principal, string) error
 	CreatePrivacyRequest(context.Context, domain.Principal, string, string) (domain.PrivacyRequest, error)
 	GetPrivacyRequest(context.Context, domain.Principal, string) (domain.PrivacyRequest, error)
+	VerifyPrivacyRequest(context.Context, domain.Principal, string, string) (domain.PrivacyRequest, error)
+	RejectPrivacyRequest(context.Context, domain.Principal, string, string) (domain.PrivacyRequest, error)
 	CreateAIGenerationRequest(context.Context, domain.Principal, string, json.RawMessage) (domain.AIGenerationRequest, error)
 	GetAIGenerationRequest(context.Context, domain.Principal, string) (domain.AIGenerationRequest, error)
 	QueueStatus(context.Context, domain.Principal) ([]domain.QueueStatus, error)

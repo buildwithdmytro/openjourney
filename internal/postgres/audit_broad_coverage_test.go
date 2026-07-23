@@ -125,6 +125,9 @@ func TestGovernedMutationsBroadenAuditCoverage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreatePrivacyRequest: %v", err)
 	}
+	if _, err := store.VerifyPrivacyRequest(ctx, p, req.ID, req.VerificationToken); err != nil {
+		t.Fatalf("VerifyPrivacyRequest: %v", err)
+	}
 	if err := store.CompletePrivacyExport(ctx, req.ID, "artifact/key/123"); err != nil {
 		t.Fatalf("CompletePrivacyExport: %v", err)
 	}
@@ -132,6 +135,9 @@ func TestGovernedMutationsBroadenAuditCoverage(t *testing.T) {
 	delReq, err := store.CreatePrivacyRequest(ctx, p, u.ID, "delete")
 	if err != nil {
 		t.Fatalf("CreatePrivacyRequest delete: %v", err)
+	}
+	if _, err := store.VerifyPrivacyRequest(ctx, p, delReq.ID, delReq.VerificationToken); err != nil {
+		t.Fatalf("VerifyPrivacyRequest delete: %v", err)
 	}
 	if _, err := store.DeletePrivacyData(ctx, delReq.ID); err != nil {
 		t.Fatalf("DeletePrivacyData: %v", err)

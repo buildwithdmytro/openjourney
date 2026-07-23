@@ -154,10 +154,16 @@ func (f *fakeStore) CreateAPIKey(_ context.Context, _ domain.Principal, name str
 }
 func (f *fakeStore) RevokeAPIKey(context.Context, domain.Principal, string) error { return nil }
 func (f *fakeStore) CreatePrivacyRequest(_ context.Context, _ domain.Principal, externalID, kind string) (domain.PrivacyRequest, error) {
-	return domain.PrivacyRequest{ID: "privacy-1", ExternalID: externalID, RequestType: kind}, nil
+	return domain.PrivacyRequest{ID: "privacy-1", ExternalID: externalID, RequestType: kind, VerificationStatus: "unverified"}, nil
 }
 func (f *fakeStore) GetPrivacyRequest(context.Context, domain.Principal, string) (domain.PrivacyRequest, error) {
 	return domain.PrivacyRequest{ID: "privacy-1"}, nil
+}
+func (f *fakeStore) VerifyPrivacyRequest(_ context.Context, _ domain.Principal, id, _ string) (domain.PrivacyRequest, error) {
+	return domain.PrivacyRequest{ID: id, VerificationStatus: "verified", Status: "pending"}, nil
+}
+func (f *fakeStore) RejectPrivacyRequest(_ context.Context, _ domain.Principal, id, reason string) (domain.PrivacyRequest, error) {
+	return domain.PrivacyRequest{ID: id, VerificationStatus: "rejected", Status: "rejected", Error: reason}, nil
 }
 func (f *fakeStore) CreateAIGenerationRequest(_ context.Context, _ domain.Principal, taskType string, _ json.RawMessage) (domain.AIGenerationRequest, error) {
 	return domain.AIGenerationRequest{ID: "generation-1", TaskType: taskType, Status: "pending"}, nil

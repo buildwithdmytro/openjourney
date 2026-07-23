@@ -491,14 +491,17 @@ type APIKey struct {
 }
 
 type PrivacyRequest struct {
-	ID          string     `json:"id"`
-	ExternalID  string     `json:"external_id"`
-	RequestType string     `json:"request_type"`
-	Status      string     `json:"status"`
-	ArtifactKey string     `json:"artifact_key,omitempty"`
-	Error       string     `json:"error,omitempty"`
-	CreatedAt   time.Time  `json:"created_at"`
-	CompletedAt *time.Time `json:"completed_at,omitempty"`
+	ID                 string     `json:"id"`
+	ExternalID         string     `json:"external_id"`
+	RequestType        string     `json:"request_type"`
+	Status             string     `json:"status"`
+	VerificationStatus string     `json:"verification_status,omitempty"`
+	VerificationToken  string     `json:"verification_token,omitempty"`
+	SLADueAt           *time.Time `json:"sla_due_at,omitempty"`
+	ArtifactKey        string     `json:"artifact_key,omitempty"`
+	Error              string     `json:"error,omitempty"`
+	CreatedAt          time.Time  `json:"created_at"`
+	CompletedAt        *time.Time `json:"completed_at,omitempty"`
 }
 
 type ImportRequest struct {

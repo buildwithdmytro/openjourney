@@ -366,11 +366,11 @@ M12 library; 6-point registration across `App.tsx`/`Sidebar.tsx`/`CommandPalette
    `operations:read`-only key no longer sees audit (scope moved); test covers filtering + the scope change. — done: updated GET /v1/audit route to audit:read scope with actor/resource/action/time filters, created M12 AuditViewer section and test suite, and verified with web typecheck/build/test and TestListAuditEventsEndpointWithFiltersAndScope
 
 ### Milestone 22.8 — Data-subject-request workflow
-1. [ ] **DSR verification + SLA + reject** (Recipe 6.106): migration `060` DSR columns; extend
+1. [x] **DSR verification + SLA + reject** (Recipe 6.106): migration `060` DSR columns; extend
    `CreatePrivacyRequest` (`admin.go:202`) with a verification step gating the job, `sla_due_at`, and a
    `verify`/`reject` endpoint (`privacy:approve`).
    *Done when:* an unverified request does not run the export/delete job; verifying it enqueues the job; a
-   rejected request is terminal; the SLA due date is set; tests cover the lifecycle.
+   rejected request is terminal; the SLA due date is set; tests cover the lifecycle. — done: added DSR verification token, 30-day SLA due date, verify/reject store methods & endpoints gated by privacy:approve, verified by TestDSRVerificationSLAAndRejectLifecycle and TestDSRHTTPVerifyAndRejectScopes
 2. [ ] **Export download + audit linkage** (Recipe 6.106): an authenticated `GET /v1/privacy/requests/{id}/
    download` streaming the export blob (`privacy:read`); `ExportPrivacyData`/`DeletePrivacyData`
    (`operations.go:111`/`:172`) emit an `audit_events` row on completion.

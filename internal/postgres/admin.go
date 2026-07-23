@@ -210,41 +210,137 @@ func (s *Store) CreatePrivacyRequest(ctx context.Context, p domain.Principal, ex
 		return domain.PrivacyRequest{}, err
 	}
 	defer tx.Rollback(ctx)
-	var request domain.PrivacyRequest
-	err = tx.QueryRow(ctx, `INSERT INTO privacy_requests
-		(tenant_id,workspace_id,app_id,external_id,request_type,requested_by)
-		VALUES($1,$2,$3,$4,$5,$6)
-		RETURNING id,external_id,request_type,status,created_at`,
-		p.TenantID, p.WorkspaceID, p.AppID, externalID, requestType, actorID(p)).
-		Scan(&request.ID, &request.ExternalID, &request.RequestType, &request.Status, &request.CreatedAt)
-	if err != nil {
+
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
 		return domain.PrivacyRequest{}, err
 	}
-	payload, _ := json.Marshal(map[string]string{"request_id": request.ID})
-	if _, err := tx.Exec(ctx, `INSERT INTO operation_jobs(tenant_id,workspace_id,job_type,payload)
-		VALUES($1,$2,$3,$4)`, p.TenantID, p.WorkspaceID, "privacy."+requestType, payload); err != nil {
+	token := hex.EncodeToString(buf)
+	h := sha256.Sum256([]byte(token))
+	tokenHash := hex.EncodeToString(h[:])
+	slaDueAt := time.Now().UTC().Add(30 * 24 * time.Hour)
+
+	var request domain.PrivacyRequest
+	err = tx.QueryRow(ctx, `INSERT INTO privacy_requests
+		(tenant_id,workspace_id,app_id,external_id,request_type,requested_by,verification_status,verification_token_hash,sla_due_at)
+		VALUES($1,$2,$3,$4,$5,$6,'unverified',$7,$8)
+		RETURNING id,external_id,request_type,status,verification_status,sla_due_at,created_at`,
+		p.TenantID, p.WorkspaceID, p.AppID, externalID, requestType, actorID(p), tokenHash, slaDueAt).
+		Scan(&request.ID, &request.ExternalID, &request.RequestType, &request.Status, &request.VerificationStatus, &request.SLADueAt, &request.CreatedAt)
+	if err != nil {
 		return domain.PrivacyRequest{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return domain.PrivacyRequest{}, err
 	}
+	request.VerificationToken = token
 	_ = s.audit(ctx, p, "privacy."+requestType, "privacy_request", request.ID,
-		map[string]any{"external_id": externalID})
+		map[string]any{"external_id": externalID, "verification_status": "unverified"})
 	return request, nil
 }
 
 func (s *Store) GetPrivacyRequest(ctx context.Context, p domain.Principal, id string) (domain.PrivacyRequest, error) {
 	var item domain.PrivacyRequest
 	err := s.pool.QueryRow(ctx, `SELECT id,external_id,request_type,status,
+		COALESCE(verification_status,'unverified'),sla_due_at,
 		COALESCE(artifact_key,''),COALESCE(error,''),created_at,completed_at
 		FROM privacy_requests WHERE id=$1 AND tenant_id=$2 AND workspace_id=$3`,
 		id, p.TenantID, p.WorkspaceID).
 		Scan(&item.ID, &item.ExternalID, &item.RequestType, &item.Status,
+			&item.VerificationStatus, &item.SLADueAt,
 			&item.ArtifactKey, &item.Error, &item.CreatedAt, &item.CompletedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.PrivacyRequest{}, ErrNotFound
 	}
 	return item, err
+}
+
+func (s *Store) VerifyPrivacyRequest(ctx context.Context, p domain.Principal, id string, token string) (domain.PrivacyRequest, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.PrivacyRequest{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	var requestType, status, vStatus, tokenHash, externalID string
+	err = tx.QueryRow(ctx, `SELECT external_id, request_type, status, COALESCE(verification_status, 'unverified'), COALESCE(verification_token_hash, '')
+		FROM privacy_requests WHERE id=$1 AND tenant_id=$2 AND workspace_id=$3 FOR UPDATE`,
+		id, p.TenantID, p.WorkspaceID).
+		Scan(&externalID, &requestType, &status, &vStatus, &tokenHash)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.PrivacyRequest{}, ErrNotFound
+	}
+	if err != nil {
+		return domain.PrivacyRequest{}, err
+	}
+
+	if vStatus == "rejected" {
+		return domain.PrivacyRequest{}, errors.New("cannot verify a rejected privacy request")
+	}
+
+	if token != "" && tokenHash != "" {
+		h := sha256.Sum256([]byte(token))
+		providedHash := hex.EncodeToString(h[:])
+		if providedHash != tokenHash {
+			return domain.PrivacyRequest{}, ErrUnauthorized
+		}
+	}
+
+	if vStatus != "verified" {
+		if _, err := tx.Exec(ctx, `UPDATE privacy_requests SET verification_status='verified' WHERE id=$1`, id); err != nil {
+			return domain.PrivacyRequest{}, err
+		}
+		payload, _ := json.Marshal(map[string]string{"request_id": id})
+		if _, err := tx.Exec(ctx, `INSERT INTO operation_jobs(tenant_id,workspace_id,job_type,payload)
+			VALUES($1,$2,$3,$4)`, p.TenantID, p.WorkspaceID, "privacy."+requestType, payload); err != nil {
+			return domain.PrivacyRequest{}, err
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return domain.PrivacyRequest{}, err
+	}
+
+	_ = s.audit(ctx, p, "privacy.verify", "privacy_request", id, map[string]any{"external_id": externalID})
+
+	return s.GetPrivacyRequest(ctx, p, id)
+}
+
+func (s *Store) RejectPrivacyRequest(ctx context.Context, p domain.Principal, id string, reason string) (domain.PrivacyRequest, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.PrivacyRequest{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	var externalID, status, vStatus string
+	err = tx.QueryRow(ctx, `SELECT external_id, status, COALESCE(verification_status, 'unverified')
+		FROM privacy_requests WHERE id=$1 AND tenant_id=$2 AND workspace_id=$3 FOR UPDATE`,
+		id, p.TenantID, p.WorkspaceID).
+		Scan(&externalID, &status, &vStatus)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.PrivacyRequest{}, ErrNotFound
+	}
+	if err != nil {
+		return domain.PrivacyRequest{}, err
+	}
+
+	if status == "completed" || status == "in_progress" {
+		return domain.PrivacyRequest{}, errors.New("cannot reject a completed or in-progress privacy request")
+	}
+
+	if _, err := tx.Exec(ctx, `UPDATE privacy_requests SET verification_status='rejected', status='rejected', error=$2 WHERE id=$1`,
+		id, reason); err != nil {
+		return domain.PrivacyRequest{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return domain.PrivacyRequest{}, err
+	}
+
+	_ = s.audit(ctx, p, "privacy.reject", "privacy_request", id, map[string]any{"external_id": externalID, "reason": reason})
+
+	return s.GetPrivacyRequest(ctx, p, id)
 }
 
 func (s *Store) CreateImportRequest(ctx context.Context, p domain.Principal, kind, sourceKey string, mapping json.RawMessage, appID string) (domain.ImportRequest, error) {
