@@ -379,13 +379,13 @@ M12 library; 6-point registration across `App.tsx`/`Sidebar.tsx`/`CommandPalette
    cover download-authz + audit-linkage. — done: added privacy:read-gated completed-export download with tenant scoping and verified authorization/completion behavior in TestDSRDownloadRequiresScopeAndCompletedExport; existing completion audit coverage remains green in TestGovernedMutationsBroadenAuditCoverage
 
 ### Milestone 22.9 — Enterprise console UI
-1. [ ] **Access + DSR console** (Recipe 6.107): an `Access` section (roles/teams/users/permission catalog
+1. [x] **Access + DSR console** (Recipe 6.107): an `Access` section (roles/teams/users/permission catalog
    on the M12 library) and a `Privacy/DSR` console (request intake, verify/reject, status/SLA, download) +
    `api.ts` wrappers + the 6-point registration (`App.tsx`/`Sidebar.tsx`/`CommandPalette.tsx` +
    `AVAILABLE_SCOPES`). Migrate the legacy inline `Audit`/`Privacy`/`Access` components onto M12.
    *Done when:* `cd web && npm run typecheck && npm run build && npm test` green; an admin manages roles/
    teams/users, sees the permission catalog, and processes a DSR (verify → download/erase) end-to-end on
-   the shared primitives; tests cover the flows.
+   the shared primitives; tests cover the flows. — done: added M12-based Access and Privacy consoles with typed role/team/permission/DSR wrappers, consistent enterprise scopes, and verified Access/Privacy section flows in Access.test.tsx and Privacy.test.tsx; web typecheck/build/all 317 tests pass
 
 ### Milestone 22.10 — Integration, security & audit closeout
 1. [ ] **Enterprise E2E**: SCIM provisions a user + group→team→role → the user authenticates (SAML session)

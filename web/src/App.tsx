@@ -23,6 +23,8 @@ import { useForm } from "./useForm";
 import { Skeleton, Spinner, ToastProvider, useToast, ConfirmDialog, Field, Input, Select, Textarea, JsonField, AppShell, ScopeSelector, EmptyState } from "./components";
 import { message } from "./errors";
 import AuditViewer from "./sections/AuditViewer";
+import EnterpriseAccess from "./sections/Access";
+import PrivacyConsole from "./sections/Privacy";
 
 const Overview = lazy(() => import("./sections/Overview"));
 const Journeys = lazy(() => import("./sections/Journeys"));
@@ -150,6 +152,11 @@ const AVAILABLE_SCOPES = [
   "prompts:read",
   "prompts:write",
   "audit:read",
+  "privacy:read",
+  "privacy:approve",
+  "teams:read",
+  "teams:write",
+  "scim:manage",
 ];
 
 export function App() {
@@ -327,8 +334,8 @@ export function App() {
           {view === "device-tokens" && <DeviceTokensInspector apiKey={apiKey} />}
           {view === "schemas" && <Schemas apiKey={apiKey} />}
           {view === "api-keys" && <APIKeys apiKey={apiKey} />}
-          {view === "privacy" && <Privacy apiKey={apiKey} />}
-          {view === "access" && <Access apiKey={apiKey} />}
+          {view === "privacy" && <PrivacyConsole apiKey={apiKey} baseURL={apiBase} />}
+          {view === "access" && <EnterpriseAccess apiKey={apiKey} baseURL={apiBase} />}
           {view === "operations" && <Operations apiKey={apiKey} />}
           {view === "audit" && <AuditViewer apiKey={apiKey} baseURL={apiBase} />}
           {view === "flags" && <Suspense fallback={<SuspenseLoader />}><FeatureFlags apiKey={apiKey} baseURL={apiBase} /></Suspense>}

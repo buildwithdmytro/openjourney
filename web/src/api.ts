@@ -46,6 +46,7 @@ export type DeadLetterItem = {
 export type PrivacyRequest = {
   id: string; external_id: string; request_type: "export" | "delete"; status: string;
   artifact_key?: string; error?: string; created_at: string; completed_at?: string;
+  verification_status?: "unverified" | "verified" | "rejected"; verification_token?: string; sla_due_at?: string;
 };
 export type Role = {
   id: string; name: string; permissions: string[]; system: boolean; created_at: string;
@@ -58,6 +59,8 @@ export type UserInput = {
   oidc_issuer?: string; oidc_subject?: string; email?: string; display_name?: string;
   password?: string; role_ids: string[];
 };
+export type Permission = { key: string; resource: string; verb: string; description: string; system: boolean; created_at: string };
+export type Team = { id: string; tenant_id: string; workspace_id: string; name: string; description: string; member_ids: string[]; role_ids: string[]; created_at: string; updated_at: string };
 export type AuditEvent = {
   id: string; actor_type: string; actor_id: string; action: string; resource_type: string;
   resource_id?: string; metadata: Record<string, unknown>; occurred_at: string;
@@ -211,11 +214,25 @@ export async function createPrivacyRequest(
     method: "POST", body: JSON.stringify({ external_id: externalID, request_type: requestType }),
   });
 }
+export async function verifyPrivacyRequest(baseURL: string, apiKey: string, id: string, token: string): Promise<PrivacyRequest> {
+  return requestJSON(baseURL, apiKey, `/v1/privacy/requests/${encodeURIComponent(id)}/verify`, { method: "POST", body: JSON.stringify({ token }) });
+}
+export async function rejectPrivacyRequest(baseURL: string, apiKey: string, id: string, reason: string): Promise<PrivacyRequest> {
+  return requestJSON(baseURL, apiKey, `/v1/privacy/requests/${encodeURIComponent(id)}/reject`, { method: "POST", body: JSON.stringify({ reason }) });
+}
+export async function downloadPrivacyRequest(baseURL: string, apiKey: string, id: string): Promise<Blob> {
+  const response = await fetch(`${baseURL}/v1/privacy/requests/${encodeURIComponent(id)}/download`, { headers: { Authorization: `Bearer ${apiKey}` } });
+  if (!response.ok) throw new Error(`Request failed (${response.status})`);
+  return response.blob();
+}
 export async function getPrivacyRequest(baseURL: string, apiKey: string, id: string): Promise<PrivacyRequest> {
   return requestJSON(baseURL, apiKey, `/v1/privacy/requests/${encodeURIComponent(id)}`);
 }
 export async function listRoles(baseURL: string, apiKey: string): Promise<Role[]> {
   return (await requestJSON<{ roles: Role[] | null }>(baseURL, apiKey, "/v1/roles")).roles ?? [];
+}
+export async function listPermissions(baseURL: string, apiKey: string): Promise<Permission[]> {
+  return (await requestJSON<{ permissions: Permission[] | null }>(baseURL, apiKey, "/v1/permissions")).permissions ?? [];
 }
 export async function createRole(baseURL: string, apiKey: string, name: string, permissions: string[]): Promise<Role> {
   return requestJSON(baseURL, apiKey, "/v1/roles", { method: "POST", body: JSON.stringify({ name, permissions }) });
@@ -225,6 +242,12 @@ export async function listUsers(baseURL: string, apiKey: string): Promise<User[]
 }
 export async function createUser(baseURL: string, apiKey: string, user: UserInput): Promise<User> {
   return requestJSON(baseURL, apiKey, "/v1/users", { method: "POST", body: JSON.stringify(user) });
+}
+export async function listTeams(baseURL: string, apiKey: string): Promise<Team[]> {
+  return (await requestJSON<{ teams: Team[] | null }>(baseURL, apiKey, "/v1/teams")).teams ?? [];
+}
+export async function createTeam(baseURL: string, apiKey: string, input: Pick<Team, "name" | "description" | "member_ids" | "role_ids">): Promise<Team> {
+  return requestJSON(baseURL, apiKey, "/v1/teams", { method: "POST", body: JSON.stringify(input) });
 }
 export async function listAuditEvents(baseURL: string, apiKey: string, filters?: AuditFilter): Promise<AuditEvent[]> {
   const params = new URLSearchParams();
@@ -1431,4 +1454,3 @@ export async function publishPromptVersion(
     body: JSON.stringify({}),
   });
 }
-
