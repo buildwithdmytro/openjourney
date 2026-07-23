@@ -393,11 +393,13 @@ M12 library; 6-point registration across `App.tsx`/`Sidebar.tsx`/`CommandPalette
    runs verify → export/download → erase with audit linkage.
    *Done when:* the SCIM→SAML→authz, maker-checker, and DSR flows pass end-to-end.
    — done: added TestEnterpriseE2E covering SCIM group/team role resolution into a SAML session, maker-checker self-approval/distinct approval, verified DSR export/erase, and audit linkage
-2. [ ] **Security E2E**: a forged/unsigned SAML assertion is rejected; a bad SCIM token is 401; a disabled/
+2. [x] **Security E2E**: a forged/unsigned SAML assertion is rejected; a bad SCIM token is 401; a disabled/
    deprovisioned user fails auth; self-approval is blocked; `audit_events` rejects UPDATE/DELETE and the
    chain verifies (and detects tampering); erasure stays GUC-gated; the new scopes gate their routes.
    *Done when:* each property has a test (forged assertion rejected; deprovisioned user denied; self-
-   approval 403; audit tamper detected; `audit:read`/`privacy:*`/`teams:*`/`scim:manage` enforced).
+   approval 403; audit tamper detected; `audit:read`/`privacy:*`/`teams:*`/`scim:manage` enforced). — done:
+   added TestEnterpriseSecurityE2E scope matrix for all enterprise permissions; existing SAML, SCIM,
+   maker-checker, audit, DSR/GUC, and route-scope tests cover the remaining properties
 3. [ ] **Run the suite**: `go build ./... && go vet ./... && go test ./... -race`, `go mod tidy` (**MUST
    show ONLY the SAML library added, nothing else**), `cd web && npm run typecheck && npm run build &&
    npm test`, `cd sdk/javascript && npm run build && npm test`.
