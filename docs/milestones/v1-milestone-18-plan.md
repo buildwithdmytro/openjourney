@@ -191,9 +191,9 @@ redaction, insights grounding, principal non-spoofability.)
    *Done when:* all green and `git diff go.mod go.sum web/package.json web/package-lock.json
    sdk/javascript/package.json` is empty of additions. — done: Full Go, race, web, and SDK suites green;
    `go mod tidy` produced no manifest changes (F1–F18 regression coverage verified).
-2. [ ] **Audit doc** `docs/milestones/v1-milestone-18-audit.md` in the M2–M17 table format, one row per
+2. [x] **Audit doc** `docs/milestones/v1-milestone-18-audit.md` in the M2–M17 table format, one row per
    `23.x` task mapping the finding (F#) → the fix → the proving test.
-   *Done when:* the doc exists with a row per task, each citing the finding and its regression test.
+   *Done when:* the doc exists with a row per task, each citing the finding and its regression test. — done: Added the M2–M17-format audit table with all 18 23.x rows, F1–F18 mappings, and regression-test evidence.
 
 ## 7. Carry-over hazards & invariants
 
