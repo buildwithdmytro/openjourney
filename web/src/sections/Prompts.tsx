@@ -250,6 +250,7 @@ export default function Prompts({ apiKey, baseURL }: { apiKey: string; baseURL: 
             <EmptyState
               title="No prompts yet"
               description="Create a prompt to start versioning and publishing templates."
+              cta={{ label: "New prompt", onClick: () => setShowPromptModal(true) }}
             />
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -305,6 +306,7 @@ export default function Prompts({ apiKey, baseURL }: { apiKey: string; baseURL: 
                 <EmptyState
                   title="No versions created"
                   description="Author a version to define prompt templates and schema bounds."
+                  cta={{ label: "Create version", onClick: () => setShowVersionModal(true) }}
                 />
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
@@ -383,6 +385,7 @@ export default function Prompts({ apiKey, baseURL }: { apiKey: string; baseURL: 
               <EmptyState
                 title="No prompt selected"
                 description="Select a prompt from the list to view and author prompt versions."
+                cta={{ label: "New prompt", onClick: () => setShowPromptModal(true) }}
               />
             </Card>
           )}

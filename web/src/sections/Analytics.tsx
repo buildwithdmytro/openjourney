@@ -228,6 +228,7 @@ export default function Analytics({ apiKey, baseURL }: { apiKey: string; baseURL
         icon="info"
         title={`No ${type}s available`}
         description={`There are no ${type}s created yet. Create one to view analytics.`}
+        cta={{ label: `Create ${type}`, onClick: () => (window.location.hash = type === "campaign" ? "#campaigns" : "#journeys") }}
       />
     );
   }

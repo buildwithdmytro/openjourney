@@ -43,7 +43,7 @@ import {
   EventSchema,
 } from "../api";
 import { journeyColors } from "../tokens";
-import { ConfirmDialog } from "../components";
+import { ConfirmDialog, EmptyState } from "../components";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 
 const apiBase = import.meta.env.VITE_API_BASE_URL || "/api";
@@ -1301,7 +1301,7 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
                           Version {activeVersion.version} · Published {new Date(activeVersion.published_at).toLocaleString()}
                         </p>
                       ) : (
-                        <p className="muted" style={{ fontSize: "12px", margin: "5px 0 0" }}>No published versions yet.</p>
+                      <EmptyState title="No published versions yet" description="Publish a journey version to start sending customers through this flow." icon="info" cta={{ label: "Publish journey", onClick: () => void handlePublish() }} />
                       )}
                     </div>
                     {activeVersion && (
@@ -1333,7 +1333,7 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
                   {loadingOps ? (
                     <p>Loading DLQ...</p>
                   ) : dlqSteps.length === 0 && dlqIntents.length === 0 ? (
-                    <p className="muted" style={{ fontSize: "12px" }}>No dead-letter items for this journey.</p>
+                      <EmptyState title="No dead-letter items for this journey" icon="check" cta={{ label: "Refresh journey", onClick: () => window.location.reload() }} />
                   ) : (
                     <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
                       {dlqSteps.map((s) => (
@@ -1373,7 +1373,7 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
                   {loadingOps ? (
                     <p>Loading runs...</p>
                   ) : runs.length === 0 ? (
-                    <p className="muted" style={{ fontSize: "12px" }}>No runs started for this journey.</p>
+                      <EmptyState title="No runs started for this journey" description="Publish the journey and wait for an eligible profile." icon="info" cta={{ label: "Publish journey", onClick: () => void handlePublish() }} />
                   ) : (
                     <div style={{ overflowX: "auto" }}>
                       <table>
@@ -1430,7 +1430,7 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
 
                     <h4>Transitions Timeline</h4>
                     {transitions.length === 0 ? (
-                      <p className="muted" style={{ fontSize: "11px" }}>No transitions recorded yet.</p>
+                      <EmptyState title="No transitions recorded yet" description="Journey transitions appear after a run starts." icon="info" cta={{ label: "Refresh journey", onClick: () => window.location.reload() }} />
                     ) : (
                       <div style={{ display: "flex", flexDirection: "column", gap: "1rem", position: "relative", paddingLeft: "10px", borderLeft: "2px solid var(--color-border-light)" }}>
                         {transitions.map((t, idx) => (

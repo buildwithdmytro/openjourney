@@ -106,7 +106,7 @@ export default function Messaging({ apiKey, baseURL }: { apiKey: string; baseURL
               </tbody>
             </table>
           ) : (
-            <EmptyState title="No messages yet" description="Create a message to get started" icon="plus" />
+            <EmptyState title="No messages yet" description="Create a message to get started" icon="plus" cta={{ label: "New message", onClick: () => { setDraft(blank()); setSelectedTemplate(""); } }} />
           )}
         </article>
 
@@ -153,7 +153,7 @@ export default function Messaging({ apiKey, baseURL }: { apiKey: string; baseURL
               </form>
             </>
           ) : (
-            <EmptyState title="No message selected" description="Choose a message type or select a template to begin" icon="search" />
+            <EmptyState title="No message selected" description="Choose a message type or select a template to begin" icon="search" cta={{ label: "New message", onClick: () => { setDraft(blank()); setSelectedTemplate(""); } }} />
           )}
         </article>
       </div>

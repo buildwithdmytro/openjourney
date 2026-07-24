@@ -302,6 +302,7 @@ describe("App", () => {
     window.location.hash = "suppressions";
     render(<App />);
     expect(await screen.findByText("No suppressed endpoints found.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add suppression" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Suppress endpoint" })).toBeInTheDocument();
   });
 

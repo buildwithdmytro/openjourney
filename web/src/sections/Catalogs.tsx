@@ -183,7 +183,7 @@ export default function Catalogs({ apiKey, baseURL }: { apiKey: string; baseURL:
               <small>{item.item_count} items</small>
             </button>
           ))}
-          {catalogs.length === 0 && <EmptyState title="No catalogs yet" description="Create a catalog to store reference data" icon="plus" />}
+          {catalogs.length === 0 && <EmptyState title="No catalogs yet" description="Create a catalog to store reference data" icon="plus" cta={{ label: "New catalog", onClick: () => setCatalog({ id: "", key: "", name: "New catalog", description: "", item_key_field: "id", status: "active", item_count: 0, tenant_id: "", workspace_id: "", app_id: "", created_at: "", updated_at: "" } as Catalog) }} />}
         </article>
 
         <article className="card">
@@ -272,7 +272,7 @@ export default function Catalogs({ apiKey, baseURL }: { apiKey: string; baseURL:
                         </tbody>
                       </table>
                     ) : (
-                      <p style={{ padding: "16px", color: "var(--color-ink-muted)" }}>No items yet. Upload a CSV or JSON file to add items.</p>
+                      <EmptyState title="No items yet" description="Upload a CSV or JSON file to add items." icon="plus" cta={{ label: "Upload items", onClick: () => document.getElementById("catalog-items-file")?.click() }} />
                     )}
                   </div>
                 </div>
@@ -301,7 +301,7 @@ export default function Catalogs({ apiKey, baseURL }: { apiKey: string; baseURL:
                 {item.enabled && <span className="pill" style={{ background: "var(--color-success)" }}>enabled</span>}
               </button>
             ))}
-            {sources.length === 0 && <EmptyState title="No sources yet" description="Create a connected-content source to enable external data fetch" icon="plus" />}
+            {sources.length === 0 && <EmptyState title="No sources yet" description="Create a connected-content source to enable external data fetch" icon="plus" cta={{ label: "Create source", onClick: () => setSource({ id: "", name: "New source", allowed_host: "", auth_header_name: "", auth_secret_ref: "", default_ttl_seconds: 300, timeout_ms: 2000, enabled: false, status: "draft", tenant_id: "", workspace_id: "", created_at: "", updated_at: "" } as ConnectedContentSource) }} />}
           </div>
 
           <div>

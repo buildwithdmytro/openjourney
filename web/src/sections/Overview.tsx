@@ -63,7 +63,7 @@ export default function Overview({ apiKey, baseURL }: { apiKey: string; baseURL:
   }
 
   if (!data) {
-    return <EmptyState icon="info" title="No data" description="Overview data could not be loaded." />;
+    return <EmptyState icon="info" title="No data" description="Overview data could not be loaded." cta={{ label: "Refresh overview", onClick: () => window.location.reload() }} />;
   }
 
   const isEmpty = Object.values(data).every((v) => v === 0);

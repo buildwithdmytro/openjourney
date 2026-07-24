@@ -194,6 +194,7 @@ export default function Reports({ apiKey, baseURL }: { apiKey: string; baseURL: 
         icon="info"
         title={`No ${type}s available`}
         description={`There are no ${type}s created yet. Create one to generate a report.`}
+        cta={{ label: `Create ${type}`, onClick: () => (window.location.hash = type === "campaign" ? "#campaigns" : "#journeys") }}
       />
     )}
 

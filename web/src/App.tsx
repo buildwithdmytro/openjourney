@@ -386,7 +386,7 @@ function Profiles({ apiKey }: { apiKey: string }) {
       <article className="card"><div className="eyebrow">Attributes</div>
         <pre>{JSON.stringify(profile.attributes, null, 2)}</pre></article>
       <article className="card wide"><div className="eyebrow">Consent</div>
-        {consents.length === 0 ? <EmptyState title="No consent records" icon="info" /> :
+        {consents.length === 0 ? <EmptyState title="No consent records" icon="info" cta={{ label: "Search another profile", onClick: () => document.querySelector<HTMLInputElement>('input[placeholder="customer-123"]')?.focus() }} /> :
           <table><thead><tr><th>Channel</th><th>Topic</th><th>State</th><th>Changed</th></tr></thead>
             <tbody>{consents.map((consent) => <tr key={`${consent.channel}:${consent.topic}`}>
               <td>{consent.channel}</td><td>{consent.topic}</td>
@@ -646,7 +646,7 @@ function Operations({ apiKey }: { apiKey: string }) {
         <option value="">All</option><option value="projection">Projection</option>
         <option value="outbox">Outbox</option><option value="operations">Operations</option>
       </select></label></div>
-      {deadLetters.length === 0 ? <EmptyState title="No dead-letter items" icon="check" /> : deadLetters.map((item) =>
+      {deadLetters.length === 0 ? <EmptyState title="No dead-letter items" icon="check" cta={{ label: "Refresh queue", onClick: () => void refresh() }} /> : deadLetters.map((item) =>
         <div className="key-row" key={`${item.queue}:${item.id}`}><div><strong>{item.queue} · {item.kind}</strong>
           <small>{item.subject_id || item.id} · attempts {item.attempts} · {item.last_error || "no error"}</small></div>
           <div className="row-actions"><button onClick={() => void dlq("retry", item)}>Retry</button>
@@ -876,7 +876,7 @@ function Segments({ apiKey }: { apiKey: string }) {
             ))}
             {items.length === 0 && (
               <tr>
-                <td colSpan={6} className="muted text-center">No segments configured.</td>
+                <td colSpan={6}><EmptyState title="No segments configured" description="Create a segment to start organizing profiles." icon="plus" cta={{ label: "Create segment", onClick: () => document.querySelector<HTMLInputElement>('input[placeholder="Segment name"]')?.focus() }} /></td>
               </tr>
             )}
           </tbody>
@@ -887,7 +887,7 @@ function Segments({ apiKey }: { apiKey: string }) {
 }
 
 function ResourceTable({ headers, rows }: { headers: string[]; rows: (string | number)[][] }) {
-  if (rows.length === 0) return <EmptyState title="No records" icon="search" />;
+  if (rows.length === 0) return <EmptyState title="No records" icon="search" cta={{ label: "Refresh", onClick: () => undefined }} />;
   return <table><thead><tr>{headers.map((header) => <th key={header}>{header}</th>)}</tr></thead>
     <tbody>{rows.map((row, index) => <tr key={index}>{row.map((value, cell) =>
       <td key={cell}>{value}</td>)}</tr>)}</tbody></table>;
@@ -1045,7 +1045,7 @@ function Templates({ apiKey }: { apiKey: string }) {
         </div>
         {error && <p className="error">{error}</p>}
         {items.length === 0 ? (
-          <p style={{ color: "var(--muted)" }}>No templates yet. Create one to get started.</p>
+          <EmptyState title="No templates yet" description="Create one to get started." icon="plus" cta={{ label: "New template", onClick: startNew }} />
         ) : (
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
@@ -1293,7 +1293,7 @@ function Suppressions({ apiKey }: { apiKey: string }) {
         <div>
           <h2>Suppressed endpoints ({items.length})</h2>
           {loading && <Spinner size="md" label="Loading suppressions…" />}
-          {!loading && items.length === 0 && <p style={{ color: "var(--muted)" }}>No suppressed endpoints found.</p>}
+          {!loading && items.length === 0 && <EmptyState title="No suppressed endpoints found." icon="info" cta={{ label: "Add suppression", onClick: () => document.querySelector<HTMLInputElement>('input[placeholder="user@example.com"]')?.focus() }} />}
           <ul className="list">
             {items.map(item => (
               <li key={item.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.5rem 0", borderBottom: "1px solid var(--border)" }}>
@@ -1480,7 +1480,7 @@ function SenderIdentities({ apiKey }: { apiKey: string }) {
         <div>
           <h2>Sender identities ({items.length})</h2>
           {loading && <p>Loading identities…</p>}
-          {!loading && items.length === 0 && <p style={{ color: "var(--muted)" }}>No sender identities found.</p>}
+          {!loading && items.length === 0 && <EmptyState title="No sender identities found" icon="info" cta={{ label: "Save identity", onClick: () => document.getElementById("save-identity-btn")?.focus() }} />}
           <ul className="list">
             {items.map(item => (
               <li key={item.id} style={{ padding: "0.5rem 0", borderBottom: "1px solid var(--border)" }}>
@@ -1554,7 +1554,7 @@ function DeviceTokensInspector({ apiKey }: { apiKey: string }) {
         </button>
       </form>
       <ErrorMessage value={error} />
-      {!loading && tokens.length === 0 && profileId && <p style={{ color: "var(--muted)" }}>No active device tokens found for this profile.</p>}
+      {!loading && tokens.length === 0 && profileId && <EmptyState title="No active device tokens found for this profile" icon="info" cta={{ label: "Search another profile", onClick: () => document.getElementById("device-token-profile-id")?.focus() }} />}
       {tokens.length > 0 && (
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
           <thead>
@@ -1822,7 +1822,7 @@ export function Campaigns({ apiKey }: { apiKey: string }) {
         <article className="card">
           <h2>Campaigns ({campaigns.length})</h2>
           {loading && <p>Loading campaigns…</p>}
-          {!loading && campaigns.length === 0 && <p style={{ color: "var(--muted)" }}>No campaigns found.</p>}
+          {!loading && campaigns.length === 0 && <EmptyState title="No campaigns found" icon="plus" cta={{ label: "Create campaign", onClick: resetForm }} />}
           {!loading && campaigns.length > 0 && (
             <div style={{ overflowX: "auto" }}>
               <table>

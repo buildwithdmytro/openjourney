@@ -111,6 +111,7 @@ export default function Assistant({
         <EmptyState
           title="No query performed yet"
           description="Enter a question above or pick a suggested question to run the governed AI assistant."
+          cta={{ label: "Ask a question", onClick: () => document.querySelector<HTMLTextAreaElement>('textarea')?.focus() }}
         />
       )}
 

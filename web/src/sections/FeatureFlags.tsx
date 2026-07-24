@@ -199,7 +199,7 @@ export default function FeatureFlags({ apiKey, baseURL }: { apiKey: string; base
       {loading ? (
         <p className="muted">Loading flags…</p>
       ) : sortedFlags.length === 0 ? (
-        <EmptyState title="No flags yet" description={`Create a flag for ${environment} environment`} icon="plus" />
+        <EmptyState title="No flags yet" description={`Create a flag for ${environment} environment`} icon="plus" cta={{ label: "Create flag", onClick: () => { resetForm(); setShowModal(true); } }} />
       ) : (
         <article className="card">
           <table className="resource-table">
