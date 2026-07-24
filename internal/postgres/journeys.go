@@ -138,8 +138,6 @@ func (s *Store) PublishJourney(ctx context.Context, p domain.Principal, journeyI
 	if err := s.CheckMakerChecker(ctx, p, "journeys", journeyID, ""); err != nil {
 		return domain.JourneyVersion{}, err
 	}
-
-
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return domain.JourneyVersion{}, err
@@ -222,7 +220,10 @@ func publishConversionGoal(graph *journeygraph.Graph) (json.RawMessage, string, 
 		if err != nil {
 			return nil, "", err
 		}
-		cfg := cfgAny.(journeygraph.GoalConfig)
+		cfg, ok := cfgAny.(journeygraph.GoalConfig)
+		if !ok {
+			return nil, "", fmt.Errorf("goal node %s has invalid config", node.ID)
+		}
 		// A Milestone 3 path goal only has a name. An analytical conversion goal
 		// additionally names the accepted event and its attribution window.
 		if cfg.EventType == "" || cfg.Window == "" {
@@ -256,7 +257,10 @@ func publishEntryConfig(graph *journeygraph.Graph) (publishEntry, error) {
 		if err != nil {
 			return publishEntry{}, err
 		}
-		cfg := cfgAny.(journeygraph.EntryConfig)
+		cfg, ok := cfgAny.(journeygraph.EntryConfig)
+		if !ok {
+			return publishEntry{}, fmt.Errorf("entry node %s has invalid config", node.ID)
+		}
 		entry := publishEntry{
 			EntryKind:     cfg.Trigger,
 			EventType:     cfg.EventType,

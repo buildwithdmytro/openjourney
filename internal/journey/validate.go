@@ -31,8 +31,14 @@ func Validate(graph *Graph) error {
 			if node.ID != graph.EntryNodeID {
 				return fmt.Errorf("entry node %s does not match entry_node_id %s", node.ID, graph.EntryNodeID)
 			}
-			cfgAny, _ := DecodeConfig(node)
-			cfg := cfgAny.(EntryConfig)
+			cfgAny, err := DecodeConfig(node)
+			if err != nil {
+				return fmt.Errorf("entry node %s has invalid config: %w", node.ID, err)
+			}
+			cfg, ok := cfgAny.(EntryConfig)
+			if !ok {
+				return fmt.Errorf("entry node %s has invalid config", node.ID)
+			}
 			if cfg.Trigger == "scheduled" {
 				if cfg.SegmentID == "" {
 					return fmt.Errorf("entry node %s scheduled trigger requires segment_id", node.ID)
@@ -92,21 +98,30 @@ func validateDurations(node Node) error {
 		if err != nil {
 			return err
 		}
-		cfg := cfgAny.(DelayConfig)
+		cfg, ok := cfgAny.(DelayConfig)
+		if !ok {
+			return fmt.Errorf("delay node %s has invalid config", node.ID)
+		}
 		return validateDuration(node.ID, "duration", cfg.Duration)
 	case NodeTypeWaitEvent:
 		cfgAny, err := DecodeConfig(node)
 		if err != nil {
 			return err
 		}
-		cfg := cfgAny.(WaitConfig)
+		cfg, ok := cfgAny.(WaitConfig)
+		if !ok {
+			return fmt.Errorf("wait_event node %s has invalid config", node.ID)
+		}
 		return validateDuration(node.ID, "timeout", cfg.Timeout)
 	case NodeTypeAIDecision:
 		cfgAny, err := DecodeConfig(node)
 		if err != nil {
 			return err
 		}
-		cfg := cfgAny.(AIDecisionConfig)
+		cfg, ok := cfgAny.(AIDecisionConfig)
+		if !ok {
+			return fmt.Errorf("ai_decision node %s has invalid config", node.ID)
+		}
 		if cfg.PromptVersionID == "" {
 			return fmt.Errorf("ai_decision node %s requires prompt_version_id", node.ID)
 		}
@@ -125,7 +140,10 @@ func validateDurations(node Node) error {
 		if err != nil {
 			return err
 		}
-		cfg := cfgAny.(ExtensionNodeConfig)
+		cfg, ok := cfgAny.(ExtensionNodeConfig)
+		if !ok {
+			return fmt.Errorf("%s node %s has invalid config", node.Type, node.ID)
+		}
 		if cfg.ExtensionID == "" {
 			return fmt.Errorf("%s node %s requires extension_id", node.Type, node.ID)
 		}
@@ -171,7 +189,10 @@ func validateOutgoing(node Node, edges []Edge) error {
 		if err != nil {
 			return err
 		}
-		cfg := cfgAny.(SplitConfig)
+		cfg, ok := cfgAny.(SplitConfig)
+		if !ok {
+			return fmt.Errorf("split node %s has invalid config", node.ID)
+		}
 		labels := make([]string, 0, len(cfg.Branches))
 		for _, branch := range cfg.Branches {
 			labels = append(labels, branch.Label)
@@ -184,7 +205,10 @@ func validateOutgoing(node Node, edges []Edge) error {
 		if err != nil {
 			return err
 		}
-		cfg := cfgAny.(AIDecisionConfig)
+		cfg, ok := cfgAny.(AIDecisionConfig)
+		if !ok {
+			return fmt.Errorf("ai_decision node %s has invalid config", node.ID)
+		}
 		if cfg.Fallback == "" {
 			return fmt.Errorf("ai_decision node %s requires fallback", node.ID)
 		}
@@ -205,7 +229,10 @@ func validateOutgoing(node Node, edges []Edge) error {
 		if err != nil {
 			return err
 		}
-		cfg := cfgAny.(ExtensionNodeConfig)
+		cfg, ok := cfgAny.(ExtensionNodeConfig)
+		if !ok {
+			return fmt.Errorf("%s node %s has invalid config", node.Type, node.ID)
+		}
 		if cfg.Fallback == "" {
 			return fmt.Errorf("%s node %s requires fallback", node.Type, node.ID)
 		}

@@ -13,6 +13,21 @@ func TestValidateValidGraph(t *testing.T) {
 	}
 }
 
+func TestValidateMalformedNodeConfigReturnsError(t *testing.T) {
+	graph := canonicalGraph()
+	graph.Nodes[1].Config = raw(`{"duration":`)
+
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			t.Fatalf("Validate panicked on malformed config: %v", recovered)
+		}
+	}()
+
+	if err := Validate(&graph); err == nil {
+		t.Fatal("Validate accepted malformed node config")
+	}
+}
+
 func TestValidateInvalidGraphs(t *testing.T) {
 	tests := []struct {
 		name    string

@@ -110,11 +110,12 @@ public edges.)
    *Done when:* segment resolution no longer streams the whole profile table into memory (paged/bounded);
    the short-link list is bounded; tests cover the bound.
    — done: S6/S11 fixed with keyset-paged profile fetches (1000 rows per query) and a 1000-row short-link LIMIT; `TestBoundedProfileResolutionAndShortLinkList` verifies page-boundary resolution and list capping (skipped without `OPENJOURNEY_TEST_DATABASE_URL`); full Go build/vet/test and scoped postgres race test pass.
-3. [ ] **Guard the unchecked type assertions (S7, S9).** `principalFrom` (`server.go:436+`) uses `, ok`
+3. [x] **Guard the unchecked type assertions (S7, S9).** `principalFrom` (`server.go:436+`) uses `, ok`
    and returns 401 when absent; the journey/experiment config assertions (`journeys.go:225`,
    `experiments.go:509`, `validate.go:35+`) assert with `, ok` and return a validation error.
    *Done when:* a handler without the auth middleware returns 401 (not a panic); a malformed config returns
    a validation error (not a panic); tests cover both.
+   — done: S7/S9 fixed with `requirePrincipal` 401 handling and checked journey/experiment config assertions; `TestGetProfileWithoutAuthMiddlewareReturnsUnauthorized` and `TestValidateMalformedNodeConfigReturnsError` cover the findings; full Go build/vet/test and scoped postgres race test pass.
 
 ### Milestone 24.2 — Frontend resilience
 1. [ ] **Root error boundary (S5).** Wrap `<App/>` in a top-level error boundary in `web/src/main.tsx`

@@ -433,14 +433,20 @@ func (s *Server) acceptEvents(w http.ResponseWriter, r *http.Request) {
 				fmt.Sprintf("events[%d]: %s", index, err))
 			return
 		}
-		principal := r.Context().Value(principalKey{}).(domain.Principal)
+		principal, ok := requirePrincipal(w, r)
+		if !ok {
+			return
+		}
 		if err := s.store.ValidateEventSchema(r.Context(), principal, event); err != nil {
 			writeError(w, http.StatusUnprocessableEntity, "schema_validation_failed",
 				fmt.Sprintf("events[%d]: %s", index, err))
 			return
 		}
 	}
-	principal := r.Context().Value(principalKey{}).(domain.Principal)
+	principal, ok := requirePrincipal(w, r)
+	if !ok {
+		return
+	}
 	if s.extensionInvoker != nil {
 		if err := s.applyIngestionTransforms(r.Context(), principal, request.Events); err != nil {
 			writeError(w, http.StatusUnprocessableEntity, "transform_failed", err.Error())
@@ -468,7 +474,10 @@ func (s *Server) acceptEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getProfile(w http.ResponseWriter, r *http.Request) {
-	principal := r.Context().Value(principalKey{}).(domain.Principal)
+	principal, ok := requirePrincipal(w, r)
+	if !ok {
+		return
+	}
 	profile, consents, err := s.store.GetProfile(r.Context(), principal, r.PathValue("externalID"))
 	if errors.Is(err, postgres.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "not_found", "profile was not found")
@@ -911,7 +920,17 @@ func (s *Server) verifyAudit(w http.ResponseWriter, r *http.Request) {
 }
 
 func principalFrom(r *http.Request) domain.Principal {
-	return r.Context().Value(principalKey{}).(domain.Principal)
+	principal, _ := r.Context().Value(principalKey{}).(domain.Principal)
+	return principal
+}
+
+func requirePrincipal(w http.ResponseWriter, r *http.Request) (domain.Principal, bool) {
+	principal, ok := r.Context().Value(principalKey{}).(domain.Principal)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized", "authentication is required")
+		return domain.Principal{}, false
+	}
+	return principal, true
 }
 
 func internalError(w http.ResponseWriter, err error, operation string, principal domain.Principal) {

@@ -506,7 +506,10 @@ func pinJourneyExperiment(data json.RawMessage, experimentID, winnerVariant stri
 			if err != nil {
 				return nil, err
 			}
-			cfg := cfgAny.(journeygraph.SplitConfig)
+			cfg, ok := cfgAny.(journeygraph.SplitConfig)
+			if !ok {
+				return nil, fmt.Errorf("split node %s has invalid config", node.ID)
+			}
 			if cfg.ExperimentID != experimentID {
 				continue
 			}
@@ -533,7 +536,10 @@ func pinJourneyExperiment(data json.RawMessage, experimentID, winnerVariant stri
 			if err != nil {
 				return nil, err
 			}
-			cfg := cfgAny.(journeygraph.MessageConfig)
+			cfg, ok := cfgAny.(journeygraph.MessageConfig)
+			if !ok {
+				return nil, fmt.Errorf("message node %s has invalid config", node.ID)
+			}
 			if cfg.ExperimentID != experimentID {
 				continue
 			}

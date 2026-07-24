@@ -2224,4 +2224,3 @@ func TestListAuditEventsEndpointWithFiltersAndScope(t *testing.T) {
 		}
 	})
 }
-
