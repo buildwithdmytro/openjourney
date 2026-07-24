@@ -13,8 +13,8 @@ import (
 
 var ErrHumanActorRequired = errors.New("publishing requires an authenticated user")
 var ErrBlobStoreRequired = errors.New("blob store is required")
+var ErrApproverRequired = errors.New("approver user id is required")
 var ErrSelfApproval = errors.New("self approval forbidden: creator cannot approve their own draft")
-
 
 // BlobStore is deliberately the small write-only interface needed before a
 // resource transaction. The full ports.BlobStore also satisfies it.

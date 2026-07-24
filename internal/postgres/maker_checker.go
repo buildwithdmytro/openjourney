@@ -5,10 +5,11 @@ import (
 	"errors"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
+	"github.com/buildwithdmytro/openjourney/internal/publishing"
 	"github.com/jackc/pgx/v5"
 )
 
-var ErrSelfApproval = errors.New("self approval forbidden: creator cannot approve their own draft")
+var ErrSelfApproval = publishing.ErrSelfApproval
 
 func (s *Store) GetMakerCheckerPolicy(ctx context.Context, p domain.Principal, resourceType string) (bool, error) {
 	if resourceType == "" {
@@ -136,4 +137,3 @@ func (s *Store) CheckMakerChecker(ctx context.Context, p domain.Principal, resou
 
 	return EvaluateMakerChecker(requireChecker, p.UserID, actors)
 }
-

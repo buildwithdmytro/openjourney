@@ -9,11 +9,12 @@ import (
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 	"github.com/buildwithdmytro/openjourney/internal/ports"
+	"github.com/buildwithdmytro/openjourney/internal/publishing"
 )
 
 var ErrInvalidGraph = errors.New("invalid journey graph")
-var ErrApproverRequired = errors.New("approver user id is required")
-var ErrBlobStoreRequired = errors.New("blob store is required")
+var ErrApproverRequired = publishing.ErrApproverRequired
+var ErrBlobStoreRequired = publishing.ErrBlobStoreRequired
 
 type BlobStore interface {
 	Put(ctx context.Context, key string, data []byte, contentType string) error

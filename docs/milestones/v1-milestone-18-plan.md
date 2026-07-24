@@ -168,13 +168,13 @@ redaction, insights grounding, principal non-spoofability.)
    Catalogs tests and full web suite (F14).
 
 ### Milestone 23.6 — Hygiene
-1. [ ] **De-duplicate sentinels + guard the DROP (F15, F16).** Consolidate `ErrBlobStoreRequired` (×5),
+1. [x] **De-duplicate sentinels + guard the DROP (F15, F16).** Consolidate `ErrBlobStoreRequired` (×5),
    `ErrApproverRequired` (×4), `ErrSelfApproval` (×2) into one shared package (e.g. `internal/publishing`);
    replace the duplicates with references. Add `IF EXISTS` guidance/guard for the fragile
    `047`-style `DROP CONSTRAINT` (a forward note; do not edit `047`). Do NOT rename the applied duplicate
    `021` migrations (immutable) — document the collision.
    *Done when:* each sentinel is defined once and imported; `go build ./... && go vet ./...` green; no
-   behavior change (tests pass).
+   behavior change (tests pass). — done: Canonicalized F15 sentinels in internal/publishing with identity regression TestPublishingSentinelsHaveOneCanonicalIdentity; documented F16's immutable 047 DROP and duplicate 021 migrations.
 2. [ ] **Missing indexes + in-statement tenant guards (F17, F18).** Migration `061`: add indexes for the
    `inapp_messages` expiry sweep (`expires_at`), the `inapp_messages` admin list (`…,created_at`), and
    `feature_flags` list-by-workspace (`…,workspace_id`). Add an explicit `tenant_id` predicate to the
