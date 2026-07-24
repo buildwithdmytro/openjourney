@@ -90,9 +90,10 @@ public edges.)
 ## 6. Task list
 
 ### Milestone 24.0 — M18 residual closeout — DO FIRST
-1. [ ] **Propagate the remaining audit-write errors.** The three `_ = s.audit(...)` call sites still
+1. [x] **Propagate the remaining audit-write errors.** The three `_ = s.audit(...)` call sites still
    ignore the (now in-transaction) return; propagate it so a failed audit aborts its mutation.
    *Done when:* no `_ = s.audit(` remains; a forced audit failure aborts the governed mutation; test covers it.
+   — done: Satisfies M18 residual finding F8; no `_ = s.audit(` remains, `TestSameTransactionAuditWrites_NonGated` verifies propagation at all call sites, and `TestSameTransactionAuditWrites_DBIntegration` covers forced audit failure rollback (skipped without `OPENJOURNEY_TEST_DATABASE_URL`).
 
 ### Milestone 24.1 — Worker & backend resilience — STABILITY CHECKPOINT
 1. [ ] **Panic recovery → DLQ on all worker loops (S1, S10).** Wrap the per-message body of
