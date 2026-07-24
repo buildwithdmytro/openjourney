@@ -4,13 +4,12 @@ import { PageHeader } from "./PageHeader";
 import { CommandPalette } from "./CommandPalette";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { useFocusTrap } from "../hooks/useFocusTrap";
-
-type View = "overview" | "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "analytics" | "copilots" | "assistant" | "governance" | "extensions" | "connectors" | "suppressions" | "sender-identities" | "device-tokens" | "acquisition" | "messaging" | "flags" | "catalogs" | "prompts";
+import { View, viewTitles } from "../navigation";
 
 interface AppShellProps {
   view: View;
   onViewChange: (view: View) => void;
-  viewTitles: Record<View, [string, string]>;
+  viewTitles?: Record<View, [string, string]>;
   healthy: boolean | null;
   children: ReactNode;
   theme?: string;
@@ -19,7 +18,7 @@ interface AppShellProps {
 }
 
 export const AppShell = React.forwardRef<HTMLDivElement, AppShellProps>(
-  ({ view, onViewChange, viewTitles, healthy, children, theme, onThemeToggle, onSignOut }, ref) => {
+  ({ view, onViewChange, viewTitles: titles = viewTitles, healthy, children, theme, onThemeToggle, onSignOut }, ref) => {
     const [paletteOpen, setPaletteOpen] = useState(false);
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
     const isMobile = useMediaQuery("(max-width: 760px)");
@@ -63,7 +62,7 @@ export const AppShell = React.forwardRef<HTMLDivElement, AppShellProps>(
           <Sidebar
             view={view}
             onViewChange={handleViewChange}
-            viewTitles={viewTitles}
+            viewTitles={titles}
             healthy={healthy}
             theme={theme}
             onThemeToggle={onThemeToggle}
@@ -86,7 +85,7 @@ export const AppShell = React.forwardRef<HTMLDivElement, AppShellProps>(
               <Sidebar
                 view={view}
                 onViewChange={handleViewChange}
-                viewTitles={viewTitles}
+                viewTitles={titles}
                 healthy={healthy}
                 theme={theme}
                 onThemeToggle={onThemeToggle}
@@ -97,8 +96,8 @@ export const AppShell = React.forwardRef<HTMLDivElement, AppShellProps>(
         )}
         <main ref={mainRef} id="main-content" tabIndex={-1}>
           <PageHeader
-            title={viewTitles[view][0]}
-            description={viewTitles[view][1]}
+            title={titles[view][0]}
+            description={titles[view][1]}
             onMenuClick={isMobile ? () => setMobileNavOpen(!mobileNavOpen) : undefined}
             menuOpen={isMobile ? mobileNavOpen : undefined}
           />

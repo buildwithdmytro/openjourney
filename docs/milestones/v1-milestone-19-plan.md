@@ -162,12 +162,13 @@ public edges.)
    *Done when:* no `window.confirm` remains; every destructive action (incl. unmerge) routes through
    `ConfirmDialog`; tests cover confirm + cancel for unmerge and one former-native case.
    — done: U3 fixed by routing Catalogs, Analytics, App suppressions, and identity unmerge through ConfirmDialog; `Connectors > requires confirmation before unmerging identities and supports cancel` verifies cancel/confirm, and `Analytics > deletes a saved report` verifies the former-native case; web typecheck/build and all 326 tests pass.
-2. [ ] **Single-source nav config + rebalance (U4).** Extract the `View` union + `viewTitles` + `navGroups`
+2. [x] **Single-source nav config + rebalance (U4).** Extract the `View` union + `viewTitles` + `navGroups`
    + palette items into ONE config module consumed by `App.tsx`/`Sidebar.tsx`/`CommandPalette.tsx`/
    `AppShell.tsx`; rebalance the 11-item "Messaging" group into sensible groups (e.g. Messaging vs
    Infrastructure vs Data).
    *Done when:* nav is defined once (no duplication across the 4 files); the overloaded group is split;
    all 29 views still render + route; tests green.
+   — done: U4 fixed with the shared `web/src/navigation.ts` consumed by App, AppShell, Sidebar, and CommandPalette; Messaging was split from Delivery, Infrastructure, and Data; `navigation.test.ts` verifies all 29 views are unique and grouped, and all 327 web tests pass.
 3. [ ] **⌘K actions + category search (U5, U8).** Populate the palette's `action` items (Create template,
    New API key, Publish flag, …) and search by category/keywords, not just labels; give the palette input
    an explicit label; fix the mobile drawer `aria-controls` id mismatch (`AppShell.tsx:80` vs the drawer id).

@@ -1,47 +1,10 @@
 import React from "react";
-
-type View = "overview" | "profiles" | "schemas" | "api-keys" | "privacy" | "access" | "operations" | "audit" | "segments" | "scoring" | "templates" | "campaigns" | "journeys" | "experiments" | "reports" | "analytics" | "copilots" | "assistant" | "governance" | "extensions" | "connectors" | "suppressions" | "sender-identities" | "device-tokens" | "acquisition" | "messaging" | "flags" | "catalogs" | "prompts";
-
-interface NavGroup {
-  label: string;
-  items: View[];
-}
-
-const navGroups: NavGroup[] = [
-  {
-    label: "",
-    items: ["overview"],
-  },
-  {
-    label: "Audiences",
-    items: ["profiles", "segments", "scoring", "acquisition"],
-  },
-  {
-    label: "Messaging",
-    items: ["templates", "campaigns", "journeys", "experiments", "flags", "messaging", "catalogs", "connectors", "suppressions", "sender-identities", "device-tokens"],
-  },
-  {
-    label: "AI & Insights",
-    items: ["copilots", "assistant", "governance", "prompts", "reports", "analytics"],
-  },
-  {
-    label: "Data",
-    items: ["schemas"],
-  },
-  {
-    label: "Admin",
-    items: ["extensions", "privacy", "access", "audit", "operations"],
-  },
-  {
-    label: "Settings",
-    items: ["api-keys"],
-  },
-];
+import { navGroups, View, viewTitles } from "../navigation";
 
 interface SidebarProps {
   view: View;
   onViewChange: (view: View) => void;
-  viewTitles: Record<View, [string, string]>;
+  viewTitles?: Record<View, [string, string]>;
   healthy: boolean | null;
   theme?: string;
   onThemeToggle?: () => void;
@@ -49,7 +12,7 @@ interface SidebarProps {
 }
 
 export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
-  ({ view, onViewChange, viewTitles, healthy, theme, onThemeToggle, onSignOut }, ref) => {
+  ({ view, onViewChange, viewTitles: titles = viewTitles, healthy, theme, onThemeToggle, onSignOut }, ref) => {
     return (
       <aside ref={ref}>
         <div className="brand"><span>O</span> OpenJourney</div>
@@ -63,7 +26,7 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
                   className={view === item ? "active" : ""}
                   onClick={() => onViewChange(item)}
                 >
-                  {viewTitles[item][0]}
+                  {titles[item][0]}
                 </button>
               ))}
             </div>
