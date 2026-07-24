@@ -389,12 +389,14 @@ func (s *Store) RolloutExperiment(ctx context.Context, p domain.Principal, exper
 		return domain.ExperimentRollout{}, ErrNotFound
 	}
 
+		if err := s.audit(ctx, tx, p, "experiment.rollout", "experiment", experimentID, map[string]any{
+		"winner_variant": winnerVariant, "subject_type": e.SubjectType,
+	}); err != nil {
+		return domain.ExperimentRollout{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return domain.ExperimentRollout{}, err
 	}
-	_ = s.audit(ctx, p, "experiment.rollout", "experiment", experimentID, map[string]any{
-		"winner_variant": winnerVariant, "subject_type": e.SubjectType,
-	})
 	return result, nil
 }
 

@@ -16,6 +16,12 @@ func scanShortLink(row pgx.Row, out *domain.ShortLink) error {
 }
 
 func (s *Store) CreateShortLink(ctx context.Context, p domain.Principal, link domain.ShortLink) (domain.ShortLink, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.ShortLink{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	if link.Slug == "" || link.DestinationURL == "" {
 		return domain.ShortLink{}, errors.New("slug and destination_url are required")
 	}
@@ -23,13 +29,19 @@ func (s *Store) CreateShortLink(ctx context.Context, p domain.Principal, link do
 		link.UTM = json.RawMessage(`{}`)
 	}
 	var out domain.ShortLink
-	err := scanShortLink(s.pool.QueryRow(ctx, `INSERT INTO short_links
+	err = scanShortLink(tx.QueryRow(ctx, `INSERT INTO short_links
 		(tenant_id, workspace_id, slug, destination_url, utm) VALUES ($1,$2,$3,$4,$5)
 		RETURNING `+shortLinkColumns, p.TenantID, p.WorkspaceID, link.Slug, link.DestinationURL, link.UTM), &out)
-	if err == nil {
-		_ = s.audit(ctx, p, "short_link.create", "short_link", out.ID, map[string]any{"slug": out.Slug})
+	if err != nil {
+		return domain.ShortLink{}, err
 	}
-	return out, err
+	if err := s.audit(ctx, tx, p, "short_link.create", "short_link", out.ID, map[string]any{"slug": out.Slug}); err != nil {
+		return domain.ShortLink{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.ShortLink{}, err
+	}
+	return out, nil
 }
 
 func (s *Store) ListShortLinks(ctx context.Context, p domain.Principal) ([]domain.ShortLink, error) {

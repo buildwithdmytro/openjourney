@@ -35,18 +35,29 @@ func scanFieldClassification(row pgx.Row, c *domain.FieldClassification) error {
 }
 
 func (s *Store) CreateFieldClassification(ctx context.Context, p domain.Principal, c domain.FieldClassification) (domain.FieldClassification, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.FieldClassification{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	if err := validateFieldClassification(c); err != nil {
 		return domain.FieldClassification{}, err
 	}
 	var out domain.FieldClassification
-	err := scanFieldClassification(s.pool.QueryRow(ctx, `INSERT INTO field_classifications
+	err = scanFieldClassification(tx.QueryRow(ctx, `INSERT INTO field_classifications
 		(tenant_id, workspace_id, entity_type, field_path, classification, send_to_model)
 		VALUES ($1, $2, $3, $4, $5, $6) RETURNING `+fieldClassificationColumns,
 		p.TenantID, p.WorkspaceID, c.EntityType, c.FieldPath, c.Classification, c.SendToModel), &out)
 	if err != nil {
 		return domain.FieldClassification{}, err
 	}
-	_ = s.audit(ctx, p, "field_classification.create", "field_classification", out.ID, map[string]any{"field_path": out.FieldPath})
+	if err := s.audit(ctx, tx, p, "field_classification.create", "field_classification", out.ID, map[string]any{"field_path": out.FieldPath}); err != nil {
+		return domain.FieldClassification{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.FieldClassification{}, err
+	}
 	return out, nil
 }
 
@@ -80,11 +91,17 @@ func (s *Store) ListFieldClassifications(ctx context.Context, p domain.Principal
 }
 
 func (s *Store) UpdateFieldClassification(ctx context.Context, p domain.Principal, c domain.FieldClassification) (domain.FieldClassification, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.FieldClassification{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	if err := validateFieldClassification(c); err != nil {
 		return domain.FieldClassification{}, err
 	}
 	var out domain.FieldClassification
-	err := scanFieldClassification(s.pool.QueryRow(ctx, `UPDATE field_classifications SET
+	err = scanFieldClassification(tx.QueryRow(ctx, `UPDATE field_classifications SET
 		entity_type=$1, field_path=$2, classification=$3, send_to_model=$4
 		WHERE tenant_id=$5 AND workspace_id=$6 AND id=$7 RETURNING `+fieldClassificationColumns,
 		c.EntityType, c.FieldPath, c.Classification, c.SendToModel, p.TenantID, p.WorkspaceID, c.ID), &out)
@@ -94,18 +111,34 @@ func (s *Store) UpdateFieldClassification(ctx context.Context, p domain.Principa
 	if err != nil {
 		return domain.FieldClassification{}, err
 	}
-	_ = s.audit(ctx, p, "field_classification.update", "field_classification", out.ID, map[string]any{"field_path": out.FieldPath})
+	if err := s.audit(ctx, tx, p, "field_classification.update", "field_classification", out.ID, map[string]any{"field_path": out.FieldPath}); err != nil {
+		return domain.FieldClassification{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.FieldClassification{}, err
+	}
 	return out, nil
 }
 
 func (s *Store) DeleteFieldClassification(ctx context.Context, p domain.Principal, id string) error {
-	tag, err := s.pool.Exec(ctx, `DELETE FROM field_classifications WHERE tenant_id=$1 AND workspace_id=$2 AND id=$3`, p.TenantID, p.WorkspaceID, id)
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	tag, err := tx.Exec(ctx, `DELETE FROM field_classifications WHERE tenant_id=$1 AND workspace_id=$2 AND id=$3`, p.TenantID, p.WorkspaceID, id)
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() != 1 {
 		return ErrNotFound
 	}
-	_ = s.audit(ctx, p, "field_classification.delete", "field_classification", id, nil)
+	if err := s.audit(ctx, tx, p, "field_classification.delete", "field_classification", id, nil); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
 	return nil
 }

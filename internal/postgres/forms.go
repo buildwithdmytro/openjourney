@@ -18,6 +18,12 @@ func scanForm(row pgx.Row, out *domain.Form) error {
 const formColumns = `id, tenant_id, workspace_id, name, status, draft, current_version_id, latest_version, created_at, updated_at`
 
 func (s *Store) CreateForm(ctx context.Context, p domain.Principal, form domain.Form) (domain.Form, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.Form{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	if form.Name == "" {
 		return domain.Form{}, errors.New("form name is required")
 	}
@@ -25,12 +31,17 @@ func (s *Store) CreateForm(ctx context.Context, p domain.Principal, form domain.
 		form.Draft = json.RawMessage(`{"fields":[]}`)
 	}
 	var out domain.Form
-	err := scanForm(s.pool.QueryRow(ctx, `INSERT INTO forms (tenant_id, workspace_id, name, draft)
+	err = scanForm(tx.QueryRow(ctx, `INSERT INTO forms (tenant_id, workspace_id, name, draft)
 		VALUES ($1, $2, $3, $4) RETURNING `+formColumns, p.TenantID, p.WorkspaceID, form.Name, form.Draft), &out)
 	if err != nil {
 		return domain.Form{}, err
 	}
-	_ = s.audit(ctx, p, "form.create", "form", out.ID, map[string]any{"name": out.Name})
+	if err := s.audit(ctx, tx, p, "form.create", "form", out.ID, map[string]any{"name": out.Name}); err != nil {
+		return domain.Form{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Form{}, err
+	}
 	return out, nil
 }
 

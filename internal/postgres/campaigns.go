@@ -11,6 +11,12 @@ import (
 )
 
 func (s *Store) CreateCampaign(ctx context.Context, p domain.Principal, c domain.Campaign) (domain.Campaign, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.Campaign{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	if c.Name == "" {
 		return domain.Campaign{}, errors.New("campaign name is required")
 	}
@@ -25,7 +31,7 @@ func (s *Store) CreateCampaign(ctx context.Context, p domain.Principal, c domain
 	}
 
 	var out domain.Campaign
-	err := s.pool.QueryRow(ctx, `INSERT INTO campaigns (tenant_id, workspace_id, name, description, segment_id, template_id, experiment_id, status, scheduled_at, segment_version, template_version, recipient_count)
+	err = tx.QueryRow(ctx, `INSERT INTO campaigns (tenant_id, workspace_id, name, description, segment_id, template_id, experiment_id, status, scheduled_at, segment_version, template_version, recipient_count)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		RETURNING id, tenant_id, workspace_id, name, description, segment_id, template_id, experiment_id, conversion_goal, attribution_window::text, status, scheduled_at, manifest_key, segment_version, template_version, evaluated_at, recipient_count, created_at, updated_at`,
 		p.TenantID, p.WorkspaceID, c.Name, c.Description, c.SegmentID, c.TemplateID, c.ExperimentID, c.Status, c.ScheduledAt, c.SegmentVersion, c.TemplateVersion, c.RecipientCount).
@@ -34,7 +40,12 @@ func (s *Store) CreateCampaign(ctx context.Context, p domain.Principal, c domain
 		return domain.Campaign{}, err
 	}
 
-	_ = s.audit(ctx, p, "campaign.create", "campaign", out.ID, map[string]any{"name": out.Name})
+	if err := s.audit(ctx, tx, p, "campaign.create", "campaign", out.ID, map[string]any{"name": out.Name}); err != nil {
+		return domain.Campaign{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Campaign{}, err
+	}
 	return out, nil
 }
 
@@ -63,8 +74,14 @@ func (s *Store) GetCampaignSystem(ctx context.Context, tenantID, id string) (dom
 }
 
 func (s *Store) UpdateCampaign(ctx context.Context, p domain.Principal, c domain.Campaign) (domain.Campaign, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.Campaign{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	var out domain.Campaign
-	err := s.pool.QueryRow(ctx, `UPDATE campaigns SET name=$4, description=$5, segment_id=$6, template_id=$7, experiment_id=$8, status=$9, scheduled_at=$10, manifest_key=$11, segment_version=$12, template_version=$13, evaluated_at=$14, recipient_count=$15, updated_at=now()
+	err = tx.QueryRow(ctx, `UPDATE campaigns SET name=$4, description=$5, segment_id=$6, template_id=$7, experiment_id=$8, status=$9, scheduled_at=$10, manifest_key=$11, segment_version=$12, template_version=$13, evaluated_at=$14, recipient_count=$15, updated_at=now()
 		WHERE tenant_id=$1 AND workspace_id=$2 AND id=$3
 		RETURNING id, tenant_id, workspace_id, name, description, segment_id, template_id, experiment_id, conversion_goal, attribution_window::text, status, scheduled_at, manifest_key, segment_version, template_version, evaluated_at, recipient_count, created_at, updated_at`,
 		p.TenantID, p.WorkspaceID, c.ID, c.Name, c.Description, c.SegmentID, c.TemplateID, c.ExperimentID, c.Status, c.ScheduledAt, c.ManifestKey, c.SegmentVersion, c.TemplateVersion, c.EvaluatedAt, c.RecipientCount).
@@ -76,7 +93,12 @@ func (s *Store) UpdateCampaign(ctx context.Context, p domain.Principal, c domain
 		return domain.Campaign{}, err
 	}
 
-	_ = s.audit(ctx, p, "campaign.update", "campaign", out.ID, map[string]any{"status": out.Status})
+	if err := s.audit(ctx, tx, p, "campaign.update", "campaign", out.ID, map[string]any{"status": out.Status}); err != nil {
+		return domain.Campaign{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Campaign{}, err
+	}
 	return out, nil
 }
 

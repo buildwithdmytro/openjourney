@@ -49,6 +49,12 @@ func (s *Store) MaterializeConnectorRows(ctx context.Context, p domain.Principal
 }
 
 func (s *Store) CreateSegment(ctx context.Context, p domain.Principal, seg domain.Segment) (domain.Segment, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.Segment{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	if seg.Name == "" {
 		return domain.Segment{}, errors.New("name is required")
 	}
@@ -62,7 +68,7 @@ func (s *Store) CreateSegment(ctx context.Context, p domain.Principal, seg domai
 		seg.DSL = json.RawMessage("{}")
 	}
 	var out domain.Segment
-	err := s.pool.QueryRow(ctx, `INSERT INTO segments (tenant_id, workspace_id, name, description, type, status, dsl, version)
+	err = tx.QueryRow(ctx, `INSERT INTO segments (tenant_id, workspace_id, name, description, type, status, dsl, version)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, 1)
 		RETURNING id, tenant_id, workspace_id, name, COALESCE(description, ''), type, status, dsl, version, created_at, updated_at`,
 		p.TenantID, p.WorkspaceID, seg.Name, seg.Description, seg.Type, seg.Status, seg.DSL).
@@ -70,7 +76,12 @@ func (s *Store) CreateSegment(ctx context.Context, p domain.Principal, seg domai
 	if err != nil {
 		return domain.Segment{}, err
 	}
-	_ = s.audit(ctx, p, "segment.create", "segment", out.ID, map[string]any{"name": out.Name})
+	if err := s.audit(ctx, tx, p, "segment.create", "segment", out.ID, map[string]any{"name": out.Name}); err != nil {
+		return domain.Segment{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Segment{}, err
+	}
 	return out, nil
 }
 
@@ -87,6 +98,12 @@ func (s *Store) GetSegment(ctx context.Context, p domain.Principal, id string) (
 }
 
 func (s *Store) UpdateSegment(ctx context.Context, p domain.Principal, seg domain.Segment) (domain.Segment, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.Segment{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	existing, err := s.GetSegment(ctx, p, seg.ID)
 	if err != nil {
 		return domain.Segment{}, err
@@ -102,7 +119,7 @@ func (s *Store) UpdateSegment(ctx context.Context, p domain.Principal, seg domai
 	}
 
 	var out domain.Segment
-	err = s.pool.QueryRow(ctx, `UPDATE segments
+	err = tx.QueryRow(ctx, `UPDATE segments
 		SET name=$1, description=$2, type=$3, status=$4, dsl=$5, version=$6, updated_at=now()
 		WHERE tenant_id=$7 AND workspace_id=$8 AND id=$9
 		RETURNING id, tenant_id, workspace_id, name, COALESCE(description, ''), type, status, dsl, version, created_at, updated_at`,
@@ -114,7 +131,12 @@ func (s *Store) UpdateSegment(ctx context.Context, p domain.Principal, seg domai
 	if err != nil {
 		return domain.Segment{}, err
 	}
-	_ = s.audit(ctx, p, "segment.update", "segment", out.ID, map[string]any{"name": out.Name})
+	if err := s.audit(ctx, tx, p, "segment.update", "segment", out.ID, map[string]any{"name": out.Name}); err != nil {
+		return domain.Segment{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Segment{}, err
+	}
 	return out, nil
 }
 
@@ -182,7 +204,12 @@ func (s *Store) SetSegmentMembers(ctx context.Context, p domain.Principal, segme
 		return err
 	}
 
-	_ = s.audit(ctx, p, "segment.set_members", "segment", segmentID, map[string]any{"count": len(members)})
+	if err := s.audit(ctx, tx, p, "segment.set_members", "segment", segmentID, map[string]any{"count": len(members)}); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
 	return nil
 }
 

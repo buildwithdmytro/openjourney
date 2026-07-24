@@ -117,11 +117,8 @@ redaction, insights grounding, principal non-spoofability.)
    *Done when:* `TRUNCATE audit_events` is rejected; test proves it. — done: Added BEFORE TRUNCATE triggers to audit_events and all append-only tables via migration 064 (F7); verified via TestTruncateGuardAuditTables_MigrationSQL & TestTruncateGuardAuditTables_DBIntegration.
 
 ### Milestone 23.2 — Audit completeness & atomicity
-1. [ ] **Same-transaction, error-propagating audit writes (F8).** Refactor `audit()` (`admin.go:777`) to
-   write within the caller's mutation transaction and RETURN its error; update call sites to propagate it
-   (stop `_ = s.audit(...)`).
-   *Done when:* a forced audit-write failure aborts/errors the governed mutation (no silent drop); a test
-   proves a mutation + its audit row are atomic (both or neither).
+1. [x] **Same-transaction, error-propagating audit writes (F8).** Refactor `audit()` (`admin.go:777`) to write within the caller's mutation transaction and RETURN its error; update call sites to propagate it (stop `_ = s.audit(...)`).
+   *Done when:* a forced audit-write failure aborts/errors the governed mutation (no silent drop); a test proves a mutation + its audit row are atomic (both or neither). — done: Refactored audit() to write within caller mutation transactions and propagate errors (F8); verified via TestSameTransactionAuditWrites_NonGated & TestSameTransactionAuditWrites_DBIntegration.
 2. [ ] **Guard non-UUID app_ids in audit (F9).** `audit()`'s `app_id` insert (`admin.go:817`) handles
    non-UUID principal app_ids (`"default"`/`"system"`) — store NULL or a normalized value instead of
    `'default'::uuid` (which errors).

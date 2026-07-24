@@ -13,6 +13,12 @@ import (
 )
 
 func (s *Store) CreateExtension(ctx context.Context, p domain.Principal, ext domain.Extension) (domain.Extension, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.Extension{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	if ext.Name == "" {
 		return domain.Extension{}, errors.New("extension name is required")
 	}
@@ -20,7 +26,7 @@ func (s *Store) CreateExtension(ctx context.Context, p domain.Principal, ext dom
 		return domain.Extension{}, errors.New("extension publisher is required")
 	}
 	var out domain.Extension
-	err := s.pool.QueryRow(ctx, `INSERT INTO extensions (tenant_id, workspace_id, name, publisher, status)
+	err = tx.QueryRow(ctx, `INSERT INTO extensions (tenant_id, workspace_id, name, publisher, status)
 		VALUES ($1, $2, $3, $4, COALESCE(NULLIF($5, ''), 'installed'))
 		RETURNING id, tenant_id, workspace_id, name, publisher, current_version_id, latest_version, status, created_at, updated_at`,
 		p.TenantID, p.WorkspaceID, ext.Name, ext.Publisher, ext.Status).
@@ -28,7 +34,12 @@ func (s *Store) CreateExtension(ctx context.Context, p domain.Principal, ext dom
 	if err != nil {
 		return domain.Extension{}, err
 	}
-	_ = s.audit(ctx, p, "extension.create", "extension", out.ID, map[string]any{"name": out.Name})
+	if err := s.audit(ctx, tx, p, "extension.create", "extension", out.ID, map[string]any{"name": out.Name}); err != nil {
+		return domain.Extension{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Extension{}, err
+	}
 	return out, nil
 }
 
@@ -83,13 +94,19 @@ func (s *Store) ListExtensions(ctx context.Context, p domain.Principal) ([]domai
 }
 
 func (s *Store) UpdateExtension(ctx context.Context, p domain.Principal, ext domain.Extension) (domain.Extension, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.Extension{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	if ext.Status == "enabled" && (p.ActorType != "user" || p.UserID == "") {
 		return domain.Extension{}, errors.New("human_approval_required: enabling an extension requires an authenticated user")
 	}
 	if ext.Status == "enabled" {
 		var transport string
 		var config []byte
-		err := s.pool.QueryRow(ctx, `SELECT ev.transport, ec.config
+		err = tx.QueryRow(ctx, `SELECT ev.transport, ec.config
 			FROM extensions e JOIN extension_versions ev ON ev.id=e.current_version_id
 			LEFT JOIN extension_configs ec ON ec.extension_id=e.id
 			WHERE e.tenant_id=$1 AND e.workspace_id=$2 AND e.id=$3`, p.TenantID, p.WorkspaceID, ext.ID).Scan(&transport, &config)
@@ -104,7 +121,7 @@ func (s *Store) UpdateExtension(ctx context.Context, p domain.Principal, ext dom
 		}
 	}
 	var out domain.Extension
-	err := s.pool.QueryRow(ctx, `UPDATE extensions
+	err = tx.QueryRow(ctx, `UPDATE extensions
 		SET name = COALESCE(NULLIF($4, ''), name),
 		    publisher = COALESCE(NULLIF($5, ''), publisher),
 		    status = COALESCE(NULLIF($6, ''), status),
@@ -119,13 +136,24 @@ func (s *Store) UpdateExtension(ctx context.Context, p domain.Principal, ext dom
 	if err != nil {
 		return domain.Extension{}, err
 	}
-	_ = s.audit(ctx, p, "extension.update", "extension", out.ID, map[string]any{"status": out.Status})
+	if err := s.audit(ctx, tx, p, "extension.update", "extension", out.ID, map[string]any{"status": out.Status}); err != nil {
+		return domain.Extension{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Extension{}, err
+	}
 	return out, nil
 }
 
 func (s *Store) DeleteExtension(ctx context.Context, p domain.Principal, id string) (domain.Extension, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.Extension{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	var out domain.Extension
-	err := s.pool.QueryRow(ctx, `DELETE FROM extensions WHERE tenant_id = $1 AND workspace_id = $2 AND id = $3
+	err = tx.QueryRow(ctx, `DELETE FROM extensions WHERE tenant_id = $1 AND workspace_id = $2 AND id = $3
 		RETURNING id, tenant_id, workspace_id, name, publisher, current_version_id, latest_version, status, created_at, updated_at`,
 		p.TenantID, p.WorkspaceID, id).
 		Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.Name, &out.Publisher, &out.CurrentVersionID, &out.LatestVersion, &out.Status, &out.CreatedAt, &out.UpdatedAt)
@@ -135,11 +163,22 @@ func (s *Store) DeleteExtension(ctx context.Context, p domain.Principal, id stri
 	if err != nil {
 		return domain.Extension{}, err
 	}
-	_ = s.audit(ctx, p, "extension.delete", "extension", id, nil)
+	if err := s.audit(ctx, tx, p, "extension.delete", "extension", id, nil); err != nil {
+		return domain.Extension{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Extension{}, err
+	}
 	return out, nil
 }
 
 func (s *Store) CreateExtensionVersion(ctx context.Context, p domain.Principal, ev domain.ExtensionVersion) (domain.ExtensionVersion, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.ExtensionVersion{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	if ev.ExtensionID == "" {
 		return domain.ExtensionVersion{}, errors.New("extension ID is required")
 	}
@@ -157,7 +196,7 @@ func (s *Store) CreateExtensionVersion(ctx context.Context, p domain.Principal, 
 	}
 
 	var extExists bool
-	err := s.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM extensions WHERE tenant_id = $1 AND id = $2)", p.TenantID, ev.ExtensionID).Scan(&extExists)
+	err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM extensions WHERE tenant_id = $1 AND id = $2)", p.TenantID, ev.ExtensionID).Scan(&extExists)
 	if err != nil {
 		return domain.ExtensionVersion{}, err
 	}
@@ -169,7 +208,7 @@ func (s *Store) CreateExtensionVersion(ctx context.Context, p domain.Principal, 
 	var outManifest []byte
 	var outScopes []string
 
-	err = s.pool.QueryRow(ctx, `INSERT INTO extension_versions 
+	err = tx.QueryRow(ctx, `INSERT INTO extension_versions 
 		(extension_id, tenant_id, version, kind, transport, manifest, requested_scopes, signature, signing_key_id, wasm_blob_key, manifest_key, status)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE(NULLIF($9, ''), 'pending'), $10, COALESCE(NULLIF($11, ''), ''), COALESCE(NULLIF($12, ''), 'draft'))
 		RETURNING id, extension_id, tenant_id, version, kind, transport, manifest, requested_scopes, signature, signing_key_id, wasm_blob_key, manifest_key, status, installed_by, installed_at, created_at`,
@@ -181,7 +220,12 @@ func (s *Store) CreateExtensionVersion(ctx context.Context, p domain.Principal, 
 	out.Manifest = json.RawMessage(outManifest)
 	out.RequestedScopes = outScopes
 
-	_ = s.audit(ctx, p, "extension_version.create", "extension_version", out.ID, map[string]any{"version": out.Version})
+	if err := s.audit(ctx, tx, p, "extension_version.create", "extension_version", out.ID, map[string]any{"version": out.Version}); err != nil {
+		return domain.ExtensionVersion{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.ExtensionVersion{}, err
+	}
 	return out, nil
 }
 
@@ -375,15 +419,23 @@ func (s *Store) PublishExtensionVersion(ctx context.Context, p domain.Principal,
 		return domain.ExtensionVersion{}, err
 	}
 
+	
+	if err := s.audit(ctx, tx, p, "extension_version.publish", "extension_version", out.ID, map[string]any{"version": out.Version}); err != nil {
+		return domain.ExtensionVersion{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return domain.ExtensionVersion{}, err
 	}
-
-	_ = s.audit(ctx, p, "extension_version.publish", "extension_version", out.ID, map[string]any{"version": out.Version})
 	return out, nil
 }
 
 func (s *Store) UpsertExtensionConfig(ctx context.Context, p domain.Principal, cfg domain.ExtensionConfig) (domain.ExtensionConfig, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.ExtensionConfig{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	if cfg.ExtensionID == "" {
 		return domain.ExtensionConfig{}, errors.New("extension ID is required")
 	}
@@ -391,7 +443,7 @@ func (s *Store) UpsertExtensionConfig(ctx context.Context, p domain.Principal, c
 	// Ensure the parent extension exists and belongs to the workspace/tenant
 	var extExists bool
 	var transport string
-	err := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM extensions WHERE tenant_id = $1 AND workspace_id = $2 AND id = $3),
+	err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM extensions WHERE tenant_id = $1 AND workspace_id = $2 AND id = $3),
 		COALESCE(ev.transport, '')
 		FROM extensions e
 		LEFT JOIN extension_versions ev ON ev.id = e.current_version_id
@@ -413,7 +465,7 @@ func (s *Store) UpsertExtensionConfig(ctx context.Context, p domain.Principal, c
 	var outConfig []byte
 	var outAllowlist []string
 
-	err = s.pool.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, `
 		INSERT INTO extension_configs (
 			extension_id, tenant_id, workspace_id, config, endpoint_allowlist, 
 			timeout_ms, max_memory_mb, monthly_budget_cents, rate_per_min, status, updated_at
@@ -438,7 +490,12 @@ func (s *Store) UpsertExtensionConfig(ctx context.Context, p domain.Principal, c
 	out.Config = json.RawMessage(outConfig)
 	out.EndpointAllowlist = outAllowlist
 
-	_ = s.audit(ctx, p, "extension_config.upsert", "extension_config", out.ExtensionID, nil)
+	if err := s.audit(ctx, tx, p, "extension_config.upsert", "extension_config", out.ExtensionID, nil); err != nil {
+		return domain.ExtensionConfig{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.ExtensionConfig{}, err
+	}
 	return out, nil
 }
 
@@ -482,7 +539,13 @@ func (s *Store) GetExtensionConfig(ctx context.Context, p domain.Principal, exte
 }
 
 func (s *Store) DeleteExtensionConfig(ctx context.Context, p domain.Principal, extensionID string) error {
-	tag, err := s.pool.Exec(ctx, `
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	tag, err := tx.Exec(ctx, `
 		DELETE FROM extension_configs
 		WHERE tenant_id = $1 AND workspace_id = $2 AND extension_id = $3`,
 		p.TenantID, p.WorkspaceID, extensionID)
@@ -492,11 +555,22 @@ func (s *Store) DeleteExtensionConfig(ctx context.Context, p domain.Principal, e
 	if tag.RowsAffected() == 0 {
 		return ErrNotFound
 	}
-	_ = s.audit(ctx, p, "extension_config.delete", "extension_config", extensionID, nil)
+	if err := s.audit(ctx, tx, p, "extension_config.delete", "extension_config", extensionID, nil); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
 	return nil
 }
 
 func (s *Store) CreateExtensionGrant(ctx context.Context, p domain.Principal, grant domain.ExtensionGrant) (domain.ExtensionGrant, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.ExtensionGrant{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	if grant.ExtensionID == "" {
 		return domain.ExtensionGrant{}, errors.New("extension ID is required")
 	}
@@ -509,7 +583,7 @@ func (s *Store) CreateExtensionGrant(ctx context.Context, p domain.Principal, gr
 
 	// Ensure parent extension exists and belongs to the tenant
 	var extExists bool
-	err := s.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM extensions WHERE tenant_id = $1 AND id = $2)",
+	err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM extensions WHERE tenant_id = $1 AND id = $2)",
 		p.TenantID, grant.ExtensionID).Scan(&extExists)
 	if err != nil {
 		return domain.ExtensionGrant{}, err
@@ -519,7 +593,7 @@ func (s *Store) CreateExtensionGrant(ctx context.Context, p domain.Principal, gr
 	}
 
 	var out domain.ExtensionGrant
-	err = s.pool.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, `
 		INSERT INTO extension_grants (extension_id, tenant_id, scope, granted_by, granted_at)
 		VALUES ($1, $2, $3, $4, now())
 		ON CONFLICT (extension_id, scope) DO UPDATE SET
@@ -532,7 +606,12 @@ func (s *Store) CreateExtensionGrant(ctx context.Context, p domain.Principal, gr
 		return domain.ExtensionGrant{}, err
 	}
 
-	_ = s.audit(ctx, p, "extension_grant.create", "extension_grant", out.ExtensionID, map[string]any{"scope": out.Scope})
+	if err := s.audit(ctx, tx, p, "extension_grant.create", "extension_grant", out.ExtensionID, map[string]any{"scope": out.Scope}); err != nil {
+		return domain.ExtensionGrant{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.ExtensionGrant{}, err
+	}
 	return out, nil
 }
 
@@ -572,7 +651,13 @@ func (s *Store) ListExtensionGrants(ctx context.Context, p domain.Principal, ext
 }
 
 func (s *Store) DeleteExtensionGrant(ctx context.Context, p domain.Principal, extensionID string, scope string) error {
-	tag, err := s.pool.Exec(ctx, `
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	tag, err := tx.Exec(ctx, `
 		DELETE FROM extension_grants
 		WHERE tenant_id = $1 AND extension_id = $2 AND scope = $3`,
 		p.TenantID, extensionID, scope)
@@ -582,7 +667,12 @@ func (s *Store) DeleteExtensionGrant(ctx context.Context, p domain.Principal, ex
 	if tag.RowsAffected() == 0 {
 		return ErrNotFound
 	}
-	_ = s.audit(ctx, p, "extension_grant.delete", "extension_grant", extensionID, map[string]any{"scope": scope})
+	if err := s.audit(ctx, tx, p, "extension_grant.delete", "extension_grant", extensionID, map[string]any{"scope": scope}); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
 	return nil
 }
 

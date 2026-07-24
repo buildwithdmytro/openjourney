@@ -31,6 +31,12 @@ func scanSavedReport(row pgx.Row) (domain.SavedReport, error) {
 }
 
 func (s *Store) CreateSavedReport(ctx context.Context, p domain.Principal, input domain.SavedReport) (domain.SavedReport, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.SavedReport{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	if input.Name == "" {
 		return domain.SavedReport{}, errors.New("saved report name is required")
 	}
@@ -50,7 +56,7 @@ func (s *Store) CreateSavedReport(ctx context.Context, p domain.Principal, input
 		return domain.SavedReport{}, err
 	}
 
-	out, err := scanSavedReport(s.pool.QueryRow(ctx, `INSERT INTO saved_reports
+	out, err := scanSavedReport(tx.QueryRow(ctx, `INSERT INTO saved_reports
 		(tenant_id, workspace_id, name, report_type, query, created_by_user_id)
 		VALUES ($1,$2,$3,$4,$5,$6) RETURNING `+savedReportColumns,
 		p.TenantID, p.WorkspaceID, input.Name, input.ReportType, queryJSON, p.UserID))
@@ -61,7 +67,12 @@ func (s *Store) CreateSavedReport(ctx context.Context, p domain.Principal, input
 		return domain.SavedReport{}, err
 	}
 
-	_ = s.audit(ctx, p, "saved_report.create", "saved_report", out.ID, map[string]any{"name": out.Name, "report_type": out.ReportType})
+	if err := s.audit(ctx, tx, p, "saved_report.create", "saved_report", out.ID, map[string]any{"name": out.Name, "report_type": out.ReportType}); err != nil {
+		return domain.SavedReport{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.SavedReport{}, err
+	}
 	return out, nil
 }
 
@@ -96,7 +107,13 @@ func (s *Store) ListSavedReports(ctx context.Context, p domain.Principal) ([]dom
 }
 
 func (s *Store) DeleteSavedReport(ctx context.Context, p domain.Principal, id string) error {
-	result, err := s.pool.Exec(ctx, `DELETE FROM saved_reports
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	result, err := tx.Exec(ctx, `DELETE FROM saved_reports
 		WHERE tenant_id=$1 AND workspace_id=$2 AND id=$3`,
 		p.TenantID, p.WorkspaceID, id)
 	if err != nil {
@@ -107,6 +124,11 @@ func (s *Store) DeleteSavedReport(ctx context.Context, p domain.Principal, id st
 		return ErrNotFound
 	}
 
-	_ = s.audit(ctx, p, "saved_report.delete", "saved_report", id, map[string]any{})
+	if err := s.audit(ctx, tx, p, "saved_report.delete", "saved_report", id, map[string]any{}); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
 	return nil
 }

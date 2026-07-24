@@ -55,13 +55,19 @@ func (s *Store) AuthenticateOIDC(ctx context.Context, claims domain.OIDCClaims) 
 }
 
 func (s *Store) CreateLocalSession(ctx context.Context, email, password string, ttl time.Duration) (domain.AuthSession, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.AuthSession{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	email = strings.TrimSpace(strings.ToLower(email))
 	if email == "" || password == "" {
 		return domain.AuthSession{}, ErrUnauthorized
 	}
 	var userID, tenantID, workspaceID, appID, passwordHash string
 	var scopes []string
-	err := s.pool.QueryRow(ctx, `SELECT u.id,u.tenant_id,a.workspace_id,a.id,u.password_hash,
+	err = tx.QueryRow(ctx, `SELECT u.id,u.tenant_id,a.workspace_id,a.id,u.password_hash,
 		COALESCE(array_agg(DISTINCT permission) FILTER (WHERE permission IS NOT NULL),'{}')
 		FROM users u
 		JOIN applications a ON a.tenant_id=u.tenant_id
@@ -102,14 +108,19 @@ func (s *Store) CreateLocalSession(ctx context.Context, email, password string, 
 	raw := "ojs_" + base64.RawURLEncoding.EncodeToString(random)
 	hash := sha256.Sum256([]byte(raw))
 	expiresAt := time.Now().UTC().Add(ttl)
-	if _, err := s.pool.Exec(ctx, `INSERT INTO user_sessions
+	if _, err = tx.Exec(ctx, `INSERT INTO user_sessions
 		(tenant_id,workspace_id,app_id,user_id,token_hash,expires_at,last_used_at)
 		VALUES($1,$2,$3,$4,$5,$6,now())`, tenantID, workspaceID, appID, userID, hash[:], expiresAt); err != nil {
 		return domain.AuthSession{}, err
 	}
-	_ = s.audit(ctx, domain.Principal{
+	if err := s.audit(ctx, tx, domain.Principal{
 		TenantID: tenantID, WorkspaceID: workspaceID, AppID: appID, UserID: userID, ActorType: "user", Scopes: scopes,
-	}, "auth.login", "user_session", "", nil)
+	}, "auth.login", "user_session", "", nil); err != nil {
+		return domain.AuthSession{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.AuthSession{}, err
+	}
 	return domain.AuthSession{AccessToken: raw, TokenType: "Bearer", ExpiresAt: expiresAt}, nil
 }
 

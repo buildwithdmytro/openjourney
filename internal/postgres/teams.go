@@ -74,11 +74,13 @@ func (s *Store) CreateTeam(ctx context.Context, p domain.Principal, input domain
 		team.RoleIDs = []string{}
 	}
 
+	
+	if err := s.audit(ctx, tx, p, "team.create", "team", team.ID, map[string]any{"name": team.Name}); err != nil {
+		return domain.Team{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return domain.Team{}, err
 	}
-
-	_ = s.audit(ctx, p, "team.create", "team", team.ID, map[string]any{"name": team.Name})
 	return team, nil
 }
 
@@ -177,16 +179,24 @@ func (s *Store) UpdateTeam(ctx context.Context, p domain.Principal, input domain
 		team.RoleIDs = append(team.RoleIDs, rid)
 	}
 
+	
+	if err := s.audit(ctx, tx, p, "team.update", "team", team.ID, map[string]any{"name": team.Name}); err != nil {
+		return domain.Team{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return domain.Team{}, err
 	}
-
-	_ = s.audit(ctx, p, "team.update", "team", team.ID, map[string]any{"name": team.Name})
 	return team, nil
 }
 
 func (s *Store) DeleteTeam(ctx context.Context, p domain.Principal, id string) error {
-	res, err := s.pool.Exec(ctx, `DELETE FROM teams WHERE tenant_id=$1 AND workspace_id=$2 AND id=$3`,
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	res, err := tx.Exec(ctx, `DELETE FROM teams WHERE tenant_id=$1 AND workspace_id=$2 AND id=$3`,
 		p.TenantID, p.WorkspaceID, id,
 	)
 	if err != nil {
@@ -196,7 +206,12 @@ func (s *Store) DeleteTeam(ctx context.Context, p domain.Principal, id string) e
 		return ports.ErrNotFound
 	}
 
-	_ = s.audit(ctx, p, "team.delete", "team", id, nil)
+	if err := s.audit(ctx, tx, p, "team.delete", "team", id, nil); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
 	return nil
 }
 

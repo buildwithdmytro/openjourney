@@ -99,12 +99,18 @@ func (s *Store) GetSCIMUser(ctx context.Context, tenantID, id string) (domain.Us
 }
 
 func (s *Store) CreateSCIMUser(ctx context.Context, p domain.Principal, input domain.User, active bool) (domain.User, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.User{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	input.OIDCIssuer = "scim"
 	input.OIDCSubject = strings.TrimSpace(input.OIDCSubject)
 	if input.OIDCSubject == "" {
 		return domain.User{}, errors.New("userName is required")
 	}
-	err := s.pool.QueryRow(ctx, `INSERT INTO users(tenant_id,oidc_issuer,oidc_subject,email,display_name,disabled_at)
+	err = tx.QueryRow(ctx, `INSERT INTO users(tenant_id,oidc_issuer,oidc_subject,email,display_name,disabled_at)
 		VALUES($1,$2,$3,NULLIF($4,''),NULLIF($5,''),CASE WHEN $6 THEN NULL ELSE now() END)
 		RETURNING id,oidc_issuer,oidc_subject,COALESCE(email,''),COALESCE(display_name,''),false,created_at,disabled_at`,
 		p.TenantID, input.OIDCIssuer, input.OIDCSubject, input.Email, input.DisplayName, active).
@@ -112,13 +118,24 @@ func (s *Store) CreateSCIMUser(ctx context.Context, p domain.Principal, input do
 	if err != nil {
 		return domain.User{}, err
 	}
-	_ = s.audit(ctx, p, "scim.user.create", "user", input.ID, nil)
+	if err := s.audit(ctx, tx, p, "scim.user.create", "user", input.ID, nil); err != nil {
+		return domain.User{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.User{}, err
+	}
 	return input, nil
 }
 
 func (s *Store) UpdateSCIMUser(ctx context.Context, p domain.Principal, id string, input domain.User, active bool) (domain.User, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.User{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	var u domain.User
-	err := s.pool.QueryRow(ctx, `UPDATE users SET oidc_subject=COALESCE(NULLIF($1,''),oidc_subject),email=NULLIF($2,''),
+	err = tx.QueryRow(ctx, `UPDATE users SET oidc_subject=COALESCE(NULLIF($1,''),oidc_subject),email=NULLIF($2,''),
 		display_name=NULLIF($3,''),disabled_at=CASE WHEN $4 THEN NULL ELSE COALESCE(disabled_at,now()) END,updated_at=now()
 		WHERE tenant_id=$5 AND id=$6 RETURNING id,oidc_issuer,oidc_subject,COALESCE(email,''),COALESCE(display_name,''),false,created_at,disabled_at`,
 		input.OIDCSubject, input.Email, input.DisplayName, active, p.TenantID, id).Scan(&u.ID, &u.OIDCIssuer, &u.OIDCSubject, &u.Email, &u.DisplayName, &u.Local, &u.CreatedAt, &u.DisabledAt)
@@ -126,7 +143,12 @@ func (s *Store) UpdateSCIMUser(ctx context.Context, p domain.Principal, id strin
 		return domain.User{}, ErrNotFound
 	}
 	if err == nil {
-		_ = s.audit(ctx, p, "scim.user.update", "user", id, nil)
+		if err := s.audit(ctx, tx, p, "scim.user.update", "user", id, nil); err != nil {
+		return domain.User{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.User{}, err
+	}
 	}
 	return u, err
 }
@@ -212,11 +234,13 @@ func (s *Store) CreateSCIMGroup(ctx context.Context, p domain.Principal, group d
 		}
 	}
 
+	
+	if err := s.audit(ctx, tx, p, "scim.group.create", "team", teamID, map[string]any{"displayName": group.DisplayName}); err != nil {
+		return domain.SCIMGroup{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return domain.SCIMGroup{}, err
 	}
-
-	_ = s.audit(ctx, p, "scim.group.create", "team", teamID, map[string]any{"displayName": group.DisplayName})
 	return s.GetSCIMGroup(ctx, p.TenantID, teamID)
 }
 
@@ -252,11 +276,13 @@ func (s *Store) UpdateSCIMGroup(ctx context.Context, p domain.Principal, id stri
 		}
 	}
 
+	
+	if err := s.audit(ctx, tx, p, "scim.group.update", "team", existing.ID, nil); err != nil {
+		return domain.SCIMGroup{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return domain.SCIMGroup{}, err
 	}
-
-	_ = s.audit(ctx, p, "scim.group.update", "team", existing.ID, nil)
 	return s.GetSCIMGroup(ctx, p.TenantID, existing.ID)
 }
 
@@ -313,24 +339,37 @@ func (s *Store) PatchSCIMGroup(ctx context.Context, p domain.Principal, id strin
 		}
 	}
 
+	
+	if err := s.audit(ctx, tx, p, "scim.group.patch", "team", existing.ID, nil); err != nil {
+		return domain.SCIMGroup{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return domain.SCIMGroup{}, err
 	}
-
-	_ = s.audit(ctx, p, "scim.group.patch", "team", existing.ID, nil)
 	return s.GetSCIMGroup(ctx, p.TenantID, existing.ID)
 }
 
 func (s *Store) DeleteSCIMGroup(ctx context.Context, p domain.Principal, id string) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
 	existing, err := s.GetSCIMGroup(ctx, p.TenantID, id)
 	if err != nil {
 		return err
 	}
-	_, err = s.pool.Exec(ctx, `DELETE FROM teams WHERE tenant_id = $1 AND id = $2`, p.TenantID, existing.ID)
+	_, err = tx.Exec(ctx, `DELETE FROM teams WHERE tenant_id = $1 AND id = $2`, p.TenantID, existing.ID)
 	if err != nil {
 		return err
 	}
-	_ = s.audit(ctx, p, "scim.group.delete", "team", existing.ID, nil)
+	if err := s.audit(ctx, tx, p, "scim.group.delete", "team", existing.ID, nil); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
 	return nil
 }
 

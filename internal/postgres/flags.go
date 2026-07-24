@@ -76,6 +76,12 @@ func normalizeFeatureFlag(f domain.FeatureFlag) (domain.FeatureFlag, error) {
 }
 
 func (s *Store) CreateFeatureFlag(ctx context.Context, p domain.Principal, input domain.FeatureFlag) (domain.FeatureFlag, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.FeatureFlag{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	f, err := normalizeFeatureFlag(input)
 	if err != nil {
 		return domain.FeatureFlag{}, err
@@ -90,7 +96,7 @@ func (s *Store) CreateFeatureFlag(ctx context.Context, p domain.Principal, input
 		return domain.FeatureFlag{}, err
 	}
 
-	out, err := scanFeatureFlag(s.pool.QueryRow(ctx, `INSERT INTO feature_flags
+	out, err := scanFeatureFlag(tx.QueryRow(ctx, `INSERT INTO feature_flags
 		(tenant_id, workspace_id, app_id, environment, key, name, description, flag_type,
 		 default_value, variants, targeting_rules, rollout_pct, seed, enabled, status)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING `+flagColumns,
@@ -103,7 +109,12 @@ func (s *Store) CreateFeatureFlag(ctx context.Context, p domain.Principal, input
 		return domain.FeatureFlag{}, err
 	}
 
-	_ = s.audit(ctx, p, "flag.create", "flag", out.ID, map[string]any{"key": out.Key, "environment": out.Environment})
+	if err := s.audit(ctx, tx, p, "flag.create", "flag", out.ID, map[string]any{"key": out.Key, "environment": out.Environment}); err != nil {
+		return domain.FeatureFlag{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.FeatureFlag{}, err
+	}
 	return out, nil
 }
 
@@ -118,6 +129,12 @@ func (s *Store) GetFeatureFlag(ctx context.Context, p domain.Principal, id strin
 }
 
 func (s *Store) UpdateFeatureFlag(ctx context.Context, p domain.Principal, input domain.FeatureFlag) (domain.FeatureFlag, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.FeatureFlag{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	f, err := normalizeFeatureFlag(input)
 	if err != nil {
 		return domain.FeatureFlag{}, err
@@ -135,7 +152,7 @@ func (s *Store) UpdateFeatureFlag(ctx context.Context, p domain.Principal, input
 		return domain.FeatureFlag{}, err
 	}
 
-	out, err := scanFeatureFlag(s.pool.QueryRow(ctx, `UPDATE feature_flags
+	out, err := scanFeatureFlag(tx.QueryRow(ctx, `UPDATE feature_flags
 		SET name=$4, description=$5, default_value=$6, variants=$7, targeting_rules=$8,
 		    rollout_pct=$9, enabled=$10, status=$11, updated_at=now()
 		WHERE tenant_id=$1 AND workspace_id=$2 AND id=$3
@@ -149,7 +166,12 @@ func (s *Store) UpdateFeatureFlag(ctx context.Context, p domain.Principal, input
 		return domain.FeatureFlag{}, err
 	}
 
-	_ = s.audit(ctx, p, "flag.update", "flag", out.ID, map[string]any{"key": out.Key})
+	if err := s.audit(ctx, tx, p, "flag.update", "flag", out.ID, map[string]any{"key": out.Key}); err != nil {
+		return domain.FeatureFlag{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.FeatureFlag{}, err
+	}
 	return out, nil
 }
 
@@ -297,10 +319,12 @@ func (s *Store) PublishFeatureFlag(ctx context.Context, p domain.Principal, flag
 		return domain.FeatureFlagVersion{}, err
 	}
 
+	
+	if err := s.audit(ctx, tx, p, "flag.publish", "flag", flagID, map[string]any{"version": version, "key": draft.Key}); err != nil {
+		return domain.FeatureFlagVersion{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return domain.FeatureFlagVersion{}, err
 	}
-
-	_ = s.audit(ctx, p, "flag.publish", "flag", flagID, map[string]any{"version": version, "key": draft.Key})
 	return out, nil
 }

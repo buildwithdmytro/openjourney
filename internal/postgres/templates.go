@@ -10,6 +10,12 @@ import (
 )
 
 func (s *Store) CreateSendingIdentity(ctx context.Context, p domain.Principal, iden domain.SendingIdentity) (domain.SendingIdentity, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.SendingIdentity{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	if iden.Channel == "" {
 		return domain.SendingIdentity{}, errors.New("channel is required")
 	}
@@ -23,7 +29,7 @@ func (s *Store) CreateSendingIdentity(ctx context.Context, p domain.Principal, i
 		iden.MaxSendRate = 14
 	}
 	var out domain.SendingIdentity
-	err := s.pool.QueryRow(ctx, `INSERT INTO sending_identities (tenant_id, workspace_id, channel, from_address, from_name, reply_to, provider, config, max_send_rate, verified)
+	err = tx.QueryRow(ctx, `INSERT INTO sending_identities (tenant_id, workspace_id, channel, from_address, from_name, reply_to, provider, config, max_send_rate, verified)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING id, tenant_id, workspace_id, channel, from_address, from_name, reply_to, provider, config, max_send_rate, verified, created_at`,
 		p.TenantID, p.WorkspaceID, iden.Channel, iden.FromAddress, iden.FromName, iden.ReplyTo, iden.Provider, iden.Config, iden.MaxSendRate, iden.Verified).
@@ -31,7 +37,12 @@ func (s *Store) CreateSendingIdentity(ctx context.Context, p domain.Principal, i
 	if err != nil {
 		return domain.SendingIdentity{}, err
 	}
-	_ = s.audit(ctx, p, "sending_identity.create", "sending_identity", out.ID, map[string]any{"channel": out.Channel})
+	if err := s.audit(ctx, tx, p, "sending_identity.create", "sending_identity", out.ID, map[string]any{"channel": out.Channel}); err != nil {
+		return domain.SendingIdentity{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.SendingIdentity{}, err
+	}
 	return out, nil
 }
 
@@ -81,6 +92,12 @@ func (s *Store) GetSendingIdentityByProviderConfig(ctx context.Context, provider
 
 
 func (s *Store) CreateTemplate(ctx context.Context, p domain.Principal, tmpl domain.Template) (domain.Template, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.Template{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	if tmpl.Name == "" {
 		return domain.Template{}, errors.New("name is required")
 	}
@@ -93,7 +110,7 @@ func (s *Store) CreateTemplate(ctx context.Context, p domain.Principal, tmpl dom
 	}
 	var out domain.Template
 	var outPushData []byte
-	err := s.pool.QueryRow(ctx, `INSERT INTO templates (tenant_id, workspace_id, name, channel, subject_template, html_template, text_template, body_template, title_template, push_data, sending_identity_id, version)
+	err = tx.QueryRow(ctx, `INSERT INTO templates (tenant_id, workspace_id, name, channel, subject_template, html_template, text_template, body_template, title_template, push_data, sending_identity_id, version)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 1)
 		RETURNING id, tenant_id, workspace_id, name, channel, subject_template, html_template, text_template, body_template, title_template, push_data, sending_identity_id, version, created_at, updated_at`,
 		p.TenantID, p.WorkspaceID, tmpl.Name, tmpl.Channel, tmpl.SubjectTemplate, tmpl.HTMLTemplate, tmpl.TextTemplate, tmpl.BodyTemplate, tmpl.TitleTemplate, pushDataBytes, tmpl.SendingIdentityID).
@@ -104,7 +121,12 @@ func (s *Store) CreateTemplate(ctx context.Context, p domain.Principal, tmpl dom
 	if len(outPushData) > 0 {
 		_ = json.Unmarshal(outPushData, &out.PushData)
 	}
-	_ = s.audit(ctx, p, "template.create", "template", out.ID, map[string]any{"name": out.Name})
+	if err := s.audit(ctx, tx, p, "template.create", "template", out.ID, map[string]any{"name": out.Name}); err != nil {
+		return domain.Template{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Template{}, err
+	}
 	return out, nil
 }
 
@@ -128,6 +150,12 @@ func (s *Store) GetTemplate(ctx context.Context, p domain.Principal, id string) 
 }
 
 func (s *Store) UpdateTemplate(ctx context.Context, p domain.Principal, tmpl domain.Template) (domain.Template, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.Template{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	existing, err := s.GetTemplate(ctx, p, tmpl.ID)
 	if err != nil {
 		return domain.Template{}, err
@@ -157,7 +185,7 @@ func (s *Store) UpdateTemplate(ctx context.Context, p domain.Principal, tmpl dom
 
 	var out domain.Template
 	var outPushData []byte
-	err = s.pool.QueryRow(ctx, `UPDATE templates
+	err = tx.QueryRow(ctx, `UPDATE templates
 		SET name=$1, subject_template=$2, html_template=$3, text_template=$4, body_template=$5, title_template=$6, push_data=$7, sending_identity_id=$8, version=$9, updated_at=now()
 		WHERE tenant_id=$10 AND workspace_id=$11 AND id=$12
 		RETURNING id, tenant_id, workspace_id, name, channel, subject_template, html_template, text_template, body_template, title_template, push_data, sending_identity_id, version, created_at, updated_at`,
@@ -172,7 +200,12 @@ func (s *Store) UpdateTemplate(ctx context.Context, p domain.Principal, tmpl dom
 	if len(outPushData) > 0 {
 		_ = json.Unmarshal(outPushData, &out.PushData)
 	}
-	_ = s.audit(ctx, p, "template.update", "template", out.ID, map[string]any{"name": out.Name})
+	if err := s.audit(ctx, tx, p, "template.update", "template", out.ID, map[string]any{"name": out.Name}); err != nil {
+		return domain.Template{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Template{}, err
+	}
 	return out, nil
 }
 

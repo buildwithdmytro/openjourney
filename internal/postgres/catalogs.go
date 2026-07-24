@@ -45,11 +45,17 @@ func scanConnectedContentSource(row pgx.Row) (domain.ConnectedContentSource, err
 // Catalogs CRUD
 
 func (s *Store) CreateCatalog(ctx context.Context, p domain.Principal, input domain.Catalog) (domain.Catalog, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.Catalog{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	if input.Key == "" {
 		return domain.Catalog{}, errors.New("catalog key is required")
 	}
 
-	cat, err := scanCatalog(s.pool.QueryRow(ctx, `INSERT INTO catalogs
+	cat, err := scanCatalog(tx.QueryRow(ctx, `INSERT INTO catalogs
 		(tenant_id, workspace_id, app_id, key, name, description, item_key_field, status, item_count)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING `+catalogColumns,
 		p.TenantID, p.WorkspaceID, p.AppID, input.Key, input.Name, input.Description, input.ItemKeyField, input.Status, 0))
@@ -60,7 +66,12 @@ func (s *Store) CreateCatalog(ctx context.Context, p domain.Principal, input dom
 		return domain.Catalog{}, err
 	}
 
-	_ = s.audit(ctx, p, "catalog.create", "catalog", cat.ID, map[string]any{"key": cat.Key, "name": cat.Name})
+	if err := s.audit(ctx, tx, p, "catalog.create", "catalog", cat.ID, map[string]any{"key": cat.Key, "name": cat.Name}); err != nil {
+		return domain.Catalog{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Catalog{}, err
+	}
 	return cat, nil
 }
 
@@ -105,7 +116,13 @@ func (s *Store) ListCatalogs(ctx context.Context, p domain.Principal) ([]domain.
 }
 
 func (s *Store) UpdateCatalog(ctx context.Context, p domain.Principal, input domain.Catalog) (domain.Catalog, error) {
-	cat, err := scanCatalog(s.pool.QueryRow(ctx, `UPDATE catalogs
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.Catalog{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	cat, err := scanCatalog(tx.QueryRow(ctx, `UPDATE catalogs
 		SET name=$1, description=$2, status=$3, updated_at=now()
 		WHERE tenant_id=$4 AND app_id=$5 AND id=$6 RETURNING `+catalogColumns,
 		input.Name, input.Description, input.Status, p.TenantID, p.AppID, input.ID))
@@ -116,12 +133,23 @@ func (s *Store) UpdateCatalog(ctx context.Context, p domain.Principal, input dom
 		return domain.Catalog{}, err
 	}
 
-	_ = s.audit(ctx, p, "catalog.update", "catalog", input.ID, map[string]any{"status": input.Status})
+	if err := s.audit(ctx, tx, p, "catalog.update", "catalog", input.ID, map[string]any{"status": input.Status}); err != nil {
+		return domain.Catalog{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Catalog{}, err
+	}
 	return cat, nil
 }
 
 func (s *Store) DeleteCatalog(ctx context.Context, p domain.Principal, id string) error {
-	result, err := s.pool.Exec(ctx, `DELETE FROM catalogs
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	result, err := tx.Exec(ctx, `DELETE FROM catalogs
 		WHERE tenant_id=$1 AND app_id=$2 AND id=$3`,
 		p.TenantID, p.AppID, id)
 	if err != nil {
@@ -132,7 +160,12 @@ func (s *Store) DeleteCatalog(ctx context.Context, p domain.Principal, id string
 		return ErrNotFound
 	}
 
-	_ = s.audit(ctx, p, "catalog.delete", "catalog", id, map[string]any{})
+	if err := s.audit(ctx, tx, p, "catalog.delete", "catalog", id, map[string]any{}); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -235,6 +268,12 @@ func (s *Store) BulkUpsertCatalogItems(ctx context.Context, p domain.Principal, 
 // Connected Content Sources CRUD
 
 func (s *Store) CreateConnectedContentSource(ctx context.Context, p domain.Principal, input domain.ConnectedContentSource) (domain.ConnectedContentSource, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.ConnectedContentSource{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	if input.Name == "" {
 		return domain.ConnectedContentSource{}, errors.New("source name is required")
 	}
@@ -245,7 +284,7 @@ func (s *Store) CreateConnectedContentSource(ctx context.Context, p domain.Princ
 		return domain.ConnectedContentSource{}, errors.New("auth_secret_ref must match positive allowlist pattern ^CC_SECRET_[A-Z0-9_]+$ (e.g., CC_SECRET_API_KEY)")
 	}
 
-	src, err := scanConnectedContentSource(s.pool.QueryRow(ctx, `INSERT INTO connected_content_sources
+	src, err := scanConnectedContentSource(tx.QueryRow(ctx, `INSERT INTO connected_content_sources
 		(tenant_id, workspace_id, name, allowed_host, auth_header_name, auth_secret_ref, default_ttl_seconds, timeout_ms, enabled, status, created_by_user_id)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING `+connectedContentSourceColumns,
 		p.TenantID, p.WorkspaceID, input.Name, input.AllowedHost, input.AuthHeaderName, input.AuthSecretRef, input.DefaultTTLSeconds, input.TimeoutMs, input.Enabled, input.Status, p.UserID))
@@ -256,7 +295,12 @@ func (s *Store) CreateConnectedContentSource(ctx context.Context, p domain.Princ
 		return domain.ConnectedContentSource{}, err
 	}
 
-	_ = s.audit(ctx, p, "connected_content_source.create", "connected_content_source", src.ID, map[string]any{"name": src.Name, "allowed_host": src.AllowedHost})
+	if err := s.audit(ctx, tx, p, "connected_content_source.create", "connected_content_source", src.ID, map[string]any{"name": src.Name, "allowed_host": src.AllowedHost}); err != nil {
+		return domain.ConnectedContentSource{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.ConnectedContentSource{}, err
+	}
 	return src, nil
 }
 
@@ -291,11 +335,17 @@ func (s *Store) ListConnectedContentSources(ctx context.Context, p domain.Princi
 }
 
 func (s *Store) UpdateConnectedContentSource(ctx context.Context, p domain.Principal, input domain.ConnectedContentSource) (domain.ConnectedContentSource, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.ConnectedContentSource{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	if input.AuthSecretRef != "" && !domain.IsValidAuthSecretRef(input.AuthSecretRef) {
 		return domain.ConnectedContentSource{}, errors.New("auth_secret_ref must match positive allowlist pattern ^CC_SECRET_[A-Z0-9_]+$ (e.g., CC_SECRET_API_KEY)")
 	}
 
-	src, err := scanConnectedContentSource(s.pool.QueryRow(ctx, `UPDATE connected_content_sources
+	src, err := scanConnectedContentSource(tx.QueryRow(ctx, `UPDATE connected_content_sources
 		SET name=$1, allowed_host=$2, auth_header_name=$3, auth_secret_ref=$4, default_ttl_seconds=$5, timeout_ms=$6, enabled=$7, status=$8, updated_at=now()
 		WHERE tenant_id=$9 AND workspace_id=$10 AND id=$11 RETURNING `+connectedContentSourceColumns,
 		input.Name, input.AllowedHost, input.AuthHeaderName, input.AuthSecretRef, input.DefaultTTLSeconds, input.TimeoutMs, input.Enabled, input.Status, p.TenantID, p.WorkspaceID, input.ID))
@@ -306,12 +356,23 @@ func (s *Store) UpdateConnectedContentSource(ctx context.Context, p domain.Princ
 		return domain.ConnectedContentSource{}, err
 	}
 
-	_ = s.audit(ctx, p, "connected_content_source.update", "connected_content_source", input.ID, map[string]any{"enabled": input.Enabled, "status": input.Status})
+	if err := s.audit(ctx, tx, p, "connected_content_source.update", "connected_content_source", input.ID, map[string]any{"enabled": input.Enabled, "status": input.Status}); err != nil {
+		return domain.ConnectedContentSource{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.ConnectedContentSource{}, err
+	}
 	return src, nil
 }
 
 func (s *Store) DeleteConnectedContentSource(ctx context.Context, p domain.Principal, id string) error {
-	result, err := s.pool.Exec(ctx, `DELETE FROM connected_content_sources
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	result, err := tx.Exec(ctx, `DELETE FROM connected_content_sources
 		WHERE tenant_id=$1 AND workspace_id=$2 AND id=$3`,
 		p.TenantID, p.WorkspaceID, id)
 	if err != nil {
@@ -322,6 +383,11 @@ func (s *Store) DeleteConnectedContentSource(ctx context.Context, p domain.Princ
 		return ErrNotFound
 	}
 
-	_ = s.audit(ctx, p, "connected_content_source.delete", "connected_content_source", id, map[string]any{})
+	if err := s.audit(ctx, tx, p, "connected_content_source.delete", "connected_content_source", id, map[string]any{}); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
 	return nil
 }

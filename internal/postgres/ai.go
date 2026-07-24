@@ -70,11 +70,13 @@ func (s *Store) CreateAIProviderConfig(ctx context.Context, p domain.Principal, 
 		return domain.AIProviderConfig{}, err
 	}
 
+	
+	if err := s.audit(ctx, tx, p, "ai_provider_config.create", "ai_provider_config", out.ID, map[string]any{"provider": out.Provider}); err != nil {
+		return domain.AIProviderConfig{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return domain.AIProviderConfig{}, err
 	}
-
-	_ = s.audit(ctx, p, "ai_provider_config.create", "ai_provider_config", out.ID, map[string]any{"provider": out.Provider})
 	out.Config = redactConfigSecrets(out.Config)
 	return out, nil
 }
@@ -153,11 +155,13 @@ func (s *Store) UpdateAIProviderConfig(ctx context.Context, p domain.Principal, 
 		return domain.AIProviderConfig{}, err
 	}
 
+	
+	if err := s.audit(ctx, tx, p, "ai_provider_config.update", "ai_provider_config", out.ID, map[string]any{"provider": out.Provider}); err != nil {
+		return domain.AIProviderConfig{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return domain.AIProviderConfig{}, err
 	}
-
-	_ = s.audit(ctx, p, "ai_provider_config.update", "ai_provider_config", out.ID, map[string]any{"provider": out.Provider})
 	out.Config = redactConfigSecrets(out.Config)
 	return out, nil
 }
@@ -185,14 +189,25 @@ func (s *Store) ListAIProviderConfigs(ctx context.Context, p domain.Principal) (
 }
 
 func (s *Store) DeleteAIProviderConfig(ctx context.Context, p domain.Principal, id string) error {
-	tag, err := s.pool.Exec(ctx, `DELETE FROM ai_provider_configs WHERE tenant_id=$1 AND workspace_id=$2 AND id=$3`, p.TenantID, p.WorkspaceID, id)
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	tag, err := tx.Exec(ctx, `DELETE FROM ai_provider_configs WHERE tenant_id=$1 AND workspace_id=$2 AND id=$3`, p.TenantID, p.WorkspaceID, id)
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() != 1 {
 		return ErrNotFound
 	}
-	_ = s.audit(ctx, p, "ai_provider_config.delete", "ai_provider_config", id, nil)
+	if err := s.audit(ctx, tx, p, "ai_provider_config.delete", "ai_provider_config", id, nil); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
 	return nil
 }
 

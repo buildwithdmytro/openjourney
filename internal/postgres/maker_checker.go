@@ -27,11 +27,17 @@ func (s *Store) GetMakerCheckerPolicy(ctx context.Context, p domain.Principal, r
 }
 
 func (s *Store) SetMakerCheckerPolicy(ctx context.Context, p domain.Principal, resourceType string, requireChecker bool) (domain.MakerCheckerPolicy, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.MakerCheckerPolicy{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	if resourceType == "" {
 		return domain.MakerCheckerPolicy{}, errors.New("resource type is required")
 	}
 	var out domain.MakerCheckerPolicy
-	err := s.pool.QueryRow(ctx, `INSERT INTO maker_checker_policies (tenant_id, resource_type, require_checker, updated_at)
+	err = tx.QueryRow(ctx, `INSERT INTO maker_checker_policies (tenant_id, resource_type, require_checker, updated_at)
 		VALUES ($1, $2, $3, now())
 		ON CONFLICT (tenant_id, resource_type) DO UPDATE SET require_checker=EXCLUDED.require_checker, updated_at=now()
 		RETURNING id, tenant_id, resource_type, require_checker, created_at, updated_at`,
@@ -40,10 +46,15 @@ func (s *Store) SetMakerCheckerPolicy(ctx context.Context, p domain.Principal, r
 	if err != nil {
 		return domain.MakerCheckerPolicy{}, err
 	}
-	_ = s.audit(ctx, p, "maker_checker.set_policy", "maker_checker_policy", out.ID, map[string]any{
+	if err := s.audit(ctx, tx, p, "maker_checker.set_policy", "maker_checker_policy", out.ID, map[string]any{
 		"resource_type":   resourceType,
 		"require_checker": requireChecker,
-	})
+	}); err != nil {
+		return domain.MakerCheckerPolicy{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.MakerCheckerPolicy{}, err
+	}
 	return out, nil
 }
 

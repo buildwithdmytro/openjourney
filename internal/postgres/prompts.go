@@ -11,6 +11,12 @@ import (
 )
 
 func (s *Store) CreatePrompt(ctx context.Context, p domain.Principal, prompt domain.Prompt) (domain.Prompt, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.Prompt{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	if prompt.Name == "" {
 		return domain.Prompt{}, errors.New("prompt name is required")
 	}
@@ -22,7 +28,7 @@ func (s *Store) CreatePrompt(ctx context.Context, p domain.Principal, prompt dom
 	}
 
 	var out domain.Prompt
-	err := s.pool.QueryRow(ctx, `INSERT INTO prompts (tenant_id, workspace_id, name, task_type)
+	err = tx.QueryRow(ctx, `INSERT INTO prompts (tenant_id, workspace_id, name, task_type)
 		VALUES ($1, $2, $3, $4)
 		RETURNING id, tenant_id, workspace_id, name, task_type, current_version_id, latest_version, created_at, updated_at`,
 		p.TenantID, p.WorkspaceID, prompt.Name, prompt.TaskType).
@@ -31,7 +37,12 @@ func (s *Store) CreatePrompt(ctx context.Context, p domain.Principal, prompt dom
 		return domain.Prompt{}, err
 	}
 
-	_ = s.audit(ctx, p, "prompt.create", "prompt", out.ID, map[string]any{"name": out.Name})
+	if err := s.audit(ctx, tx, p, "prompt.create", "prompt", out.ID, map[string]any{"name": out.Name}); err != nil {
+		return domain.Prompt{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Prompt{}, err
+	}
 	return out, nil
 }
 
@@ -86,6 +97,12 @@ func (s *Store) ListPrompts(ctx context.Context, p domain.Principal) ([]domain.P
 }
 
 func (s *Store) UpdatePrompt(ctx context.Context, p domain.Principal, prompt domain.Prompt) (domain.Prompt, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.Prompt{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	if prompt.Name == "" {
 		return domain.Prompt{}, errors.New("prompt name is required")
 	}
@@ -97,7 +114,7 @@ func (s *Store) UpdatePrompt(ctx context.Context, p domain.Principal, prompt dom
 	}
 
 	var out domain.Prompt
-	err := s.pool.QueryRow(ctx, `UPDATE prompts 
+	err = tx.QueryRow(ctx, `UPDATE prompts 
 		SET name = $1, task_type = $2, current_version_id = $3, latest_version = $4, updated_at = now()
 		WHERE tenant_id = $5 AND workspace_id = $6 AND id = $7
 		RETURNING id, tenant_id, workspace_id, name, task_type, current_version_id, latest_version, created_at, updated_at`,
@@ -110,19 +127,35 @@ func (s *Store) UpdatePrompt(ctx context.Context, p domain.Principal, prompt dom
 		return domain.Prompt{}, err
 	}
 
-	_ = s.audit(ctx, p, "prompt.update", "prompt", out.ID, map[string]any{"name": out.Name})
+	if err := s.audit(ctx, tx, p, "prompt.update", "prompt", out.ID, map[string]any{"name": out.Name}); err != nil {
+		return domain.Prompt{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Prompt{}, err
+	}
 	return out, nil
 }
 
 func (s *Store) DeletePrompt(ctx context.Context, p domain.Principal, id string) error {
-	tag, err := s.pool.Exec(ctx, `DELETE FROM prompts WHERE tenant_id = $1 AND workspace_id = $2 AND id = $3`, p.TenantID, p.WorkspaceID, id)
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	tag, err := tx.Exec(ctx, `DELETE FROM prompts WHERE tenant_id = $1 AND workspace_id = $2 AND id = $3`, p.TenantID, p.WorkspaceID, id)
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
 		return ErrNotFound
 	}
-	_ = s.audit(ctx, p, "prompt.delete", "prompt", id, nil)
+	if err := s.audit(ctx, tx, p, "prompt.delete", "prompt", id, nil); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -200,11 +233,13 @@ func (s *Store) CreatePromptVersion(ctx context.Context, p domain.Principal, pv 
 		return domain.PromptVersion{}, err
 	}
 
+	
+	if err := s.audit(ctx, tx, p, "prompt_version.create", "prompt_version", out.ID, map[string]any{"version": out.Version}); err != nil {
+		return domain.PromptVersion{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return domain.PromptVersion{}, err
 	}
-
-	_ = s.audit(ctx, p, "prompt_version.create", "prompt_version", out.ID, map[string]any{"version": out.Version})
 	return out, nil
 }
 
@@ -323,11 +358,13 @@ func (s *Store) PublishPromptVersion(ctx context.Context, p domain.Principal, pr
 		return domain.PromptVersion{}, err
 	}
 
+	
+	if err := s.audit(ctx, tx, p, "prompt_version.publish", "prompt_version", out.ID, map[string]any{"version": out.Version}); err != nil {
+		return domain.PromptVersion{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return domain.PromptVersion{}, err
 	}
-
-	_ = s.audit(ctx, p, "prompt_version.publish", "prompt_version", out.ID, map[string]any{"version": out.Version})
 	return out, nil
 }
 

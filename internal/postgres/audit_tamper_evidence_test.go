@@ -30,9 +30,9 @@ func TestAuditAppendOnlyAndHashChain(t *testing.T) {
 	p, _ := setupTestTenant(t, ctx, store)
 
 	// Emit multiple audit events
-	err1 := store.audit(ctx, p, "role.create", "role", "role-1", map[string]any{"name": "Admin"})
-	err2 := store.audit(ctx, p, "user.create", "user", "user-1", map[string]any{"email": "admin@example.com"})
-	err3 := store.audit(ctx, p, "journey.publish", "journey", "journey-1", map[string]any{"version": 1})
+	err1 := store.audit(ctx, nil, p, "role.create", "role", "role-1", map[string]any{"name": "Admin"})
+	err2 := store.audit(ctx, nil, p, "user.create", "user", "user-1", map[string]any{"email": "admin@example.com"})
+	err3 := store.audit(ctx, nil, p, "journey.publish", "journey", "journey-1", map[string]any{"version": 1})
 
 	if err1 != nil || err2 != nil || err3 != nil {
 		t.Fatalf("audit failed: %v %v %v", err1, err2, err3)
@@ -133,7 +133,7 @@ func TestAuditConcurrentWrites(t *testing.T) {
 			defer wg.Done()
 			for j := 0; j < writesPerGoroutine; j++ {
 				action := fmt.Sprintf("action.%d.%d", workerID, j)
-				err := store.audit(ctx, p, action, "resource", fmt.Sprintf("res-%d-%d", workerID, j), map[string]any{"worker": workerID})
+				err := store.audit(ctx, nil, p, action, "resource", fmt.Sprintf("res-%d-%d", workerID, j), map[string]any{"worker": workerID})
 				if err != nil {
 					t.Errorf("worker %d audit error: %v", workerID, err)
 					return

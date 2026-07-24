@@ -13,6 +13,12 @@ import (
 )
 
 func (s *Store) CreateSAMLProvider(ctx context.Context, p domain.Principal, input domain.SAMLProvider) (domain.SAMLProvider, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.SAMLProvider{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	if input.IDPEntityID == "" || input.IDPSSOURL == "" || input.IDPCert == "" || input.SPEntityID == "" {
 		return domain.SAMLProvider{}, errors.New("idp_entity_id, idp_sso_url, idp_cert, and sp_entity_id are required")
 	}
@@ -20,7 +26,7 @@ func (s *Store) CreateSAMLProvider(ctx context.Context, p domain.Principal, inpu
 		input.Status = "active"
 	}
 	input.TenantID = p.TenantID
-	err := s.pool.QueryRow(ctx, `INSERT INTO saml_providers
+	err = tx.QueryRow(ctx, `INSERT INTO saml_providers
 		(tenant_id, idp_entity_id, idp_sso_url, idp_cert, sp_entity_id, default_role_id, enabled, status)
 		VALUES ($1, $2, $3, $4, $5, NULLIF($6,'')::uuid, $7, $8)
 		RETURNING id, default_role_id, created_at, updated_at`,
@@ -30,9 +36,14 @@ func (s *Store) CreateSAMLProvider(ctx context.Context, p domain.Principal, inpu
 	if err != nil {
 		return domain.SAMLProvider{}, err
 	}
-	_ = s.audit(ctx, p, "saml_provider.create", "saml_provider", input.ID, map[string]any{
+	if err := s.audit(ctx, tx, p, "saml_provider.create", "saml_provider", input.ID, map[string]any{
 		"idp_entity_id": input.IDPEntityID,
-	})
+	}); err != nil {
+		return domain.SAMLProvider{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.SAMLProvider{}, err
+	}
 	return input, nil
 }
 
@@ -134,10 +145,7 @@ func (s *Store) UpsertSAMLUserAndCreateSession(ctx context.Context, tenantID, id
 			WHERE id=$3`, email, displayName, userID)
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		return domain.AuthSession{}, err
-	}
-
+	
 	var workspaceID, appID string
 	err = s.pool.QueryRow(ctx, `SELECT workspace_id, id FROM applications WHERE tenant_id=$1 ORDER BY created_at LIMIT 1`, tenantID).
 		Scan(&workspaceID, &appID)
@@ -159,9 +167,14 @@ func (s *Store) UpsertSAMLUserAndCreateSession(ctx context.Context, tenantID, id
 		return domain.AuthSession{}, err
 	}
 
-	_ = s.audit(ctx, domain.Principal{
+	if err := s.audit(ctx, tx, domain.Principal{
 		TenantID: tenantID, WorkspaceID: workspaceID, AppID: appID, UserID: userID, ActorType: "user",
-	}, "saml.login", "user_session", "", nil)
+	}, "saml.login", "user_session", "", nil); err != nil {
+		return domain.AuthSession{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.AuthSession{}, err
+	}
 
 	return domain.AuthSession{AccessToken: raw, TokenType: "Bearer", ExpiresAt: expiresAt}, nil
 }

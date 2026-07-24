@@ -14,6 +14,12 @@ import (
 )
 
 func (s *Store) CreateJourney(ctx context.Context, p domain.Principal, j domain.Journey) (domain.Journey, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.Journey{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	if j.Name == "" {
 		return domain.Journey{}, errors.New("journey name is required")
 	}
@@ -25,7 +31,7 @@ func (s *Store) CreateJourney(ctx context.Context, p domain.Principal, j domain.
 	}
 
 	var out domain.Journey
-	err := s.pool.QueryRow(ctx, `INSERT INTO journeys (tenant_id, workspace_id, name, description, status, graph)
+	err = tx.QueryRow(ctx, `INSERT INTO journeys (tenant_id, workspace_id, name, description, status, graph)
 		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id, tenant_id, workspace_id, name, description, status, graph, latest_version, current_version_id, created_at, updated_at`,
 		p.TenantID, p.WorkspaceID, j.Name, j.Description, j.Status, j.Graph).
@@ -34,7 +40,12 @@ func (s *Store) CreateJourney(ctx context.Context, p domain.Principal, j domain.
 		return domain.Journey{}, err
 	}
 
-	_ = s.audit(ctx, p, "journey.create", "journey", out.ID, map[string]any{"name": out.Name})
+	if err := s.audit(ctx, tx, p, "journey.create", "journey", out.ID, map[string]any{"name": out.Name}); err != nil {
+		return domain.Journey{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Journey{}, err
+	}
 	return out, nil
 }
 
@@ -51,6 +62,12 @@ func (s *Store) GetJourney(ctx context.Context, p domain.Principal, id string) (
 }
 
 func (s *Store) UpdateJourney(ctx context.Context, p domain.Principal, j domain.Journey) (domain.Journey, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.Journey{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	existing, err := s.GetJourney(ctx, p, j.ID)
 	if err != nil {
 		return domain.Journey{}, err
@@ -69,7 +86,7 @@ func (s *Store) UpdateJourney(ctx context.Context, p domain.Principal, j domain.
 	}
 
 	var out domain.Journey
-	err = s.pool.QueryRow(ctx, `UPDATE journeys
+	err = tx.QueryRow(ctx, `UPDATE journeys
 		SET name=$4, description=$5, status=$6, graph=$7, updated_at=now()
 		WHERE tenant_id=$1 AND workspace_id=$2 AND id=$3
 		RETURNING id, tenant_id, workspace_id, name, description, status, graph, latest_version, current_version_id, created_at, updated_at`,
@@ -82,7 +99,12 @@ func (s *Store) UpdateJourney(ctx context.Context, p domain.Principal, j domain.
 		return domain.Journey{}, err
 	}
 
-	_ = s.audit(ctx, p, "journey.update", "journey", out.ID, map[string]any{"status": out.Status})
+	if err := s.audit(ctx, tx, p, "journey.update", "journey", out.ID, map[string]any{"status": out.Status}); err != nil {
+		return domain.Journey{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Journey{}, err
+	}
 	return out, nil
 }
 
@@ -182,10 +204,12 @@ func (s *Store) PublishJourney(ctx context.Context, p domain.Principal, journeyI
 		return domain.JourneyVersion{}, err
 	}
 
+		if err := s.audit(ctx, tx, p, "journey.publish", "journey", draft.ID, map[string]any{"version": out.Version, "manifest_key": manifestKey}); err != nil {
+		return domain.JourneyVersion{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return domain.JourneyVersion{}, err
 	}
-	_ = s.audit(ctx, p, "journey.publish", "journey", draft.ID, map[string]any{"version": out.Version, "manifest_key": manifestKey})
 	return out, nil
 }
 

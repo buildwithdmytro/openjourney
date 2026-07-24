@@ -11,6 +11,12 @@ import (
 )
 
 func (s *Store) CreateScoringModel(ctx context.Context, p domain.Principal, model domain.ScoringModel) (domain.ScoringModel, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.ScoringModel{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	if model.Name == "" {
 		return domain.ScoringModel{}, errors.New("scoring model name is required")
 	}
@@ -22,7 +28,7 @@ func (s *Store) CreateScoringModel(ctx context.Context, p domain.Principal, mode
 	}
 
 	var out domain.ScoringModel
-	err := s.pool.QueryRow(ctx, `INSERT INTO scoring_models (tenant_id, workspace_id, name, kind)
+	err = tx.QueryRow(ctx, `INSERT INTO scoring_models (tenant_id, workspace_id, name, kind)
 		VALUES ($1, $2, $3, $4)
 		RETURNING id, tenant_id, workspace_id, name, kind, current_version_id, latest_version, created_at, updated_at`,
 		p.TenantID, p.WorkspaceID, model.Name, model.Kind).
@@ -31,7 +37,12 @@ func (s *Store) CreateScoringModel(ctx context.Context, p domain.Principal, mode
 		return domain.ScoringModel{}, err
 	}
 
-	_ = s.audit(ctx, p, "scoring_model.create", "scoring_model", out.ID, map[string]any{"name": out.Name})
+	if err := s.audit(ctx, tx, p, "scoring_model.create", "scoring_model", out.ID, map[string]any{"name": out.Name}); err != nil {
+		return domain.ScoringModel{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.ScoringModel{}, err
+	}
 	return out, nil
 }
 
@@ -86,6 +97,12 @@ func (s *Store) ListScoringModels(ctx context.Context, p domain.Principal) ([]do
 }
 
 func (s *Store) UpdateScoringModel(ctx context.Context, p domain.Principal, model domain.ScoringModel) (domain.ScoringModel, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.ScoringModel{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	if model.Name == "" {
 		return domain.ScoringModel{}, errors.New("scoring model name is required")
 	}
@@ -97,7 +114,7 @@ func (s *Store) UpdateScoringModel(ctx context.Context, p domain.Principal, mode
 	}
 
 	var out domain.ScoringModel
-	err := s.pool.QueryRow(ctx, `UPDATE scoring_models 
+	err = tx.QueryRow(ctx, `UPDATE scoring_models 
 		SET name = $1, kind = $2, current_version_id = $3, latest_version = $4, updated_at = now()
 		WHERE tenant_id = $5 AND workspace_id = $6 AND id = $7
 		RETURNING id, tenant_id, workspace_id, name, kind, current_version_id, latest_version, created_at, updated_at`,
@@ -110,19 +127,35 @@ func (s *Store) UpdateScoringModel(ctx context.Context, p domain.Principal, mode
 		return domain.ScoringModel{}, err
 	}
 
-	_ = s.audit(ctx, p, "scoring_model.update", "scoring_model", out.ID, map[string]any{"name": out.Name})
+	if err := s.audit(ctx, tx, p, "scoring_model.update", "scoring_model", out.ID, map[string]any{"name": out.Name}); err != nil {
+		return domain.ScoringModel{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.ScoringModel{}, err
+	}
 	return out, nil
 }
 
 func (s *Store) DeleteScoringModel(ctx context.Context, p domain.Principal, id string) error {
-	tag, err := s.pool.Exec(ctx, `DELETE FROM scoring_models WHERE tenant_id = $1 AND workspace_id = $2 AND id = $3`, p.TenantID, p.WorkspaceID, id)
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	tag, err := tx.Exec(ctx, `DELETE FROM scoring_models WHERE tenant_id = $1 AND workspace_id = $2 AND id = $3`, p.TenantID, p.WorkspaceID, id)
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
 		return ErrNotFound
 	}
-	_ = s.audit(ctx, p, "scoring_model.delete", "scoring_model", id, nil)
+	if err := s.audit(ctx, tx, p, "scoring_model.delete", "scoring_model", id, nil); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -185,11 +218,13 @@ func (s *Store) CreateScoringModelVersion(ctx context.Context, p domain.Principa
 		return domain.ScoringModelVersion{}, err
 	}
 
+	
+	if err := s.audit(ctx, tx, p, "scoring_model_version.create", "scoring_model_version", out.ID, map[string]any{"version": out.Version}); err != nil {
+		return domain.ScoringModelVersion{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return domain.ScoringModelVersion{}, err
 	}
-
-	_ = s.audit(ctx, p, "scoring_model_version.create", "scoring_model_version", out.ID, map[string]any{"version": out.Version})
 	return out, nil
 }
 
@@ -304,11 +339,13 @@ func (s *Store) PublishScoringModelVersion(ctx context.Context, p domain.Princip
 		return domain.ScoringModelVersion{}, err
 	}
 
+	
+	if err := s.audit(ctx, tx, p, "scoring_model_version.publish", "scoring_model_version", out.ID, map[string]any{"version": out.Version}); err != nil {
+		return domain.ScoringModelVersion{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return domain.ScoringModelVersion{}, err
 	}
-
-	_ = s.audit(ctx, p, "scoring_model_version.publish", "scoring_model_version", out.ID, map[string]any{"version": out.Version})
 	return out, nil
 }
 

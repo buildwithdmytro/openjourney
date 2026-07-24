@@ -81,6 +81,12 @@ func (s *Store) ListEventSchemas(ctx context.Context, p domain.Principal) ([]dom
 }
 
 func (s *Store) CreateEventSchema(ctx context.Context, p domain.Principal, input domain.EventSchema) (domain.EventSchema, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.EventSchema{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	if input.EventType == "" || input.Version < 1 {
 		return domain.EventSchema{}, errors.New("event_type and positive version are required")
 	}
@@ -95,7 +101,7 @@ func (s *Store) CreateEventSchema(ctx context.Context, p domain.Principal, input
 		return domain.EventSchema{}, err
 	}
 	var previous json.RawMessage
-	err := s.pool.QueryRow(ctx, `SELECT schema FROM event_schemas
+	err = tx.QueryRow(ctx, `SELECT schema FROM event_schemas
 		WHERE tenant_id=$1 AND workspace_id=$2 AND event_type=$3
 		ORDER BY version DESC LIMIT 1`, p.TenantID, p.WorkspaceID, input.EventType).Scan(&previous)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
@@ -107,7 +113,7 @@ func (s *Store) CreateEventSchema(ctx context.Context, p domain.Principal, input
 		}
 	}
 	actor := actorID(p)
-	err = s.pool.QueryRow(ctx, `INSERT INTO event_schemas
+	err = tx.QueryRow(ctx, `INSERT INTO event_schemas
 		(tenant_id,workspace_id,event_type,version,schema,compatibility,created_by)
 		VALUES($1,$2,$3,$4,$5,$6,$7)
 		RETURNING id,event_type,version,schema,status,compatibility,created_at`,
@@ -122,9 +128,14 @@ func (s *Store) CreateEventSchema(ctx context.Context, p domain.Principal, input
 	s.schemaCacheKnown[key] = true
 	s.schemaCache[key] = validator
 	s.schemaMu.Unlock()
-	_ = s.audit(ctx, p, "schema.create", "event_schema", input.ID, map[string]any{
+	if err := s.audit(ctx, tx, p, "schema.create", "event_schema", input.ID, map[string]any{
 		"event_type": input.EventType, "version": input.Version,
-	})
+	}); err != nil {
+		return domain.EventSchema{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.EventSchema{}, err
+	}
 	return input, nil
 }
 
@@ -160,6 +171,12 @@ func (s *Store) ListAPIKeys(ctx context.Context, p domain.Principal) ([]domain.A
 }
 
 func (s *Store) CreateAPIKey(ctx context.Context, p domain.Principal, name string, scopes []string, expiresAt *time.Time) (domain.APIKey, string, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.APIKey{}, "", err
+	}
+	defer tx.Rollback(ctx)
+
 	if name == "" || len(scopes) == 0 {
 		return domain.APIKey{}, "", errors.New("name and at least one scope are required")
 	}
@@ -175,7 +192,7 @@ func (s *Store) CreateAPIKey(ctx context.Context, p domain.Principal, name strin
 	raw := "oj_" + base64.RawURLEncoding.EncodeToString(random)
 	hash := sha256.Sum256([]byte(raw))
 	var item domain.APIKey
-	err := s.pool.QueryRow(ctx, `INSERT INTO api_keys
+	err = tx.QueryRow(ctx, `INSERT INTO api_keys
 		(tenant_id,workspace_id,app_id,name,key_hash,scopes,expires_at)
 		VALUES($1,$2,$3,$4,$5,$6,$7)
 		RETURNING id,name,scopes,expires_at,revoked_at,last_used_at,created_at`,
@@ -184,12 +201,23 @@ func (s *Store) CreateAPIKey(ctx context.Context, p domain.Principal, name strin
 	if err != nil {
 		return domain.APIKey{}, "", err
 	}
-	_ = s.audit(ctx, p, "api_key.create", "api_key", item.ID, map[string]any{"scopes": scopes})
+	if err := s.audit(ctx, tx, p, "api_key.create", "api_key", item.ID, map[string]any{"scopes": scopes}); err != nil {
+		return domain.APIKey{}, "", err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.APIKey{}, "", err
+	}
 	return item, raw, nil
 }
 
 func (s *Store) RevokeAPIKey(ctx context.Context, p domain.Principal, id string) error {
-	tag, err := s.pool.Exec(ctx, `UPDATE api_keys SET revoked_at=now()
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	tag, err := tx.Exec(ctx, `UPDATE api_keys SET revoked_at=now()
 		WHERE id=$1 AND tenant_id=$2 AND workspace_id=$3 AND app_id=$4 AND revoked_at IS NULL`,
 		id, p.TenantID, p.WorkspaceID, p.AppID)
 	if err != nil {
@@ -198,7 +226,10 @@ func (s *Store) RevokeAPIKey(ctx context.Context, p domain.Principal, id string)
 	if tag.RowsAffected() != 1 {
 		return ErrNotFound
 	}
-	return s.audit(ctx, p, "api_key.revoke", "api_key", id, nil)
+	if err := s.audit(ctx, tx, p, "api_key.revoke", "api_key", id, nil); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func (s *Store) CreatePrivacyRequest(ctx context.Context, p domain.Principal, externalID, requestType string) (domain.PrivacyRequest, error) {
@@ -230,12 +261,14 @@ func (s *Store) CreatePrivacyRequest(ctx context.Context, p domain.Principal, ex
 	if err != nil {
 		return domain.PrivacyRequest{}, err
 	}
+		request.VerificationToken = token
+	if err := s.audit(ctx, tx, p, "privacy."+requestType, "privacy_request", request.ID,
+		map[string]any{"external_id": externalID, "verification_status": "unverified"}); err != nil {
+		return domain.PrivacyRequest{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return domain.PrivacyRequest{}, err
 	}
-	request.VerificationToken = token
-	_ = s.audit(ctx, p, "privacy."+requestType, "privacy_request", request.ID,
-		map[string]any{"external_id": externalID, "verification_status": "unverified"})
 	return request, nil
 }
 
@@ -297,11 +330,13 @@ func (s *Store) VerifyPrivacyRequest(ctx context.Context, p domain.Principal, id
 		}
 	}
 
+	
+	if err := s.audit(ctx, tx, p, "privacy.verify", "privacy_request", id, map[string]any{"external_id": externalID}); err != nil {
+		return domain.PrivacyRequest{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return domain.PrivacyRequest{}, err
 	}
-
-	_ = s.audit(ctx, p, "privacy.verify", "privacy_request", id, map[string]any{"external_id": externalID})
 
 	return s.GetPrivacyRequest(ctx, p, id)
 }
@@ -334,11 +369,13 @@ func (s *Store) RejectPrivacyRequest(ctx context.Context, p domain.Principal, id
 		return domain.PrivacyRequest{}, err
 	}
 
+	
+	if err := s.audit(ctx, tx, p, "privacy.reject", "privacy_request", id, map[string]any{"external_id": externalID, "reason": reason}); err != nil {
+		return domain.PrivacyRequest{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return domain.PrivacyRequest{}, err
 	}
-
-	_ = s.audit(ctx, p, "privacy.reject", "privacy_request", id, map[string]any{"external_id": externalID, "reason": reason})
 
 	return s.GetPrivacyRequest(ctx, p, id)
 }
@@ -566,6 +603,12 @@ func (s *Store) ListDeadLetters(ctx context.Context, p domain.Principal, queue s
 }
 
 func (s *Store) RetryDeadLetter(ctx context.Context, p domain.Principal, queue, id string) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
 	tag, err := s.updateDeadLetter(ctx, p, queue, id, true)
 	if err != nil {
 		return err
@@ -573,10 +616,19 @@ func (s *Store) RetryDeadLetter(ctx context.Context, p domain.Principal, queue, 
 	if tag != 1 {
 		return ErrNotFound
 	}
-	return s.audit(ctx, p, "dlq.retry", "dead_letter", queue+":"+id, nil)
+	if err := s.audit(ctx, tx, p, "dlq.retry", "dead_letter", queue+":"+id, nil); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func (s *Store) DiscardDeadLetter(ctx context.Context, p domain.Principal, queue, id string) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
 	tag, err := s.updateDeadLetter(ctx, p, queue, id, false)
 	if err != nil {
 		return err
@@ -584,7 +636,10 @@ func (s *Store) DiscardDeadLetter(ctx context.Context, p domain.Principal, queue
 	if tag != 1 {
 		return ErrNotFound
 	}
-	return s.audit(ctx, p, "dlq.discard", "dead_letter", queue+":"+id, nil)
+	if err := s.audit(ctx, tx, p, "dlq.discard", "dead_letter", queue+":"+id, nil); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func (s *Store) updateDeadLetter(ctx context.Context, p domain.Principal, queue, id string, retry bool) (int64, error) {
@@ -774,20 +829,26 @@ func (s *Store) VerifyAuditChain(ctx context.Context, p domain.Principal) (domai
 	}, nil
 }
 
-func (s *Store) audit(ctx context.Context, p domain.Principal, action, resourceType, resourceID string, metadata map[string]any) error {
+func (s *Store) audit(ctx context.Context, tx pgx.Tx, p domain.Principal, action, resourceType, resourceID string, metadata map[string]any) error {
+	if tx == nil {
+		t, err := s.pool.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		defer t.Rollback(ctx)
+		if err := s.audit(ctx, t, p, action, resourceType, resourceID, metadata); err != nil {
+			return err
+		}
+		return t.Commit(ctx)
+	}
+
 	if metadata == nil {
 		metadata = map[string]any{}
 	}
 	data, _ := json.Marshal(metadata)
 
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-
 	var lockKey int64
-	err = tx.QueryRow(ctx, "SELECT hashtext('audit:' || $1)", p.TenantID).Scan(&lockKey)
+	err := tx.QueryRow(ctx, "SELECT hashtext('audit:' || $1)", p.TenantID).Scan(&lockKey)
 	if err != nil {
 		return err
 	}
@@ -820,7 +881,7 @@ func (s *Store) audit(ctx context.Context, p domain.Principal, action, resourceT
 		return err
 	}
 
-	return tx.Commit(ctx)
+	return nil
 }
 
 func actorID(p domain.Principal) string {

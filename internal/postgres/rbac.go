@@ -70,12 +70,18 @@ func (s *Store) ListRoles(ctx context.Context, p domain.Principal) ([]domain.Rol
 }
 
 func (s *Store) CreateRole(ctx context.Context, p domain.Principal, name string, permissions []string) (domain.Role, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.Role{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	if name == "" || len(permissions) == 0 {
 		return domain.Role{}, errors.New("name and permissions are required")
 	}
 	for _, permission := range permissions {
 		var exists bool
-		err := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM permissions WHERE key=$1)`, permission).Scan(&exists)
+		err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM permissions WHERE key=$1)`, permission).Scan(&exists)
 		if err != nil {
 			return domain.Role{}, err
 		}
@@ -84,24 +90,35 @@ func (s *Store) CreateRole(ctx context.Context, p domain.Principal, name string,
 		}
 	}
 	var role domain.Role
-	err := s.pool.QueryRow(ctx, `INSERT INTO roles(tenant_id,name,permissions)
+	err = tx.QueryRow(ctx, `INSERT INTO roles(tenant_id,name,permissions)
 		VALUES($1,$2,$3) RETURNING id,name,permissions,system,created_at`,
 		p.TenantID, name, permissions).
 		Scan(&role.ID, &role.Name, &role.Permissions, &role.System, &role.CreatedAt)
 	if err != nil {
 		return domain.Role{}, err
 	}
-	_ = s.audit(ctx, p, "role.create", "role", role.ID, map[string]any{"permissions": permissions})
+	if err := s.audit(ctx, tx, p, "role.create", "role", role.ID, map[string]any{"permissions": permissions}); err != nil {
+		return domain.Role{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Role{}, err
+	}
 	return role, nil
 }
 
 func (s *Store) UpdateRole(ctx context.Context, p domain.Principal, id string, name string, permissions []string) (domain.Role, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.Role{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	if id == "" || name == "" || len(permissions) == 0 {
 		return domain.Role{}, errors.New("id, name, and permissions are required")
 	}
 	for _, permission := range permissions {
 		var exists bool
-		err := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM permissions WHERE key=$1)`, permission).Scan(&exists)
+		err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM permissions WHERE key=$1)`, permission).Scan(&exists)
 		if err != nil {
 			return domain.Role{}, err
 		}
@@ -110,7 +127,7 @@ func (s *Store) UpdateRole(ctx context.Context, p domain.Principal, id string, n
 		}
 	}
 	var system bool
-	err := s.pool.QueryRow(ctx, `SELECT system FROM roles WHERE tenant_id=$1 AND id=$2`, p.TenantID, id).Scan(&system)
+	err = tx.QueryRow(ctx, `SELECT system FROM roles WHERE tenant_id=$1 AND id=$2`, p.TenantID, id).Scan(&system)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Role{}, errors.New("role not found")
 	} else if err != nil {
@@ -121,7 +138,7 @@ func (s *Store) UpdateRole(ctx context.Context, p domain.Principal, id string, n
 	}
 
 	var role domain.Role
-	err = s.pool.QueryRow(ctx, `UPDATE roles SET name=$1, permissions=$2
+	err = tx.QueryRow(ctx, `UPDATE roles SET name=$1, permissions=$2
 		WHERE tenant_id=$3 AND id=$4 AND system=false
 		RETURNING id,name,permissions,system,created_at`,
 		name, permissions, p.TenantID, id).
@@ -129,16 +146,27 @@ func (s *Store) UpdateRole(ctx context.Context, p domain.Principal, id string, n
 	if err != nil {
 		return domain.Role{}, err
 	}
-	_ = s.audit(ctx, p, "role.update", "role", role.ID, map[string]any{"name": name, "permissions": permissions})
+	if err := s.audit(ctx, tx, p, "role.update", "role", role.ID, map[string]any{"name": name, "permissions": permissions}); err != nil {
+		return domain.Role{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Role{}, err
+	}
 	return role, nil
 }
 
 func (s *Store) DeleteRole(ctx context.Context, p domain.Principal, id string) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
 	if id == "" {
 		return errors.New("id is required")
 	}
 	var system bool
-	err := s.pool.QueryRow(ctx, `SELECT system FROM roles WHERE tenant_id=$1 AND id=$2`, p.TenantID, id).Scan(&system)
+	err = tx.QueryRow(ctx, `SELECT system FROM roles WHERE tenant_id=$1 AND id=$2`, p.TenantID, id).Scan(&system)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return errors.New("role not found")
 	} else if err != nil {
@@ -148,14 +176,19 @@ func (s *Store) DeleteRole(ctx context.Context, p domain.Principal, id string) e
 		return errors.New("cannot delete system role")
 	}
 
-	tag, err := s.pool.Exec(ctx, `DELETE FROM roles WHERE tenant_id=$1 AND id=$2 AND system=false`, p.TenantID, id)
+	tag, err := tx.Exec(ctx, `DELETE FROM roles WHERE tenant_id=$1 AND id=$2 AND system=false`, p.TenantID, id)
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
 		return errors.New("role not found")
 	}
-	_ = s.audit(ctx, p, "role.delete", "role", id, nil)
+	if err := s.audit(ctx, tx, p, "role.delete", "role", id, nil); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -229,11 +262,13 @@ func (s *Store) CreateUser(ctx context.Context, p domain.Principal, input domain
 			return domain.User{}, ErrNotFound
 		}
 	}
+		input.Password = ""
+	if err := s.audit(ctx, tx, p, "user.create", "user", input.ID, map[string]any{"roles": input.RoleIDs}); err != nil {
+		return domain.User{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return domain.User{}, err
 	}
-	input.Password = ""
-	_ = s.audit(ctx, p, "user.create", "user", input.ID, map[string]any{"roles": input.RoleIDs})
 	return input, nil
 }
 

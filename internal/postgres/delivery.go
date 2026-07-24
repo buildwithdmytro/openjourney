@@ -19,22 +19,39 @@ func (s *Store) IsSuppressed(ctx context.Context, p domain.Principal, channel, e
 }
 
 func (s *Store) SuppressEndpoint(ctx context.Context, p domain.Principal, channel, endpoint, reason string) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
 	if reason != "bounce" && reason != "complaint" && reason != "unsubscribe" && reason != "admin" {
 		return errors.New("invalid suppression reason")
 	}
-	_, err := s.pool.Exec(ctx, `INSERT INTO suppressions (tenant_id, channel, endpoint, reason)
+	_, err = tx.Exec(ctx, `INSERT INTO suppressions (tenant_id, channel, endpoint, reason)
 		VALUES ($1, $2, $3, $4)
 		ON CONFLICT (tenant_id, channel, endpoint) DO UPDATE SET reason=EXCLUDED.reason`,
 		p.TenantID, strings.ToLower(channel), strings.ToLower(endpoint), reason)
 	if err != nil {
 		return err
 	}
-	_ = s.audit(ctx, p, "suppression.create", "suppression", endpoint, map[string]any{"channel": channel, "reason": reason})
+	if err := s.audit(ctx, tx, p, "suppression.create", "suppression", endpoint, map[string]any{"channel": channel, "reason": reason}); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
 	return nil
 }
 
 func (s *Store) RemoveSuppression(ctx context.Context, p domain.Principal, channel, endpoint string) error {
-	tag, err := s.pool.Exec(ctx, `DELETE FROM suppressions WHERE tenant_id=$1 AND channel=$2 AND endpoint=$3`,
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	tag, err := tx.Exec(ctx, `DELETE FROM suppressions WHERE tenant_id=$1 AND channel=$2 AND endpoint=$3`,
 		p.TenantID, strings.ToLower(channel), strings.ToLower(endpoint))
 	if err != nil {
 		return err
@@ -42,7 +59,12 @@ func (s *Store) RemoveSuppression(ctx context.Context, p domain.Principal, chann
 	if tag.RowsAffected() == 0 {
 		return ErrNotFound
 	}
-	_ = s.audit(ctx, p, "suppression.delete", "suppression", endpoint, map[string]any{"channel": channel})
+	if err := s.audit(ctx, tx, p, "suppression.delete", "suppression", endpoint, map[string]any{"channel": channel}); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
 	return nil
 }
 
