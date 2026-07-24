@@ -32,7 +32,7 @@ type Config struct {
 	Clock          Clock
 }
 
-func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Config) (bool, error) {
+func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Config) (processed bool, err error) {
 	clk := cfg.Clock
 	if clk == nil {
 		clk = RealClock{}
@@ -45,6 +45,25 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 	if !found {
 		return false, nil
 	}
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			panicErr := fmt.Sprintf("journey delivery panic: %v", recovered)
+			intent.Status = "failed"
+			if intent.Attempts >= 3 {
+				intent.Status = "dead"
+			}
+			intent.LockedUntil = nil
+			intent.ErrorMessage = &panicErr
+			decision := "failed"
+			intent.Decision = &decision
+			if updateErr := store.UpdateJourneyMessageIntent(ctx, intent); updateErr != nil {
+				err = fmt.Errorf("recover journey intent %s: %s (update intent: %v)", intent.ID, panicErr, updateErr)
+			} else {
+				err = fmt.Errorf("recover journey intent %s: %s", intent.ID, panicErr)
+			}
+			processed = true
+		}
+	}()
 
 	slog.Info("processing journey message intent", "intent_id", intent.ID, "run_id", intent.RunID, "tenant_id", intent.TenantID)
 

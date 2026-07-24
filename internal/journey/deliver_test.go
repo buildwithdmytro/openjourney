@@ -23,6 +23,12 @@ func (s *appLookupErrorStore) GetFirstAppID(context.Context, string, string) (st
 	return "", errors.New("no application")
 }
 
+type panicAppLookupStore struct{ *mockStore }
+
+func (s *panicAppLookupStore) GetFirstAppID(context.Context, string, string) (string, error) {
+	panic("poison journey delivery")
+}
+
 func TestDeliverNextDoesNotFallbackToSyntheticApp(t *testing.T) {
 	base := newMockStore()
 	base.intents = append(base.intents, testPendingIntent())
@@ -32,6 +38,22 @@ func TestDeliverNextDoesNotFallbackToSyntheticApp(t *testing.T) {
 	}
 	if got := base.intents[0]; got.Status != "failed" || got.ErrorMessage == nil || !strings.Contains(*got.ErrorMessage, "resolve app") {
 		t.Fatalf("expected deterministic app lookup failure, got %+v", got)
+	}
+}
+
+func TestDeliverNextRecoversPanicAndDeadLettersIntent(t *testing.T) {
+	base := newMockStore()
+	intent := testPendingIntent()
+	intent.Attempts = 2
+	base.intents = append(base.intents, intent)
+	store := &panicAppLookupStore{base}
+
+	processed, err := DeliverNext(context.Background(), store, "worker-1", Config{})
+	if !processed || err == nil {
+		t.Fatalf("processed=%v err=%v, want recovered panic reported", processed, err)
+	}
+	if got := base.intents[0]; got.Status != "dead" || got.ErrorMessage == nil {
+		t.Fatalf("recovered intent was not dead-lettered: %+v", got)
 	}
 }
 
@@ -889,4 +911,3 @@ func TestDeliverNext_InAppTransactionalBypassesCapsButHonorsSuppression(t *testi
 		}
 	}
 }
-

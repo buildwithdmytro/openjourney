@@ -33,7 +33,7 @@ type Config struct {
 	FakeAdapter    ports.ChannelAdapter
 }
 
-func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Config) (bool, error) {
+func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Config) (processed bool, err error) {
 	job, found, err := store.ClaimDeliveryJob(ctx, workerID)
 	if err != nil {
 		return false, fmt.Errorf("claim delivery job: %w", err)
@@ -41,6 +41,17 @@ func DeliverNext(ctx context.Context, store ports.Store, workerID string, cfg Co
 	if !found {
 		return false, nil
 	}
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			panicErr := fmt.Sprintf("delivery panic: %v", recovered)
+			if failErr := store.FailDeliveryJob(ctx, job.ID, panicErr); failErr != nil {
+				err = fmt.Errorf("recover delivery job %s: %s (fail job: %v)", job.ID, panicErr, failErr)
+			} else {
+				err = fmt.Errorf("recover delivery job %s: %s", job.ID, panicErr)
+			}
+			processed = true
+		}
+	}()
 
 	slog.Info("processing delivery job", "job_id", job.ID, "campaign_id", job.CampaignID, "tenant_id", job.TenantID)
 

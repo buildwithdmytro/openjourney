@@ -22,7 +22,7 @@ type ManifestRecipient struct {
 	Endpoint  string `json:"endpoint"`
 }
 
-func DispatchNext(ctx context.Context, store ports.Store, blobStore BlobStore) (bool, error) {
+func DispatchNext(ctx context.Context, store ports.Store, blobStore BlobStore) (processed bool, err error) {
 	camp, found, err := store.ClaimScheduledCampaign(ctx)
 	if err != nil {
 		return false, fmt.Errorf("claim scheduled campaign: %w", err)
@@ -33,6 +33,29 @@ func DispatchNext(ctx context.Context, store ports.Store, blobStore BlobStore) (
 
 	slog.Info("dispatching campaign", "campaign_id", camp.ID, "tenant_id", camp.TenantID)
 
+	p := domain.Principal{
+		TenantID:    camp.TenantID,
+		WorkspaceID: camp.WorkspaceID,
+		AppID:       "app-1",
+		Scopes:      []string{"*"},
+	}
+	success := false
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("dispatch campaign %s panic: %v", camp.ID, recovered)
+			processed = true
+		}
+		if !success {
+			camp.Status = "failed"
+			if _, updateErr := store.UpdateCampaign(ctx, p, camp); updateErr != nil {
+				slog.Error("failed to mark campaign as failed", "campaign_id", camp.ID, "error", updateErr)
+				if err == nil {
+					err = updateErr
+				}
+			}
+		}
+	}()
+
 	// In background dispatcher, retrieve any application ID belonging to this workspace to evaluate consent correctly.
 	appID, err := store.GetFirstAppID(ctx, camp.TenantID, camp.WorkspaceID)
 	if err != nil {
@@ -40,22 +63,7 @@ func DispatchNext(ctx context.Context, store ports.Store, blobStore BlobStore) (
 		appID = "app-1"
 	}
 
-	p := domain.Principal{
-		TenantID:    camp.TenantID,
-		WorkspaceID: camp.WorkspaceID,
-		AppID:       appID,
-		Scopes:      []string{"*"},
-	}
-
-	var success bool
-	defer func() {
-		if !success {
-			camp.Status = "failed"
-			if _, err := store.UpdateCampaign(ctx, p, camp); err != nil {
-				slog.Error("failed to mark campaign as failed", "campaign_id", camp.ID, "error", err)
-			}
-		}
-	}()
+	p.AppID = appID
 
 	// 1. Resolve Segment profiles
 	profileIDs, err := store.ResolveSegment(ctx, p, camp.SegmentID)

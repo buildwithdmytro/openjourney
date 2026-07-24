@@ -14,10 +14,10 @@ import (
 	"github.com/buildwithdmytro/openjourney/internal/ai"
 	"github.com/buildwithdmytro/openjourney/internal/channels"
 	"github.com/buildwithdmytro/openjourney/internal/config"
+	"github.com/buildwithdmytro/openjourney/internal/extension"
 	"github.com/buildwithdmytro/openjourney/internal/journey"
 	"github.com/buildwithdmytro/openjourney/internal/ports"
 	"github.com/buildwithdmytro/openjourney/internal/postgres"
-	"github.com/buildwithdmytro/openjourney/internal/extension"
 	"github.com/buildwithdmytro/openjourney/internal/stages"
 	"github.com/buildwithdmytro/openjourney/internal/telemetry"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -141,8 +141,12 @@ func main() {
 			slog.Info("journeys worker context done, shutting down")
 			return
 		default:
-			if !processed {
-				time.Sleep(1 * time.Second)
+			if err != nil || !processed {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(1 * time.Second):
+				}
 			}
 		}
 	}

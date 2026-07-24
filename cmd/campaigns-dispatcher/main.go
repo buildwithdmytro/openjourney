@@ -115,8 +115,12 @@ func main() {
 			slog.Info("dispatcher context done, shutting down")
 			return
 		default:
-			if !dispatched {
-				time.Sleep(1 * time.Second)
+			if err != nil || !dispatched {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(1 * time.Second):
+				}
 			}
 		}
 	}

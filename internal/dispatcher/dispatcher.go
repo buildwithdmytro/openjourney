@@ -2,6 +2,7 @@ package dispatcher
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
@@ -32,16 +33,41 @@ func Drain(ctx context.Context, store Store, publisher ports.EventPublisher, max
 				continue
 			}
 		}
-		if err := publisher.Publish(ctx, event); err != nil {
-			if failErr := store.FailOutboxEvent(ctx, event.ID, err); failErr != nil {
-				return processed, failErr
-			}
-			continue
-		}
-		if err := store.CompleteOutboxEvent(ctx, event.ID); err != nil {
+		completed, err := publishOne(ctx, store, publisher, event)
+		if err != nil {
 			return processed, err
+		}
+		if !completed {
+			continue
 		}
 		processed++
 	}
 	return processed, nil
+}
+
+// publishOne isolates recovery to one claimed event so a poison event cannot
+// terminate the dispatcher fleet. FailOutboxEvent retains retry/backoff/DLQ.
+func publishOne(ctx context.Context, store Store, publisher ports.EventPublisher, event domain.OutboxEvent) (completed bool, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			panicErr := fmt.Errorf("publish event panic: %v", recovered)
+			if failErr := store.FailOutboxEvent(ctx, event.ID, panicErr); failErr != nil {
+				err = fmt.Errorf("recover publish event %s: %w (fail event: %v)", event.ID, panicErr, failErr)
+				return
+			}
+			err = nil
+			completed = false
+		}
+	}()
+
+	if err := publisher.Publish(ctx, event); err != nil {
+		if failErr := store.FailOutboxEvent(ctx, event.ID, err); failErr != nil {
+			return false, failErr
+		}
+		return false, nil
+	}
+	if err := store.CompleteOutboxEvent(ctx, event.ID); err != nil {
+		return false, err
+	}
+	return true, nil
 }

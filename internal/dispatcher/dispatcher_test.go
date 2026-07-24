@@ -30,6 +30,13 @@ type fakePublisher struct {
 	published int
 }
 
+type panickingPublisher struct{}
+
+func (panickingPublisher) Publish(context.Context, domain.OutboxEvent) error {
+	panic("poison event")
+}
+func (panickingPublisher) Close() {}
+
 func (f *fakePublisher) Publish(context.Context, domain.OutboxEvent) error {
 	f.published++
 	return f.err
@@ -51,5 +58,16 @@ func TestDrainRecordsPublishFailure(t *testing.T) {
 	count, err := Drain(context.Background(), store, publisher, 1, false)
 	if err != nil || count != 0 || store.failed != 1 {
 		t.Fatalf("count=%d failed=%d err=%v", count, store.failed, err)
+	}
+}
+
+func TestDrainRecoversPanickingPublisherAndDeadLettersEvent(t *testing.T) {
+	store := &fakeStore{event: domain.OutboxEvent{ID: "poison"}, found: true}
+	count, err := Drain(context.Background(), store, panickingPublisher{}, 1, false)
+	if err != nil {
+		t.Fatalf("Drain returned panic instead of dead-lettering: %v", err)
+	}
+	if count != 0 || store.failed != 1 {
+		t.Fatalf("count=%d failed=%d, want one failed poison event", count, store.failed)
 	}
 }

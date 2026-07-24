@@ -96,7 +96,7 @@ public edges.)
    — done: Satisfies M18 residual finding F8; no `_ = s.audit(` remains, `TestSameTransactionAuditWrites_NonGated` verifies propagation at all call sites, and `TestSameTransactionAuditWrites_DBIntegration` covers forced audit failure rollback (skipped without `OPENJOURNEY_TEST_DATABASE_URL`).
 
 ### Milestone 24.1 — Worker & backend resilience — STABILITY CHECKPOINT
-1. [ ] **Panic recovery → DLQ on all worker loops (S1, S10).** Wrap the per-message body of
+1. [x] **Panic recovery → DLQ on all worker loops (S1, S10).** Wrap the per-message body of
    `campaigns.DeliverNext`/`journey.DeliverNext`/`dispatcher.Drain`/`projector.Drain` (or their call
    sites in `cmd/*/main.go`) in `defer func(){ if r:=recover(); r!=nil { …Fail*Job / mark dead … } }()`
    so a panic dead-letters via the existing `attempts≥N → dead` path instead of crash-looping; also sleep
@@ -104,6 +104,7 @@ public edges.)
    *Done when:* a test injects a panicking apply/handler and asserts the job is marked `dead` (not an
    infinite re-claim loop); a worker survives a poison message; `go test ./... ` green.
    **Stability checkpoint:** a single bad event can no longer halt the delivery/journey/projection fleet.
+   — done: S1/S10 fixed with per-message recovery in campaign/journey delivery, dispatcher, and projector paths; poison tests `TestDeliverNextRecoversPanicAndFailsDeliveryJob`, `TestDeliverNextRecoversPanicAndDeadLettersIntent`, `TestDrainRecoversPanickingPublisherAndDeadLettersEvent`, and `TestDrainRecoversPanickingProjectorAndDeadLettersEvent` pass; full Go build/vet/test and scoped postgres race test pass.
 2. [ ] **Bound the unbounded queries (S6, S11).** `resolveSegmentIDs` (`segments.go:231`) keyset-paginates
    or pushes the predicate into SQL (no full-table load); `short_links.go:48` list gets a `LIMIT`.
    *Done when:* segment resolution no longer streams the whole profile table into memory (paged/bounded);

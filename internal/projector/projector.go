@@ -2,6 +2,7 @@ package projector
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
@@ -46,13 +47,39 @@ func DrainWithOptions(ctx context.Context, store Store, maxItems int, watch bool
 			case <-time.After(opts.AfterClaimDelay):
 			}
 		}
-		if err := store.ProjectEvent(ctx, event); err != nil {
-			if failErr := store.FailProjectionJob(ctx, event.ID, err); failErr != nil {
-				return processed, failErr
-			}
+		completed, err := projectOne(ctx, store, event)
+		if err != nil {
+			return processed, err
+		}
+		if !completed {
 			continue
 		}
 		processed++
 	}
 	return processed, nil
+}
+
+// projectOne isolates recovery to one claimed event so a poison event cannot
+// terminate the projector fleet. FailProjectionJob retains the existing
+// retry/backoff/dead-letter policy.
+func projectOne(ctx context.Context, store Store, event domain.AcceptedEvent) (completed bool, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			panicErr := fmt.Errorf("project event panic: %v", recovered)
+			if failErr := store.FailProjectionJob(ctx, event.ID, panicErr); failErr != nil {
+				err = fmt.Errorf("recover project event %s: %w (fail job: %v)", event.ID, panicErr, failErr)
+				return
+			}
+			err = nil
+			completed = false
+		}
+	}()
+
+	if err := store.ProjectEvent(ctx, event); err != nil {
+		if failErr := store.FailProjectionJob(ctx, event.ID, err); failErr != nil {
+			return false, failErr
+		}
+		return false, nil
+	}
+	return true, nil
 }

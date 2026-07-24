@@ -44,6 +44,12 @@ type mockStore struct {
 	sentCountSince   int    // for fatigue testing
 }
 
+type panicCampaignStore struct{ *mockStore }
+
+func (s *panicCampaignStore) GetCampaignSystem(context.Context, string, string) (domain.Campaign, error) {
+	panic("poison delivery")
+}
+
 func newMockStore() *mockStore {
 	return &mockStore{
 		jobs:             make(map[string]domain.DeliveryJob),
@@ -64,6 +70,20 @@ func newMockStore() *mockStore {
 		profilePhones:    make(map[string]string),
 		consentState:     "subscribed",
 		sentCountSince:   0,
+	}
+}
+
+func TestDeliverNextRecoversPanicAndFailsDeliveryJob(t *testing.T) {
+	base := newMockStore()
+	base.jobs["poison"] = domain.DeliveryJob{ID: "poison", Attempts: 3}
+	store := &panicCampaignStore{base}
+
+	processed, err := DeliverNext(context.Background(), store, "worker-1", Config{})
+	if !processed || err == nil {
+		t.Fatalf("processed=%v err=%v, want recovered panic reported", processed, err)
+	}
+	if _, ok := base.failedJobs["poison"]; !ok {
+		t.Fatal("panicking delivery job was not sent through the DLQ failure path")
 	}
 }
 
@@ -269,7 +289,6 @@ func (m *mockStore) ListActiveDeviceTokens(ctx context.Context, tenantID, worksp
 func (m *mockStore) ListDeviceTokensByProfile(ctx context.Context, tenantID, workspaceID, profileID string) ([]domain.DeviceToken, error) {
 	return nil, nil
 }
-
 
 func (m *mockStore) GetSendingIdentityByProviderConfig(ctx context.Context, provider string, configKey string, configVal string) (domain.SendingIdentity, error) {
 	for _, iden := range m.identities {
@@ -1337,4 +1356,3 @@ func TestDeliverNext_InAppNoConsent(t *testing.T) {
 		t.Errorf("expected in-app attempt to be updated to no_consent, got: %v", store.updatedAttempts)
 	}
 }
-
