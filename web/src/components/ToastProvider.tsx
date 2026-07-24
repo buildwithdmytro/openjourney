@@ -1,6 +1,8 @@
 import React, { createContext, useCallback, useContext, useMemo, useState, ReactNode } from "react";
 import Toast from "./Toast";
 
+const MAX_VISIBLE_TOASTS = 5;
+
 export interface ToastMessage {
   id: string;
   kind: "success" | "error" | "info" | "warn";
@@ -15,6 +17,20 @@ interface ToastContextType {
 
 const ToastContext = createContext<ToastContextType | undefined>(undefined);
 
+function ToastItem({ toast, dismiss }: { toast: ToastMessage; dismiss: (id: string) => void }) {
+  const onDismiss = useCallback(() => dismiss(toast.id), [dismiss, toast.id]);
+
+  return (
+    <Toast
+      kind={toast.kind}
+      message={toast.message}
+      duration={toast.duration}
+      onDismiss={onDismiss}
+      data-testid={`toast-${toast.id}`}
+    />
+  );
+}
+
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
@@ -22,7 +38,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     (toast: Omit<ToastMessage, "id">) => {
       const id = Math.random().toString(36).substr(2, 9);
       const newToast: ToastMessage = { ...toast, id };
-      setToasts((prev) => [...prev, newToast]);
+      setToasts((prev) => [...prev, newToast].slice(-MAX_VISIBLE_TOASTS));
     },
     []
   );
@@ -38,14 +54,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       <div className="toast-container" role="region" aria-label="Notifications" data-testid="toast-container">
         {toasts.map((toast) => (
-          <Toast
-            key={toast.id}
-            kind={toast.kind}
-            message={toast.message}
-            duration={toast.duration}
-            onDismiss={() => dismiss(toast.id)}
-            data-testid={`toast-${toast.id}`}
-          />
+          <ToastItem key={toast.id} toast={toast} dismiss={dismiss} />
         ))}
       </div>
     </ToastContext.Provider>

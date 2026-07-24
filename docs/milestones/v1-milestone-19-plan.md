@@ -123,10 +123,11 @@ public edges.)
    *Done when:* a forced throw in the login/chrome renders the boundary fallback (test); the app never
    white-screens.
    — done: S5 fixed with `RootErrorBoundary` wrapping `<App />` in `main.tsx`; `RootErrorBoundary.test.tsx` forces a pre-auth render throw and verifies the alert/retry recovery UI; web typecheck, build, and all 321 tests pass.
-2. [ ] **Toast timer + cap fix (S4).** Memoize `onDismiss` per id (or depend only on `duration`) so a new
+2. [x] **Toast timer + cap fix (S4).** Memoize `onDismiss` per id (or depend only on `duration`) so a new
    toast doesn't reset others' countdowns; cap the visible list (last 3–5).
    *Done when:* a burst of toasts each auto-dismiss on their own timers and the visible count is capped;
    test covers the cap + independent dismissal.
+   — done: S4 fixed with stable per-toast dismissal callbacks and a five-toast visible cap; `ToastProvider.test.tsx` covers capped bursts and independent auto-dismissal; web typecheck, build, and 322 tests pass.
 3. [ ] **Remove fabricated data + defensive nested access (S2, S8).** Drop the synthesized Assistant
    sparkline (`Assistant.tsx:183`) — render the value alone when no real series exists; optional-chain
    the Reports/Analytics nested access (`Reports.tsx:206`, `Analytics.tsx:149`).

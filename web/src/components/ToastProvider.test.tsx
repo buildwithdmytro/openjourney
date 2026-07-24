@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
+import { act, render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
 import { ToastProvider, useToast } from "./ToastProvider";
 
 function TestComponent() {
@@ -135,5 +135,27 @@ describe("ToastProvider", () => {
     toasts = container.querySelectorAll('[role="status"]');
     expect(toasts).toHaveLength(1);
     expect(toasts[0]).toHaveTextContent("Error!");
+  });
+
+  it("caps visible toasts and keeps each timer independent", () => {
+    const { container } = render(
+      <ToastProvider>
+        <TestComponent />
+      </ToastProvider>
+    );
+
+    const buttons = container.querySelectorAll("button");
+    fireEvent.click(buttons[0]);
+    act(() => vi.advanceTimersByTime(1000));
+    fireEvent.click(buttons[1]);
+
+    for (let index = 0; index < 3; index += 1) {
+      fireEvent.click(buttons[0]);
+    }
+    expect(container.querySelectorAll('[role="status"]')).toHaveLength(5);
+
+    act(() => vi.advanceTimersByTime(3000));
+    expect(container.querySelectorAll('[role="status"]')).toHaveLength(4);
+    expect(screen.getByText("Error!")).toBeInTheDocument();
   });
 });
