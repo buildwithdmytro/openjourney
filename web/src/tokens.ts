@@ -4,6 +4,13 @@
 export const defaultAccentColor = "#6f5cff"; /* matches var(--color-accent) in light mode */
 export const defaultBackgroundColor = "#f4f6f8"; /* matches var(--color-surface-muted) */
 
+export const emailComposerColors = {
+  buttonText: "#fff",
+  frameText: "#1a2433",
+  frameSurface: "#fff",
+  messageText: "#536071",
+};
+
 /* Journey and status-specific colors for runtime use */
 export const journeyColors = {
   successBorder: "#187d56",

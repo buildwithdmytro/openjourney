@@ -126,7 +126,7 @@ const getNodeStyle = (type: string, selected: boolean) => {
     border: "2px solid var(--color-border-default)",
     background: journeyColors.white,
     color: journeyColors.black,
-    boxShadow: selected ? "0 0 8px rgba(26, 115, 232, 0.6)" : "none",
+    boxShadow: selected ? "0 0 8px var(--color-primary-shadow)" : "none",
     width: 230,
     textAlign: "left" as const,
     cursor: "pointer",

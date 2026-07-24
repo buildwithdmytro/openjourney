@@ -52,7 +52,7 @@ function DraftCard({
     <Card style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
-          <span style={{ fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--color-primary, #3b82f6)", fontWeight: 600 }}>
+          <span style={{ fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--color-primary)", fontWeight: 600 }}>
             Governed draft
           </span>
           <h3 style={{ margin: "4px 0 0 0", fontSize: "20px" }}>Ready for review</h3>
@@ -67,7 +67,7 @@ function DraftCard({
       </p>
 
       {kind === "content" && draft && (
-        <div style={{ padding: "12px", background: "rgba(0,0,0,0.2)", borderRadius: "6px" }}>
+        <div style={{ padding: "12px", background: "var(--color-overlay-soft)", borderRadius: "6px" }}>
           <strong>{String(draft.subject_template || "Untitled subject")}</strong>
           <p style={{ margin: "8px 0 0 0", fontSize: "13px" }}>
             {String(draft.html_template || draft.body_template || "")}
@@ -76,7 +76,7 @@ function DraftCard({
       )}
 
       {kind === "audience" && draft && (
-        <div style={{ padding: "12px", background: "rgba(0,0,0,0.2)", borderRadius: "6px" }}>
+        <div style={{ padding: "12px", background: "var(--color-overlay-soft)", borderRadius: "6px" }}>
           <strong>Audience Segment Draft</strong>
           <p style={{ margin: "8px 0 0 0", fontSize: "13px" }}>
             {String(draft.dsl || draft.description || JSON.stringify(draft))}
@@ -85,7 +85,7 @@ function DraftCard({
       )}
 
       {kind === "journey" && draft && (
-        <div style={{ padding: "12px", background: "rgba(0,0,0,0.2)", borderRadius: "6px" }}>
+        <div style={{ padding: "12px", background: "var(--color-overlay-soft)", borderRadius: "6px" }}>
           <strong>Journey Draft: {String(draft.name || "Untitled Journey")}</strong>
           <p style={{ margin: "8px 0 0 0", fontSize: "13px" }}>
             {String(draft.description || JSON.stringify(draft.steps || draft))}
@@ -94,7 +94,7 @@ function DraftCard({
       )}
 
       {kind === "performance" && draft && (
-        <div style={{ padding: "12px", background: "rgba(0,0,0,0.2)", borderRadius: "6px" }}>
+        <div style={{ padding: "12px", background: "var(--color-overlay-soft)", borderRadius: "6px" }}>
           <strong>Performance Analysis Summary</strong>
           <p style={{ margin: "8px 0 0 0", fontSize: "13px" }}>
             {String(draft.summary || draft.recommendation || JSON.stringify(draft))}
@@ -104,7 +104,7 @@ function DraftCard({
 
       <details style={{ fontSize: "12px", color: "var(--color-ink-muted)" }}>
         <summary style={{ cursor: "pointer" }}>Inspect structured draft</summary>
-        <pre style={{ margin: "8px 0 0 0", padding: "8px", background: "rgba(0,0,0,0.3)", borderRadius: "4px", overflowX: "auto" }}>
+        <pre style={{ margin: "8px 0 0 0", padding: "8px", background: "var(--color-overlay-code)", borderRadius: "4px", overflowX: "auto" }}>
           {JSON.stringify(result, null, 2)}
         </pre>
       </details>
@@ -179,7 +179,7 @@ export default function Copilots({ apiKey, baseURL }: { apiKey: string; baseURL:
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
       <Card style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
         <div>
-          <span style={{ fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--color-primary, #3b82f6)", fontWeight: 600 }}>
+          <span style={{ fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--color-primary)", fontWeight: 600 }}>
             Governed AI
           </span>
           <h2 style={{ margin: "4px 0 0 0", fontSize: "24px" }}>Draft with a copilot</h2>
@@ -188,7 +188,7 @@ export default function Copilots({ apiKey, baseURL }: { apiKey: string; baseURL:
           </p>
         </div>
 
-        <div style={{ display: "flex", gap: "8px", borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: "12px" }}>
+        <div style={{ display: "flex", gap: "8px", borderBottom: "1px solid var(--color-border-subtle-contrast)", paddingBottom: "12px" }}>
           {(["content", "audience", "journey", "performance"] as CopilotKind[]).map((item) => (
             <Button
               key={item}

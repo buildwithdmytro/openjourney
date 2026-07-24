@@ -92,7 +92,7 @@ export default function Assistant({
                 onClick={() => setQuestion(q)}
                 style={{
                   background: "transparent",
-                  border: "1px solid rgba(255,255,255,0.15)",
+                  border: "1px solid var(--color-border-contrast)",
                   color: "var(--color-ink-muted)",
                   padding: "6px 12px",
                   borderRadius: "16px",
@@ -121,7 +121,7 @@ export default function Assistant({
           <Card style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div>
-                <span style={{ fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--color-primary, #3b82f6)", fontWeight: 600 }}>
+                <span style={{ fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--color-primary)", fontWeight: 600 }}>
                   Grounded Answer
                 </span>
                 <h3 style={{ margin: "4px 0 0 0" }}>Summary</h3>
@@ -147,7 +147,7 @@ export default function Assistant({
             )}
 
             {result.activity_id && (
-              <div style={{ fontSize: "12px", color: "var(--color-ink-muted)", borderTop: "1px solid rgba(255,255,255,0.1)", paddingTop: "8px" }}>
+              <div style={{ fontSize: "12px", color: "var(--color-ink-muted)", borderTop: "1px solid var(--color-border-subtle-contrast)", paddingTop: "8px" }}>
                 Activity Audit ID: <code>{result.activity_id}</code>
               </div>
             )}
@@ -164,9 +164,9 @@ export default function Assistant({
                       key={idx}
                       style={{
                         padding: "12px",
-                        background: "rgba(0,0,0,0.2)",
+                        background: "var(--color-overlay-soft)",
                         borderRadius: "8px",
-                        border: "1px solid rgba(255,255,255,0.08)",
+                        border: "1px solid var(--color-border-faint-contrast)",
                         display: "flex",
                         flexDirection: "column",
                         gap: "8px",
@@ -202,9 +202,9 @@ export default function Assistant({
                     key={idx}
                     style={{
                       padding: "12px",
-                      background: "rgba(0,0,0,0.25)",
+                      background: "var(--color-overlay-medium)",
                       borderRadius: "6px",
-                      borderLeft: "3px solid var(--color-primary, #3b82f6)",
+                      borderLeft: "3px solid var(--color-primary)",
                       display: "flex",
                       flexDirection: "column",
                       gap: "6px",

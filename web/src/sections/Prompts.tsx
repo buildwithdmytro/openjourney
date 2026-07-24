@@ -266,8 +266,8 @@ export default function Prompts({ apiKey, baseURL }: { apiKey: string; baseURL: 
                       alignItems: "flex-start",
                       padding: "12px",
                       borderRadius: "8px",
-                      border: isSelected ? "1px solid var(--color-primary, #3b82f6)" : "1px solid rgba(255,255,255,0.1)",
-                      background: isSelected ? "rgba(59, 130, 246, 0.1)" : "transparent",
+                      border: isSelected ? "1px solid var(--color-primary)" : "1px solid var(--color-border-subtle-contrast)",
+                      background: isSelected ? "var(--color-surface-highlight)" : "transparent",
                       cursor: "pointer",
                       textAlign: "left",
                       width: "100%",
@@ -316,8 +316,8 @@ export default function Prompts({ apiKey, baseURL }: { apiKey: string; baseURL: 
                       style={{
                         padding: "16px",
                         borderRadius: "8px",
-                        border: "1px solid rgba(255,255,255,0.1)",
-                        background: "rgba(0,0,0,0.2)",
+                        border: "1px solid var(--color-border-subtle-contrast)",
+                        background: "var(--color-overlay-soft)",
                       }}
                     >
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -364,7 +364,7 @@ export default function Prompts({ apiKey, baseURL }: { apiKey: string; baseURL: 
                             style={{
                               margin: "4px 0 0 0",
                               padding: "8px",
-                              background: "rgba(0,0,0,0.3)",
+                              background: "var(--color-overlay-code)",
                               borderRadius: "4px",
                               whiteSpace: "pre-wrap",
                               fontSize: "12px",

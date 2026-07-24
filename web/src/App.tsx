@@ -17,7 +17,7 @@ import {
   listConnectedContentSources, createConnectedContentSource, getConnectedContentSource, updateConnectedContentSource, enableConnectedContentSource, deleteConnectedContentSource, ConnectedContentSource,
 } from "./api";
 import { oidcConfigured, restoreOIDCSession, signIn, signOut } from "./auth";
-import { staticColors, defaultAccentColor, defaultBackgroundColor } from "./tokens";
+import { staticColors, defaultAccentColor, defaultBackgroundColor, emailComposerColors } from "./tokens";
 import { useTheme } from "./useTheme";
 import { useForm } from "./useForm";
 import { Skeleton, Spinner, ToastProvider, useToast, ConfirmDialog, Field, Input, Select, Textarea, JsonField, AppShell, ScopeSelector, EmptyState } from "./components";
@@ -888,8 +888,8 @@ function escapeTemplateText(value: string): string {
 }
 
 function buildComposerHTML(composer: EmailComposer): string {
-  const button = composer.buttonLabel.trim() ? `<a data-oj-button href="${escapeTemplateText(composer.buttonURL)}" style="display:inline-block;padding:12px 20px;border-radius:8px;background:${composer.accentColor};color:#fff;text-decoration:none;font-weight:700">${escapeTemplateText(composer.buttonLabel)}</a>` : "";
-  return `<div data-openjourney-builder="1" data-accent="${composer.accentColor}" data-background="${composer.backgroundColor}" style="margin:0;padding:32px 16px;background:${composer.backgroundColor};font-family:Arial,sans-serif;color:#1a2433"><div style="max-width:600px;margin:auto;padding:36px;background:#fff;border-radius:12px"><h1 data-oj-headline style="margin:0 0 16px;font-size:28px">${escapeTemplateText(composer.headline)}</h1><div data-oj-message style="margin:0 0 24px;line-height:1.65;color:#536071">${escapeTemplateText(composer.message)}</div>${button}</div></div>`;
+  const button = composer.buttonLabel.trim() ? `<a data-oj-button href="${escapeTemplateText(composer.buttonURL)}" style="display:inline-block;padding:12px 20px;border-radius:8px;background:${composer.accentColor};color:${emailComposerColors.buttonText};text-decoration:none;font-weight:700">${escapeTemplateText(composer.buttonLabel)}</a>` : "";
+  return `<div data-openjourney-builder="1" data-accent="${composer.accentColor}" data-background="${composer.backgroundColor}" style="margin:0;padding:32px 16px;background:${composer.backgroundColor};font-family:Arial,sans-serif;color:${emailComposerColors.frameText}"><div style="max-width:600px;margin:auto;padding:36px;background:${emailComposerColors.frameSurface};border-radius:12px"><h1 data-oj-headline style="margin:0 0 16px;font-size:28px">${escapeTemplateText(composer.headline)}</h1><div data-oj-message style="margin:0 0 24px;line-height:1.65;color:${emailComposerColors.messageText}">${escapeTemplateText(composer.message)}</div>${button}</div></div>`;
 }
 
 function parseComposerHTML(html: string): EmailComposer | null {
@@ -1166,7 +1166,7 @@ function Templates({ apiKey }: { apiKey: string }) {
         </div>}
         {(editing.channel === "email" || preview) && (
           <div className="email-preview-frame">
-            <div style={{ padding: "0.5rem 1rem", background: "rgba(255,255,255,0.05)", borderBottom: "1px solid var(--border)" }}>
+            <div style={{ padding: "0.5rem 1rem", background: "var(--color-surface-faint-contrast)", borderBottom: "1px solid var(--color-border-default)" }}>
               <span style={{ fontSize: "0.75rem", color: "var(--muted)" }}>Subject: </span>
               <strong style={{ fontSize: "0.9rem" }}>{preview?.subject || editing.subject_template || "Your email subject"}</strong>
             </div>

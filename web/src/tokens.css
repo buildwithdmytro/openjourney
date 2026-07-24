@@ -31,6 +31,16 @@
   --color-warn-bg: #fff4d6;
   --color-warn-text: #ffd27a;
   --color-info: #6f5cff;
+  --color-primary: var(--color-accent);
+  --color-overlay-soft: rgba(0, 0, 0, 0.2);
+  --color-overlay-medium: rgba(0, 0, 0, 0.25);
+  --color-overlay-code: rgba(0, 0, 0, 0.3);
+  --color-border-contrast: rgba(255, 255, 255, 0.15);
+  --color-border-subtle-contrast: rgba(255, 255, 255, 0.1);
+  --color-border-faint-contrast: rgba(255, 255, 255, 0.08);
+  --color-surface-highlight: rgba(59, 130, 246, 0.1);
+  --color-surface-faint-contrast: rgba(255, 255, 255, 0.05);
+  --color-primary-shadow: rgba(26, 115, 232, 0.6);
 
   /* Space scale (4px base) */
   --space-xs: 4px;

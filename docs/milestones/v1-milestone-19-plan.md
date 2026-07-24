@@ -181,11 +181,12 @@ public edges.)
    — done: U6 fixed by replacing the raw mapping textarea with `JsonField`; `Connectors > validates mapping JSON inline before publishing` verifies malformed JSON shows an inline error and valid JSON clears it; web typecheck, build, and all 331 tests pass.
 
 ### Milestone 24.5 — Design-system completion
-1. [ ] **`PageHeader` everywhere + inline-style/token detox (X1, X4).** Adopt `PageHeader` in every section
+1. [x] **`PageHeader` everywhere + inline-style/token detox (X1, X4).** Adopt `PageHeader` in every section
    (collapse the 3 header styles); replace hardcoded `#3b82f6`/`rgba()`/magic-px inline styles with
    `tokens.css` vars in the heavy offenders (`Copilots`, `Assistant`, `Prompts`, `Journeys`, `App:910`).
    *Done when:* every section header is `PageHeader`; a grep shows no hardcoded hex/`rgba(` in the covered
    `.tsx`; `cd web && npm run typecheck && npm run build && npm test` green (unchanged role/label tests).
+   — done: X1/X4 verified by the shared AppShell `PageHeader` assertion in `AppShell > renders with sidebar and main content`, tokenized covered-offender colors/composer values, a clean covered-file hex/`rgba(` grep, and web typecheck/build plus all 331 tests passing.
 2. [ ] **Unify UX-state primitives (X2, X3).** Replace hand-rolled `<p className="error">`, inline
    "Loading…", and the `ui-crash` card with `ErrorState`/`Spinner`/`Skeleton` across the sections that
    hand-roll them (Acquisition, Catalogs, Experiments, Messaging, Extensions, FeatureFlags, Journeys,

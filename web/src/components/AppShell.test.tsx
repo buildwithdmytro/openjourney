@@ -83,6 +83,7 @@ describe("AppShell", () => {
 
     expect(screen.getByText("Test content")).toBeInTheDocument();
     expect(screen.getByRole("navigation")).toBeInTheDocument();
+    expect(screen.getByRole("banner")).toHaveTextContent("Profiles");
   });
 
   it("opens command palette with Cmd+K", async () => {
