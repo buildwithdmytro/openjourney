@@ -175,9 +175,10 @@ public edges.)
    *Done when:* ⌘K runs a create action and finds a view by keyword (not just exact label); the drawer's
    `aria-controls` points at the real drawer id; a keyboard-driven test covers an action.
    — done: U5/U8 fixed with shared palette action metadata, category/keyword search, keyboard-triggered create-template action, explicit search label, and matching mobile drawer id; `CommandPalette > runs a create action with the keyboard`, `CommandPalette > finds views by category keywords`, and `AppShell > traps focus within mobile nav drawer` verify the findings; web typecheck, build, and all 330 tests pass.
-4. [ ] **Validate the Connectors mapping input (U6).** Replace the raw `<textarea>` mapping JSON
+4. [x] **Validate the Connectors mapping input (U6).** Replace the raw `<textarea>` mapping JSON
    (`Connectors.tsx:25`) with the validating `JsonField`.
    *Done when:* malformed mapping JSON shows an inline error (no silent break); test covers invalid + valid.
+   — done: U6 fixed by replacing the raw mapping textarea with `JsonField`; `Connectors > validates mapping JSON inline before publishing` verifies malformed JSON shows an inline error and valid JSON clears it; web typecheck, build, and all 331 tests pass.
 
 ### Milestone 24.5 — Design-system completion
 1. [ ] **`PageHeader` everywhere + inline-style/token detox (X1, X4).** Adopt `PageHeader` in every section

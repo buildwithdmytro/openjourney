@@ -58,4 +58,25 @@ describe("Connectors", () => {
     fireEvent.click(screen.getByRole("button", { name: "Unmerge" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/v1/identity/unmerge", expect.objectContaining({ method: "POST" })));
   });
+
+  it("validates mapping JSON inline before publishing", async () => {
+    const fetchMock = vi.fn((input: RequestInfo) => {
+      const url = String(input);
+      if (url.endsWith("/v1/connectors/pipelines")) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ pipelines: [pipeline] }) });
+      if (url.includes("/runs")) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ runs: [] }) });
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<Connectors apiKey="key" baseURL="/api" />);
+
+    fireEvent.click(await screen.findByText("Warehouse source"));
+    const mapping = await screen.findByLabelText("Mapping JSON");
+    fireEvent.change(mapping, { target: { value: '{"fields":}' } });
+    fireEvent.blur(mapping);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Invalid JSON");
+
+    fireEvent.change(mapping, { target: { value: '{"fields":["external_id"]}' } });
+    fireEvent.blur(mapping);
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+  });
 });
