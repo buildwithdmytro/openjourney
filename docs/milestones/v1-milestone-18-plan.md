@@ -97,11 +97,12 @@ redaction, insights grounding, principal non-spoofability.)
    *Done when:* a connected-content source with `auth_secret_ref="DATABASE_URL"` is REJECTED at create/
    update; a valid `CC_SECRET_*` ref resolves; a test proves a non-allowlisted env var can no longer be
    read via a fetch header. — done: Enforced positive allowlist ^CC_SECRET_[A-Z0-9_]+$ for auth_secret_ref (F3); verified via TestResolveAuthSecret_AllowlistExfiltrationPrevention & TestCreateConnectedContentSource_RejectsNonAllowlistedAuthSecretRef.
-3. [ ] **Restore the API-key default scopes (F4).** New migration `061` re-declares the `api_keys.scopes`
+3. [x] **Restore the API-key default scopes (F4).** New migration `062` re-declares the `api_keys.scopes`
    DEFAULT array with the FULL current catalog (the `060` array dropped ~17–29 scopes). Add a test/assertion
    that the DEFAULT array == the `permissions` catalog == `rbac.go:allowedPermissions` (no drift).
    *Done when:* a newly created API key (no explicit scopes) has the full default scope set incl. forms/
-   pages/assets/connectors/messages/flags/catalogs/reports:write; a drift test asserts the three lists match.
+   pages/assets/connectors/messages/flags/catalogs/reports:write; a drift test asserts the three lists match. — done: Restored full permissions catalog to api_keys.scopes DEFAULT array via migration 062 (F4); verified zero drift via TestAPIKeyDefaultScopes_NoDrift & TestAPIKeyDefaultScopes_DBIntegration.
+
 
 ### Milestone 23.1 — Append-only audit integrity
 1. [ ] **Harden the unprotected version tables (F5, F6).** Migration `061`: add a `BEFORE UPDATE OR DELETE`
