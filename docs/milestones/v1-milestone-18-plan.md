@@ -155,10 +155,10 @@ redaction, insights grounding, principal non-spoofability.)
    self-approval rule respectively. — done: Added real in-memory hash verification and maker-checker enforcement regressions (F13); verified via TestAuditHashChainDetectsTamperedRow_NonGated and TestMakerCheckerEnforcementRejectsSelfApproval_NonGated.
 
 ### Milestone 23.5 — Coverage fill
-1. [ ] **SCIM handler tests (F14).** HTTP-level tests for `createSCIMUser`/`replaceSCIMUser`/`getSCIMUser`/
+1. [x] **SCIM handler tests (F14).** HTTP-level tests for `createSCIMUser`/`replaceSCIMUser`/`getSCIMUser`/
    `listSCIMUsers` and the group handlers incl. group→team mapping (`patchSCIMGroup`), using the fake store.
    *Done when:* each SCIM handler has a test asserting its behavior + tenant scoping + bearer gating;
-   `go test ./internal/httpapi/...` green.
+   `go test ./internal/httpapi/...` green. — done: Added TestSCIMHandlersPropagateTenantAndMapGroupPatch covering all user/group handlers, tenant scoping, bearer gating, and patch mapping (F14).
 2. [ ] **Untested UI section tests (F14).** Co-located `*.test.tsx` for `FeatureFlags`, `Messaging`,
    `Extensions` (currently none) and a behavior test for `Catalogs` (currently smoke-only — cover tab
    switching + connected-content source create), on the vitest + `vi.fn()` fetch-stub pattern.
