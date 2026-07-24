@@ -6,6 +6,8 @@ import (
 	"os"
 	"sync"
 	"testing"
+
+	"github.com/buildwithdmytro/openjourney/internal/domain"
 )
 
 func TestAuditAppendOnlyAndHashChain(t *testing.T) {
@@ -154,3 +156,107 @@ func TestAuditConcurrentWrites(t *testing.T) {
 		t.Fatalf("expected at least %d events, got %d", goroutines*writesPerGoroutine, result.TotalEvents)
 	}
 }
+
+func TestAuditChainBackfill_NonGated(t *testing.T) {
+	// Seed pre-existing audit events for 3 differing tenants without hashes/sequences
+	t1 := "tenant-alpha"
+	t2 := "tenant-beta"
+	t3 := "tenant-gamma"
+
+	events := []auditRow{
+		{id: "e1", tenantID: t1, workspaceID: "ws1", appID: "app1", actType: "user", actID: "u1", act: "user.login", resType: "session", resID: "s1", metadata: []byte(`{"ip":"127.0.0.1"}`)},
+		{id: "e2", tenantID: t1, workspaceID: "ws1", appID: "app1", actType: "user", actID: "u1", act: "user.update", resType: "user", resID: "u1", metadata: []byte(`{"role":"admin"}`)},
+		{id: "e3", tenantID: t2, workspaceID: "ws2", appID: "", actType: "api_key", actID: "k1", act: "key.create", resType: "key", resID: "k2", metadata: []byte(`{}`)},
+		{id: "e4", tenantID: t3, workspaceID: "ws3", appID: "app3", actType: "user", actID: "u3", act: "role.delete", resType: "role", resID: "r1", metadata: []byte(`{}`)},
+	}
+
+	// Backfill in-memory using ComputeAuditRowHash
+	byTenant := make(map[string][]auditRow)
+	for _, ev := range events {
+		byTenant[ev.tenantID] = append(byTenant[ev.tenantID], ev)
+	}
+
+	for tenantID, tEvents := range byTenant {
+		var prevHash string
+		var seq int64 = 0
+		for i, ev := range tEvents {
+			seq++
+			ev.seq = seq
+			ev.prevHash = prevHash
+			ev.rowHash = ComputeAuditRowHash(prevHash, ev.id, ev.tenantID, ev.workspaceID, ev.appID, ev.actType, ev.actID, ev.act, ev.resType, ev.resID, ev.metadata, ev.occurredAt, seq)
+			prevHash = ev.rowHash
+			tEvents[i] = ev
+		}
+
+		// Verify chain
+		var expectedPrev string
+		for _, ev := range tEvents {
+			if ev.prevHash != expectedPrev {
+				t.Fatalf("tenant %s: expected prevHash %q, got %q", tenantID, expectedPrev, ev.prevHash)
+			}
+			computed := ComputeAuditRowHash(ev.prevHash, ev.id, ev.tenantID, ev.workspaceID, ev.appID, ev.actType, ev.actID, ev.act, ev.resType, ev.resID, ev.metadata, ev.occurredAt, ev.seq)
+			if ev.rowHash != computed {
+				t.Fatalf("tenant %s: rowHash mismatch", tenantID)
+			}
+			expectedPrev = ev.rowHash
+		}
+	}
+}
+
+func TestAuditChainBackfill_SeededNonEmptyTable(t *testing.T) {
+	databaseURL := os.Getenv("OPENJOURNEY_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPENJOURNEY_TEST_DATABASE_URL is not configured")
+	}
+
+	ctx := context.Background()
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer store.Close()
+
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+
+	// Disable trigger to insert raw pre-existing rows with NULL seq / empty hashes across 3 tenants
+	_, _ = store.pool.Exec(ctx, `ALTER TABLE audit_events DISABLE TRIGGER audit_events_no_update`)
+
+	tenants := []string{"tenant-seed-1", "tenant-seed-2", "tenant-seed-3"}
+	for _, tid := range tenants {
+		for i := 1; i <= 3; i++ {
+			id := fmt.Sprintf("raw-evt-%s-%d", tid, i)
+			_, err := store.pool.Exec(ctx, `INSERT INTO audit_events
+				(id, tenant_id, workspace_id, actor_type, actor_id, action, resource_type, resource_id, metadata, seq, prev_hash, row_hash)
+				VALUES ($1, $2, 'ws-1', 'user', 'u-1', 'test.action', 'test', 'r-1', '{}'::jsonb, NULL, '', '')`,
+				id, tid)
+			if err != nil {
+				t.Fatalf("insert raw unhashed audit row: %v", err)
+			}
+		}
+	}
+
+	_, _ = store.pool.Exec(ctx, `ALTER TABLE audit_events ENABLE TRIGGER audit_events_no_update`)
+
+	// Run backfill
+	if err := store.BackfillAuditChain(ctx); err != nil {
+		t.Fatalf("BackfillAuditChain failed on non-empty seeded table: %v", err)
+	}
+
+	// Verify each tenant's chain
+	for _, tid := range tenants {
+		p := domain.Principal{TenantID: tid, WorkspaceID: "ws-1", Scopes: []string{"audit:read"}}
+		res, err := store.VerifyAuditChain(ctx, p)
+		if err != nil {
+			t.Fatalf("VerifyAuditChain for tenant %s: %v", tid, err)
+		}
+		if !res.Intact || res.Status != "ok" {
+			t.Fatalf("expected chain intact for tenant %s, got %+v", tid, res)
+		}
+		if res.TotalEvents != 3 {
+			t.Fatalf("expected 3 events for tenant %s, got %d", tid, res.TotalEvents)
+		}
+	}
+}
+

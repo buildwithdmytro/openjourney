@@ -82,7 +82,7 @@ redaction, insights grounding, principal non-spoofability.)
 ## 6. Task list
 
 ### Milestone 23.0 — Critical fixes (deployment + security) — DO FIRST
-1. [ ] **Fix the audit-chain migration + canonical (F1, F2).** New migration `061`: a CORRECT, idempotent
+1. [x] **Fix the audit-chain migration + canonical (F1, F2).** New migration `061`: a CORRECT, idempotent
    backfill of `audit_events.seq`/`prev_hash`/`row_hash` (the `059` one references non-existent `r.new_seq`
    and fails on non-empty tables). Align the hash canonical with `ComputeAuditRowHash` (`admin.go:635`) —
    preferably a Go-side backfill in `Store.Migrate` (single source of truth) OR fix both sides to a shared
@@ -90,7 +90,7 @@ redaction, insights grounding, principal non-spoofability.)
    *Done when:* a NON-gated regression test seeds ≥3 pre-existing `audit_events` rows (differing tenants),
    runs the corrected backfill, and asserts `VerifyAuditChain` returns valid (no false-positive); the
    migration applies cleanly on both an empty and a populated `audit_events`; `go test -race
-   ./internal/postgres/...` green.
+   ./internal/postgres/...` green. — done: Fixed F1 & F2 via migration 061 + Go BackfillAuditChain; verified via TestAuditChainBackfill_NonGated & TestAuditChainBackfill_SeededNonEmptyTable.
 2. [ ] **Close the `auth_secret_ref` exfiltration (F3).** `resolveAuthSecret` (`fetcher.go:325`) + the
    validators (`catalogs.go:244,294`) require the ref to MATCH a positive allowlist (e.g.
    `^CC_SECRET_[A-Z0-9_]+$`), not merely reject a `secret:` prefix.

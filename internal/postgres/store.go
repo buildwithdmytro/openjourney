@@ -124,6 +124,9 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return err
 		}
 	}
+	if err := s.BackfillAuditChain(ctx); err != nil {
+		return fmt.Errorf("backfill audit chain: %w", err)
+	}
 	return nil
 }
 

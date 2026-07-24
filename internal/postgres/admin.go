@@ -839,3 +839,77 @@ func actorType(p domain.Principal) string {
 	}
 	return "api_key"
 }
+
+type auditRow struct {
+	id, tenantID, workspaceID, appID, actType, actID, act, resType, resID, prevHash, rowHash string
+	metadata                                                                                 []byte
+	occurredAt                                                                               time.Time
+	seq                                                                                      int64
+}
+
+// BackfillAuditChain re-sequences and re-hashes existing audit events per tenant using ComputeAuditRowHash.
+func (s *Store) BackfillAuditChain(ctx context.Context) error {
+	conn, err := s.pool.Acquire(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Release()
+
+	// Disable trigger temporarily for backfill
+	_, _ = conn.Exec(ctx, "ALTER TABLE audit_events DISABLE TRIGGER audit_events_no_update")
+	defer func() {
+		_, _ = conn.Exec(context.Background(), "ALTER TABLE audit_events ENABLE TRIGGER audit_events_no_update")
+		_, _ = conn.Exec(context.Background(), "ALTER TABLE audit_events ALTER COLUMN seq SET NOT NULL")
+		_, _ = conn.Exec(context.Background(), "CREATE UNIQUE INDEX IF NOT EXISTS audit_events_tenant_seq_idx ON audit_events (tenant_id, seq)")
+	}()
+
+	rows, err := conn.Query(ctx, "SELECT DISTINCT tenant_id FROM audit_events")
+	if err != nil {
+		return err
+	}
+	var tenantIDs []string
+	for rows.Next() {
+		var tid string
+		if err := rows.Scan(&tid); err == nil {
+			tenantIDs = append(tenantIDs, tid)
+		}
+	}
+	rows.Close()
+
+	for _, tenantID := range tenantIDs {
+		evRows, err := conn.Query(ctx, `SELECT id, tenant_id, workspace_id, COALESCE(app_id::text, ''), actor_type, actor_id, action, resource_type, COALESCE(resource_id, ''), metadata, occurred_at, COALESCE(seq, 0), prev_hash, row_hash
+			FROM audit_events WHERE tenant_id = $1 ORDER BY occurred_at ASC, id ASC`, tenantID)
+		if err != nil {
+			return err
+		}
+
+		var items []auditRow
+		for evRows.Next() {
+			var item auditRow
+			if err := evRows.Scan(&item.id, &item.tenantID, &item.workspaceID, &item.appID, &item.actType, &item.actID, &item.act, &item.resType, &item.resID, &item.metadata, &item.occurredAt, &item.seq, &item.prevHash, &item.rowHash); err == nil {
+				items = append(items, item)
+			}
+		}
+		evRows.Close()
+
+		var currentPrevHash string
+		var seq int64 = 0
+
+		for _, item := range items {
+			seq++
+			expectedPrevHash := currentPrevHash
+			expectedRowHash := ComputeAuditRowHash(expectedPrevHash, item.id, item.tenantID, item.workspaceID, item.appID, item.actType, item.actID, item.act, item.resType, item.resID, item.metadata, item.occurredAt, seq)
+
+			if item.seq != seq || item.prevHash != expectedPrevHash || item.rowHash != expectedRowHash {
+				_, err := conn.Exec(ctx, `UPDATE audit_events SET seq = $1, prev_hash = $2, row_hash = $3 WHERE id = $4`, seq, expectedPrevHash, expectedRowHash, item.id)
+				if err != nil {
+					return fmt.Errorf("failed to backfill audit event %s: %w", item.id, err)
+				}
+			}
+			currentPrevHash = expectedRowHash
+		}
+	}
+
+	return nil
+}
+
