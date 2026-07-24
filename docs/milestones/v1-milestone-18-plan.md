@@ -105,13 +105,13 @@ redaction, insights grounding, principal non-spoofability.)
 
 
 ### Milestone 23.1 — Append-only audit integrity
-1. [ ] **Harden the unprotected version tables (F5, F6).** Migration `061`: add a `BEFORE UPDATE OR DELETE`
+1. [x] **Harden the unprotected version tables (F5, F6).** Migration `063`: add a `BEFORE UPDATE OR DELETE`
    block-mutation trigger + `REVOKE UPDATE, DELETE` to `prompt_versions` and `scoring_model_versions`
    (neither today); add the missing `REVOKE` to `ai_activity`, `identity_merges`, `experiment_versions`
    (copy the `045_connector_runs.sql` pattern; keep `identity_merges`' GUC-erasure carve-out).
    *Done when:* `UPDATE`/`DELETE` on `prompt_versions` and `scoring_model_versions` is rejected; the three
    REVOKE-only gaps are closed; the RTBF erasure path still works on `identity_merges`; integration test
-   covers each.
+   covers each. — done: Hardened prompt_versions and scoring_model_versions with triggers+REVOKE and added missing REVOKEs on ai_activity, identity_merges, experiment_versions via migration 063 (F5, F6); verified via TestAppendOnlyVersionTables_MigrationSQL & TestAppendOnlyVersionTables_DBIntegration.
 2. [ ] **Block TRUNCATE on audit tables (F7).** Add a `BEFORE TRUNCATE ... FOR EACH STATEMENT` trigger to
    `audit_events` (and the other append-only audit tables) so a TRUNCATE can't silently erase the chain.
    *Done when:* `TRUNCATE audit_events` is rejected; test proves it.
