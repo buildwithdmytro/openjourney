@@ -184,12 +184,13 @@ redaction, insights grounding, principal non-spoofability.)
 	tenant-guarded SAML/SCIM mutations (F17, F18); verified by TestHotPathIndexesAndTenantGuards.
 
 ### Milestone 23.7 — Closeout
-1. [ ] **Run the suite**: `go build ./... && go vet ./... && go test ./...` + `go test -race
+1. [x] **Run the suite**: `go build ./... && go vet ./... && go test ./...` + `go test -race
    ./internal/postgres/...` (the audit chain), `go mod tidy` (**no new dependency**),
    `cd web && npm run typecheck && npm run build && npm test`, `cd sdk/javascript && npm run build &&
    npm test`.
    *Done when:* all green and `git diff go.mod go.sum web/package.json web/package-lock.json
-   sdk/javascript/package.json` is empty of additions.
+   sdk/javascript/package.json` is empty of additions. — done: Full Go, race, web, and SDK suites green;
+   `go mod tidy` produced no manifest changes (F1–F18 regression coverage verified).
 2. [ ] **Audit doc** `docs/milestones/v1-milestone-18-audit.md` in the M2–M17 table format, one row per
    `23.x` task mapping the finding (F#) → the fix → the proving test.
    *Done when:* the doc exists with a row per task, each citing the finding and its regression test.
