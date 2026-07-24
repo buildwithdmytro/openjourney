@@ -27,4 +27,13 @@ describe("Scoring", () => {
     expect(screen.getByText("0.8")).toBeInTheDocument();
     expect(screen.getAllByRole("table").every(table => table.classList.contains("data-table"))).toBe(true);
   });
+
+  it("shows inline validation and gates an invalid definition", () => {
+    render(<Scoring apiKey="key" baseURL="/api" />);
+    const definition = screen.getAllByLabelText("Definition JSON").at(-1)!;
+    fireEvent.change(definition, { target: { value: "{" } });
+    fireEvent.blur(definition);
+    expect(screen.getByText("Definition must be valid JSON")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Create draft version" }).at(-1)).toBeDisabled();
+  });
 });

@@ -18,7 +18,7 @@ import {
   proposeExperimentOptimization,
   OptimizationProposal,
 } from "../api";
-import { Card, DataTable, EmptyState, ErrorState, Spinner } from "../components";
+import { Card, DataTable, EmptyState, ErrorState, Field, Spinner } from "../components";
 
 type JourneyNode = {
   id: string;
@@ -253,8 +253,8 @@ export default function Experiments({ apiKey, baseURL }: { apiKey: string; baseU
         {editingID && <button type="button" className="secondary" onClick={resetForm}>New</button>}
       </div>
       <form onSubmit={submit} className="experiment-form">
-        <label>Name<input aria-label="Experiment name" value={name} onChange={(event) => setName(event.target.value)} required /></label>
-        <label>Description<input value={description} onChange={(event) => setDescription(event.target.value)} /></label>
+        <Field id="experiment-name" label="Name" required><input aria-label="Experiment name" value={name} onChange={(event) => setName(event.target.value)} required /></Field>
+        <Field id="experiment-description" label="Description"><input value={description} onChange={(event) => setDescription(event.target.value)} /></Field>
         <div className="experiment-inline-fields">
           <label>Subject type<select value={subjectType} onChange={(event) => { setSubjectType(event.target.value as Experiment["subject_type"]); setBindingID(""); setJourneyNodeID(""); }}>
             <option value="campaign">Campaign</option><option value="journey">Journey</option>

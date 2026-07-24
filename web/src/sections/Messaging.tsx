@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { InAppMessage, listMessages, createMessage, getProfileInbox, listTemplates, Template } from "../api";
-import { Card, DataTable, EmptyState, ErrorState, useToast } from "../components";
+import { Card, DataTable, EmptyState, ErrorState, Field, useToast } from "../components";
+import { useForm } from "../useForm";
 
 const message = (e: unknown) => e instanceof Error ? e.message : "Request failed";
 const blank = (): Partial<InAppMessage> => ({
@@ -21,6 +22,7 @@ export default function Messaging({ apiKey, baseURL }: { apiKey: string; baseURL
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [saving, setSaving] = useState(false);
+  const messageForm = useForm({ initialValues: { messageType: "card" }, validate: { messageType: (value: string) => value ? undefined : "Message type is required" } });
 
   async function refresh() {
     try {
@@ -40,13 +42,14 @@ export default function Messaging({ apiKey, baseURL }: { apiKey: string; baseURL
   async function save(e: FormEvent) {
     e.preventDefault();
     if (saving) return;
+    if (!messageForm.isValid) { messageForm.touch("messageType"); return; }
     setSaving(true);
     try {
       await createMessage(baseURL, apiKey, {
         ...draft,
         template_id: selectedTemplate || undefined,
       });
-      setDraft(blank());
+      setDraft({ ...blank(), message_type: messageForm.values.messageType as InAppMessage["message_type"] });
       setSelectedTemplate("");
       setNotice("Message created.");
       toast({ kind: "success", message: "Message created successfully" });
@@ -82,7 +85,7 @@ export default function Messaging({ apiKey, baseURL }: { apiKey: string; baseURL
         <Card variant="article">
           <div className="section-title">
             <h2>Messages</h2>
-            <button onClick={() => { setDraft(blank()); setSelectedTemplate(""); }}>New message</button>
+            <button onClick={() => { messageForm.reset(); setDraft(blank()); setSelectedTemplate(""); }}>New message</button>
           </div>
           {messages.length ? (
             <DataTable headers={["Type", "Status", "Rank", "Created"]} rows={messages.map(msg => [
@@ -100,39 +103,33 @@ export default function Messaging({ apiKey, baseURL }: { apiKey: string; baseURL
                 <h2>New message</h2>
               </div>
               <form className="governance-form" onSubmit={save}>
-                <label>
-                  Type
-                  <select value={draft.message_type} onChange={e => setDraft({ ...draft, message_type: e.target.value as InAppMessage["message_type"] })}>
+                <Field id="message-type" label="Type" required error={messageForm.getError("messageType")}>
+                  <select name="messageType" value={messageForm.values.messageType} onChange={e => { messageForm.handleChange(e); setDraft({ ...draft, message_type: e.target.value as InAppMessage["message_type"] }); }} onBlur={messageForm.handleBlur}>
                     <option value="modal">Modal</option>
                     <option value="banner">Banner</option>
                     <option value="fullscreen">Fullscreen</option>
                     <option value="card">Card</option>
                   </select>
-                </label>
-                <label>
-                  Rank
+                </Field>
+                <Field id="message-rank" label="Rank">
                   <input type="number" value={draft.rank || 0} onChange={e => setDraft({ ...draft, rank: Number(e.target.value) })} />
-                </label>
-                <label>
-                  Categories (comma-separated)
+                </Field>
+                <Field id="message-categories" label="Categories (comma-separated)">
                   <input value={(draft.categories || []).join(", ")} onChange={e => setDraft({ ...draft, categories: e.target.value.split(",").map(c => c.trim()).filter(Boolean) })} placeholder="promo, featured" />
-                </label>
-                <label>
-                  Start at
+                </Field>
+                <Field id="message-start-at" label="Start at">
                   <input type="datetime-local" value={draft.start_at ? new Date(draft.start_at).toISOString().slice(0, 16) : ""} onChange={e => setDraft({ ...draft, start_at: e.target.value ? new Date(e.target.value).toISOString() : "" })} />
-                </label>
-                <label>
-                  Expires at (optional)
+                </Field>
+                <Field id="message-expires-at" label="Expires at (optional)">
                   <input type="datetime-local" value={draft.expires_at ? new Date(draft.expires_at).toISOString().slice(0, 16) : ""} onChange={e => setDraft({ ...draft, expires_at: e.target.value ? new Date(e.target.value).toISOString() : undefined })} />
-                </label>
-                <label>
-                  From template (optional)
+                </Field>
+                <Field id="message-template" label="From template (optional)">
                   <select value={selectedTemplate} onChange={e => setSelectedTemplate(e.target.value)}>
                     <option value="">Select a template…</option>
                     {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
-                </label>
-                <button type="submit" disabled={saving}>{saving ? "Creating…" : "Create message"}</button>
+                </Field>
+                <button type="submit" disabled={saving || !messageForm.isValid}>{saving ? "Creating…" : "Create message"}</button>
               </form>
             </>
           ) : (

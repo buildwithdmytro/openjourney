@@ -4,7 +4,7 @@ import {
   listCatalogItems, bulkUploadCatalogItems, createConnectedContentSource, listConnectedContentSources,
   getConnectedContentSource, updateConnectedContentSource, enableConnectedContentSource, deleteConnectedContentSource,
 } from "../api";
-import { Card, DataTable, ConfirmDialog, EmptyState, ErrorState, JsonField, useToast } from "../components";
+import { Card, DataTable, ConfirmDialog, EmptyState, ErrorState, Field, JsonField, useToast } from "../components";
 
 function errorMessage(error: unknown) { return error instanceof Error ? error.message : "Request failed"; }
 
@@ -203,8 +203,7 @@ export default function Catalogs({ apiKey, baseURL }: { apiKey: string; baseURL:
         <Card variant="article">
           {catalog ? (
             <form className="acquisition-form" onSubmit={saveCatalog}>
-              <label>
-                Key
+              <Field id="catalog-key" label="Key" required>
                 <input
                   value={catalog.key}
                   onChange={e => setCatalog({ ...catalog, key: e.target.value })}
@@ -212,16 +211,15 @@ export default function Catalogs({ apiKey, baseURL }: { apiKey: string; baseURL:
                   disabled={!!catalog.id}
                   placeholder="product_catalog"
                 />
-              </label>
-              <label>
-                Name
+              </Field>
+              <Field id="catalog-name" label="Name" required>
                 <input
                   value={catalog.name}
                   onChange={e => setCatalog({ ...catalog, name: e.target.value })}
                   required
                   placeholder="Product Catalog"
                 />
-              </label>
+              </Field>
               <label>
                 Description
                 <textarea

@@ -201,12 +201,13 @@ public edges.)
    *Done when:* the covered sections use `Card`/`DataTable`; no legacy `ResourceTable`/`ResourceList`
    remains; no raw `<table>` in the covered sections; visual parity; tests green.
    — done: X3/X5 fixed by migrating the seven cited sections to `Card`/`DataTable`, replacing the App `ResourceTable`, and removing `ResourceList`; `Scoring > creates a versioned model and inspects profile scores` verifies rendered tables use `data-table`; web typecheck, build, and all 331 tests pass.
-4. [ ] **Field-based forms + inline validation (U7).** Migrate the raw-form sections (Acquisition,
+4. [x] **Field-based forms + inline validation (U7).** Migrate the raw-form sections (Acquisition,
    Catalogs, Scoring, Experiments, Messaging, Extensions) to `Field`-wrapped inputs and adopt `useForm`
    inline validation + disabled-until-valid on 2–3 representative forms (drop the imperative
    throw-on-submit).
    *Done when:* the covered forms use `Field`; ≥2 forms gate submit on validity with inline per-field
    errors; a test asserts an inline validation message; tests green.
+   — done: U7 fixed by adopting `Field` in the covered raw-form editors, adding `useForm` validity gates to Scoring and Messaging, and validating Scoring JSON inline; `Scoring > shows inline validation and gates an invalid definition` asserts the error and disabled submit, while the full web build and 332-test suite pass.
 
 ### Milestone 24.6 — Integration & audit closeout
 1. [ ] **Run the suite**: `go build ./... && go vet ./... && go test ./...` + `go test -race
