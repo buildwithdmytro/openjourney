@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.1.0 — UX, stability & usability quality round (M19)
+
+A second evidence-based quality pass (after the M18 security hardening), driven by a three-dimension
+audit (UX-polish, stability, usability). No new features.
+
+- **Stability:** worker loops now recover panics into the dead-letter path — a single poison
+  message can no longer crash-loop the delivery/journey/projection fleet; added a root React error
+  boundary, bounded previously-unbounded queries (segment resolution, short links), guarded unchecked
+  type assertions, and fixed the toast timer/cap behavior.
+- **Correctness:** removed a fabricated "citation-grounded" sparkline that invented a trend from a single
+  value; added defensive optional-chaining and double-submit guards on publish/launch/provision actions.
+- **Usability:** success toasts on every mutation (was one app-wide), actionable empty-state CTAs,
+  destructive actions standardized on the styled confirm dialog (native `window.confirm` removed, identity
+  unmerge now confirmed), a single source-of-truth navigation config with a rebalanced taxonomy, and a ⌘K
+  command palette that runs actions and searches by keyword.
+- **Design system:** finished the M12 component-library adoption the later sections had skipped
+  (`PageHeader`, `Card`/`DataTable`, shared loading/empty/error primitives, `Field`-based forms with
+  inline validation) and detoxed inline styles / hardcoded colors onto design tokens.
+- Also resolved the M18 residual (three ignored in-transaction audit-write returns).
+
 ## v1.0.0 — Feature-complete + hardened
 
 OpenJourney reaches **v1**: an open-source, self-hostable customer-engagement platform (a Braze-style
