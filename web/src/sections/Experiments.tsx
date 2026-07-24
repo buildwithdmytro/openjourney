@@ -18,7 +18,7 @@ import {
   proposeExperimentOptimization,
   OptimizationProposal,
 } from "../api";
-import { EmptyState } from "../components";
+import { EmptyState, ErrorState, Spinner } from "../components";
 
 type JourneyNode = {
   id: string;
@@ -297,13 +297,13 @@ export default function Experiments({ apiKey, baseURL }: { apiKey: string; baseU
 
         <div className="form-actions"><button type="submit" disabled={saving || !name.trim() || !seed.trim()}>{saving ? "Saving…" : editingID ? "Update experiment" : "Create experiment"}</button>{editingID && <button type="button" className="secondary" onClick={resetForm}>Cancel</button>}</div>
       </form>
-      {error && <p className="error" role="alert">{error}</p>}
+      {error && <ErrorState description={error} role="alert" />}
       {success && <p className="replay" role="status">{success}</p>}
     </article>
 
     <article className="card experiment-list">
       <div className="section-title"><div><span className="eyebrow">Workspace</span><h2>Experiments ({items.length})</h2></div></div>
-      {loading && <p role="status">Loading experiments…</p>}
+      {loading && <Spinner label="Loading experiments…" />}
       {!loading && items.length === 0 ? <EmptyState title="No experiments yet" description="Create an experiment to test variations and optimize performance" icon="plus" cta={{ label: "New experiment", onClick: resetForm }} /> : <table><thead><tr><th>Name</th><th>Subject</th><th>Holdout</th><th>Status</th><th>Actions</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}>
         <td><strong>{item.name}</strong>{item.description && <small>{item.description}</small>}</td><td>{item.subject_type}</td><td>{item.holdout_pct}%</td><td><span className={`pill ${item.status}`}>{item.status}</span></td><td><div className="report-row-actions"><button type="button" className="secondary" onClick={() => void edit(item)}>Edit</button><a className="report-link" href={`#reports?type=experiment&id=${encodeURIComponent(item.id)}`}>Report</a></div></td>
       </tr>)}</tbody></table>}

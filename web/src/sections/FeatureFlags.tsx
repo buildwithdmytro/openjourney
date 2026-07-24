@@ -3,7 +3,7 @@ import {
   listFeatureFlags, getFeatureFlag, createFeatureFlag, updateFeatureFlag, publishFeatureFlag, setFeatureFlagStatus,
   FeatureFlag, FlagVariant, FlagTargetingRule,
 } from "../api";
-import { EmptyState, Modal, Input, Select, Textarea, JsonField, ConfirmDialog, Badge } from "../components";
+import { EmptyState, Modal, Input, Select, Spinner, Textarea, JsonField, ConfirmDialog, Badge } from "../components";
 import { useToast } from "../components";
 
 function errorMessage(error: unknown) { return error instanceof Error ? error.message : "Request failed"; }
@@ -197,7 +197,7 @@ export default function FeatureFlags({ apiKey, baseURL }: { apiKey: string; base
       </article>
 
       {loading ? (
-        <p className="muted">Loading flags…</p>
+        <Spinner label="Loading flags…" />
       ) : sortedFlags.length === 0 ? (
         <EmptyState title="No flags yet" description={`Create a flag for ${environment} environment`} icon="plus" cta={{ label: "Create flag", onClick: () => { resetForm(); setShowModal(true); } }} />
       ) : (

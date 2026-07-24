@@ -4,7 +4,7 @@ import {
   listCatalogItems, bulkUploadCatalogItems, createConnectedContentSource, listConnectedContentSources,
   getConnectedContentSource, updateConnectedContentSource, enableConnectedContentSource, deleteConnectedContentSource,
 } from "../api";
-import { ConfirmDialog, EmptyState, JsonField, useToast } from "../components";
+import { ConfirmDialog, EmptyState, ErrorState, JsonField, useToast } from "../components";
 
 function errorMessage(error: unknown) { return error instanceof Error ? error.message : "Request failed"; }
 
@@ -177,7 +177,7 @@ export default function Catalogs({ apiKey, baseURL }: { apiKey: string; baseURL:
         </div>
       </div>
       <p className="muted">Catalogs provide reference data for personalization; connected-content sources are allowlisted, authed external data fetchers.</p>
-      {error && <p className="error" role="alert">{error}</p>}
+      {error && <ErrorState description={error} role="alert" />}
       {notice && <p className="success" role="status">{notice}</p>}
     </article>
 

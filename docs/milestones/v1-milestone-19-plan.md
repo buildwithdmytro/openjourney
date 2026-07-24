@@ -187,12 +187,13 @@ public edges.)
    *Done when:* every section header is `PageHeader`; a grep shows no hardcoded hex/`rgba(` in the covered
    `.tsx`; `cd web && npm run typecheck && npm run build && npm test` green (unchanged role/label tests).
    — done: X1/X4 verified by the shared AppShell `PageHeader` assertion in `AppShell > renders with sidebar and main content`, tokenized covered-offender colors/composer values, a clean covered-file hex/`rgba(` grep, and web typecheck/build plus all 331 tests passing.
-2. [ ] **Unify UX-state primitives (X2, X3).** Replace hand-rolled `<p className="error">`, inline
+2. [x] **Unify UX-state primitives (X2, X3).** Replace hand-rolled `<p className="error">`, inline
    "Loading…", and the `ui-crash` card with `ErrorState`/`Spinner`/`Skeleton` across the sections that
    hand-roll them (Acquisition, Catalogs, Experiments, Messaging, Extensions, FeatureFlags, Journeys,
    Scoring, App).
    *Done when:* no hand-rolled error/loading/`ui-crash` markup remains in the covered sections; loading
    uses `Spinner`/`Skeleton`; tests green.
+   — done: X2/X3 fixed across Acquisition, Catalogs, Experiments, Messaging, Extensions, FeatureFlags, Journeys, Scoring, Overview, Analytics, and App; covered-file grep is clean, and `Overview > handles fetch error` verifies the ErrorState alert path; web typecheck, build, and all 331 tests pass.
 3. [ ] **`Card`/`DataTable` adoption for the least-migrated sections (X3, X5).** Migrate Acquisition,
    Catalogs, Scoring, Experiments, Messaging, Extensions, Connectors to `Card` (from raw
    `<article className="card">`) and `DataTable` (from raw `<table>`/legacy `ResourceList`); replace the

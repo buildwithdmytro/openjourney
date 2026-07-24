@@ -21,7 +21,7 @@ import {
   createSavedReport,
   deleteSavedReport,
 } from "../api";
-import { Card, ConfirmDialog, EmptyState, Field, LineChart, BarChart, Spinner, Select } from "../components";
+import { Card, ConfirmDialog, EmptyState, ErrorState, Field, LineChart, BarChart, Spinner, Select } from "../components";
 import { message } from "../errors";
 
 type ReportType = "campaign" | "journey";
@@ -219,7 +219,7 @@ export default function Analytics({ apiKey, baseURL }: { apiKey: string; baseURL
   }
 
   if (error && !funnelReport) {
-    return <section className="card ui-crash" role="alert"><h2>Could not load analytics</h2><p>{error}</p></section>;
+    return <ErrorState title="Could not load analytics" description={error} role="alert" />;
   }
 
   if (!subjectsLoaded || subjects.length === 0) {

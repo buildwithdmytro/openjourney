@@ -43,7 +43,7 @@ import {
   EventSchema,
 } from "../api";
 import { journeyColors } from "../tokens";
-import { ConfirmDialog, EmptyState } from "../components";
+import { ConfirmDialog, EmptyState, Spinner } from "../components";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 
 const apiBase = import.meta.env.VITE_API_BASE_URL || "/api";
@@ -1331,7 +1331,7 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
                 <article className="card">
                   <h3>Dead Letter Queue (DLQ)</h3>
                   {loadingOps ? (
-                    <p>Loading DLQ...</p>
+                    <Spinner label="Loading DLQ…" />
                   ) : dlqSteps.length === 0 && dlqIntents.length === 0 ? (
                       <EmptyState title="No dead-letter items for this journey" icon="check" cta={{ label: "Refresh journey", onClick: () => window.location.reload() }} />
                   ) : (
@@ -1371,7 +1371,7 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
                     </button>
                   </div>
                   {loadingOps ? (
-                    <p>Loading runs...</p>
+                    <Spinner label="Loading runs…" />
                   ) : runs.length === 0 ? (
                       <EmptyState title="No runs started for this journey" description="Publish the journey and wait for an eligible profile." icon="info" cta={{ label: "Publish journey", onClick: () => void handlePublish() }} />
                   ) : (
@@ -1494,7 +1494,7 @@ export default function Journeys({ apiKey }: { apiKey: string }) {
               {loading ? "Loading..." : "Refresh"}
             </button>
           </div>
-          {loading && <div className="journey-empty"><span>◌</span><p>Loading journeys…</p></div>}
+          {loading && <Spinner label="Loading journeys…" />}
           {!loading && journeys.length === 0 && <div className="journey-empty"><span>⌁</span><h3>Create your first customer journey</h3><p>Start with a welcome flow, an abandoned-cart reminder, or any customer moment you want to automate.</p></div>}
           {!loading && journeys.length > 0 && (
             <div className="journey-grid">

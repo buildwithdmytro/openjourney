@@ -143,6 +143,7 @@ describe("Overview", () => {
       expect(screen.getByText("Could not load overview")).toBeInTheDocument();
     });
 
+    expect(screen.getByRole("alert")).toHaveTextContent("Network error");
     expect(screen.getByText("Network error")).toBeInTheDocument();
   });
 

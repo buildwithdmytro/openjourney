@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { createScoringModel, createScoringModelVersion, listProfileScores, listScoringModels, ProfileScore, publishScoringModelVersion, ScoringModel } from "../api";
-import { EmptyState, JsonField } from "../components";
+import { EmptyState, ErrorState, JsonField } from "../components";
 
 function message(error: unknown) { return error instanceof Error ? error.message : "Request failed"; }
 
@@ -27,4 +27,4 @@ export default function Scoring({ apiKey, baseURL }: { apiKey: string; baseURL: 
   </section>;
 }
 
-function ErrorMessage({ value }: { value: string }) { return value ? <p className="error" role="alert">{value}</p> : null; }
+function ErrorMessage({ value }: { value: string }) { return value ? <ErrorState description={value} role="alert" /> : null; }

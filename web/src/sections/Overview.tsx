@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { getOverview, Overview as OverviewType, listCampaigns, getCampaignFunnelOverTimeReport } from "../api";
-import { Card, EmptyState, Spinner, Sparkline } from "../components";
+import { Card, EmptyState, ErrorState, Spinner, Sparkline } from "../components";
 import { message } from "../errors";
 
 interface OverviewCard {
@@ -59,7 +59,7 @@ export default function Overview({ apiKey, baseURL }: { apiKey: string; baseURL:
   }
 
   if (error) {
-    return <section className="card ui-crash" role="alert"><h2>Could not load overview</h2><p>{error}</p></section>;
+    return <ErrorState title="Could not load overview" description={error} role="alert" />;
   }
 
   if (!data) {

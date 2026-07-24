@@ -20,7 +20,7 @@ import { oidcConfigured, restoreOIDCSession, signIn, signOut } from "./auth";
 import { staticColors, defaultAccentColor, defaultBackgroundColor, emailComposerColors } from "./tokens";
 import { useTheme } from "./useTheme";
 import { useForm } from "./useForm";
-import { Skeleton, Spinner, ToastProvider, useToast, ConfirmDialog, Field, Input, Select, Textarea, JsonField, AppShell, ScopeSelector, EmptyState } from "./components";
+import { ErrorState, Skeleton, Spinner, ToastProvider, useToast, ConfirmDialog, Field, Input, Select, Textarea, JsonField, AppShell, ScopeSelector, EmptyState } from "./components";
 import { message } from "./errors";
 import { viewTitles, View } from "./navigation";
 import AuditViewer from "./sections/AuditViewer";
@@ -61,7 +61,7 @@ class UIErrorBoundary extends Component<{ children: ReactNode; resetKey: string 
 
   render() {
     if (this.state.error) {
-      return <section className="card ui-crash" role="alert"><h2>This view hit a problem</h2><p>{this.state.error.message}</p><button onClick={() => this.setState({ error: null })}>Try again</button></section>;
+      return <ErrorState title="This view hit a problem" description={this.state.error.message} onRetry={() => this.setState({ error: null })} role="alert" />;
     }
     return this.props.children;
   }
@@ -285,19 +285,19 @@ export function App() {
           {view === "templates" && <Templates apiKey={apiKey} />}
           {view === "campaigns" && <Campaigns apiKey={apiKey} />}
           {view === "journeys" && (
-            <Suspense fallback={<p role="status">Loading journey builder…</p>}>
+            <Suspense fallback={<Spinner label="Loading journey builder…" />}>
               <Journeys apiKey={apiKey} />
             </Suspense>
           )}
-          {view === "experiments" && <Suspense fallback={<p role="status">Loading experiments…</p>}><Experiments apiKey={apiKey} baseURL={apiBase} /></Suspense>}
-          {view === "reports" && <Suspense fallback={<p role="status">Loading reports…</p>}><Reports apiKey={apiKey} baseURL={apiBase} /></Suspense>}
-          {view === "analytics" && <Suspense fallback={<p role="status">Loading analytics…</p>}><Analytics apiKey={apiKey} baseURL={apiBase} /></Suspense>}
-          {view === "messaging" && <Suspense fallback={<p role="status">Loading messaging…</p>}><Messaging apiKey={apiKey} baseURL={apiBase} /></Suspense>}
-          {view === "copilots" && <Suspense fallback={<p role="status">Loading AI copilots…</p>}><Copilots apiKey={apiKey} baseURL={apiBase} /></Suspense>}
-          {view === "assistant" && <Suspense fallback={<p role="status">Loading AI assistant…</p>}><Assistant apiKey={apiKey} baseURL={apiBase} /></Suspense>}
-          {view === "governance" && <Suspense fallback={<p role="status">Loading AI governance…</p>}><Governance apiKey={apiKey} baseURL={apiBase} /></Suspense>}
-          {view === "extensions" && <Suspense fallback={<p role="status">Loading extensions…</p>}><Extensions apiKey={apiKey} baseURL={apiBase} /></Suspense>}
-          {view === "connectors" && <Suspense fallback={<p role="status">Loading connectors…</p>}><Connectors apiKey={apiKey} baseURL={apiBase} /></Suspense>}
+          {view === "experiments" && <Suspense fallback={<Spinner label="Loading experiments…" />}><Experiments apiKey={apiKey} baseURL={apiBase} /></Suspense>}
+          {view === "reports" && <Suspense fallback={<Spinner label="Loading reports…" />}><Reports apiKey={apiKey} baseURL={apiBase} /></Suspense>}
+          {view === "analytics" && <Suspense fallback={<Spinner label="Loading analytics…" />}><Analytics apiKey={apiKey} baseURL={apiBase} /></Suspense>}
+          {view === "messaging" && <Suspense fallback={<Spinner label="Loading messaging…" />}><Messaging apiKey={apiKey} baseURL={apiBase} /></Suspense>}
+          {view === "copilots" && <Suspense fallback={<Spinner label="Loading AI copilots…" />}><Copilots apiKey={apiKey} baseURL={apiBase} /></Suspense>}
+          {view === "assistant" && <Suspense fallback={<Spinner label="Loading AI assistant…" />}><Assistant apiKey={apiKey} baseURL={apiBase} /></Suspense>}
+          {view === "governance" && <Suspense fallback={<Spinner label="Loading AI governance…" />}><Governance apiKey={apiKey} baseURL={apiBase} /></Suspense>}
+          {view === "extensions" && <Suspense fallback={<Spinner label="Loading extensions…" />}><Extensions apiKey={apiKey} baseURL={apiBase} /></Suspense>}
+          {view === "connectors" && <Suspense fallback={<Spinner label="Loading connectors…" />}><Connectors apiKey={apiKey} baseURL={apiBase} /></Suspense>}
           {view === "suppressions" && <Suppressions apiKey={apiKey} />}
           {view === "sender-identities" && <SenderIdentities apiKey={apiKey} />}
           {view === "device-tokens" && <DeviceTokensInspector apiKey={apiKey} />}
@@ -495,7 +495,7 @@ function Privacy({ apiKey }: { apiKey: string }) {
     </form><ErrorMessage value={error} />
       {item && <div className="details"><strong>{item.request_type} · {item.status}</strong>
         <span>{item.external_id}</span>{item.artifact_key && <code>{item.artifact_key}</code>}
-        {item.error && <p className="error">{item.error}</p>}</div>}</article>
+        {item.error && <ErrorState description={item.error} role="alert" />}</div>}</article>
   </section>;
 }
 
@@ -862,7 +862,7 @@ function ResourceTable({ headers, rows }: { headers: string[]; rows: (string | n
 }
 
 function ErrorMessage({ value }: { value: string }) {
-  return value ? <p className="error" role="alert">{value}</p> : null;
+  return value ? <ErrorState description={value} role="alert" /> : null;
 }
 
 function formatDate(value?: string): string {
@@ -1011,7 +1011,7 @@ function Templates({ apiKey }: { apiKey: string }) {
           <h2>Templates</h2>
           <button id="new-template-btn" onClick={startNew}>+ New template</button>
         </div>
-        {error && <p className="error">{error}</p>}
+        {error && <ErrorState description={error} role="alert" />}
         {items.length === 0 ? (
           <EmptyState title="No templates yet" description="Create one to get started." icon="plus" cta={{ label: "New template", onClick: startNew }} />
         ) : (
@@ -1063,7 +1063,7 @@ function Templates({ apiKey }: { apiKey: string }) {
             <button className="secondary" id="back-to-templates-btn" onClick={() => setEditorView("list")}>← Back</button>
             <h2 style={{ margin: 0 }}>{editorView === "new" ? "New template" : `Edit: ${editing.name}`}</h2>
           </div>
-          {error && <p className="error">{error}</p>}
+          {error && <ErrorState description={error} role="alert" />}
         <form id="template-form" onSubmit={(e) => void handleSave(e)} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
           <label>Name
             <input id="template-name" value={editing.name ?? ""} required
@@ -1448,7 +1448,7 @@ function SenderIdentities({ apiKey }: { apiKey: string }) {
         </div>
         <div>
           <h2>Sender identities ({items.length})</h2>
-          {loading && <p>Loading identities…</p>}
+          {loading && <Spinner label="Loading identities…" />}
           {!loading && items.length === 0 && <EmptyState title="No sender identities found" icon="info" cta={{ label: "Save identity", onClick: () => document.getElementById("save-identity-btn")?.focus() }} />}
           <ul className="list">
             {items.map(item => (
@@ -1790,7 +1790,7 @@ export function Campaigns({ apiKey }: { apiKey: string }) {
 
         <article className="card">
           <h2>Campaigns ({campaigns.length})</h2>
-          {loading && <p>Loading campaigns…</p>}
+          {loading && <Spinner label="Loading campaigns…" />}
           {!loading && campaigns.length === 0 && <EmptyState title="No campaigns found" icon="plus" cta={{ label: "Create campaign", onClick: resetForm }} />}
           {!loading && campaigns.length > 0 && (
             <div style={{ overflowX: "auto" }}>

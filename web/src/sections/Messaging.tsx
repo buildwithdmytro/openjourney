@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { InAppMessage, listMessages, createMessage, getProfileInbox, listTemplates, Template } from "../api";
-import { EmptyState, useToast } from "../components";
+import { EmptyState, ErrorState, useToast } from "../components";
 
 const message = (e: unknown) => e instanceof Error ? e.message : "Request failed";
 const blank = (): Partial<InAppMessage> => ({
@@ -74,7 +74,7 @@ export default function Messaging({ apiKey, baseURL }: { apiKey: string; baseURL
         <div className="eyebrow">In-app messaging</div>
         <h2>Messages and content cards</h2>
         <p className="muted">Create and manage in-app messages, content cards, and web push campaigns.</p>
-        {error && <p className="error" role="alert">{error}</p>}
+        {error && <ErrorState description={error} role="alert" />}
         {notice && <p className="success" role="status">{notice}</p>}
       </article>
 
