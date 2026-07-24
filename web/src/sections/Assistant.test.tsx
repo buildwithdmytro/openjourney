@@ -87,6 +87,7 @@ describe("Assistant section", () => {
     expect(screen.getByText("Funnel conversion increased by 12%")).toBeInTheDocument();
     expect(screen.getByText("Retention Rate")).toBeInTheDocument();
     expect(screen.getByText("0.85")).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: "Retention Rate" })).not.toBeInTheDocument();
     expect(screen.getByText("Source: retention_report")).toBeInTheDocument();
 
     expect(screen.getByText("Audited Tool-Use Trace")).toBeInTheDocument();

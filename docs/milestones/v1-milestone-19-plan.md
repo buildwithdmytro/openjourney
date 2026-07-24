@@ -128,11 +128,12 @@ public edges.)
    *Done when:* a burst of toasts each auto-dismiss on their own timers and the visible count is capped;
    test covers the cap + independent dismissal.
    — done: S4 fixed with stable per-toast dismissal callbacks and a five-toast visible cap; `ToastProvider.test.tsx` covers capped bursts and independent auto-dismissal; web typecheck, build, and 322 tests pass.
-3. [ ] **Remove fabricated data + defensive nested access (S2, S8).** Drop the synthesized Assistant
+3. [x] **Remove fabricated data + defensive nested access (S2, S8).** Drop the synthesized Assistant
    sparkline (`Assistant.tsx:183`) — render the value alone when no real series exists; optional-chain
    the Reports/Analytics nested access (`Reports.tsx:206`, `Analytics.tsx:149`).
    *Done when:* the Assistant shows no invented trend; a partial report payload does not throw during
    render; tests cover both.
+   — done: S2/S8 fixed by removing the synthetic Assistant sparkline and guarding Analytics funnel series plus Reports funnel/deliverability fields; `Assistant section > renders assistant view, allows asking question, and displays grounded answer with tool trace`, `Analytics > renders a partial funnel payload without throwing`, and `renders a partial deliverability payload without throwing` verify the findings; web typecheck, build, and all 324 tests pass.
 4. [ ] **Double-submit guards (S3).** Add an in-flight `saving` state gating the button on the S3
    handlers (campaign Launch, Messaging/Catalogs/Acquisition/Access/Connectors/Prompts/Scoring create/
    publish) — the pattern already in Copilots/Journeys.

@@ -146,11 +146,11 @@ export default function Analytics({ apiKey, baseURL }: { apiKey: string; baseURL
   const funnelSeries = useMemo(() => {
     if (!funnelReport?.buckets) return [];
     return [
-      { label: "Sent", data: funnelReport.buckets.map(b => b.funnel.sent.total) },
-      { label: "Delivered", data: funnelReport.buckets.map(b => b.funnel.delivered.total) },
-      { label: "Opened", data: funnelReport.buckets.map(b => b.funnel.opened.total) },
-      { label: "Clicked", data: funnelReport.buckets.map(b => b.funnel.clicked.total) },
-      { label: "Converted", data: funnelReport.buckets.map(b => b.funnel.converted.total) },
+      { label: "Sent", data: funnelReport.buckets.map(b => b.funnel?.sent?.total ?? 0) },
+      { label: "Delivered", data: funnelReport.buckets.map(b => b.funnel?.delivered?.total ?? 0) },
+      { label: "Opened", data: funnelReport.buckets.map(b => b.funnel?.opened?.total ?? 0) },
+      { label: "Clicked", data: funnelReport.buckets.map(b => b.funnel?.clicked?.total ?? 0) },
+      { label: "Converted", data: funnelReport.buckets.map(b => b.funnel?.converted?.total ?? 0) },
     ];
   }, [funnelReport]);
 

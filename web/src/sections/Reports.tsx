@@ -46,8 +46,8 @@ function percent(value: number) {
 export function FunnelBars({ funnel }: { funnel: ReportFunnel }) {
   const stages = funnelStages.map(({ key, label }) => ({
     label,
-    total: funnel[key].total,
-    unique: funnel[key].unique,
+    total: funnel?.[key]?.total ?? 0,
+    unique: funnel?.[key]?.unique ?? 0,
   }));
   return <FunnelChart stages={stages} />;
 }
@@ -203,8 +203,8 @@ export default function Reports({ apiKey, baseURL }: { apiKey: string; baseURL: 
         <FunnelBars funnel={funnelReport.funnel} />
       </Card>
       <div className="deliverability-grid" aria-label="Deliverability metrics">
-        <article className="metric-tile"><span>Bounce rate</span><strong>{percent(funnelReport.deliverability.bounce_rate)}</strong><small>{funnelReport.deliverability.bounced.total} bounced · {funnelReport.deliverability.bounced.unique} unique</small></article>
-        <article className="metric-tile"><span>Complaint rate</span><strong>{percent(funnelReport.deliverability.complaint_rate)}</strong><small>{funnelReport.deliverability.complained.total} complained · {funnelReport.deliverability.complained.unique} unique</small></article>
+        <article className="metric-tile"><span>Bounce rate</span><strong>{percent(funnelReport.deliverability?.bounce_rate ?? 0)}</strong><small>{funnelReport.deliverability?.bounced?.total ?? 0} bounced · {funnelReport.deliverability?.bounced?.unique ?? 0} unique</small></article>
+        <article className="metric-tile"><span>Complaint rate</span><strong>{percent(funnelReport.deliverability?.complaint_rate ?? 0)}</strong><small>{funnelReport.deliverability?.complained?.total ?? 0} complained · {funnelReport.deliverability?.complained?.unique ?? 0} unique</small></article>
       </div>
     </>}
     {!loading && experimentReport && <VariantComparison report={experimentReport} />}

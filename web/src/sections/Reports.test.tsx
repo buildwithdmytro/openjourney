@@ -76,3 +76,20 @@ it("shows experiment rates, uplift, p-values, and significance clearly", async (
   expect(within(table).getByText("Not yet significant")).toBeInTheDocument();
   expect(screen.getByText("Advisory winner: treatment")).toBeInTheDocument();
 });
+
+it("renders a partial deliverability payload without throwing", async () => {
+  vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.endsWith("/v1/campaigns")) return response([{ id: "campaign-1", name: "Welcome campaign" }]);
+    if (url.endsWith("/v1/journeys")) return response({ journeys: [] });
+    if (url.endsWith("/v1/experiments")) return response([]);
+    if (url.endsWith("/v1/reports/campaigns/campaign-1")) return response({ campaign_id: "campaign-1", deliverability: {} });
+    throw new Error(`Unexpected request: ${url}`);
+  }));
+
+  render(<Reports apiKey="key" baseURL="/api" />);
+
+  expect(await screen.findByRole("img", { name: "Delivery and conversion funnel" })).toBeInTheDocument();
+  expect(screen.getAllByText("0.0%")).toHaveLength(2);
+  expect(screen.getByText("0 bounced · 0 unique")).toBeInTheDocument();
+});

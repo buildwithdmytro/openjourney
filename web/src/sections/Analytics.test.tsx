@@ -282,4 +282,16 @@ describe("Analytics", () => {
     const errorMessage = await screen.findByText(/Network error/);
     expect(errorMessage).toBeInTheDocument();
   });
+
+  it("renders a partial funnel payload without throwing", async () => {
+    const partialFetch = createFetchMock({
+      "/reports/campaigns/campaign-1/funnel-over-time": () => response({ buckets: [{ time: "2024-01-01T00:00:00Z", funnel: { sent: { total: 7 } } }] }),
+    });
+    vi.stubGlobal("fetch", partialFetch);
+
+    render(<Analytics apiKey="key" baseURL="/api" />);
+
+    expect(await screen.findByText("Funnel over time")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
 });

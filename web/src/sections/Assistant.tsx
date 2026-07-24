@@ -7,7 +7,6 @@ import {
   EmptyState,
   Field,
   Input,
-  Sparkline,
   Spinner,
   useToast,
 } from "../components";
@@ -159,8 +158,6 @@ export default function Assistant({
               <h3 style={{ margin: 0 }}>Citation-Grounded Metrics</h3>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "16px" }}>
                 {result.key_metrics.map((km, idx) => {
-                  const numValue = typeof km.value === "number" ? km.value : parseFloat(String(km.value));
-                  const isNumeric = !isNaN(numValue);
                   return (
                     <div
                       key={idx}
@@ -178,11 +175,6 @@ export default function Assistant({
                       <div style={{ display: "flex", alignItems: "baseline", gap: "8px" }}>
                         <span style={{ fontSize: "22px", fontWeight: 700 }}>{String(km.value)}</span>
                       </div>
-                      {isNumeric && (
-                        <div style={{ height: "24px" }}>
-                          <Sparkline label={km.name} data={[numValue * 0.8, numValue * 0.9, numValue, numValue * 1.05]} />
-                        </div>
-                      )}
                       <span style={{ fontSize: "11px", color: "var(--color-ink-muted)", fontStyle: "italic" }}>
                         Source: {km.source}
                       </span>
