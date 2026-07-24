@@ -78,6 +78,7 @@ export const AppShell = React.forwardRef<HTMLDivElement, AppShellProps>(
             />
             <nav
               ref={mobileNavRef}
+              id="mobile-nav-drawer"
               className="mobile-nav-drawer"
               aria-label="Primary"
               data-testid="mobile-nav-drawer"

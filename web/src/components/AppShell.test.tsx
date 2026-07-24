@@ -339,6 +339,7 @@ describe("AppShell", () => {
       await waitFor(() => {
         const drawer = screen.getByTestId("mobile-nav-drawer");
         expect(drawer).toBeInTheDocument();
+        expect(screen.getByTestId("mobile-menu-button")).toHaveAttribute("aria-controls", "mobile-nav-drawer");
       });
 
       const drawer = screen.getByTestId("mobile-nav-drawer");

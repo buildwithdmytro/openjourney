@@ -1,12 +1,13 @@
 import React, { useEffect, useRef, useState } from "react";
 import Modal from "./Modal";
-import { navGroups, View, viewTitles } from "../navigation";
+import { navGroups, PaletteAction, paletteActions, View, viewTitles } from "../navigation";
 
 interface PaletteItem {
   label: string;
   view?: View;
   action?: () => void;
   category: string;
+  keywords: string[];
 }
 
 
@@ -23,20 +24,30 @@ export const CommandPalette = React.forwardRef<HTMLDivElement, CommandPalettePro
     const [selectedIndex, setSelectedIndex] = useState(0);
     const inputRef = useRef<HTMLInputElement>(null);
 
-    const items: PaletteItem[] = [];
+    const items: PaletteItem[] = paletteActions.map((item: PaletteAction) => ({
+      ...item,
+      action: () => onNavigate(item.view),
+    }));
     navGroups.forEach((group) => {
       group.items.forEach((view) => {
         items.push({
           label: viewTitles[view as View][0],
           view: view as View,
           category: group.label,
+          keywords: [
+            viewTitles[view as View][0],
+            group.label,
+          ].join(" ").toLowerCase().split(/\W+/).filter(Boolean),
         });
       });
     });
 
     const filteredItems = query
       ? items.filter((item) =>
-          item.label.toLowerCase().includes(query.toLowerCase())
+          [item.label, item.category, ...item.keywords]
+            .join(" ")
+            .toLowerCase()
+            .includes(query.toLowerCase())
         )
       : items;
 
@@ -51,17 +62,22 @@ export const CommandPalette = React.forwardRef<HTMLDivElement, CommandPalettePro
     const handleKeydown = (event: React.KeyboardEvent) => {
       if (event.key === "ArrowDown") {
         event.preventDefault();
-        setSelectedIndex((prev) => (prev + 1) % filteredItems.length);
+        if (filteredItems.length > 0) {
+          setSelectedIndex((prev) => (prev + 1) % filteredItems.length);
+        }
       } else if (event.key === "ArrowUp") {
         event.preventDefault();
-        setSelectedIndex((prev) =>
-          prev === 0 ? filteredItems.length - 1 : prev - 1
-        );
+        if (filteredItems.length > 0) {
+          setSelectedIndex((prev) =>
+            prev === 0 ? filteredItems.length - 1 : prev - 1
+          );
+        }
       } else if (event.key === "Enter") {
         event.preventDefault();
         const item = filteredItems[selectedIndex];
-        if (item && item.view) {
-          onNavigate(item.view);
+        if (item) {
+          item.action?.();
+          if (item.view && !item.action) onNavigate(item.view);
           onClose();
         }
       }
@@ -75,7 +91,9 @@ export const CommandPalette = React.forwardRef<HTMLDivElement, CommandPalettePro
         ref={ref}
       >
         <div className="command-palette">
+          <label htmlFor="command-palette-search" className="sr-only">Search views and actions</label>
           <input
+            id="command-palette-search"
             ref={inputRef}
             type="text"
             placeholder="Search views... (⌘K)"
@@ -100,8 +118,9 @@ export const CommandPalette = React.forwardRef<HTMLDivElement, CommandPalettePro
                   role="option"
                   aria-selected={index === selectedIndex}
                   onClick={() => {
-                    if (item.view) {
-                      onNavigate(item.view);
+                    if (item) {
+                      item.action?.();
+                      if (item.view && !item.action) onNavigate(item.view);
                       onClose();
                     }
                   }}

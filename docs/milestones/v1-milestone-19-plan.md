@@ -169,11 +169,12 @@ public edges.)
    *Done when:* nav is defined once (no duplication across the 4 files); the overloaded group is split;
    all 29 views still render + route; tests green.
    — done: U4 fixed with the shared `web/src/navigation.ts` consumed by App, AppShell, Sidebar, and CommandPalette; Messaging was split from Delivery, Infrastructure, and Data; `navigation.test.ts` verifies all 29 views are unique and grouped, and all 327 web tests pass.
-3. [ ] **⌘K actions + category search (U5, U8).** Populate the palette's `action` items (Create template,
+3. [x] **⌘K actions + category search (U5, U8).** Populate the palette's `action` items (Create template,
    New API key, Publish flag, …) and search by category/keywords, not just labels; give the palette input
    an explicit label; fix the mobile drawer `aria-controls` id mismatch (`AppShell.tsx:80` vs the drawer id).
    *Done when:* ⌘K runs a create action and finds a view by keyword (not just exact label); the drawer's
    `aria-controls` points at the real drawer id; a keyboard-driven test covers an action.
+   — done: U5/U8 fixed with shared palette action metadata, category/keyword search, keyboard-triggered create-template action, explicit search label, and matching mobile drawer id; `CommandPalette > runs a create action with the keyboard`, `CommandPalette > finds views by category keywords`, and `AppShell > traps focus within mobile nav drawer` verify the findings; web typecheck, build, and all 330 tests pass.
 4. [ ] **Validate the Connectors mapping input (U6).** Replace the raw `<textarea>` mapping JSON
    (`Connectors.tsx:25`) with the validating `JsonField`.
    *Done when:* malformed mapping JSON shows an inline error (no silent break); test covers invalid + valid.

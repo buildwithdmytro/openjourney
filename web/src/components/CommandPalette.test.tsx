@@ -61,6 +61,55 @@ describe("CommandPalette", () => {
     expect(screen.queryByText("Profiles")).not.toBeInTheDocument();
   });
 
+  it("finds views by category keywords", () => {
+    render(
+      <CommandPalette
+        isOpen={true}
+        onClose={vi.fn()}
+        onNavigate={vi.fn()}
+        currentView="profiles"
+      />
+    );
+
+    const input = screen.getByRole("textbox", { name: "Search views and actions" });
+    fireEvent.change(input, { target: { value: "audiences" } });
+
+    expect(screen.getByText("Profiles")).toBeInTheDocument();
+  });
+
+  it("runs a create action with the keyboard", () => {
+    const onNavigate = vi.fn();
+    const onClose = vi.fn();
+    render(
+      <CommandPalette
+        isOpen={true}
+        onClose={onClose}
+        onNavigate={onNavigate}
+        currentView="profiles"
+      />
+    );
+
+    const input = screen.getByRole("textbox", { name: "Search views and actions" });
+    fireEvent.change(input, { target: { value: "create template" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(onNavigate).toHaveBeenCalledWith("templates");
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("gives the search input an explicit accessible label", () => {
+    render(
+      <CommandPalette
+        isOpen={true}
+        onClose={vi.fn()}
+        onNavigate={vi.fn()}
+        currentView="profiles"
+      />
+    );
+
+    expect(screen.getByRole("textbox", { name: "Search views and actions" })).toBeInTheDocument();
+  });
+
   it("shows empty state when no results", () => {
     render(
       <CommandPalette

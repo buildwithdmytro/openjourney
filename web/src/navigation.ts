@@ -53,3 +53,16 @@ export const navGroups: NavGroup[] = [
   { label: "Admin", items: ["privacy", "access", "audit", "operations"] },
   { label: "Settings", items: ["api-keys"] },
 ];
+
+export interface PaletteAction {
+  label: string;
+  category: string;
+  keywords: string[];
+  view: View;
+}
+
+export const paletteActions: PaletteAction[] = [
+  { label: "Create template", category: "Actions", keywords: ["new", "email", "content"], view: "templates" },
+  { label: "New API key", category: "Actions", keywords: ["create", "credential", "token"], view: "api-keys" },
+  { label: "Publish flag", category: "Actions", keywords: ["release", "feature", "toggle"], view: "flags" },
+];
