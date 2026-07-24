@@ -4,11 +4,12 @@ import {
   listCatalogItems, bulkUploadCatalogItems, createConnectedContentSource, listConnectedContentSources,
   getConnectedContentSource, updateConnectedContentSource, enableConnectedContentSource, deleteConnectedContentSource,
 } from "../api";
-import { EmptyState, JsonField } from "../components";
+import { EmptyState, JsonField, useToast } from "../components";
 
 function errorMessage(error: unknown) { return error instanceof Error ? error.message : "Request failed"; }
 
 export default function Catalogs({ apiKey, baseURL }: { apiKey: string; baseURL: string }) {
+  const { push: toast } = useToast();
   const [tab, setTab] = useState<"catalogs" | "sources">("catalogs");
   const [catalogs, setCatalogs] = useState<Catalog[]>([]);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
@@ -53,6 +54,7 @@ export default function Catalogs({ apiKey, baseURL }: { apiKey: string; baseURL:
         : await createCatalog(baseURL, apiKey, { key: catalog.key, name: catalog.name, description: catalog.description, item_key_field: catalog.item_key_field, status: catalog.status, app_id: "" });
       setCatalog(saved);
       setNotice("Catalog saved.");
+      toast({ kind: "success", message: catalog.id ? "Catalog updated successfully" : "Catalog created successfully" });
       await refresh();
     } catch (e) {
       setError(errorMessage(e));
@@ -67,6 +69,7 @@ export default function Catalogs({ apiKey, baseURL }: { apiKey: string; baseURL:
     try {
       await bulkUploadCatalogItems(baseURL, apiKey, catalog.id, file);
       setNotice("Items uploaded.");
+      toast({ kind: "success", message: "Catalog items uploaded successfully" });
       await refresh();
     } catch (e) {
       setError(errorMessage(e));
@@ -102,6 +105,7 @@ export default function Catalogs({ apiKey, baseURL }: { apiKey: string; baseURL:
         });
       setSource(saved);
       setNotice("Source saved.");
+      toast({ kind: "success", message: source.id ? "Connected content source updated successfully" : "Connected content source created successfully" });
       await refresh();
     } catch (e) {
       setError(errorMessage(e));
@@ -116,6 +120,7 @@ export default function Catalogs({ apiKey, baseURL }: { apiKey: string; baseURL:
     try {
       await enableConnectedContentSource(baseURL, apiKey, id);
       setNotice("Source enabled.");
+      toast({ kind: "success", message: "Connected content source enabled" });
       await refresh();
     } catch (e) {
       setError(errorMessage(e));
@@ -131,6 +136,7 @@ export default function Catalogs({ apiKey, baseURL }: { apiKey: string; baseURL:
     try {
       await deleteConnectedContentSource(baseURL, apiKey, id);
       setNotice("Source deleted.");
+      toast({ kind: "success", message: "Connected content source deleted" });
       await refresh();
     } catch (e) {
       setError(errorMessage(e));

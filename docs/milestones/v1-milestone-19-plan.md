@@ -142,11 +142,12 @@ public edges.)
    — done: S3 fixed with in-flight guards and disabled trigger buttons across campaign Launch, Messaging, Catalogs, Acquisition, Access, Connectors, Prompts, and Scoring; `Messaging section > disables message creation while the request is in flight` verifies disable/re-enable behavior, and the affected-section tests plus full web typecheck/build/test pass.
 
 ### Milestone 24.3 — Feedback & guidance
-1. [ ] **Success toasts on every mutation (U1).** Every create/update/publish/delete fires a
+1. [x] **Success toasts on every mutation (U1).** Every create/update/publish/delete fires a
    `useToast()` success toast (only `App.tsx:753` does today) — a consistent pattern across App.tsx
    handlers and the sections that import `useToast` but don't fire it.
    *Done when:* a representative create/update/delete in App + 3 sections shows a success toast; a test
    asserts the toast via `role="status"`; no silent-success mutation remains in the covered set.
+   — done: U1 fixed across App mutation handlers and the Acquisition, Catalogs, and Messaging sections; `App > creates API keys with optional expiration`, `Acquisition > round-trips a form draft and publishes it`, `Catalogs section > switches tabs and creates a connected-content source`, and `Messaging section > creates an in-app message and refreshes the list` verify success feedback; web typecheck, build, and all 325 tests pass.
 2. [ ] **Actionable empty states (U2).** Every `EmptyState` passes a `cta` (create-your-first-X), and the
    bare `<p>No X</p>` empties (`App.tsx:866,1032,1277,1462,1536,1795`, `Catalogs.tsx:251`, `Messaging`,
    `Journeys`) become `EmptyState` with a CTA.

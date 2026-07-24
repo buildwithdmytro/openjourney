@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { InAppMessage, listMessages, createMessage, getProfileInbox, listTemplates, Template } from "../api";
-import { EmptyState } from "../components";
+import { EmptyState, useToast } from "../components";
 
 const message = (e: unknown) => e instanceof Error ? e.message : "Request failed";
 const blank = (): Partial<InAppMessage> => ({
@@ -11,6 +11,7 @@ const blank = (): Partial<InAppMessage> => ({
 });
 
 export default function Messaging({ apiKey, baseURL }: { apiKey: string; baseURL: string }) {
+  const { push: toast } = useToast();
   const [messages, setMessages] = useState<InAppMessage[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [profileInbox, setProfileInbox] = useState<InAppMessage[]>([]);
@@ -48,6 +49,7 @@ export default function Messaging({ apiKey, baseURL }: { apiKey: string; baseURL
       setDraft(blank());
       setSelectedTemplate("");
       setNotice("Message created.");
+      toast({ kind: "success", message: "Message created successfully" });
       await refresh();
     } catch (e) {
       setError(message(e));

@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Messaging from "./Messaging";
+import { ToastProvider } from "../components";
 
 describe("Messaging section", () => {
   beforeEach(() => vi.restoreAllMocks());
@@ -16,14 +17,15 @@ describe("Messaging section", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<Messaging apiKey="test" baseURL="http://localhost" />);
+    render(<ToastProvider><Messaging apiKey="test" baseURL="http://localhost" /></ToastProvider>);
     fireEvent.click(screen.getByRole("button", { name: "Create message" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost/v1/messages",
       expect.objectContaining({ method: "POST", body: expect.stringContaining('"message_type":"card"') }),
     ));
-    expect(await screen.findByRole("status")).toHaveTextContent("Message created.");
+    expect(await screen.findByText("Message created.")).toBeInTheDocument();
+    expect(screen.getByText("Message created successfully")).toBeInTheDocument();
   });
 
   it("disables message creation while the request is in flight", async () => {
@@ -36,7 +38,7 @@ describe("Messaging section", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<Messaging apiKey="test" baseURL="http://localhost" />);
+    render(<ToastProvider><Messaging apiKey="test" baseURL="http://localhost" /></ToastProvider>);
     const create = screen.getByRole("button", { name: "Create message" });
     fireEvent.click(create);
     await waitFor(() => expect(create).toBeDisabled());

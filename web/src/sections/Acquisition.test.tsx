@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import Acquisition from "./Acquisition";
+import { ToastProvider } from "../components";
 
 const response = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } }));
 afterEach(() => cleanup());
@@ -18,7 +19,7 @@ describe("Acquisition", () => {
       throw new Error(`Unexpected request: ${method} ${url}`);
     });
     vi.stubGlobal("fetch", fetchMock);
-    render(<Acquisition apiKey="key" baseURL="/api" />);
+    render(<ToastProvider><Acquisition apiKey="key" baseURL="/api" /></ToastProvider>);
     fireEvent.click(screen.getByRole("button", { name: "New form" }));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Newsletter" } });
     fireEvent.change(screen.getByLabelText("Field 1 key"), { target: { value: "email" } });
@@ -30,6 +31,7 @@ describe("Acquisition", () => {
     await waitFor(() => expect((screen.getByRole("button", { name: "Publish version" }) as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(screen.getByRole("button", { name: "Publish version" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/v1/forms/form-1/publish"), expect.objectContaining({ method: "POST" })));
+    expect(screen.getByText("Form published successfully")).toBeInTheDocument();
   });
 
   it("round-trips a landing page draft and publishes it", async () => {
@@ -44,7 +46,7 @@ describe("Acquisition", () => {
       throw new Error(`Unexpected request: ${method} ${url}`);
     });
     vi.stubGlobal("fetch", fetchMock);
-    render(<Acquisition apiKey="key" baseURL="/api" />);
+    render(<ToastProvider><Acquisition apiKey="key" baseURL="/api" /></ToastProvider>);
     fireEvent.click(screen.getByRole("button", { name: "Pages" }));
     fireEvent.click(screen.getByRole("button", { name: "New page" }));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Launch" } });

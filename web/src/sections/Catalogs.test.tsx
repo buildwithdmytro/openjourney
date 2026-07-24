@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import Catalogs from "./Catalogs";
+import { ToastProvider } from "../components";
 
 describe("Catalogs section", () => {
   beforeEach(() => {
@@ -18,7 +19,7 @@ describe("Catalogs section", () => {
 
     globalThis.fetch = fetchMock;
 
-    render(<Catalogs apiKey="test" baseURL="http://localhost" />);
+    render(<ToastProvider><Catalogs apiKey="test" baseURL="http://localhost" /></ToastProvider>);
 
     expect(screen.getByText("Catalogs & connected content")).toBeInTheDocument();
     expect(screen.getByText("Reference data")).toBeInTheDocument();
@@ -33,6 +34,7 @@ describe("Catalogs section", () => {
       "http://localhost/v1/connected-content-sources",
       expect.objectContaining({ method: "POST", body: expect.stringContaining('"name":"Inventory API"') }),
     ));
-    expect(await screen.findByRole("status")).toHaveTextContent("Source saved.");
+    expect(await screen.findByText("Source saved.")).toBeInTheDocument();
+    expect(screen.getByText("Connected content source created successfully")).toBeInTheDocument();
   });
 });

@@ -398,6 +398,7 @@ function Profiles({ apiKey }: { apiKey: string }) {
 }
 
 function Schemas({ apiKey }: { apiKey: string }) {
+  const { push: toast } = useToast();
   const [items, setItems] = useState<EventSchema[]>([]);
   const [eventType, setEventType] = useState("");
   const [version, setVersion] = useState(1);
@@ -416,6 +417,7 @@ function Schemas({ apiKey }: { apiKey: string }) {
         event_type: eventType, version, compatibility: "backward", schema: JSON.parse(definition),
       });
       setEventType(""); setVersion(version + 1); setDefinitionError(undefined); await refresh();
+      toast({ kind: "success", message: "Schema registered successfully" });
     } catch (cause) { setError(message(cause)); }
   }
   return <section className="stack">
@@ -435,6 +437,7 @@ function Schemas({ apiKey }: { apiKey: string }) {
 }
 
 function APIKeys({ apiKey }: { apiKey: string }) {
+  const { push: toast } = useToast();
   const [items, setItems] = useState<APIKey[]>([]);
   const [name, setName] = useState("");
   const [scopes, setScopes] = useState<string[]>(["events:write", "profiles:read"]);
@@ -453,10 +456,11 @@ function APIKeys({ apiKey }: { apiKey: string }) {
       const expiration = expiresAt ? new Date(expiresAt).toISOString() : undefined;
       const result = await createAPIKey(apiBase, apiKey, name, scopes, expiration);
       setSecret(result.secret); setName(""); setExpiresAt(""); await refresh();
+      toast({ kind: "success", message: "API key created successfully" });
     } catch (cause) { setError(message(cause)); }
   }
   async function revoke(id: string) {
-    try { await revokeAPIKey(apiBase, apiKey, id); await refresh(); }
+    try { await revokeAPIKey(apiBase, apiKey, id); await refresh(); toast({ kind: "success", message: "API key revoked successfully" }); }
     catch (cause) { setError(message(cause)); }
   }
   const revokeItem = items.find(i => i.id === confirmRevokeId);
@@ -489,6 +493,7 @@ function APIKeys({ apiKey }: { apiKey: string }) {
 }
 
 function Privacy({ apiKey }: { apiKey: string }) {
+  const { push: toast } = useToast();
   const [externalID, setExternalID] = useState("");
   const [requestType, setRequestType] = useState<"export" | "delete">("export");
   const [requestID, setRequestID] = useState("");
@@ -499,6 +504,7 @@ function Privacy({ apiKey }: { apiKey: string }) {
     try {
       const result = await createPrivacyRequest(apiBase, apiKey, externalID, requestType);
       setItem(result); setRequestID(result.id); setError("");
+      toast({ kind: "success", message: "Privacy request submitted successfully" });
     } catch (cause) { setError(message(cause)); }
   }
   async function lookup(event: FormEvent) {
@@ -526,6 +532,7 @@ function Privacy({ apiKey }: { apiKey: string }) {
 }
 
 function Access({ apiKey }: { apiKey: string }) {
+  const { push: toast } = useToast();
   const [roles, setRoles] = useState<Role[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [roleName, setRoleName] = useState("");
@@ -548,6 +555,7 @@ function Access({ apiKey }: { apiKey: string }) {
     try {
       await createRole(apiBase, apiKey, roleName, permissions);
       setRoleName(""); await refresh();
+      toast({ kind: "success", message: "Role created successfully" });
     } catch (cause) { setError(message(cause)); }
   }
   async function addUser(event: FormEvent) {
@@ -559,6 +567,7 @@ function Access({ apiKey }: { apiKey: string }) {
         role_ids: selectedRoles.split(",").map((value) => value.trim()).filter(Boolean),
       });
       setSubject(""); setEmail(""); setPassword(""); await refresh();
+      toast({ kind: "success", message: "User provisioned successfully" });
     } catch (cause) { setError(message(cause)); }
   }
   return <section className="stack">
@@ -589,6 +598,7 @@ function Access({ apiKey }: { apiKey: string }) {
 }
 
 function Operations({ apiKey }: { apiKey: string }) {
+  const { push: toast } = useToast();
   const [queues, setQueues] = useState<QueueStatus[]>([]);
   const [deadLetters, setDeadLetters] = useState<DeadLetterItem[]>([]);
   const [dlqQueue, setDLQQueue] = useState("");
@@ -614,6 +624,7 @@ function Operations({ apiKey }: { apiKey: string }) {
       if (action === "retry") await retryDeadLetter(apiBase, apiKey, item.queue, item.id);
       else await discardDeadLetter(apiBase, apiKey, item.queue, item.id);
       await refresh();
+      toast({ kind: "success", message: action === "retry" ? "Dead-letter item retried" : "Dead-letter item discarded" });
     } catch (cause) { setError(message(cause)); }
   }
   return <section className="stack">
@@ -715,6 +726,7 @@ function Segments({ apiKey }: { apiKey: string }) {
       });
       form.reset();
       await refresh();
+      pushToast({ kind: "success", message: editingSegment ? "Segment updated successfully" : "Segment created successfully" });
     } catch (cause) {
       setError(message(cause));
     }
@@ -736,6 +748,7 @@ function Segments({ apiKey }: { apiKey: string }) {
       setEditingSegment(null);
       form.reset();
       await refresh();
+      pushToast({ kind: "success", message: "Segment updated successfully" });
     } catch (cause) {
       setError(message(cause));
     }
@@ -929,6 +942,7 @@ function parseComposerHTML(html: string): EmailComposer | null {
 }
 
 function Templates({ apiKey }: { apiKey: string }) {
+  const { push: toast } = useToast();
   const [items, setItems] = useState<Template[]>([]);
   const [identities, setIdentities] = useState<SendingIdentity[]>([]);
   const [editorView, setEditorView] = useState<TemplateEditorView>("list");
@@ -981,6 +995,7 @@ function Templates({ apiKey }: { apiKey: string }) {
     setSaving(true);
     setError("");
     try {
+      const isNew = editorView === "new";
       if (editorView === "new") {
         await createTemplate(apiBase, apiKey, editing);
       } else if (editing.id) {
@@ -988,6 +1003,7 @@ function Templates({ apiKey }: { apiKey: string }) {
       }
       await reload();
       setEditorView("list");
+      toast({ kind: "success", message: isNew ? "Template created successfully" : "Template updated successfully" });
     } catch (e) { setError(message(e)); }
     finally { setSaving(false); }
   };
@@ -1198,6 +1214,7 @@ function Templates({ apiKey }: { apiKey: string }) {
 }
 
 function Suppressions({ apiKey }: { apiKey: string }) {
+  const { push: toast } = useToast();
   const [items, setItems] = useState<Suppression[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -1226,6 +1243,7 @@ function Suppressions({ apiKey }: { apiKey: string }) {
       await createSuppression(apiBase, apiKey, { channel, endpoint, reason: reason as any });
       setEndpoint("");
       await load();
+      toast({ kind: "success", message: "Suppression created successfully" });
     } catch (cause) {
       setError(message(cause));
     } finally {
@@ -1239,6 +1257,7 @@ function Suppressions({ apiKey }: { apiKey: string }) {
     try {
       await deleteSuppression(apiBase, apiKey, item.channel, item.endpoint);
       await load();
+      toast({ kind: "success", message: "Suppression removed successfully" });
     } catch (cause) {
       setError(message(cause));
     }
@@ -1293,6 +1312,7 @@ function Suppressions({ apiKey }: { apiKey: string }) {
 }
 
 function SenderIdentities({ apiKey }: { apiKey: string }) {
+  const { push: toast } = useToast();
   const [items, setItems] = useState<SendingIdentity[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -1358,6 +1378,7 @@ function SenderIdentities({ apiKey }: { apiKey: string }) {
       setFcmProjectId(""); setFcmToken("");
       setApnsPrivateKey(""); setApnsKeyId(""); setApnsTeamId(""); setApnsTopic("");
       await load();
+      toast({ kind: "success", message: "Sender identity created successfully" });
     } catch (cause) {
       setError(message(cause));
     } finally {
@@ -1575,6 +1596,7 @@ function DeviceTokensInspector({ apiKey }: { apiKey: string }) {
 }
 
 export function Campaigns({ apiKey }: { apiKey: string }) {
+  const { push: toast } = useToast();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [segments, setSegments] = useState<Segment[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -1642,6 +1664,7 @@ export function Campaigns({ apiKey }: { apiKey: string }) {
       await createCampaign(apiBase, apiKey, payload);
       form.reset();
       await load();
+      toast({ kind: "success", message: "Campaign created successfully" });
     } catch (cause) {
       setError(message(cause));
     } finally {
@@ -1667,6 +1690,7 @@ export function Campaigns({ apiKey }: { apiKey: string }) {
       await updateCampaign(apiBase, apiKey, editingCampaign.id, payload);
       form.reset();
       await load();
+      toast({ kind: "success", message: "Campaign updated successfully" });
     } catch (cause) {
       setError(message(cause));
     } finally {
@@ -1685,6 +1709,7 @@ export function Campaigns({ apiKey }: { apiKey: string }) {
         scheduled_at: new Date().toISOString(),
       });
       await load();
+      toast({ kind: "success", message: "Campaign launched successfully" });
     } catch (cause) {
       setError(message(cause));
     } finally {
