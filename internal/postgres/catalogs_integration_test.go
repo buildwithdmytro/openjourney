@@ -232,7 +232,7 @@ func TestConnectedContentSourceRoundtrip(t *testing.T) {
 		Name:              "Example API",
 		AllowedHost:       "api.example.com",
 		AuthHeaderName:    "Authorization",
-		AuthSecretRef:     "EXAMPLE_API_KEY",
+		AuthSecretRef:     "CC_SECRET_EXAMPLE_API_KEY",
 		DefaultTTLSeconds: 300,
 		TimeoutMs:         5000,
 		Enabled:           true,
@@ -309,7 +309,7 @@ func TestConnectedContentSourceRejectsRawSecret(t *testing.T) {
 
 	_, err = store.CreateConnectedContentSource(ctx, p, src)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "must be an environment variable name")
+	assert.Contains(t, err.Error(), "auth_secret_ref must match positive allowlist pattern")
 }
 
 func TestConnectedContentSourceDuplicateNameRejected(t *testing.T) {

@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -63,8 +62,8 @@ func (m *securityMockStore) CreateConnectedContentSource(ctx context.Context, p 
 	defer m.mu.Unlock()
 
 	if src.AuthSecretRef != "" {
-		if strings.HasPrefix(src.AuthSecretRef, "secret:") {
-			return domain.ConnectedContentSource{}, fmt.Errorf("auth_secret_ref must be an environment variable name, got raw secret ref")
+		if !domain.IsValidAuthSecretRef(src.AuthSecretRef) {
+			return domain.ConnectedContentSource{}, fmt.Errorf("auth_secret_ref must match positive allowlist pattern")
 		}
 	}
 
@@ -206,7 +205,7 @@ func TestSecurityE2E(t *testing.T) {
 		}
 		_, err := mockStore.CreateConnectedContentSource(context.Background(), pFull, badSrc)
 		require.Error(t, err, "raw secret format must be rejected")
-		assert.Contains(t, err.Error(), "must be an environment variable name")
+		assert.Contains(t, err.Error(), "positive allowlist")
 
 		// Create valid source
 		validSrc := domain.ConnectedContentSource{
@@ -214,7 +213,7 @@ func TestSecurityE2E(t *testing.T) {
 			Name:           "ValidSecretSource",
 			AllowedHost:    "api.secure-example.com",
 			AuthHeaderName: "X-API-Key",
-			AuthSecretRef:  "SECURE_API_KEY_REF",
+			AuthSecretRef:  "CC_SECRET_SECURE_API_KEY_REF",
 			Status:         "active",
 			Enabled:        true,
 		}

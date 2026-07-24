@@ -241,8 +241,8 @@ func (s *Store) CreateConnectedContentSource(ctx context.Context, p domain.Princ
 	if input.AllowedHost == "" {
 		return domain.ConnectedContentSource{}, errors.New("allowed_host is required")
 	}
-	if input.AuthSecretRef != "" && strings.HasPrefix(input.AuthSecretRef, "secret:") {
-		return domain.ConnectedContentSource{}, errors.New("auth_secret_ref must be an environment variable name (e.g., CC_SECRET), not a secret: reference")
+	if input.AuthSecretRef != "" && !domain.IsValidAuthSecretRef(input.AuthSecretRef) {
+		return domain.ConnectedContentSource{}, errors.New("auth_secret_ref must match positive allowlist pattern ^CC_SECRET_[A-Z0-9_]+$ (e.g., CC_SECRET_API_KEY)")
 	}
 
 	src, err := scanConnectedContentSource(s.pool.QueryRow(ctx, `INSERT INTO connected_content_sources
@@ -291,8 +291,8 @@ func (s *Store) ListConnectedContentSources(ctx context.Context, p domain.Princi
 }
 
 func (s *Store) UpdateConnectedContentSource(ctx context.Context, p domain.Principal, input domain.ConnectedContentSource) (domain.ConnectedContentSource, error) {
-	if input.AuthSecretRef != "" && strings.HasPrefix(input.AuthSecretRef, "secret:") {
-		return domain.ConnectedContentSource{}, errors.New("auth_secret_ref must be an environment variable name (e.g., CC_SECRET), not a secret: reference")
+	if input.AuthSecretRef != "" && !domain.IsValidAuthSecretRef(input.AuthSecretRef) {
+		return domain.ConnectedContentSource{}, errors.New("auth_secret_ref must match positive allowlist pattern ^CC_SECRET_[A-Z0-9_]+$ (e.g., CC_SECRET_API_KEY)")
 	}
 
 	src, err := scanConnectedContentSource(s.pool.QueryRow(ctx, `UPDATE connected_content_sources

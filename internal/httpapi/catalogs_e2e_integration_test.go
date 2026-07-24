@@ -117,7 +117,7 @@ func TestCatalogsAndConnectedContentE2E(t *testing.T) {
 		Name:               "discount-service",
 		AllowedHost:        "api.example.com",
 		AuthHeaderName:     "X-API-Key",
-		AuthSecretRef:      "DISCOUNT_API_KEY",
+		AuthSecretRef:      "CC_SECRET_DISCOUNT_API_KEY",
 		DefaultTTLSeconds:  300,
 		TimeoutMs:          2000,
 		Enabled:            true,

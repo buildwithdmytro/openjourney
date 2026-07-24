@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -1617,6 +1618,13 @@ type ConnectedContentSource struct {
 	CreatedByUserID   *string   `json:"created_by_user_id,omitempty"`
 	CreatedAt         time.Time `json:"created_at"`
 	UpdatedAt         time.Time `json:"updated_at"`
+}
+
+var authSecretRefRegex = regexp.MustCompile(`^CC_SECRET_[A-Z0-9_]+$`)
+
+// IsValidAuthSecretRef returns true if ref matches positive allowlist pattern ^CC_SECRET_[A-Z0-9_]+$.
+func IsValidAuthSecretRef(ref string) bool {
+	return authSecretRefRegex.MatchString(ref)
 }
 
 type BulkUpsertResult struct {

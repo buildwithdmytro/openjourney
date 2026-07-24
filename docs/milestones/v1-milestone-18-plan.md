@@ -91,12 +91,12 @@ redaction, insights grounding, principal non-spoofability.)
    runs the corrected backfill, and asserts `VerifyAuditChain` returns valid (no false-positive); the
    migration applies cleanly on both an empty and a populated `audit_events`; `go test -race
    ./internal/postgres/...` green. — done: Fixed F1 & F2 via migration 061 + Go BackfillAuditChain; verified via TestAuditChainBackfill_NonGated & TestAuditChainBackfill_SeededNonEmptyTable.
-2. [ ] **Close the `auth_secret_ref` exfiltration (F3).** `resolveAuthSecret` (`fetcher.go:325`) + the
+2. [x] **Close the `auth_secret_ref` exfiltration (F3).** `resolveAuthSecret` (`fetcher.go:325`) + the
    validators (`catalogs.go:244,294`) require the ref to MATCH a positive allowlist (e.g.
    `^CC_SECRET_[A-Z0-9_]+$`), not merely reject a `secret:` prefix.
    *Done when:* a connected-content source with `auth_secret_ref="DATABASE_URL"` is REJECTED at create/
    update; a valid `CC_SECRET_*` ref resolves; a test proves a non-allowlisted env var can no longer be
-   read via a fetch header.
+   read via a fetch header. — done: Enforced positive allowlist ^CC_SECRET_[A-Z0-9_]+$ for auth_secret_ref (F3); verified via TestResolveAuthSecret_AllowlistExfiltrationPrevention & TestCreateConnectedContentSource_RejectsNonAllowlistedAuthSecretRef.
 3. [ ] **Restore the API-key default scopes (F4).** New migration `061` re-declares the `api_keys.scopes`
    DEFAULT array with the FULL current catalog (the `060` array dropped ~17–29 scopes). Add a test/assertion
    that the DEFAULT array == the `permissions` catalog == `rbac.go:allowedPermissions` (no drift).

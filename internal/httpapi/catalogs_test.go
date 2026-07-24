@@ -437,7 +437,7 @@ func TestCreateConnectedContentSource(t *testing.T) {
 		"name":                   "Test Source",
 		"allowed_host":           "api.example.com",
 		"auth_header_name":       "X-API-Key",
-		"auth_secret_ref":        "API_KEY",
+		"auth_secret_ref":        "CC_SECRET_API_KEY",
 		"default_ttl_seconds":    300,
 		"timeout_ms":             2000,
 		"enabled":                false,
@@ -473,7 +473,7 @@ func TestGetConnectedContentSourceRedactsSecret(t *testing.T) {
 				Name:             "Test Source",
 				AllowedHost:      "api.example.com",
 				AuthHeaderName:   "X-API-Key",
-				AuthSecretRef:    "API_KEY",
+				AuthSecretRef:    "CC_SECRET_API_KEY",
 				DefaultTTLSeconds: 300,
 				TimeoutMs:        2000,
 				Enabled:          true,
@@ -507,13 +507,13 @@ func TestListConnectedContentSourcesRedactsSecrets(t *testing.T) {
 				ID:            "src-1",
 				Name:          "Source 1",
 				AllowedHost:   "api1.example.com",
-				AuthSecretRef: "SECRET_1",
+				AuthSecretRef: "CC_SECRET_1",
 			},
 			"src-2": {
 				ID:            "src-2",
 				Name:          "Source 2",
 				AllowedHost:   "api2.example.com",
-				AuthSecretRef: "SECRET_2",
+				AuthSecretRef: "CC_SECRET_2",
 			},
 		},
 	}
@@ -676,3 +676,36 @@ func TestCreateConnectedContentSourceRequiredFields(t *testing.T) {
 	require.True(t, ok, "error field should be an object")
 	assert.Equal(t, "invalid_source", errObj["code"])
 }
+
+func TestCreateConnectedContentSource_RejectsNonAllowlistedAuthSecretRef(t *testing.T) {
+	store := &mockCatalogStore{sources: make(map[string]domain.ConnectedContentSource)}
+	server := &Server{store: store}
+
+	// Attempt to register a source referencing DATABASE_URL
+	input := map[string]any{
+		"name":             "Exfiltration Attempt",
+		"allowed_host":     "evil.example.com",
+		"auth_header_name": "Authorization",
+		"auth_secret_ref":  "DATABASE_URL",
+	}
+
+	body, _ := json.Marshal(input)
+	req := httptest.NewRequest("POST", "/v1/connected-content-sources", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer test-key")
+	req = req.WithContext(req.Context())
+
+	w := httptest.NewRecorder()
+	http.Handler(server.authenticate("catalogs:write", http.HandlerFunc(server.createConnectedContentSource))).ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+
+	var result map[string]any
+	err := json.Unmarshal(w.Body.Bytes(), &result)
+	require.NoError(t, err)
+	errObj, ok := result["error"].(map[string]any)
+	require.True(t, ok, "error field should be an object")
+	assert.Equal(t, "invalid_source", errObj["code"])
+	assert.Contains(t, errObj["message"], "auth_secret_ref must match pattern")
+}
+

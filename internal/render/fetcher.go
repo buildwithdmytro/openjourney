@@ -326,6 +326,9 @@ func (f *DefaultConnectedContentFetcher) resolveAuthSecret(ref string) (string, 
 	if ref == "" {
 		return "", nil
 	}
+	if !domain.IsValidAuthSecretRef(ref) {
+		return "", fmt.Errorf("auth_secret_ref must match pattern ^CC_SECRET_[A-Z0-9_]+$, got %q", ref)
+	}
 	// Check both env var and env var + "_FILE"
 	val := os.Getenv(ref)
 	file := os.Getenv(ref + "_FILE")

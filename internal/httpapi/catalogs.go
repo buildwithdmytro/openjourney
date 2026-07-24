@@ -358,12 +358,20 @@ func (s *Server) createConnectedContentSource(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusBadRequest, "invalid_source", "auth_secret_ref is required when auth_header_name is set")
 		return
 	}
+	if source.AuthSecretRef != "" && !domain.IsValidAuthSecretRef(source.AuthSecretRef) {
+		writeError(w, http.StatusBadRequest, "invalid_source", "auth_secret_ref must match pattern ^CC_SECRET_[A-Z0-9_]+$ (e.g., CC_SECRET_API_KEY)")
+		return
+	}
 
 	source.CreatedByUserID = &principal.UserID
 	res, err := s.store.CreateConnectedContentSource(r.Context(), principal, source)
 	if err != nil {
 		if strings.Contains(err.Error(), "unique constraint") {
 			writeError(w, http.StatusConflict, "duplicate_source", "a source with this name already exists")
+			return
+		}
+		if strings.Contains(err.Error(), "auth_secret_ref") {
+			writeError(w, http.StatusBadRequest, "invalid_source", err.Error())
 			return
 		}
 		internalError(w, err, "create connected content source", principal)
@@ -425,6 +433,10 @@ func (s *Server) updateConnectedContentSource(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusBadRequest, "invalid_source", "name is required")
 		return
 	}
+	if input.AuthSecretRef != "" && !domain.IsValidAuthSecretRef(input.AuthSecretRef) {
+		writeError(w, http.StatusBadRequest, "invalid_source", "auth_secret_ref must match pattern ^CC_SECRET_[A-Z0-9_]+$ (e.g., CC_SECRET_API_KEY)")
+		return
+	}
 
 	input.ID = id
 	res, err := s.store.UpdateConnectedContentSource(r.Context(), principal, input)
@@ -433,6 +445,10 @@ func (s *Server) updateConnectedContentSource(w http.ResponseWriter, r *http.Req
 		return
 	}
 	if err != nil {
+		if strings.Contains(err.Error(), "auth_secret_ref") {
+			writeError(w, http.StatusBadRequest, "invalid_source", err.Error())
+			return
+		}
 		internalError(w, err, "update connected content source", principal)
 		return
 	}
