@@ -216,9 +216,10 @@ public edges.)
    *Done when:* all green and `git diff go.mod go.sum web/package.json web/package-lock.json
    sdk/javascript/package.json` is empty of additions.
    — done: Integration suite passed: Go build/vet/tests, scoped postgres race tests, web typecheck/build/332 tests, and SDK build/30 tests; `go mod tidy` left `go.mod`, `go.sum`, and the package manifests unchanged.
-2. [ ] **Audit doc** `docs/milestones/v1-milestone-19-audit.md` in the prior format, one row per `24.x`
+2. [x] **Audit doc** `docs/milestones/v1-milestone-19-audit.md` in the prior format, one row per `24.x`
    task mapping the finding(s) (X#/S#/U#) → fix → verifying test.
    *Done when:* the doc exists with a row per task, each citing its finding and test.
+   — done: Audit doc added with 20 rows for 24.0.1–24.6.2, mapping every finding to its fix and verifying test or suite check; the document’s row-count/task-ID verification confirms complete coverage.
 
 ## 7. Carry-over hazards & invariants
 
