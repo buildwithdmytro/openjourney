@@ -777,56 +777,56 @@ func (s *Store) VerifyAuditChain(ctx context.Context, p domain.Principal) (domai
 	}
 	defer rows.Close()
 
-	var total int64
-	expectedPrevHash := ""
+	var events []auditRow
 
 	for rows.Next() {
-		total++
-		var (
-			id, tenantID, workspaceID, appID, actType, actID, act, resType, resID, prevHash, rowHash string
-			metadata                                                                                 []byte
-			occurredAt                                                                               time.Time
-			seq                                                                                      int64
-		)
-		if err := rows.Scan(&id, &tenantID, &workspaceID, &appID, &actType, &actID, &act, &resType, &resID, &metadata, &occurredAt, &seq, &prevHash, &rowHash); err != nil {
+		var event auditRow
+		if err := rows.Scan(&event.id, &event.tenantID, &event.workspaceID, &event.appID, &event.actType, &event.actID, &event.act, &event.resType, &event.resID, &event.metadata, &event.occurredAt, &event.seq, &event.prevHash, &event.rowHash); err != nil {
 			return domain.AuditVerificationResult{}, err
 		}
-
-		if prevHash != expectedPrevHash {
-			return domain.AuditVerificationResult{
-				Status:         "tampered",
-				Intact:         false,
-				TotalEvents:    total,
-				FirstBrokenSeq: &seq,
-				FirstBrokenID:  id,
-				Reason:         fmt.Sprintf("prev_hash mismatch at seq %d", seq),
-			}, nil
-		}
-
-		computedHash := ComputeAuditRowHash(prevHash, id, tenantID, workspaceID, appID, actType, actID, act, resType, resID, metadata, occurredAt, seq)
-		if rowHash != computedHash {
-			return domain.AuditVerificationResult{
-				Status:         "tampered",
-				Intact:         false,
-				TotalEvents:    total,
-				FirstBrokenSeq: &seq,
-				FirstBrokenID:  id,
-				Reason:         fmt.Sprintf("row_hash mismatch at seq %d", seq),
-			}, nil
-		}
-
-		expectedPrevHash = rowHash
+		events = append(events, event)
 	}
 
 	if err := rows.Err(); err != nil {
 		return domain.AuditVerificationResult{}, err
 	}
+	return verifyAuditRows(events), nil
+}
 
+func verifyAuditRows(events []auditRow) domain.AuditVerificationResult {
+	var expectedPrevHash string
+	for i, event := range events {
+		total := int64(i + 1)
+		if event.prevHash != expectedPrevHash {
+			return domain.AuditVerificationResult{
+				Status:         "tampered",
+				Intact:         false,
+				TotalEvents:    total,
+				FirstBrokenSeq: &event.seq,
+				FirstBrokenID:  event.id,
+				Reason:         fmt.Sprintf("prev_hash mismatch at seq %d", event.seq),
+			}
+		}
+
+		computedHash := ComputeAuditRowHash(event.prevHash, event.id, event.tenantID, event.workspaceID, event.appID, event.actType, event.actID, event.act, event.resType, event.resID, event.metadata, event.occurredAt, event.seq)
+		if event.rowHash != computedHash {
+			return domain.AuditVerificationResult{
+				Status:         "tampered",
+				Intact:         false,
+				TotalEvents:    total,
+				FirstBrokenSeq: &event.seq,
+				FirstBrokenID:  event.id,
+				Reason:         fmt.Sprintf("row_hash mismatch at seq %d", event.seq),
+			}
+		}
+
+		expectedPrevHash = event.rowHash
+	}
 	return domain.AuditVerificationResult{
 		Status:      "ok",
 		Intact:      true,
-		TotalEvents: total,
-	}, nil
+		TotalEvents: int64(len(events)),
+	}
 }
 
 func (s *Store) audit(ctx context.Context, tx pgx.Tx, p domain.Principal, action, resourceType, resourceID string, metadata map[string]any) error {
@@ -888,6 +888,7 @@ func (s *Store) audit(ctx context.Context, tx pgx.Tx, p domain.Principal, action
 
 	return nil
 }
+
 
 func actorID(p domain.Principal) string {
 	if p.UserID != "" {
@@ -978,4 +979,3 @@ func (s *Store) BackfillAuditChain(ctx context.Context) error {
 
 	return nil
 }
-

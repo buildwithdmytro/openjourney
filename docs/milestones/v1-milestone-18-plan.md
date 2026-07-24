@@ -147,12 +147,12 @@ redaction, insights grounding, principal non-spoofability.)
    if needed.
    *Done when:* the test FAILS if `IsSafeURL`/the ssrf branch is removed, and passes with the guard; runs
    without `OPENJOURNEY_TEST_DATABASE_URL`. — done: Fixed F13 with TestFetcherSSRFBlockRecordsExactDecision, a non-gated real-fetcher regression test requiring `ssrf_blocked`.
-2. [ ] **Real audit-tamper + maker-checker tests (F13).** A non-gated unit test for the audit hash chain
+2. [x] **Real audit-tamper + maker-checker tests (F13).** A non-gated unit test for the audit hash chain
    (`ComputeAuditRowHash` + `VerifyAuditChain` over an in-memory/fake row set: a tampered row is detected)
    and a non-gated maker-checker test that exercises the REAL enforcement logic (not the re-implemented
    fake in `maker_checker_test.go`).
    *Done when:* both run in normal CI (no DB gate) and FAIL against a broken hash-chain / broken
-   self-approval rule respectively.
+   self-approval rule respectively. — done: Added real in-memory hash verification and maker-checker enforcement regressions (F13); verified via TestAuditHashChainDetectsTamperedRow_NonGated and TestMakerCheckerEnforcementRejectsSelfApproval_NonGated.
 
 ### Milestone 23.5 — Coverage fill
 1. [ ] **SCIM handler tests (F14).** HTTP-level tests for `createSCIMUser`/`replaceSCIMUser`/`getSCIMUser`/
