@@ -44,6 +44,7 @@ export default function Prompts({ apiKey, baseURL }: { apiKey: string; baseURL: 
   const [versions, setVersions] = useState<PromptVersion[]>([]);
   const [loadingPrompts, setLoadingPrompts] = useState(false);
   const [loadingVersions, setLoadingVersions] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   // Modal states
   const [showPromptModal, setShowPromptModal] = useState(false);
@@ -104,10 +105,12 @@ export default function Prompts({ apiKey, baseURL }: { apiKey: string; baseURL: 
 
   async function handleCreatePrompt(e: FormEvent) {
     e.preventDefault();
+    if (saving) return;
     if (!promptName.trim()) {
       toast({ kind: "error", message: "Prompt name is required" });
       return;
     }
+    setSaving(true);
     try {
       const newPrompt = await createPrompt(baseURL, apiKey, {
         name: promptName.trim(),
@@ -121,12 +124,14 @@ export default function Prompts({ apiKey, baseURL }: { apiKey: string; baseURL: 
       handleSelectPrompt(newPrompt);
     } catch (err) {
       toast({ kind: "error", message: errorMessage(err) });
+    } finally {
+      setSaving(false);
     }
   }
 
   async function handleCreateVersion(e: FormEvent) {
     e.preventDefault();
-    if (!selectedPrompt) return;
+    if (!selectedPrompt || saving) return;
     if (!template.trim()) {
       toast({ kind: "error", message: "Template is required" });
       return;
@@ -137,6 +142,7 @@ export default function Prompts({ apiKey, baseURL }: { apiKey: string; baseURL: 
     let params = {};
     let safetyPolicy = {};
 
+    setSaving(true);
     try {
       if (inputSchemaJson.trim()) inputSchema = JSON.parse(inputSchemaJson);
       if (outputSchemaJson.trim()) outputSchema = JSON.parse(outputSchemaJson);
@@ -168,11 +174,14 @@ export default function Prompts({ apiKey, baseURL }: { apiKey: string; baseURL: 
       await loadPrompts();
     } catch (err) {
       toast({ kind: "error", message: errorMessage(err) });
+    } finally {
+      setSaving(false);
     }
   }
 
   async function handleRunEval(version: PromptVersion, evalStatus: string = "passed") {
-    if (!selectedPrompt) return;
+    if (!selectedPrompt || saving) return;
+    setSaving(true);
     try {
       const updated = await setPromptVersionEvalStatus(
         baseURL,
@@ -188,11 +197,14 @@ export default function Prompts({ apiKey, baseURL }: { apiKey: string; baseURL: 
       await loadVersions(selectedPrompt.id);
     } catch (err) {
       toast({ kind: "error", message: errorMessage(err) });
+    } finally {
+      setSaving(false);
     }
   }
 
   async function handlePublishConfirm() {
-    if (!selectedPrompt || !publishTarget) return;
+    if (!selectedPrompt || !publishTarget || saving) return;
+    setSaving(true);
     try {
       const published = await publishPromptVersion(
         baseURL,
@@ -209,6 +221,8 @@ export default function Prompts({ apiKey, baseURL }: { apiKey: string; baseURL: 
       await loadPrompts();
     } catch (err) {
       toast({ kind: "error", message: errorMessage(err) });
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -221,8 +235,8 @@ export default function Prompts({ apiKey, baseURL }: { apiKey: string; baseURL: 
             Author, version, evaluate, and human-publish governed prompt templates.
           </p>
         </div>
-        <Button variant="primary" onClick={() => setShowPromptModal(true)}>
-          New Prompt
+        <Button variant="primary" disabled={saving} onClick={() => setShowPromptModal(true)}>
+          {saving ? "Saving…" : "New Prompt"}
         </Button>
       </div>
 
@@ -326,14 +340,14 @@ export default function Prompts({ apiKey, baseURL }: { apiKey: string; baseURL: 
                           <Button
                             variant="secondary"
                             onClick={() => handleRunEval(v, "passed")}
-                            disabled={v.eval_status === "passed"}
+                            disabled={saving || v.eval_status === "passed"}
                           >
                             {v.eval_status === "passed" ? "Eval Passed" : "Run Eval"}
                           </Button>
                           <Button
                             variant="primary"
                             onClick={() => setPublishTarget(v)}
-                            disabled={v.status === "active"}
+                            disabled={saving || v.status === "active"}
                           >
                             {v.status === "active" ? "Published" : "Publish"}
                           </Button>
@@ -400,8 +414,8 @@ export default function Prompts({ apiKey, baseURL }: { apiKey: string; baseURL: 
             <Button variant="secondary" onClick={() => setShowPromptModal(false)} type="button">
               Cancel
             </Button>
-            <Button variant="primary" type="submit">
-              Create Prompt
+            <Button variant="primary" type="submit" disabled={saving}>
+              {saving ? "Creating…" : "Create Prompt"}
             </Button>
           </div>
         </form>
@@ -460,8 +474,8 @@ export default function Prompts({ apiKey, baseURL }: { apiKey: string; baseURL: 
             <Button variant="secondary" onClick={() => setShowVersionModal(false)} type="button">
               Cancel
             </Button>
-            <Button variant="primary" type="submit">
-              Create Version
+            <Button variant="primary" type="submit" disabled={saving}>
+              {saving ? "Creating…" : "Create Version"}
             </Button>
           </div>
         </form>

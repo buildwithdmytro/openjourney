@@ -1598,6 +1598,7 @@ export function Campaigns({ apiKey }: { apiKey: string }) {
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [launchingID, setLaunchingID] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   async function load() {
@@ -1674,6 +1675,8 @@ export function Campaigns({ apiKey }: { apiKey: string }) {
   }
 
   async function handleLaunchNow(campaign: Campaign) {
+    if (launchingID) return;
+    setLaunchingID(campaign.id);
     setError("");
     try {
       await updateCampaign(apiBase, apiKey, campaign.id, {
@@ -1684,6 +1687,8 @@ export function Campaigns({ apiKey }: { apiKey: string }) {
       await load();
     } catch (cause) {
       setError(message(cause));
+    } finally {
+      setLaunchingID(null);
     }
   }
 
@@ -1828,7 +1833,7 @@ export function Campaigns({ apiKey }: { apiKey: string }) {
                           <button className="secondary" style={{ padding: "4px 8px", fontSize: "12px" }} onClick={() => startEdit(c)}>Edit</button>
                           <a className="report-link" href={`#reports?type=campaign&id=${encodeURIComponent(c.id)}`}>Report</a>
                           {c.status === "draft" && (
-                            <button style={{ padding: "4px 8px", fontSize: "12px", background: "var(--color-success-light)", color: "white" }} onClick={() => handleLaunchNow(c)}>Launch</button>
+                            <button style={{ padding: "4px 8px", fontSize: "12px", background: "var(--color-success-light)", color: "white" }} disabled={launchingID !== null} onClick={() => void handleLaunchNow(c)}>{launchingID === c.id ? "Launching…" : "Launch"}</button>
                           )}
                         </div>
                       </td>

@@ -19,6 +19,7 @@ export default function Messaging({ apiKey, baseURL }: { apiKey: string; baseURL
   const [profileId, setProfileId] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [saving, setSaving] = useState(false);
 
   async function refresh() {
     try {
@@ -37,6 +38,8 @@ export default function Messaging({ apiKey, baseURL }: { apiKey: string; baseURL
 
   async function save(e: FormEvent) {
     e.preventDefault();
+    if (saving) return;
+    setSaving(true);
     try {
       await createMessage(baseURL, apiKey, {
         ...draft,
@@ -48,6 +51,8 @@ export default function Messaging({ apiKey, baseURL }: { apiKey: string; baseURL
       await refresh();
     } catch (e) {
       setError(message(e));
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -142,7 +147,7 @@ export default function Messaging({ apiKey, baseURL }: { apiKey: string; baseURL
                     {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
                 </label>
-                <button>Create message</button>
+                <button type="submit" disabled={saving}>{saving ? "Creating…" : "Create message"}</button>
               </form>
             </>
           ) : (

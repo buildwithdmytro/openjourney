@@ -134,11 +134,12 @@ public edges.)
    *Done when:* the Assistant shows no invented trend; a partial report payload does not throw during
    render; tests cover both.
    — done: S2/S8 fixed by removing the synthetic Assistant sparkline and guarding Analytics funnel series plus Reports funnel/deliverability fields; `Assistant section > renders assistant view, allows asking question, and displays grounded answer with tool trace`, `Analytics > renders a partial funnel payload without throwing`, and `renders a partial deliverability payload without throwing` verify the findings; web typecheck, build, and all 324 tests pass.
-4. [ ] **Double-submit guards (S3).** Add an in-flight `saving` state gating the button on the S3
+4. [x] **Double-submit guards (S3).** Add an in-flight `saving` state gating the button on the S3
    handlers (campaign Launch, Messaging/Catalogs/Acquisition/Access/Connectors/Prompts/Scoring create/
    publish) — the pattern already in Copilots/Journeys.
    *Done when:* each listed mutation button disables while in-flight (no double campaign launch / duplicate
    published version / duplicate user); tests cover a representative set.
+   — done: S3 fixed with in-flight guards and disabled trigger buttons across campaign Launch, Messaging, Catalogs, Acquisition, Access, Connectors, Prompts, and Scoring; `Messaging section > disables message creation while the request is in flight` verifies disable/re-enable behavior, and the affected-section tests plus full web typecheck/build/test pass.
 
 ### Milestone 24.3 — Feedback & guidance
 1. [ ] **Success toasts on every mutation (U1).** Every create/update/publish/delete fires a

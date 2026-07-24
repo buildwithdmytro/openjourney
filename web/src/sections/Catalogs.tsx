@@ -17,6 +17,7 @@ export default function Catalogs({ apiKey, baseURL }: { apiKey: string; baseURL:
   const [source, setSource] = useState<ConnectedContentSource | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [saving, setSaving] = useState(false);
 
   async function refresh() {
     try {
@@ -44,7 +45,8 @@ export default function Catalogs({ apiKey, baseURL }: { apiKey: string; baseURL:
 
   async function saveCatalog(event: FormEvent) {
     event.preventDefault();
-    if (!catalog) return;
+    if (!catalog || saving) return;
+    setSaving(true);
     try {
       const saved = catalog.id
         ? await updateCatalog(baseURL, apiKey, catalog.id, { name: catalog.name, description: catalog.description, status: catalog.status })
@@ -54,23 +56,29 @@ export default function Catalogs({ apiKey, baseURL }: { apiKey: string; baseURL:
       await refresh();
     } catch (e) {
       setError(errorMessage(e));
+    } finally {
+      setSaving(false);
     }
   }
 
   async function uploadItems(file: File) {
-    if (!catalog) return;
+    if (!catalog || saving) return;
+    setSaving(true);
     try {
       await bulkUploadCatalogItems(baseURL, apiKey, catalog.id, file);
       setNotice("Items uploaded.");
       await refresh();
     } catch (e) {
       setError(errorMessage(e));
+    } finally {
+      setSaving(false);
     }
   }
 
   async function saveSource(event: FormEvent) {
     event.preventDefault();
-    if (!source) return;
+    if (!source || saving) return;
+    setSaving(true);
     try {
       const saved = source.id
         ? await updateConnectedContentSource(baseURL, apiKey, source.id, {
@@ -97,27 +105,37 @@ export default function Catalogs({ apiKey, baseURL }: { apiKey: string; baseURL:
       await refresh();
     } catch (e) {
       setError(errorMessage(e));
+    } finally {
+      setSaving(false);
     }
   }
 
   async function enableSource(id: string) {
+    if (saving) return;
+    setSaving(true);
     try {
       await enableConnectedContentSource(baseURL, apiKey, id);
       setNotice("Source enabled.");
       await refresh();
     } catch (e) {
       setError(errorMessage(e));
+    } finally {
+      setSaving(false);
     }
   }
 
   async function deleteSource(id: string) {
     if (!confirm("Delete this source?")) return;
+    if (saving) return;
+    setSaving(true);
     try {
       await deleteConnectedContentSource(baseURL, apiKey, id);
       setNotice("Source deleted.");
       await refresh();
     } catch (e) {
       setError(errorMessage(e));
+    } finally {
+      setSaving(false);
     }
   }
 
