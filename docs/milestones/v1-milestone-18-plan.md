@@ -112,9 +112,9 @@ redaction, insights grounding, principal non-spoofability.)
    *Done when:* `UPDATE`/`DELETE` on `prompt_versions` and `scoring_model_versions` is rejected; the three
    REVOKE-only gaps are closed; the RTBF erasure path still works on `identity_merges`; integration test
    covers each. — done: Hardened prompt_versions and scoring_model_versions with triggers+REVOKE and added missing REVOKEs on ai_activity, identity_merges, experiment_versions via migration 063 (F5, F6); verified via TestAppendOnlyVersionTables_MigrationSQL & TestAppendOnlyVersionTables_DBIntegration.
-2. [ ] **Block TRUNCATE on audit tables (F7).** Add a `BEFORE TRUNCATE ... FOR EACH STATEMENT` trigger to
+2. [x] **Block TRUNCATE on audit tables (F7).** Add a `BEFORE TRUNCATE ... FOR EACH STATEMENT` trigger to
    `audit_events` (and the other append-only audit tables) so a TRUNCATE can't silently erase the chain.
-   *Done when:* `TRUNCATE audit_events` is rejected; test proves it.
+   *Done when:* `TRUNCATE audit_events` is rejected; test proves it. — done: Added BEFORE TRUNCATE triggers to audit_events and all append-only tables via migration 064 (F7); verified via TestTruncateGuardAuditTables_MigrationSQL & TestTruncateGuardAuditTables_DBIntegration.
 
 ### Milestone 23.2 — Audit completeness & atomicity
 1. [ ] **Same-transaction, error-propagating audit writes (F8).** Refactor `audit()` (`admin.go:777`) to
