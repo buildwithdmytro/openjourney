@@ -4,7 +4,7 @@ import {
   listCatalogItems, bulkUploadCatalogItems, createConnectedContentSource, listConnectedContentSources,
   getConnectedContentSource, updateConnectedContentSource, enableConnectedContentSource, deleteConnectedContentSource,
 } from "../api";
-import { EmptyState, JsonField, useToast } from "../components";
+import { ConfirmDialog, EmptyState, JsonField, useToast } from "../components";
 
 function errorMessage(error: unknown) { return error instanceof Error ? error.message : "Request failed"; }
 
@@ -19,6 +19,7 @@ export default function Catalogs({ apiKey, baseURL }: { apiKey: string; baseURL:
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<{ kind: "catalog" | "source"; id: string } | null>(null);
 
   async function refresh() {
     try {
@@ -130,7 +131,6 @@ export default function Catalogs({ apiKey, baseURL }: { apiKey: string; baseURL:
   }
 
   async function deleteSource(id: string) {
-    if (!confirm("Delete this source?")) return;
     if (saving) return;
     setSaving(true);
     try {
@@ -145,9 +145,23 @@ export default function Catalogs({ apiKey, baseURL }: { apiKey: string; baseURL:
     }
   }
 
+  async function deleteCatalogAfterConfirm(id: string) {
+    try { await deleteCatalog(baseURL, apiKey, id); setCatalog(null); setItems([]); await refresh(); }
+    catch (e) { setError(errorMessage(e)); }
+  }
+
+  async function confirmDeletion() {
+    if (!confirmDelete) return;
+    const pending = confirmDelete;
+    setConfirmDelete(null);
+    if (pending.kind === "source") await deleteSource(pending.id);
+    else await deleteCatalogAfterConfirm(pending.id);
+  }
+
   const tabs = [["catalogs", "Catalogs"], ["sources", "Connected Content"]] as const;
 
   return <section className="stack acquisition-view">
+    <ConfirmDialog isOpen={confirmDelete !== null} onClose={() => setConfirmDelete(null)} onConfirm={confirmDeletion} title={confirmDelete?.kind === "source" ? "Delete this source?" : "Delete this catalog?"} message="This action cannot be undone." confirmText="Delete" isDangerous={true} />
     <article className="card">
       <div className="section-title">
         <div>
@@ -236,7 +250,7 @@ export default function Catalogs({ apiKey, baseURL }: { apiKey: string; baseURL:
               </label>
               <div className="form-actions">
                 <button type="submit">Save catalog</button>
-                {catalog.id && <button type="button" className="danger" onClick={() => { if (confirm("Delete this catalog?")) void deleteCatalog(baseURL, apiKey, catalog.id).then(() => { setCatalog(null); setItems([]); void refresh(); }).catch(e => setError(errorMessage(e))); }}>Delete</button>}
+                {catalog.id && <button type="button" className="danger" onClick={() => setConfirmDelete({ kind: "catalog", id: catalog.id })}>Delete</button>}
               </div>
 
               {catalog.id && (
@@ -380,7 +394,7 @@ export default function Catalogs({ apiKey, baseURL }: { apiKey: string; baseURL:
                     </button>
                   )}
                   {source.id && (
-                    <button type="button" className="danger" onClick={() => void deleteSource(source.id)}>
+                    <button type="button" className="danger" onClick={() => setConfirmDelete({ kind: "source", id: source.id })}>
                       Delete
                     </button>
                   )}

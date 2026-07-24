@@ -156,11 +156,12 @@ public edges.)
    — done: U2 fixed with actionable CTAs across App and covered sections, including the cited templates, suppressions, sender identities, device tokens, campaigns, Catalogs, Messaging, and Journey empties; `App > renders an empty suppressions response without crashing` asserts the reachable CTA role, and web typecheck/build plus all 325 tests pass.
 
 ### Milestone 24.4 — Safety & navigation
-1. [ ] **Standardize destructive confirms (U3).** Replace native `confirm()` (`Catalogs.tsx:114,215`,
+1. [x] **Standardize destructive confirms (U3).** Replace native `confirm()` (`Catalogs.tsx:114,215`,
    `Analytics.tsx:207`, `App.tsx:1237`) with `ConfirmDialog`, and ADD a confirm to identity unmerge
    (`Connectors.tsx:21`, an irreversible op fired straight from submit today).
    *Done when:* no `window.confirm` remains; every destructive action (incl. unmerge) routes through
    `ConfirmDialog`; tests cover confirm + cancel for unmerge and one former-native case.
+   — done: U3 fixed by routing Catalogs, Analytics, App suppressions, and identity unmerge through ConfirmDialog; `Connectors > requires confirmation before unmerging identities and supports cancel` verifies cancel/confirm, and `Analytics > deletes a saved report` verifies the former-native case; web typecheck/build and all 326 tests pass.
 2. [ ] **Single-source nav config + rebalance (U4).** Extract the `View` union + `viewTitles` + `navGroups`
    + palette items into ONE config module consumed by `App.tsx`/`Sidebar.tsx`/`CommandPalette.tsx`/
    `AppShell.tsx`; rebalance the 11-item "Messaging" group into sensible groups (e.g. Messaging vs

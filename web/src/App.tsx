@@ -1222,6 +1222,7 @@ function Suppressions({ apiKey }: { apiKey: string }) {
   const [endpoint, setEndpoint] = useState("");
   const [reason, setReason] = useState("admin");
   const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<Suppression | null>(null);
 
   async function load() {
     setLoading(true); setError("");
@@ -1252,7 +1253,6 @@ function Suppressions({ apiKey }: { apiKey: string }) {
   }
 
   async function handleDelete(item: Suppression) {
-    if (!confirm(`Are you sure you want to remove suppression for ${item.endpoint}?`)) return;
     setError("");
     try {
       await deleteSuppression(apiBase, apiKey, item.channel, item.endpoint);
@@ -1265,6 +1265,7 @@ function Suppressions({ apiKey }: { apiKey: string }) {
 
   return (
     <section className="card">
+      <ConfirmDialog isOpen={confirmDelete !== null} onClose={() => setConfirmDelete(null)} onConfirm={() => handleDelete(confirmDelete!)} title="Remove suppression?" message={confirmDelete ? `Remove suppression for ${confirmDelete.endpoint}?` : "This action cannot be undone."} confirmText="Remove" isDangerous={true} />
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2rem" }}>
         <div>
           <h2>Add suppression</h2>
@@ -1301,7 +1302,7 @@ function Suppressions({ apiKey }: { apiKey: string }) {
                   <strong>{item.endpoint}</strong> <span style={{ color: "var(--muted)", fontSize: "0.8rem" }}>({item.channel} • {item.reason})</span>
                   <div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>Suppressed {new Date(item.created_at).toLocaleString()}</div>
                 </div>
-                <button className="secondary danger small" onClick={() => void handleDelete(item)}>Remove</button>
+                <button className="secondary danger small" onClick={() => setConfirmDelete(item)}>Remove</button>
               </li>
             ))}
           </ul>

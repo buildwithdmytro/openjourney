@@ -1,11 +1,18 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Connectors from "./Connectors";
 
 const pipeline = { id: "pipe-1", tenant_id: "t", workspace_id: "w", app_id: "a", connector_extension_id: "ext-1", name: "Warehouse source", direction: "source", status: "draft", schedule_enabled: false, created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" };
 const run = { id: "run-1", pipeline_id: "pipe-1", job_type: "warehouse.sync", status: "succeeded", rows_in: 4, rows_out: 4, rows_rejected: 0, started_at: "2026-01-01T01:00:00Z" };
 
 describe("Connectors", () => {
+  beforeEach(() => {
+    const modalRoot = document.createElement("div");
+    modalRoot.id = "modal-root";
+    document.body.appendChild(modalRoot);
+  });
+  afterEach(() => cleanup());
+
   it("lists, creates, and shows governed pipeline runs", async () => {
     const fetchMock = vi.fn((input: RequestInfo, init?: RequestInit) => {
       const url = String(input);
@@ -29,5 +36,26 @@ describe("Connectors", () => {
     fireEvent.change(screen.getByLabelText("Value"), { target: { value: "person@example.com" } });
     fireEvent.click(screen.getByRole("button", { name: "Emit identify" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/v1/identity/identify", expect.objectContaining({ method: "POST" })));
+  });
+
+  it("requires confirmation before unmerging identities and supports cancel", async () => {
+    const fetchMock = vi.fn((input: RequestInfo, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/v1/connectors/pipelines")) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ pipelines: [] }) });
+      if (url.includes("/identity/unmerge")) return Promise.resolve({ ok: true, status: 202, json: () => Promise.resolve({}) });
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<Connectors apiKey="key" baseURL="/api" />);
+
+    fireEvent.change((await screen.findAllByLabelText("Merge ID"))[0], { target: { value: "merge-1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Emit unmerge" }));
+    expect(screen.getByRole("dialog")).toHaveTextContent("Unmerge identities?");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(fetchMock).not.toHaveBeenCalledWith("/api/v1/identity/unmerge", expect.anything());
+
+    fireEvent.click(screen.getByRole("button", { name: "Emit unmerge" }));
+    fireEvent.click(screen.getByRole("button", { name: "Unmerge" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/v1/identity/unmerge", expect.objectContaining({ method: "POST" })));
   });
 });

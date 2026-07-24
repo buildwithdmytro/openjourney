@@ -119,6 +119,9 @@ function createFetchMock(overrides?: Record<string, (url: string, method: string
 
 beforeEach(() => {
   cleanup();
+  const modalRoot = document.createElement("div");
+  modalRoot.id = "modal-root";
+  document.body.appendChild(modalRoot);
   vi.stubGlobal("fetch", createFetchMock());
   vi.stubGlobal("prompt", vi.fn(() => "New Report"));
   vi.stubGlobal("confirm", vi.fn(() => true));
@@ -225,6 +228,9 @@ describe("Analytics", () => {
 
     const deleteButton = screen.getByRole("button", { name: "Delete" });
     fireEvent.click(deleteButton);
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveTextContent("Delete this saved report?");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(

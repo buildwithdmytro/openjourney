@@ -21,7 +21,7 @@ import {
   createSavedReport,
   deleteSavedReport,
 } from "../api";
-import { Card, EmptyState, Field, LineChart, BarChart, Spinner, Select } from "../components";
+import { Card, ConfirmDialog, EmptyState, Field, LineChart, BarChart, Spinner, Select } from "../components";
 import { message } from "../errors";
 
 type ReportType = "campaign" | "journey";
@@ -45,6 +45,7 @@ export default function Analytics({ apiKey, baseURL }: { apiKey: string; baseURL
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [subjectsLoaded, setSubjectsLoaded] = useState(false);
+  const [confirmDeleteReport, setConfirmDeleteReport] = useState<string | null>(null);
 
   const subjects = useMemo(
     () => (type === "campaign" ? campaigns : journeys),
@@ -204,7 +205,6 @@ export default function Analytics({ apiKey, baseURL }: { apiKey: string; baseURL
   }
 
   async function handleDeleteReport(reportID: string) {
-    if (!confirm("Delete this saved report?")) return;
     try {
       await deleteSavedReport(baseURL, apiKey, reportID);
       const reports = await listSavedReports(baseURL, apiKey);
@@ -235,6 +235,7 @@ export default function Analytics({ apiKey, baseURL }: { apiKey: string; baseURL
 
   return (
     <div>
+      <ConfirmDialog isOpen={confirmDeleteReport !== null} onClose={() => setConfirmDeleteReport(null)} onConfirm={() => handleDeleteReport(confirmDeleteReport!)} title="Delete this saved report?" message="This saved report will be permanently deleted." confirmText="Delete" isDangerous={true} />
       <h1>Analytics</h1>
       <p className="page-description">View real-time analytics across your campaigns and journeys.</p>
 
@@ -329,7 +330,7 @@ export default function Analytics({ apiKey, baseURL }: { apiKey: string; baseURL
             {savedReports.map((report) => (
               <div key={report.id} className="saved-report-item">
                 <span>{report.name}</span>
-                <button type="button" onClick={() => void handleDeleteReport(report.id)}>
+                <button type="button" onClick={() => setConfirmDeleteReport(report.id)}>
                   Delete
                 </button>
               </div>
