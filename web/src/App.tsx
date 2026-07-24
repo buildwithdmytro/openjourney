@@ -20,7 +20,7 @@ import { oidcConfigured, restoreOIDCSession, signIn, signOut } from "./auth";
 import { staticColors, defaultAccentColor, defaultBackgroundColor, emailComposerColors } from "./tokens";
 import { useTheme } from "./useTheme";
 import { useForm } from "./useForm";
-import { ErrorState, Skeleton, Spinner, ToastProvider, useToast, ConfirmDialog, Field, Input, Select, Textarea, JsonField, AppShell, ScopeSelector, EmptyState } from "./components";
+import { Card, DataTable, ErrorState, Skeleton, Spinner, ToastProvider, useToast, ConfirmDialog, Field, Input, Select, Textarea, JsonField, AppShell, ScopeSelector, EmptyState } from "./components";
 import { message } from "./errors";
 import { viewTitles, View } from "./navigation";
 import AuditViewer from "./sections/AuditViewer";
@@ -345,22 +345,22 @@ function Profiles({ apiKey }: { apiKey: string }) {
       <ErrorMessage value={error} />
     </section>
     {profile && <section className="profile-grid">
-      <article className="card"><div className="eyebrow">Identity</div>
+      <Card variant="article"><div className="eyebrow">Identity</div>
         <h2>{profile.external_id || profile.anonymous_id}</h2>
         <dl><div><dt>Profile ID</dt><dd>{profile.id}</dd></div>
           <div><dt>Version</dt><dd>{profile.version}</dd></div>
           <div><dt>Updated</dt><dd>{new Date(profile.updated_at).toLocaleString()}</dd></div></dl>
-      </article>
-      <article className="card"><div className="eyebrow">Attributes</div>
-        <pre>{JSON.stringify(profile.attributes, null, 2)}</pre></article>
-      <article className="card wide"><div className="eyebrow">Consent</div>
+      </Card>
+      <Card variant="article"><div className="eyebrow">Attributes</div>
+        <pre>{JSON.stringify(profile.attributes, null, 2)}</pre></Card>
+      <Card variant="article" className="wide"><div className="eyebrow">Consent</div>
         {consents.length === 0 ? <EmptyState title="No consent records" icon="info" cta={{ label: "Search another profile", onClick: () => document.querySelector<HTMLInputElement>('input[placeholder="customer-123"]')?.focus() }} /> :
           <table><thead><tr><th>Channel</th><th>Topic</th><th>State</th><th>Changed</th></tr></thead>
             <tbody>{consents.map((consent) => <tr key={`${consent.channel}:${consent.topic}`}>
               <td>{consent.channel}</td><td>{consent.topic}</td>
               <td><span className={`pill ${consent.state}`}>{consent.state}</span></td>
               <td>{new Date(consent.occurred_at).toLocaleString()}</td></tr>)}</tbody></table>}
-      </article>
+      </Card>
     </section>}
   </>;
 }
@@ -389,7 +389,7 @@ function Schemas({ apiKey }: { apiKey: string }) {
     } catch (cause) { setError(message(cause)); }
   }
   return <section className="stack">
-    <article className="card"><form onSubmit={submit} className="schema-form">
+    <Card variant="article"><form onSubmit={submit} className="schema-form">
       <label>Event type<input value={eventType} onChange={(e) => setEventType(e.target.value)}
         placeholder="product.viewed" required /></label>
       <label>Version<input type="number" min="1" value={version}
@@ -397,10 +397,10 @@ function Schemas({ apiKey }: { apiKey: string }) {
       <label className="full">JSON Schema</label><JsonField value={definition}
         onChange={(e) => setDefinition((e.target as HTMLTextAreaElement).value)} onBlur={() => {}} rows={7} error={definitionError} />
       <button disabled={!apiKey}>Register schema</button>
-    </form><ErrorMessage value={error} /></article>
-    <article className="card"><div className="eyebrow">Registered schemas</div>
-      <ResourceTable rows={items.map((item) => [item.event_type, `v${item.version}`, item.compatibility, item.status])}
-        headers={["Event", "Version", "Compatibility", "Status"]} /></article>
+    </form><ErrorMessage value={error} /></Card>
+    <Card variant="article"><div className="eyebrow">Registered schemas</div>
+      <DataTable rows={items.map((item) => [item.event_type, `v${item.version}`, item.compatibility, item.status])}
+        headers={["Event", "Version", "Compatibility", "Status"]} /></Card>
   </section>;
 }
 
@@ -442,7 +442,7 @@ function APIKeys({ apiKey }: { apiKey: string }) {
       confirmText="Revoke"
       isDangerous={true}
     />
-    <article className="card"><form onSubmit={submit} className="single-action">
+    <Card variant="article"><form onSubmit={submit} className="single-action">
       <label>Name<input value={name} onChange={(e) => setName(e.target.value)}
         placeholder="Website ingestion" required /></label>
       <label>Scopes<ScopeSelector selected={scopes} onChange={setScopes} availableScopes={AVAILABLE_SCOPES} /></label>
@@ -450,13 +450,13 @@ function APIKeys({ apiKey }: { apiKey: string }) {
       <button disabled={!apiKey}>Create scoped key</button>
     </form>
       {secret && <div className="secret"><strong>Copy this secret now.</strong><code>{secret}</code></div>}
-      <ErrorMessage value={error} /></article>
-    <article className="card"><div className="eyebrow">Credentials</div>
+      <ErrorMessage value={error} /></Card>
+    <Card variant="article"><div className="eyebrow">Credentials</div>
       {items.map((item) => <div className="key-row" key={item.id}>
         <div><strong>{item.name}</strong><small>{item.scopes.join(", ")}</small>
           <small>Created {formatDate(item.created_at)} · Expires {formatDate(item.expires_at) || "never"} · Last used {formatDate(item.last_used_at) || "never"}</small></div>
         <button className="danger" disabled={Boolean(item.revoked_at)} onClick={() => setConfirmRevokeId(item.id)}>
-          {item.revoked_at ? "Revoked" : "Revoke"}</button></div>)}</article>
+          {item.revoked_at ? "Revoked" : "Revoke"}</button></div>)}</Card>
   </section>;
 }
 
@@ -481,21 +481,21 @@ function Privacy({ apiKey }: { apiKey: string }) {
     catch (cause) { setError(message(cause)); }
   }
   return <section className="stack">
-    <article className="card"><form onSubmit={submit}>
+    <Card variant="article"><form onSubmit={submit}>
       <label>External ID<input value={externalID} onChange={(e) => setExternalID(e.target.value)}
         placeholder="customer-123" required /></label>
       <label>Request type<select value={requestType} onChange={(e) => setRequestType(e.target.value as "export" | "delete")}>
         <option value="export">Export</option><option value="delete">Delete</option></select></label>
       <button disabled={!apiKey}>Submit privacy request</button>
-    </form></article>
-    <article className="card"><form onSubmit={lookup} className="single-action">
+    </form></Card>
+    <Card variant="article"><form onSubmit={lookup} className="single-action">
       <label>Request ID<input value={requestID} onChange={(e) => setRequestID(e.target.value)}
         placeholder="privacy request UUID" required /></label>
       <button disabled={!apiKey}>Load request</button>
     </form><ErrorMessage value={error} />
       {item && <div className="details"><strong>{item.request_type} · {item.status}</strong>
         <span>{item.external_id}</span>{item.artifact_key && <code>{item.artifact_key}</code>}
-        {item.error && <ErrorState description={item.error} role="alert" />}</div>}</article>
+        {item.error && <ErrorState description={item.error} role="alert" />}</div>}</Card>
   </section>;
 }
 
@@ -539,12 +539,12 @@ function Access({ apiKey }: { apiKey: string }) {
     } catch (cause) { setError(message(cause)); }
   }
   return <section className="stack">
-    <article className="card"><form onSubmit={addRole} className="schema-form">
+    <Card variant="article"><form onSubmit={addRole} className="schema-form">
       <label>Role name<input value={roleName} onChange={(e) => setRoleName(e.target.value)} required /></label>
       <label>Permissions<ScopeSelector selected={permissions} onChange={setPermissions} availableScopes={AVAILABLE_SCOPES} /></label>
       <button disabled={!apiKey}>Create role</button>
-    </form></article>
-    <article className="card"><form onSubmit={addUser} className="schema-form">
+    </form></Card>
+    <Card variant="article"><form onSubmit={addUser} className="schema-form">
       <label>OIDC issuer<input value={issuer} onChange={(e) => setIssuer(e.target.value)}
         placeholder="leave blank for local user" /></label>
       <label>OIDC subject<input value={subject} onChange={(e) => setSubject(e.target.value)}
@@ -555,13 +555,13 @@ function Access({ apiKey }: { apiKey: string }) {
       <label>Role IDs<input value={selectedRoles} onChange={(e) => setSelectedRoles(e.target.value)}
         placeholder={roles[0]?.id || "comma-separated role ids"} required /></label>
       <button disabled={!apiKey}>Provision user</button>
-    </form><ErrorMessage value={error} /></article>
-    <article className="card"><div className="eyebrow">Roles</div>
-      <ResourceTable headers={["Name", "Permissions", "System"]} rows={roles.map((role) =>
-        [role.name, role.permissions.join(", "), role.system ? "yes" : "no"])} /></article>
-    <article className="card"><div className="eyebrow">Users</div>
-      <ResourceTable headers={["Email", "Type", "Subject", "Roles"]} rows={users.map((user) =>
-        [user.email || "—", user.local ? "local" : "OIDC", user.oidc_subject, user.role_ids.join(", ")])} /></article>
+    </form><ErrorMessage value={error} /></Card>
+    <Card variant="article"><div className="eyebrow">Roles</div>
+      <DataTable headers={["Name", "Permissions", "System"]} rows={roles.map((role) =>
+        [role.name, role.permissions.join(", "), role.system ? "yes" : "no"])} /></Card>
+    <Card variant="article"><div className="eyebrow">Users</div>
+      <DataTable headers={["Email", "Type", "Subject", "Roles"]} rows={users.map((user) =>
+        [user.email || "—", user.local ? "local" : "OIDC", user.oidc_subject, user.role_ids.join(", ")])} /></Card>
   </section>;
 }
 
@@ -605,11 +605,11 @@ function Operations({ apiKey }: { apiKey: string }) {
       confirmText="Discard"
       isDangerous={true}
     />
-    <article className="card"><div className="section-title"><div><div className="eyebrow">Durable work</div>
+    <Card variant="article"><div className="section-title"><div><div className="eyebrow">Durable work</div>
       <h2>Queue status</h2></div><button onClick={() => void refresh()}>Refresh</button></div>
-      <ResourceTable rows={queues.map((q) => [q.queue, q.pending, q.processing, q.dead])}
-        headers={["Queue", "Pending", "Processing", "Dead"]} /></article>
-    <article className="card"><div className="section-title"><div><div className="eyebrow">Dead letters</div>
+      <DataTable rows={queues.map((q) => [q.queue, q.pending, q.processing, q.dead])}
+        headers={["Queue", "Pending", "Processing", "Dead"]} /></Card>
+    <Card variant="article"><div className="section-title"><div><div className="eyebrow">Dead letters</div>
       <h2>DLQ actions</h2></div><label className="inline">Queue<select value={dlqQueue} onChange={(e) => setDLQQueue(e.target.value)}>
         <option value="">All</option><option value="projection">Projection</option>
         <option value="outbox">Outbox</option><option value="operations">Operations</option>
@@ -618,14 +618,14 @@ function Operations({ apiKey }: { apiKey: string }) {
         <div className="key-row" key={`${item.queue}:${item.id}`}><div><strong>{item.queue} · {item.kind}</strong>
           <small>{item.subject_id || item.id} · attempts {item.attempts} · {item.last_error || "no error"}</small></div>
           <div className="row-actions"><button onClick={() => void dlq("retry", item)}>Retry</button>
-            <button className="danger" onClick={() => setConfirmDiscardItem(item)}>Discard</button></div></div>)}</article>
-    <article className="card"><div className="section-title"><div><div className="eyebrow">Determinism</div>
+            <button className="danger" onClick={() => setConfirmDiscardItem(item)}>Discard</button></div></div>)}</Card>
+    <Card variant="article"><div className="section-title"><div><div className="eyebrow">Determinism</div>
       <h2>Projection replay</h2></div><button onClick={() => void replay()}>Verify replay</button></div>
       {report && <div className={`replay ${report.match ? "match" : "drift"}`}>
         <strong>{report.match ? "Projection matches" : "Projection drift detected"}</strong>
         <span>{report.event_count} events · {report.profile_count} profiles</span>
         <code>{report.replay_checksum}</code></div>}
-      <ErrorMessage value={error} /></article>
+      <ErrorMessage value={error} /></Card>
   </section>;
 }
 
@@ -755,7 +755,7 @@ function Segments({ apiKey }: { apiKey: string }) {
 
   return (
     <section className="stack">
-      <article className="card">
+      <Card variant="article">
         <h2>{editingSegment ? "Edit segment" : "Create segment"}</h2>
         <form onSubmit={editingSegment ? handleUpdate : handleCreate} className="schema-form">
           <Field id="segment-name" label="Name" error={form.getError("name")} required>
@@ -790,10 +790,10 @@ function Segments({ apiKey }: { apiKey: string }) {
           </div>
         </form>
         <ErrorMessage value={error} />
-      </article>
+      </Card>
 
       {editingSegment && (
-        <article className="card">
+        <Card variant="article">
           <h2>Segment Membership</h2>
           <form onSubmit={handleAddMember} className="schema-form">
             <label>Profile ID
@@ -807,10 +807,10 @@ function Segments({ apiKey }: { apiKey: string }) {
             </label>
             <button disabled={!apiKey}>Set Member</button>
           </form>
-        </article>
+        </Card>
       )}
 
-      <article className="card">
+      <Card variant="article">
         <div className="section-title">
           <div>
             <div className="eyebrow">List</div>
@@ -849,16 +849,9 @@ function Segments({ apiKey }: { apiKey: string }) {
             )}
           </tbody>
         </table>
-      </article>
+      </Card>
     </section>
   );
-}
-
-function ResourceTable({ headers, rows }: { headers: string[]; rows: (string | number)[][] }) {
-  if (rows.length === 0) return <EmptyState title="No records" icon="search" cta={{ label: "Refresh", onClick: () => undefined }} />;
-  return <table><thead><tr>{headers.map((header) => <th key={header}>{header}</th>)}</tr></thead>
-    <tbody>{rows.map((row, index) => <tr key={index}>{row.map((value, cell) =>
-      <td key={cell}>{value}</td>)}</tr>)}</tbody></table>;
 }
 
 function ErrorMessage({ value }: { value: string }) {
@@ -1740,7 +1733,7 @@ export function Campaigns({ apiKey }: { apiKey: string }) {
   return (
     <section className="stack">
       <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: "2rem" }}>
-        <article className="card" style={{ height: "fit-content" }}>
+        <Card variant="article" className="campaign-editor" style={{ height: "fit-content" }}>
           <h2>{editingCampaign ? "Edit Campaign" : "Create Campaign"}</h2>
           <form onSubmit={editingCampaign ? handleUpdate : handleCreate} className="schema-form" style={{ gridTemplateColumns: "1fr" }}>
             <Field id="campaign-name" label="Name" error={form.getError("name")} required>
@@ -1786,9 +1779,9 @@ export function Campaigns({ apiKey }: { apiKey: string }) {
             </div>
           </form>
           <ErrorMessage value={error} />
-        </article>
+        </Card>
 
-        <article className="card">
+        <Card variant="article">
           <h2>Campaigns ({campaigns.length})</h2>
           {loading && <Spinner label="Loading campaigns…" />}
           {!loading && campaigns.length === 0 && <EmptyState title="No campaigns found" icon="plus" cta={{ label: "Create campaign", onClick: resetForm }} />}
@@ -1837,7 +1830,7 @@ export function Campaigns({ apiKey }: { apiKey: string }) {
               </table>
             </div>
           )}
-        </article>
+        </Card>
       </div>
     </section>
   );

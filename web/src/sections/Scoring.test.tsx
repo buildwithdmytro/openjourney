@@ -25,5 +25,6 @@ describe("Scoring", () => {
     fireEvent.click(screen.getByRole("button", { name: "Inspect scores" }));
     expect(await screen.findByText("purchase_propensity")).toBeInTheDocument();
     expect(screen.getByText("0.8")).toBeInTheDocument();
+    expect(screen.getAllByRole("table").every(table => table.classList.contains("data-table"))).toBe(true);
   });
 });

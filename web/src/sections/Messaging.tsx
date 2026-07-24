@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { InAppMessage, listMessages, createMessage, getProfileInbox, listTemplates, Template } from "../api";
-import { EmptyState, ErrorState, useToast } from "../components";
+import { Card, DataTable, EmptyState, ErrorState, useToast } from "../components";
 
 const message = (e: unknown) => e instanceof Error ? e.message : "Request failed";
 const blank = (): Partial<InAppMessage> => ({
@@ -70,47 +70,30 @@ export default function Messaging({ apiKey, baseURL }: { apiKey: string; baseURL
 
   return (
     <section className="stack messaging-view">
-      <article className="card">
+      <Card variant="article">
         <div className="eyebrow">In-app messaging</div>
         <h2>Messages and content cards</h2>
         <p className="muted">Create and manage in-app messages, content cards, and web push campaigns.</p>
         {error && <ErrorState description={error} role="alert" />}
         {notice && <p className="success" role="status">{notice}</p>}
-      </article>
+      </Card>
 
       <div className="acquisition-grid">
-        <article className="card">
+        <Card variant="article">
           <div className="section-title">
             <h2>Messages</h2>
             <button onClick={() => { setDraft(blank()); setSelectedTemplate(""); }}>New message</button>
           </div>
           {messages.length ? (
-            <table>
-              <thead>
-                <tr>
-                  <th>Type</th>
-                  <th>Status</th>
-                  <th>Rank</th>
-                  <th>Created</th>
-                </tr>
-              </thead>
-              <tbody>
-                {messages.map(msg => (
-                  <tr key={msg.id}>
-                    <td>{msg.message_type}</td>
-                    <td><span className={`pill ${msg.status}`}>{msg.status}</span></td>
-                    <td>{msg.rank}</td>
-                    <td>{new Date(msg.created_at).toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <DataTable headers={["Type", "Status", "Rank", "Created"]} rows={messages.map(msg => [
+              msg.message_type, <span className={`pill ${msg.status}`}>{msg.status}</span>, msg.rank, new Date(msg.created_at).toLocaleString(),
+            ])} />
           ) : (
             <EmptyState title="No messages yet" description="Create a message to get started" icon="plus" cta={{ label: "New message", onClick: () => { setDraft(blank()); setSelectedTemplate(""); } }} />
           )}
-        </article>
+        </Card>
 
-        <article className="card">
+        <Card variant="article">
           {draft.message_type ? (
             <>
               <div className="section-title">
@@ -155,10 +138,10 @@ export default function Messaging({ apiKey, baseURL }: { apiKey: string; baseURL
           ) : (
             <EmptyState title="No message selected" description="Choose a message type or select a template to begin" icon="search" cta={{ label: "New message", onClick: () => { setDraft(blank()); setSelectedTemplate(""); } }} />
           )}
-        </article>
+        </Card>
       </div>
 
-      <article className="card">
+      <Card variant="article">
         <div className="section-title">
           <h2>Profile inbox</h2>
         </div>
@@ -169,31 +152,10 @@ export default function Messaging({ apiKey, baseURL }: { apiKey: string; baseURL
           </label>
           <button>Load inbox</button>
         </form>
-        {profileInbox.length > 0 && (
-          <table>
-            <thead>
-              <tr>
-                <th>Type</th>
-                <th>Status</th>
-                <th>Displayed</th>
-                <th>Clicked</th>
-                <th>Dismissed</th>
-              </tr>
-            </thead>
-            <tbody>
-              {profileInbox.map(msg => (
-                <tr key={msg.id}>
-                  <td>{msg.message_type}</td>
-                  <td><span className={`pill ${msg.status}`}>{msg.status}</span></td>
-                  <td>{msg.displayed_at ? new Date(msg.displayed_at).toLocaleString() : "—"}</td>
-                  <td>{msg.clicked_at ? new Date(msg.clicked_at).toLocaleString() : "—"}</td>
-                  <td>{msg.dismissed_at ? new Date(msg.dismissed_at).toLocaleString() : "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </article>
+        {profileInbox.length > 0 && <DataTable headers={["Type", "Status", "Displayed", "Clicked", "Dismissed"]} rows={profileInbox.map(msg => [
+          msg.message_type, <span className={`pill ${msg.status}`}>{msg.status}</span>, msg.displayed_at ? new Date(msg.displayed_at).toLocaleString() : "—", msg.clicked_at ? new Date(msg.clicked_at).toLocaleString() : "—", msg.dismissed_at ? new Date(msg.dismissed_at).toLocaleString() : "—",
+        ])} />}
+      </Card>
     </section>
   );
 }

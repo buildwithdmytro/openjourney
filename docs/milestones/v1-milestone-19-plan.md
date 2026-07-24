@@ -194,12 +194,13 @@ public edges.)
    *Done when:* no hand-rolled error/loading/`ui-crash` markup remains in the covered sections; loading
    uses `Spinner`/`Skeleton`; tests green.
    — done: X2/X3 fixed across Acquisition, Catalogs, Experiments, Messaging, Extensions, FeatureFlags, Journeys, Scoring, Overview, Analytics, and App; covered-file grep is clean, and `Overview > handles fetch error` verifies the ErrorState alert path; web typecheck, build, and all 331 tests pass.
-3. [ ] **`Card`/`DataTable` adoption for the least-migrated sections (X3, X5).** Migrate Acquisition,
+3. [x] **`Card`/`DataTable` adoption for the least-migrated sections (X3, X5).** Migrate Acquisition,
    Catalogs, Scoring, Experiments, Messaging, Extensions, Connectors to `Card` (from raw
    `<article className="card">`) and `DataTable` (from raw `<table>`/legacy `ResourceList`); replace the
    legacy `ResourceTable` in `App.tsx` with `DataTable`.
    *Done when:* the covered sections use `Card`/`DataTable`; no legacy `ResourceTable`/`ResourceList`
    remains; no raw `<table>` in the covered sections; visual parity; tests green.
+   — done: X3/X5 fixed by migrating the seven cited sections to `Card`/`DataTable`, replacing the App `ResourceTable`, and removing `ResourceList`; `Scoring > creates a versioned model and inspects profile scores` verifies rendered tables use `data-table`; web typecheck, build, and all 331 tests pass.
 4. [ ] **Field-based forms + inline validation (U7).** Migrate the raw-form sections (Acquisition,
    Catalogs, Scoring, Experiments, Messaging, Extensions) to `Field`-wrapped inputs and adopt `useForm`
    inline validation + disabled-until-valid on 2–3 representative forms (drop the imperative

@@ -4,7 +4,7 @@ import {
   listCatalogItems, bulkUploadCatalogItems, createConnectedContentSource, listConnectedContentSources,
   getConnectedContentSource, updateConnectedContentSource, enableConnectedContentSource, deleteConnectedContentSource,
 } from "../api";
-import { ConfirmDialog, EmptyState, ErrorState, JsonField, useToast } from "../components";
+import { Card, DataTable, ConfirmDialog, EmptyState, ErrorState, JsonField, useToast } from "../components";
 
 function errorMessage(error: unknown) { return error instanceof Error ? error.message : "Request failed"; }
 
@@ -162,7 +162,7 @@ export default function Catalogs({ apiKey, baseURL }: { apiKey: string; baseURL:
 
   return <section className="stack acquisition-view">
     <ConfirmDialog isOpen={confirmDelete !== null} onClose={() => setConfirmDelete(null)} onConfirm={confirmDeletion} title={confirmDelete?.kind === "source" ? "Delete this source?" : "Delete this catalog?"} message="This action cannot be undone." confirmText="Delete" isDangerous={true} />
-    <article className="card">
+    <Card variant="article">
       <div className="section-title">
         <div>
           <div className="eyebrow">Reference data</div>
@@ -179,11 +179,11 @@ export default function Catalogs({ apiKey, baseURL }: { apiKey: string; baseURL:
       <p className="muted">Catalogs provide reference data for personalization; connected-content sources are allowlisted, authed external data fetchers.</p>
       {error && <ErrorState description={error} role="alert" />}
       {notice && <p className="success" role="status">{notice}</p>}
-    </article>
+    </Card>
 
     {tab === "catalogs" ? (
       <div className="acquisition-grid">
-        <article className="card">
+        <Card variant="article">
           <div className="section-title">
             <h2>Catalog registry</h2>
             <button onClick={() => setCatalog({ id: "", key: "", name: "New catalog", description: "", item_key_field: "id", status: "active", item_count: 0, tenant_id: "", workspace_id: "", app_id: "", created_at: "", updated_at: "" } as Catalog)}>
@@ -198,9 +198,9 @@ export default function Catalogs({ apiKey, baseURL }: { apiKey: string; baseURL:
             </button>
           ))}
           {catalogs.length === 0 && <EmptyState title="No catalogs yet" description="Create a catalog to store reference data" icon="plus" cta={{ label: "New catalog", onClick: () => setCatalog({ id: "", key: "", name: "New catalog", description: "", item_key_field: "id", status: "active", item_count: 0, tenant_id: "", workspace_id: "", app_id: "", created_at: "", updated_at: "" } as Catalog) }} />}
-        </article>
+        </Card>
 
-        <article className="card">
+        <Card variant="article">
           {catalog ? (
             <form className="acquisition-form" onSubmit={saveCatalog}>
               <label>
@@ -269,22 +269,7 @@ export default function Catalogs({ apiKey, baseURL }: { apiKey: string; baseURL:
                   </label>
                   <div style={{ maxHeight: "400px", overflowY: "auto", border: "1px solid var(--color-border)", borderRadius: "6px" }}>
                     {items.length > 0 ? (
-                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
-                        <thead>
-                          <tr style={{ borderBottom: "1px solid var(--color-border)", backgroundColor: "var(--color-bg-secondary)" }}>
-                            <th style={{ padding: "8px", textAlign: "left" }}>Item key</th>
-                            <th style={{ padding: "8px", textAlign: "left" }}>Payload</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {items.map((item, idx) => (
-                            <tr key={idx} style={{ borderBottom: "1px solid var(--color-border)" }}>
-                              <td style={{ padding: "8px" }}><code>{item.item_key}</code></td>
-                              <td style={{ padding: "8px" }}><code style={{ fontSize: "11px", wordBreak: "break-all" }}>{JSON.stringify(item.payload).slice(0, 100)}...</code></td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                      <DataTable headers={["Item key", "Payload"]} rows={items.map(item => [<code>{item.item_key}</code>, <code>{JSON.stringify(item.payload).slice(0, 100)}...</code>])} />
                     ) : (
                       <EmptyState title="No items yet" description="Upload a CSV or JSON file to add items." icon="plus" cta={{ label: "Upload items", onClick: () => document.getElementById("catalog-items-file")?.click() }} />
                     )}
@@ -295,10 +280,10 @@ export default function Catalogs({ apiKey, baseURL }: { apiKey: string; baseURL:
           ) : (
             <p className="muted">Choose a catalog or create one to begin.</p>
           )}
-        </article>
+        </Card>
       </div>
     ) : (
-      <article className="card">
+      <Card variant="article">
         <div className="section-title">
           <h2>Connected content sources</h2>
           <button onClick={() => setSource({ id: "", name: "New source", allowed_host: "", auth_header_name: "", auth_secret_ref: "", default_ttl_seconds: 300, timeout_ms: 2000, enabled: false, status: "draft", tenant_id: "", workspace_id: "", created_at: "", updated_at: "" } as ConnectedContentSource)}>
@@ -405,7 +390,7 @@ export default function Catalogs({ apiKey, baseURL }: { apiKey: string; baseURL:
             )}
           </div>
         </div>
-      </article>
+      </Card>
     )}
   </section>;
 }

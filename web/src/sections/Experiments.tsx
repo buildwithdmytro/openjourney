@@ -18,7 +18,7 @@ import {
   proposeExperimentOptimization,
   OptimizationProposal,
 } from "../api";
-import { EmptyState, ErrorState, Spinner } from "../components";
+import { Card, DataTable, EmptyState, ErrorState, Spinner } from "../components";
 
 type JourneyNode = {
   id: string;
@@ -247,7 +247,7 @@ export default function Experiments({ apiKey, baseURL }: { apiKey: string; baseU
   }
 
   return <section className="experiments-layout">
-    <article className="card experiment-editor">
+    <Card variant="article" className="experiment-editor">
       <div className="section-title">
         <div><span className="eyebrow">Controlled test</span><h2>{editingID ? "Edit experiment" : "Create experiment"}</h2></div>
         {editingID && <button type="button" className="secondary" onClick={resetForm}>New</button>}
@@ -299,14 +299,14 @@ export default function Experiments({ apiKey, baseURL }: { apiKey: string; baseU
       </form>
       {error && <ErrorState description={error} role="alert" />}
       {success && <p className="replay" role="status">{success}</p>}
-    </article>
+    </Card>
 
-    <article className="card experiment-list">
+    <Card variant="article" className="experiment-list">
       <div className="section-title"><div><span className="eyebrow">Workspace</span><h2>Experiments ({items.length})</h2></div></div>
       {loading && <Spinner label="Loading experiments…" />}
-      {!loading && items.length === 0 ? <EmptyState title="No experiments yet" description="Create an experiment to test variations and optimize performance" icon="plus" cta={{ label: "New experiment", onClick: resetForm }} /> : <table><thead><tr><th>Name</th><th>Subject</th><th>Holdout</th><th>Status</th><th>Actions</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}>
-        <td><strong>{item.name}</strong>{item.description && <small>{item.description}</small>}</td><td>{item.subject_type}</td><td>{item.holdout_pct}%</td><td><span className={`pill ${item.status}`}>{item.status}</span></td><td><div className="report-row-actions"><button type="button" className="secondary" onClick={() => void edit(item)}>Edit</button><a className="report-link" href={`#reports?type=experiment&id=${encodeURIComponent(item.id)}`}>Report</a></div></td>
-      </tr>)}</tbody></table>}
+      {!loading && items.length === 0 ? <EmptyState title="No experiments yet" description="Create an experiment to test variations and optimize performance" icon="plus" cta={{ label: "New experiment", onClick: resetForm }} /> : <DataTable headers={["Name", "Subject", "Holdout", "Status", "Actions"]} rows={items.map(item => [
+        <><strong>{item.name}</strong>{item.description && <small>{item.description}</small>}</>, item.subject_type, `${item.holdout_pct}%`, <span className={`pill ${item.status}`}>{item.status}</span>, <div className="report-row-actions"><button type="button" className="secondary" onClick={() => void edit(item)}>Edit</button><a className="report-link" href={`#reports?type=experiment&id=${encodeURIComponent(item.id)}`}>Report</a></div>,
+      ])} />}
       <div className="optimization-panel">
         <div><span className="eyebrow">Governed optimization</span><h3>Proposals review</h3></div>
         <p className="field-help">Generate a report-gated recommendation first. Approval creates a new immutable version; live assignment, seed, and holdout are not changed automatically.</p>
@@ -322,6 +322,6 @@ export default function Experiments({ apiKey, baseURL }: { apiKey: string; baseU
           </div>;
         })}
       </div>
-    </article>
+    </Card>
   </section>;
 }
