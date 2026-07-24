@@ -159,11 +159,13 @@ redaction, insights grounding, principal non-spoofability.)
    `listSCIMUsers` and the group handlers incl. group→team mapping (`patchSCIMGroup`), using the fake store.
    *Done when:* each SCIM handler has a test asserting its behavior + tenant scoping + bearer gating;
    `go test ./internal/httpapi/...` green. — done: Added TestSCIMHandlersPropagateTenantAndMapGroupPatch covering all user/group handlers, tenant scoping, bearer gating, and patch mapping (F14).
-2. [ ] **Untested UI section tests (F14).** Co-located `*.test.tsx` for `FeatureFlags`, `Messaging`,
+2. [x] **Untested UI section tests (F14).** Co-located `*.test.tsx` for `FeatureFlags`, `Messaging`,
    `Extensions` (currently none) and a behavior test for `Catalogs` (currently smoke-only — cover tab
    switching + connected-content source create), on the vitest + `vi.fn()` fetch-stub pattern.
    *Done when:* `cd web && npm run typecheck && npm run build && npm test` green; each section has a
-   behavior test (not just static-label smoke).
+   behavior test (not just static-label smoke). — done: Added behavior tests for FeatureFlags, Messaging,
+   Extensions, and Catalogs connected-content creation; verified with FeatureFlags/Messaging/Extensions/
+   Catalogs tests and full web suite (F14).
 
 ### Milestone 23.6 — Hygiene
 1. [ ] **De-duplicate sentinels + guard the DROP (F15, F16).** Consolidate `ErrBlobStoreRequired` (×5),
