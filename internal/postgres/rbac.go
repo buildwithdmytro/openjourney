@@ -31,7 +31,7 @@ var allowedPermissions = map[string]struct{}{
 	"flags:read": {}, "flags:write": {},
 	"catalogs:read": {}, "catalogs:write": {},
 	"teams:read": {}, "teams:write": {},
-	"audit:read": {}, "privacy:read": {}, "privacy:approve": {}, "scim:manage": {},
+	"audit:read": {}, "privacy:read": {}, "privacy:approve": {}, "scim:manage": {}, "sso:manage": {},
 }
 
 func (s *Store) ListPermissions(ctx context.Context, p domain.Principal) ([]domain.Permission, error) {

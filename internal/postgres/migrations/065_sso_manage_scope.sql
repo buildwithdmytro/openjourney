@@ -1,0 +1,30 @@
+-- Migration 065: Add sso:manage permission to catalog and update api_keys DEFAULT scopes array.
+
+INSERT INTO permissions (key, resource, verb, description, system) VALUES
+('sso:manage', 'sso', 'manage', 'Manage SSO and SAML provider configurations', true)
+ON CONFLICT (key) DO NOTHING;
+
+ALTER TABLE api_keys ALTER COLUMN scopes SET DEFAULT ARRAY[
+    'events:write','profiles:read','schemas:read','schemas:write',
+    'api_keys:read','api_keys:write','privacy:write','operations:read','operations:write',
+    'users:read','users:write','roles:read','roles:write',
+    'segments:read','segments:write','templates:read','templates:write',
+    'campaigns:read','campaigns:write','suppressions:read','suppressions:write',
+    'journeys:read','journeys:write','journeys:publish',
+    'experiments:read','experiments:write','reports:read','reports:write',
+    'device_tokens:read','device_tokens:write',
+    'ai:read','ai:configure','ai:invoke','prompts:read','prompts:write',
+    'scoring:read','scoring:write','scoring:compute',
+    'forms:read','forms:write','forms:publish',
+    'pages:read','pages:write','pages:publish',
+    'assets:read','assets:write','links:read','links:write',
+    'companies:read','companies:write','stages:read','stages:write',
+    'imports:read','imports:write',
+    'extensions:read','extensions:write','extensions:install',
+    'connectors:read','connectors:write','connectors:run',
+    'messages:read','messages:write',
+    'flags:read','flags:write',
+    'catalogs:read','catalogs:write',
+    'teams:read','teams:write',
+    'audit:read','privacy:read','privacy:approve','scim:manage','sso:manage'
+];

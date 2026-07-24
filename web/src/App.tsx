@@ -157,6 +157,7 @@ const AVAILABLE_SCOPES = [
   "teams:read",
   "teams:write",
   "scim:manage",
+  "sso:manage",
 ];
 
 export function App() {

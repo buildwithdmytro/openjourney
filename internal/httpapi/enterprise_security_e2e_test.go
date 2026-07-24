@@ -19,6 +19,7 @@ func TestEnterpriseSecurityE2E(t *testing.T) {
 		"teams:read",
 		"teams:write",
 		"scim:manage",
+		"sso:manage",
 	}
 
 	for _, requiredScope := range protected {

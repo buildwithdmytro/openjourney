@@ -136,6 +136,13 @@ func (f *fakeStore) ClaimProjectionJob(context.Context) (domain.AcceptedEvent, b
 }
 func (f *fakeStore) ProjectEvent(context.Context, domain.AcceptedEvent) error { return nil }
 func (f *fakeStore) FailProjectionJob(context.Context, string, error) error   { return nil }
+func (f *fakeStore) CreateSAMLProvider(_ context.Context, p domain.Principal, input domain.SAMLProvider) (domain.SAMLProvider, error) {
+	input.ID = "saml-1"
+	return input, nil
+}
+func (f *fakeStore) ListSAMLProviders(_ context.Context, tenantID string) ([]domain.SAMLProvider, error) {
+	return []domain.SAMLProvider{}, nil
+}
 func (f *fakeStore) ValidateEventSchema(context.Context, domain.Principal, domain.Event) error {
 	return nil
 }

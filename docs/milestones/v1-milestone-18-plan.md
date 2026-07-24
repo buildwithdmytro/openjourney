@@ -132,10 +132,10 @@ redaction, insights grounding, principal non-spoofability.)
    *Done when:* an unknown-creator approval is DENIED (not allowed); a co-author who made the last edit
    cannot approve their own draft; a distinct approver still can; non-gated unit test proves the logic
    (not a fake). — done: Implemented fail-closed multi-actor maker-checker evaluation in CheckMakerChecker and EvaluateMakerChecker (F10); verified via TestMakerCheckerFailClosedAndMultiActor_NonGated & TestMakerCheckerPoliciesAndEnforcement.
-2. [ ] **Dedicated `sso:manage` scope for SAML providers (F11).** Add `sso:manage` (in the FOUR places +
+2. [x] **Dedicated `sso:manage` scope for SAML providers (F11).** Add `sso:manage` (in the FOUR places +
    catalog); move `/v1/auth/saml/providers` CRUD off `scim:manage` onto it.
    *Done when:* a `scim:manage`-only key can no longer register a SAML provider (403); an `sso:manage` key
-   can; test covers the split.
+   can; test covers the split. — done: Dedicated sso:manage scope for SAML provider CRUD (F11); verified via TestSAMLProviderScopeSplit & TestEnterpriseSecurityE2E.
 3. [ ] **SAML assertion replay protection (F12).** Persist consumed assertion IDs (one-time-use) within the
    validity window; reject a replayed `SAMLResponse`.
    *Done when:* replaying the same signed assertion to `/acs` a second time is rejected; test proves it.

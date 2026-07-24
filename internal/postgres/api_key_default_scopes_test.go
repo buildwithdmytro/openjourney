@@ -19,23 +19,40 @@ func TestAPIKeyDefaultScopes_NoDrift(t *testing.T) {
 		}
 	}
 
-	// 2. Read migration 062 to get the default scopes array
-	migrationPath := filepath.Join("migrations", "062_api_key_default_scopes.sql")
-	contentBytes, err := os.ReadFile(migrationPath)
+	// 2. Read latest migration defining api_keys.scopes DEFAULT array
+	migDir := filepath.Join("internal", "postgres", "migrations")
+	if _, err := os.Stat(migDir); os.IsNotExist(err) {
+		migDir = "migrations"
+	}
+	entries, err := os.ReadDir(migDir)
 	if err != nil {
-		migrationPath = filepath.Join("internal", "postgres", "migrations", "062_api_key_default_scopes.sql")
-		contentBytes, err = os.ReadFile(migrationPath)
+		t.Fatalf("failed to read migrations dir: %v", err)
+	}
+
+	var latestContent string
+	var latestFile string
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(migDir, entry.Name()))
 		if err != nil {
-			t.Fatalf("failed to read 062 migration: %v", err)
+			t.Fatalf("failed to read migration %s: %v", entry.Name(), err)
+		}
+		if strings.Contains(string(data), "ALTER TABLE api_keys ALTER COLUMN scopes SET DEFAULT ARRAY") {
+			latestContent = string(data)
+			latestFile = entry.Name()
 		}
 	}
-	content := string(contentBytes)
+	if latestContent == "" {
+		t.Fatalf("could not find migration setting api_keys.scopes DEFAULT ARRAY")
+	}
 
 	// Extract content inside ARRAY[...]
 	arrayRegex := regexp.MustCompile(`ARRAY\[([\s\S]*?)\]`)
-	match := arrayRegex.FindStringSubmatch(content)
+	match := arrayRegex.FindStringSubmatch(latestContent)
 	if len(match) < 2 {
-		t.Fatalf("could not find ARRAY[...] block in 062_api_key_default_scopes.sql")
+		t.Fatalf("could not find ARRAY[...] block in %s", latestFile)
 	}
 
 	// Parse individual scope strings from ARRAY['scope1','scope2',...]
@@ -53,12 +70,6 @@ func TestAPIKeyDefaultScopes_NoDrift(t *testing.T) {
 	}
 
 	// 3. Collect permissions inserted into permissions catalog across all migration files
-	migDir := filepath.Dir(migrationPath)
-	entries, err := os.ReadDir(migDir)
-	if err != nil {
-		t.Fatalf("failed to read migrations dir: %v", err)
-	}
-
 	insertBlockRegex := regexp.MustCompile(`(?i)INSERT INTO permissions\s*\([^)]+\)\s*VALUES\s*([\s\S]*?)(?:ON CONFLICT|;)`)
 	tupleKeyRegex := regexp.MustCompile(`\(\s*'([^']+)'`)
 

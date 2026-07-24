@@ -360,3 +360,42 @@ func TestSAMLSSO_E2E(t *testing.T) {
 	handler.ServeHTTP(disRec, disReq)
 	require.Equal(t, http.StatusUnauthorized, disRec.Code)
 }
+
+func TestSAMLProviderScopeSplit(t *testing.T) {
+	// Key with only scim:manage scope
+	scimStore := &fakeStore{scopes: []string{"scim:manage"}}
+	scimServer := New(scimStore, 75)
+
+	body := strings.NewReader(`{"idp_entity_id":"https://idp.com","idp_sso_url":"https://idp.com/sso","idp_cert":"pem","sp_entity_id":"sp"}`)
+	req := httptest.NewRequest("POST", "/v1/auth/saml/providers", body)
+	req.Header.Set("Authorization", "Bearer test-key")
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	scimServer.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusForbidden, rec.Code)
+
+	getReq := httptest.NewRequest("GET", "/v1/auth/saml/providers", nil)
+	getReq.Header.Set("Authorization", "Bearer test-key")
+	getRec := httptest.NewRecorder()
+	scimServer.ServeHTTP(getRec, getReq)
+	require.Equal(t, http.StatusForbidden, getRec.Code)
+
+	// Key with sso:manage scope
+	ssoStore := &fakeStore{scopes: []string{"sso:manage"}}
+	ssoServer := New(ssoStore, 75)
+
+	body2 := strings.NewReader(`{"idp_entity_id":"https://idp.com","idp_sso_url":"https://idp.com/sso","idp_cert":"pem","sp_entity_id":"sp"}`)
+	req2 := httptest.NewRequest("POST", "/v1/auth/saml/providers", body2)
+	req2.Header.Set("Authorization", "Bearer test-key")
+	req2.Header.Set("Content-Type", "application/json")
+	rec2 := httptest.NewRecorder()
+	ssoServer.ServeHTTP(rec2, req2)
+	require.NotEqual(t, http.StatusForbidden, rec2.Code)
+
+	getReq2 := httptest.NewRequest("GET", "/v1/auth/saml/providers", nil)
+	getReq2.Header.Set("Authorization", "Bearer test-key")
+	getRec2 := httptest.NewRecorder()
+	ssoServer.ServeHTTP(getRec2, getReq2)
+	require.NotEqual(t, http.StatusForbidden, getRec2.Code)
+}
+
