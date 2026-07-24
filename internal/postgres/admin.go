@@ -871,12 +871,17 @@ func (s *Store) audit(ctx context.Context, tx pgx.Tx, p domain.Principal, action
 	eventID := uuid.NewString()
 	occurredAt := time.Now().UTC()
 
-	rowHash := ComputeAuditRowHash(prevHash, eventID, p.TenantID, p.WorkspaceID, p.AppID, actorType(p), actorID(p), action, resourceType, resourceID, data, occurredAt, nextSeq)
+	appID := p.AppID
+	if _, err := uuid.Parse(appID); err != nil {
+		appID = ""
+	}
+
+	rowHash := ComputeAuditRowHash(prevHash, eventID, p.TenantID, p.WorkspaceID, appID, actorType(p), actorID(p), action, resourceType, resourceID, data, occurredAt, nextSeq)
 
 	_, err = tx.Exec(ctx, `INSERT INTO audit_events
 		(id, tenant_id, workspace_id, app_id, actor_type, actor_id, action, resource_type, resource_id, metadata, occurred_at, seq, prev_hash, row_hash)
 		VALUES($1, $2, $3, NULLIF($4,'')::uuid, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
-		eventID, p.TenantID, p.WorkspaceID, p.AppID, actorType(p), actorID(p), action, resourceType, resourceID, data, occurredAt, nextSeq, prevHash, rowHash)
+		eventID, p.TenantID, p.WorkspaceID, appID, actorType(p), actorID(p), action, resourceType, resourceID, data, occurredAt, nextSeq, prevHash, rowHash)
 	if err != nil {
 		return err
 	}

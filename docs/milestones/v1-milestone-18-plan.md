@@ -119,11 +119,11 @@ redaction, insights grounding, principal non-spoofability.)
 ### Milestone 23.2 — Audit completeness & atomicity
 1. [x] **Same-transaction, error-propagating audit writes (F8).** Refactor `audit()` (`admin.go:777`) to write within the caller's mutation transaction and RETURN its error; update call sites to propagate it (stop `_ = s.audit(...)`).
    *Done when:* a forced audit-write failure aborts/errors the governed mutation (no silent drop); a test proves a mutation + its audit row are atomic (both or neither). — done: Refactored audit() to write within caller mutation transactions and propagate errors (F8); verified via TestSameTransactionAuditWrites_NonGated & TestSameTransactionAuditWrites_DBIntegration.
-2. [ ] **Guard non-UUID app_ids in audit (F9).** `audit()`'s `app_id` insert (`admin.go:817`) handles
+2. [x] **Guard non-UUID app_ids in audit (F9).** `audit()`'s `app_id` insert (`admin.go:817`) handles
    non-UUID principal app_ids (`"default"`/`"system"`) — store NULL or a normalized value instead of
    `'default'::uuid` (which errors).
    *Done when:* a governed action by a `app_id="system"` principal writes an audit row (previously dropped
-   on cast error); test covers a non-UUID app_id.
+   on cast error); test covers a non-UUID app_id. — done: Sanitized non-UUID app_ids ("system", "default") in audit() and routed all audit writes through s.audit (F9); verified via TestAuditNonUUIDAppID_NonGated & TestAuditNonUUIDAppID_DBIntegration.
 
 ### Milestone 23.3 — Maker-checker & SAML hardening
 1. [ ] **Fail-closed, multi-actor maker-checker (F10).** Persist the explicit creator/last-editor identity

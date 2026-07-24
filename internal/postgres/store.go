@@ -364,12 +364,7 @@ func (s *Store) AcceptEvents(ctx context.Context, p domain.Principal, events []d
 	if windowCount > perMinute {
 		return nil, fmt.Errorf("%w: events per minute", ErrQuotaExceeded)
 	}
-	metadata, _ := json.Marshal(map[string]int{"count": len(events)})
-	_, err = tx.Exec(ctx, `INSERT INTO audit_events
-		(tenant_id,workspace_id,app_id,actor_type,actor_id,action,resource_type,metadata)
-		VALUES($1,$2,$3,$4,$5,'events.accept','event_batch',$6)`,
-		p.TenantID, p.WorkspaceID, p.AppID, actorType(p), actorID(p), metadata)
-	if err != nil {
+	if err := s.audit(ctx, tx, p, "events.accept", "event_batch", "", map[string]any{"count": len(events)}); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {

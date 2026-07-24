@@ -46,16 +46,13 @@ func (s *Store) RecordAIActivity(ctx context.Context, p domain.Principal, activi
 		return domain.AIActivity{}, err
 	}
 
-	metadata, _ := json.Marshal(map[string]any{
+	meta := map[string]any{
 		"provider": activity.Provider, "model": activity.Model,
 		"prompt_version_id": activity.PromptVersionID,
 		"policy_decision":   activity.PolicyDecision, "cost_cents": activity.CostCents,
 		"input_tokens": activity.InputTokens, "output_tokens": activity.OutputTokens,
-	})
-	if _, err := tx.Exec(ctx, `INSERT INTO audit_events
-		(tenant_id,workspace_id,app_id,actor_type,actor_id,action,resource_type,resource_id,metadata)
-		VALUES($1,$2,NULLIF($3,'')::uuid,$4,$5,'ai.action','ai_activity',$6,$7)`,
-		activity.TenantID, activity.WorkspaceID, p.AppID, actorType(p), actorID(p), activity.ID, metadata); err != nil {
+	}
+	if err := s.audit(ctx, tx, p, "ai.action", "ai_activity", activity.ID, meta); err != nil {
 		return domain.AIActivity{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
