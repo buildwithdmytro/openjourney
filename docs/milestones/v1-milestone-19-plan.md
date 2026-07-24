@@ -210,11 +210,12 @@ public edges.)
    — done: U7 fixed by adopting `Field` in the covered raw-form editors, adding `useForm` validity gates to Scoring and Messaging, and validating Scoring JSON inline; `Scoring > shows inline validation and gates an invalid definition` asserts the error and disabled submit, while the full web build and 332-test suite pass.
 
 ### Milestone 24.6 — Integration & audit closeout
-1. [ ] **Run the suite**: `go build ./... && go vet ./... && go test ./...` + `go test -race
+1. [x] **Run the suite**: `go build ./... && go vet ./... && go test ./...` + `go test -race
    ./internal/postgres/...`, `go mod tidy` (no new dep), `cd web && npm run typecheck && npm run build &&
    npm test`, `cd sdk/javascript && npm run build && npm test`.
    *Done when:* all green and `git diff go.mod go.sum web/package.json web/package-lock.json
    sdk/javascript/package.json` is empty of additions.
+   — done: Integration suite passed: Go build/vet/tests, scoped postgres race tests, web typecheck/build/332 tests, and SDK build/30 tests; `go mod tidy` left `go.mod`, `go.sum`, and the package manifests unchanged.
 2. [ ] **Audit doc** `docs/milestones/v1-milestone-19-audit.md` in the prior format, one row per `24.x`
    task mapping the finding(s) (X#/S#/U#) → fix → verifying test.
    *Done when:* the doc exists with a row per task, each citing its finding and test.
