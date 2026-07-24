@@ -144,11 +144,11 @@ func (s *Store) UpdateSCIMUser(ctx context.Context, p domain.Principal, id strin
 	}
 	if err == nil {
 		if err := s.audit(ctx, tx, p, "scim.user.update", "user", id, nil); err != nil {
-		return domain.User{}, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return domain.User{}, err
-	}
+			return domain.User{}, err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return domain.User{}, err
+		}
 	}
 	return u, err
 }
@@ -234,7 +234,6 @@ func (s *Store) CreateSCIMGroup(ctx context.Context, p domain.Principal, group d
 		}
 	}
 
-	
 	if err := s.audit(ctx, tx, p, "scim.group.create", "team", teamID, map[string]any{"displayName": group.DisplayName}); err != nil {
 		return domain.SCIMGroup{}, err
 	}
@@ -263,7 +262,8 @@ func (s *Store) UpdateSCIMGroup(ctx context.Context, p domain.Principal, id stri
 		}
 	}
 
-	_, err = tx.Exec(ctx, `DELETE FROM team_members WHERE team_id = $1`, existing.ID)
+	_, err = tx.Exec(ctx, `DELETE FROM team_members tm USING teams t
+		WHERE tm.team_id = t.id AND t.tenant_id = $1 AND tm.team_id = $2`, p.TenantID, existing.ID)
 	if err != nil {
 		return domain.SCIMGroup{}, err
 	}
@@ -276,7 +276,6 @@ func (s *Store) UpdateSCIMGroup(ctx context.Context, p domain.Principal, id stri
 		}
 	}
 
-	
 	if err := s.audit(ctx, tx, p, "scim.group.update", "team", existing.ID, nil); err != nil {
 		return domain.SCIMGroup{}, err
 	}
@@ -325,10 +324,12 @@ func (s *Store) PatchSCIMGroup(ctx context.Context, p domain.Principal, id strin
 				}
 			}
 			for _, uid := range targetUserIDs {
-				_, _ = tx.Exec(ctx, `DELETE FROM team_members WHERE team_id = $1 AND user_id = $2`, existing.ID, uid)
+				_, _ = tx.Exec(ctx, `DELETE FROM team_members tm USING teams t
+					WHERE tm.team_id = t.id AND t.tenant_id = $1 AND tm.team_id = $2 AND tm.user_id = $3`, p.TenantID, existing.ID, uid)
 			}
 		case "replace":
-			_, _ = tx.Exec(ctx, `DELETE FROM team_members WHERE team_id = $1`, existing.ID)
+			_, _ = tx.Exec(ctx, `DELETE FROM team_members tm USING teams t
+				WHERE tm.team_id = t.id AND t.tenant_id = $1 AND tm.team_id = $2`, p.TenantID, existing.ID)
 			for _, m := range op.Value {
 				if strings.TrimSpace(m.Value) != "" {
 					_, _ = tx.Exec(ctx, `INSERT INTO team_members (team_id, user_id)
@@ -339,7 +340,6 @@ func (s *Store) PatchSCIMGroup(ctx context.Context, p domain.Principal, id strin
 		}
 	}
 
-	
 	if err := s.audit(ctx, tx, p, "scim.group.patch", "team", existing.ID, nil); err != nil {
 		return domain.SCIMGroup{}, err
 	}
@@ -372,4 +372,3 @@ func (s *Store) DeleteSCIMGroup(ctx context.Context, p domain.Principal, id stri
 	}
 	return nil
 }
-

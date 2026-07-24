@@ -142,10 +142,9 @@ func (s *Store) UpsertSAMLUserAndCreateSession(ctx context.Context, tenantID, id
 			return domain.AuthSession{}, ErrUnauthorized
 		}
 		_, _ = tx.Exec(ctx, `UPDATE users SET email=COALESCE(NULLIF($1,''), email), display_name=COALESCE(NULLIF($2,''), display_name), updated_at=now()
-			WHERE id=$3`, email, displayName, userID)
+			WHERE tenant_id=$3 AND id=$4`, email, displayName, tenantID, userID)
 	}
 
-	
 	var workspaceID, appID string
 	err = s.pool.QueryRow(ctx, `SELECT workspace_id, id FROM applications WHERE tenant_id=$1 ORDER BY created_at LIMIT 1`, tenantID).
 		Scan(&workspaceID, &appID)

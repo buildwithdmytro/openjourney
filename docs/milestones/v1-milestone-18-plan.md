@@ -175,12 +175,13 @@ redaction, insights grounding, principal non-spoofability.)
    `021` migrations (immutable) — document the collision.
    *Done when:* each sentinel is defined once and imported; `go build ./... && go vet ./...` green; no
    behavior change (tests pass). — done: Canonicalized F15 sentinels in internal/publishing with identity regression TestPublishingSentinelsHaveOneCanonicalIdentity; documented F16's immutable 047 DROP and duplicate 021 migrations.
-2. [ ] **Missing indexes + in-statement tenant guards (F17, F18).** Migration `061`: add indexes for the
-   `inapp_messages` expiry sweep (`expires_at`), the `inapp_messages` admin list (`…,created_at`), and
-   `feature_flags` list-by-workspace (`…,workspace_id`). Add an explicit `tenant_id` predicate to the
-   `saml.go:133` UPDATE and the `scim.go:242,305` DELETEs (defense in depth).
-   *Done when:* the hot-path queries hit an index (EXPLAIN or index-presence assertion); the update/delete
-   statements carry a tenant guard; tests green.
+2. [x] **Missing indexes + in-statement tenant guards (F17, F18).** Migration `066`: add indexes for the
+	`inapp_messages` expiry sweep (`expires_at`), the `inapp_messages` admin list (`…,created_at`), and
+	`feature_flags` list-by-workspace (`…,workspace_id`). Add an explicit `tenant_id` predicate to the
+	`saml.go:133` UPDATE and the `scim.go:242,305` DELETEs (defense in depth).
+	*Done when:* the hot-path queries hit an index (EXPLAIN or index-presence assertion); the update/delete
+	statements carry a tenant guard; tests green. — done: Added idempotent migration 066 indexes and
+	tenant-guarded SAML/SCIM mutations (F17, F18); verified by TestHotPathIndexesAndTenantGuards.
 
 ### Milestone 23.7 — Closeout
 1. [ ] **Run the suite**: `go build ./... && go vet ./... && go test ./...` + `go test -race
