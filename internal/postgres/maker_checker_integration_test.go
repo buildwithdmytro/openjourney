@@ -154,4 +154,67 @@ func TestMakerCheckerPoliciesAndEnforcement(t *testing.T) {
 			t.Fatalf("expected success for creator when policy disabled, got: %v", err)
 		}
 	})
+
+	t.Run("Co-author self-approval blocked and unknown creator fails closed", func(t *testing.T) {
+		pUser3 := domain.Principal{
+			TenantID:    tenantID,
+			WorkspaceID: pUser1.WorkspaceID,
+			UserID:      "00000000-0000-0000-0000-000000000094",
+			ActorType:   "user",
+			Scopes:      []string{"*"},
+		}
+
+		_, err := store.SetMakerCheckerPolicy(ctx, pUser1, "journeys", true)
+		if err != nil {
+			t.Fatalf("SetMakerCheckerPolicy failed: %v", err)
+		}
+
+		// 1. Unknown creator (fake resourceID with no audit events) -> CheckMakerChecker fails closed with ErrSelfApproval
+		err = store.CheckMakerChecker(ctx, pUser1, "journeys", "unknown-journey-id", "")
+		if err != ErrSelfApproval {
+			t.Fatalf("expected ErrSelfApproval for unknown creator, got %v", err)
+		}
+
+		// 2. Co-author multi-actor test:
+		// User1 creates journey -> audit event created (actor = User1)
+		g := journey.Graph{
+			Nodes: []journey.Node{
+				{ID: "start", Type: journey.NodeTypeEntry, Config: json.RawMessage(`{"entry_kind":"scheduled"}`)},
+			},
+		}
+		gBytes, _ := json.Marshal(g)
+		j, err := store.CreateJourney(ctx, pUser1, domain.Journey{
+			Name:  "Multi Actor Test Journey",
+			Graph: gBytes,
+		})
+		if err != nil {
+			t.Fatalf("CreateJourney failed: %v", err)
+		}
+
+		jUpdated := j
+		jUpdated.Name = "Multi Actor Test Journey Updated"
+		_, err = store.UpdateJourney(ctx, pUser2, jUpdated)
+		if err != nil {
+			t.Fatalf("UpdateJourney failed: %v", err)
+		}
+
+		// User2 (co-author who edited last) must be BLOCKED from publishing
+		_, err = store.PublishJourney(ctx, pUser2, j.ID, pUser2.UserID, "manifest-coauthor")
+		if err != ErrSelfApproval {
+			t.Fatalf("expected ErrSelfApproval for co-author publishing, got %v", err)
+		}
+
+		// User1 (original creator) must also be BLOCKED from publishing
+		_, err = store.PublishJourney(ctx, pUser1, j.ID, pUser1.UserID, "manifest-creator")
+		if err != ErrSelfApproval {
+			t.Fatalf("expected ErrSelfApproval for creator publishing after co-author edit, got %v", err)
+		}
+
+		// User3 (distinct authorized user) publishing MUST succeed
+		_, err = store.PublishJourney(ctx, pUser3, j.ID, pUser3.UserID, "manifest-distinct")
+		if err != nil {
+			t.Fatalf("expected PublishJourney by distinct User3 to succeed, got %v", err)
+		}
+	})
 }
+

@@ -126,12 +126,12 @@ redaction, insights grounding, principal non-spoofability.)
    on cast error); test covers a non-UUID app_id. — done: Sanitized non-UUID app_ids ("system", "default") in audit() and routed all audit writes through s.audit (F9); verified via TestAuditNonUUIDAppID_NonGated & TestAuditNonUUIDAppID_DBIntegration.
 
 ### Milestone 23.3 — Maker-checker & SAML hardening
-1. [ ] **Fail-closed, multi-actor maker-checker (F10).** Persist the explicit creator/last-editor identity
+1. [x] **Fail-closed, multi-actor maker-checker (F10).** Persist the explicit creator/last-editor identity
    on governed resources (or derive reliably), compare the approver against it, and return DENIED when the
    creator is UNKNOWN (fail closed, not `nil`). Prevent a co-author from self-approving.
    *Done when:* an unknown-creator approval is DENIED (not allowed); a co-author who made the last edit
    cannot approve their own draft; a distinct approver still can; non-gated unit test proves the logic
-   (not a fake).
+   (not a fake). — done: Implemented fail-closed multi-actor maker-checker evaluation in CheckMakerChecker and EvaluateMakerChecker (F10); verified via TestMakerCheckerFailClosedAndMultiActor_NonGated & TestMakerCheckerPoliciesAndEnforcement.
 2. [ ] **Dedicated `sso:manage` scope for SAML providers (F11).** Add `sso:manage` (in the FOUR places +
    catalog); move `/v1/auth/saml/providers` CRUD off `scim:manage` onto it.
    *Done when:* a `scim:manage`-only key can no longer register a SAML provider (403); an `sso:manage` key

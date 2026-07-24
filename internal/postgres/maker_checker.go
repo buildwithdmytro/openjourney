@@ -79,6 +79,25 @@ func (s *Store) ListMakerCheckerPolicies(ctx context.Context, p domain.Principal
 	return result, rows.Err()
 }
 
+// EvaluateMakerChecker evaluates whether approverUserID is allowed to approve a resource
+// given the maker-checker policy requirement and the set of known creator/editor actorIDs.
+// If requireChecker is true, the set of actors must be non-empty (failing closed if unknown)
+// and approverUserID must not be present in the actor set.
+func EvaluateMakerChecker(requireChecker bool, approverUserID string, actorIDs []string) error {
+	if !requireChecker {
+		return nil
+	}
+	if len(actorIDs) == 0 {
+		return ErrSelfApproval
+	}
+	for _, id := range actorIDs {
+		if id != "" && id == approverUserID {
+			return ErrSelfApproval
+		}
+	}
+	return nil
+}
+
 func (s *Store) CheckMakerChecker(ctx context.Context, p domain.Principal, resourceType, resourceID string, creatorOrEditorID string) error {
 	if p.ActorType != "user" || p.UserID == "" {
 		return errors.New("publishing requires an authenticated user")
@@ -90,17 +109,31 @@ func (s *Store) CheckMakerChecker(ctx context.Context, p domain.Principal, resou
 	if !requireChecker {
 		return nil
 	}
-	if creatorOrEditorID == "" && resourceID != "" {
-		var actorID string
-		err := s.pool.QueryRow(ctx, `SELECT actor_id FROM audit_events
-			WHERE tenant_id=$1 AND resource_type=$2 AND resource_id=$3 AND actor_id IS NOT NULL
-			ORDER BY occurred_at DESC LIMIT 1`, p.TenantID, resourceType, resourceID).Scan(&actorID)
-		if err == nil && actorID != "" {
-			creatorOrEditorID = actorID
+
+	actorsMap := make(map[string]struct{})
+	if creatorOrEditorID != "" {
+		actorsMap[creatorOrEditorID] = struct{}{}
+	}
+	if resourceID != "" {
+		rows, err := s.pool.Query(ctx, `SELECT DISTINCT actor_id FROM audit_events
+			WHERE tenant_id=$1 AND resource_type=$2 AND resource_id=$3 AND actor_id IS NOT NULL AND actor_id != ''`,
+			p.TenantID, resourceType, resourceID)
+		if err == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var actorID string
+				if scanErr := rows.Scan(&actorID); scanErr == nil && actorID != "" {
+					actorsMap[actorID] = struct{}{}
+				}
+			}
 		}
 	}
-	if creatorOrEditorID != "" && creatorOrEditorID == p.UserID {
-		return ErrSelfApproval
+
+	var actors []string
+	for id := range actorsMap {
+		actors = append(actors, id)
 	}
-	return nil
+
+	return EvaluateMakerChecker(requireChecker, p.UserID, actors)
 }
+

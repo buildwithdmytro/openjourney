@@ -84,12 +84,11 @@ func (m *mcFakeStore) CheckMakerChecker(ctx context.Context, p domain.Principal,
 	if p.ActorType != "user" || p.UserID == "" {
 		return publishing.ErrHumanActorRequired
 	}
-	if m.policyRequireChecker[resourceType] {
-		if creatorOrEditorID == "" || creatorOrEditorID == p.UserID {
-			return postgres.ErrSelfApproval
-		}
+	var actors []string
+	if creatorOrEditorID != "" {
+		actors = append(actors, creatorOrEditorID)
 	}
-	return nil
+	return postgres.EvaluateMakerChecker(m.policyRequireChecker[resourceType], p.UserID, actors)
 }
 
 func (m *mcFakeStore) PublishFeatureFlag(ctx context.Context, p domain.Principal, flagID string, approverUserID string, manifestKey string) (domain.FeatureFlagVersion, error) {
