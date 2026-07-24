@@ -8,11 +8,31 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/buildwithdmytro/openjourney/internal/domain"
 	"github.com/buildwithdmytro/openjourney/internal/postgres"
 	"github.com/crewjam/saml"
 )
+
+func (s *Server) checkSAMLReplay(key string, exp time.Time) bool {
+	s.samlReplayMu.Lock()
+	defer s.samlReplayMu.Unlock()
+	if s.samlReplayCache == nil {
+		s.samlReplayCache = make(map[string]time.Time)
+	}
+	now := time.Now()
+	for k, t := range s.samlReplayCache {
+		if now.After(t) {
+			delete(s.samlReplayCache, k)
+		}
+	}
+	if t, ok := s.samlReplayCache[key]; ok && now.Before(t) {
+		return false
+	}
+	s.samlReplayCache[key] = exp
+	return true
+}
 
 func cleanPEMCert(pemStr string) string {
 	pemStr = strings.ReplaceAll(pemStr, "-----BEGIN CERTIFICATE-----", "")
@@ -225,6 +245,25 @@ func (s *Server) samlACS(w http.ResponseWriter, r *http.Request) {
 			msg = fmt.Sprintf("%s: %v", err.Error(), ivr.PrivateErr)
 		}
 		writeError(w, http.StatusUnauthorized, "invalid_saml_assertion", msg)
+		return
+	}
+
+	if assertion.ID == "" {
+		writeError(w, http.StatusUnauthorized, "invalid_saml_assertion", "missing assertion ID in SAML assertion")
+		return
+	}
+
+	exp := time.Now().Add(10 * time.Minute)
+	if assertion.Conditions != nil && !assertion.Conditions.NotOnOrAfter.IsZero() {
+		exp = assertion.Conditions.NotOnOrAfter
+	}
+	if maxExp := time.Now().Add(1 * time.Hour); exp.After(maxExp) {
+		exp = maxExp
+	}
+
+	cacheKey := tenantID + ":" + provider.IDPEntityID + ":" + assertion.ID
+	if !s.checkSAMLReplay(cacheKey, exp) {
+		writeError(w, http.StatusUnauthorized, "invalid_saml_assertion", "SAML assertion has already been used")
 		return
 	}
 

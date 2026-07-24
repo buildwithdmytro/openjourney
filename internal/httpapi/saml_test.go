@@ -353,12 +353,57 @@ func TestSAMLSSO_E2E(t *testing.T) {
 	u.DisabledAt = &now
 	store.users[uKey] = u
 
-	disReq := httptest.NewRequest("POST", fmt.Sprintf("/v1/auth/saml/%s/acs", tenantID), strings.NewReader(formValues.Encode()))
+	disResponse := createSignedSAMLResponse(t, key, certPEM, idpEntityID, spEntityID, acsURL, "user1@example.com", "user1@example.com")
+	disForm := url.Values{}
+	disForm.Set("SAMLResponse", disResponse)
+	disReq := httptest.NewRequest("POST", fmt.Sprintf("/v1/auth/saml/%s/acs", tenantID), strings.NewReader(disForm.Encode()))
 	disReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	disReq.Host = "example.com"
 	disRec := httptest.NewRecorder()
 	handler.ServeHTTP(disRec, disReq)
 	require.Equal(t, http.StatusUnauthorized, disRec.Code)
+}
+
+func TestSAMLAssertionReplayProtection(t *testing.T) {
+	store := newSAMLMockStore()
+	handler := New(store, 75)
+
+	key, certPEM := generateSelfSignedCert(t)
+	tenantID := randID()
+	idpEntityID := "https://idp.example.com/metadata"
+	spEntityID := "https://openjourney.io/saml/sp"
+
+	_, err := store.CreateSAMLProvider(t.Context(), domain.Principal{TenantID: tenantID}, domain.SAMLProvider{
+		IDPEntityID: idpEntityID,
+		IDPSSOURL:   "https://idp.example.com/sso",
+		IDPCert:     certPEM,
+		SPEntityID:  spEntityID,
+		Enabled:     true,
+		Status:      "active",
+	})
+	require.NoError(t, err)
+
+	acsURL := fmt.Sprintf("http://example.com/v1/auth/saml/%s/acs", tenantID)
+	signedResp := createSignedSAMLResponse(t, key, certPEM, idpEntityID, spEntityID, acsURL, "replayuser@example.com", "replayuser@example.com")
+	formValues := url.Values{}
+	formValues.Set("SAMLResponse", signedResp)
+
+	// First assertion post -> succeeds
+	req1 := httptest.NewRequest("POST", fmt.Sprintf("/v1/auth/saml/%s/acs", tenantID), strings.NewReader(formValues.Encode()))
+	req1.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req1.Host = "example.com"
+	rec1 := httptest.NewRecorder()
+	handler.ServeHTTP(rec1, req1)
+	require.Equal(t, http.StatusOK, rec1.Code, "First assertion consumption should succeed")
+
+	// Second assertion post (replay) -> rejected with 401 Unauthorized
+	req2 := httptest.NewRequest("POST", fmt.Sprintf("/v1/auth/saml/%s/acs", tenantID), strings.NewReader(formValues.Encode()))
+	req2.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req2.Host = "example.com"
+	rec2 := httptest.NewRecorder()
+	handler.ServeHTTP(rec2, req2)
+	require.Equal(t, http.StatusUnauthorized, rec2.Code, "Replayed SAML assertion must be rejected")
+	require.Contains(t, rec2.Body.String(), "SAML assertion has already been used")
 }
 
 func TestSAMLProviderScopeSplit(t *testing.T) {

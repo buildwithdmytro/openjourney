@@ -136,9 +136,9 @@ redaction, insights grounding, principal non-spoofability.)
    catalog); move `/v1/auth/saml/providers` CRUD off `scim:manage` onto it.
    *Done when:* a `scim:manage`-only key can no longer register a SAML provider (403); an `sso:manage` key
    can; test covers the split. — done: Dedicated sso:manage scope for SAML provider CRUD (F11); verified via TestSAMLProviderScopeSplit & TestEnterpriseSecurityE2E.
-3. [ ] **SAML assertion replay protection (F12).** Persist consumed assertion IDs (one-time-use) within the
+3. [x] **SAML assertion replay protection (F12).** Persist consumed assertion IDs (one-time-use) within the
    validity window; reject a replayed `SAMLResponse`.
-   *Done when:* replaying the same signed assertion to `/acs` a second time is rejected; test proves it.
+   *Done when:* replaying the same signed assertion to `/acs` a second time is rejected; test proves it. — done: Persisted consumed SAML assertion IDs with TTL in samlReplayCache to reject replayed SAMLResponses (F12); verified via TestSAMLAssertionReplayProtection.
 
 ### Milestone 23.4 — CI-visible security tests (no DB gate)
 1. [ ] **Real SSRF-block test (F13).** A non-gated test that drives the fetcher with an enabled source

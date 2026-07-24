@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/buildwithdmytro/openjourney/internal/ai"
@@ -40,6 +41,8 @@ type Server struct {
 	publicLimiter     *IPRateLimiter
 	captchaVerifier   CaptchaVerifier
 	trustedProxy      bool
+	samlReplayMu      sync.Mutex
+	samlReplayCache   map[string]time.Time
 }
 
 func New(store ports.Store, maxBatchSize int) http.Handler {
