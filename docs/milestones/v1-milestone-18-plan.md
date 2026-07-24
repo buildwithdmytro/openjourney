@@ -141,12 +141,12 @@ redaction, insights grounding, principal non-spoofability.)
    *Done when:* replaying the same signed assertion to `/acs` a second time is rejected; test proves it. — done: Persisted consumed SAML assertion IDs with TTL in samlReplayCache to reject replayed SAMLResponses (F12); verified via TestSAMLAssertionReplayProtection.
 
 ### Milestone 23.4 — CI-visible security tests (no DB gate)
-1. [ ] **Real SSRF-block test (F13).** A non-gated test that drives the fetcher with an enabled source
+1. [x] **Real SSRF-block test (F13).** A non-gated test that drives the fetcher with an enabled source
    whose URL resolves to a private IP and asserts the audit DECISION is `ssrf_blocked` (not merely
    `res == nil`, which passes even if the guard is deleted). Extract the decision into a testable return
    if needed.
    *Done when:* the test FAILS if `IsSafeURL`/the ssrf branch is removed, and passes with the guard; runs
-   without `OPENJOURNEY_TEST_DATABASE_URL`.
+   without `OPENJOURNEY_TEST_DATABASE_URL`. — done: Fixed F13 with TestFetcherSSRFBlockRecordsExactDecision, a non-gated real-fetcher regression test requiring `ssrf_blocked`.
 2. [ ] **Real audit-tamper + maker-checker tests (F13).** A non-gated unit test for the audit hash chain
    (`ComputeAuditRowHash` + `VerifyAuditChain` over an in-memory/fake row set: a tampered row is detected)
    and a non-gated maker-checker test that exercises the REAL enforcement logic (not the re-implemented
