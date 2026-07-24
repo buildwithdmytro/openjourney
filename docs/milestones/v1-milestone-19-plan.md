@@ -118,10 +118,11 @@ public edges.)
    — done: S7/S9 fixed with `requirePrincipal` 401 handling and checked journey/experiment config assertions; `TestGetProfileWithoutAuthMiddlewareReturnsUnauthorized` and `TestValidateMalformedNodeConfigReturnsError` cover the findings; full Go build/vet/test and scoped postgres race test pass.
 
 ### Milestone 24.2 — Frontend resilience
-1. [ ] **Root error boundary (S5).** Wrap `<App/>` in a top-level error boundary in `web/src/main.tsx`
+1. [x] **Root error boundary (S5).** Wrap `<App/>` in a top-level error boundary in `web/src/main.tsx`
    so a pre-auth/chrome render throw shows a recovery card, not a white screen.
    *Done when:* a forced throw in the login/chrome renders the boundary fallback (test); the app never
    white-screens.
+   — done: S5 fixed with `RootErrorBoundary` wrapping `<App />` in `main.tsx`; `RootErrorBoundary.test.tsx` forces a pre-auth render throw and verifies the alert/retry recovery UI; web typecheck, build, and all 321 tests pass.
 2. [ ] **Toast timer + cap fix (S4).** Memoize `onDismiss` per id (or depend only on `duration`) so a new
    toast doesn't reset others' countdowns; cap the visible list (last 3–5).
    *Done when:* a burst of toasts each auto-dismiss on their own timers and the visible count is capped;
