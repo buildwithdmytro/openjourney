@@ -105,10 +105,11 @@ public edges.)
    infinite re-claim loop); a worker survives a poison message; `go test ./... ` green.
    **Stability checkpoint:** a single bad event can no longer halt the delivery/journey/projection fleet.
    — done: S1/S10 fixed with per-message recovery in campaign/journey delivery, dispatcher, and projector paths; poison tests `TestDeliverNextRecoversPanicAndFailsDeliveryJob`, `TestDeliverNextRecoversPanicAndDeadLettersIntent`, `TestDrainRecoversPanickingPublisherAndDeadLettersEvent`, and `TestDrainRecoversPanickingProjectorAndDeadLettersEvent` pass; full Go build/vet/test and scoped postgres race test pass.
-2. [ ] **Bound the unbounded queries (S6, S11).** `resolveSegmentIDs` (`segments.go:231`) keyset-paginates
+2. [x] **Bound the unbounded queries (S6, S11).** `resolveSegmentIDs` (`segments.go:231`) keyset-paginates
    or pushes the predicate into SQL (no full-table load); `short_links.go:48` list gets a `LIMIT`.
    *Done when:* segment resolution no longer streams the whole profile table into memory (paged/bounded);
    the short-link list is bounded; tests cover the bound.
+   — done: S6/S11 fixed with keyset-paged profile fetches (1000 rows per query) and a 1000-row short-link LIMIT; `TestBoundedProfileResolutionAndShortLinkList` verifies page-boundary resolution and list capping (skipped without `OPENJOURNEY_TEST_DATABASE_URL`); full Go build/vet/test and scoped postgres race test pass.
 3. [ ] **Guard the unchecked type assertions (S7, S9).** `principalFrom` (`server.go:436+`) uses `, ok`
    and returns 401 when absent; the journey/experiment config assertions (`journeys.go:225`,
    `experiments.go:509`, `validate.go:35+`) assert with `, ok` and return a validation error.

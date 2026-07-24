@@ -218,6 +218,8 @@ func (s *Store) SetClickHouse(conn clickhouse.Conn) {
 }
 
 func (s *Store) resolveSegmentIDs(ctx context.Context, p domain.Principal, seg domain.Segment) (map[string]bool, map[string]int, error) {
+	const profileResolutionPageSize = 1000
+
 	var node audience.Node
 	var err error
 	isDSL := len(seg.DSL) > 0 && string(seg.DSL) != "{}" && string(seg.DSL) != "null"
@@ -228,29 +230,48 @@ func (s *Store) resolveSegmentIDs(ctx context.Context, p domain.Principal, seg d
 		}
 	}
 
-	rows, err := s.pool.Query(ctx, `SELECT id, COALESCE(external_id, '') FROM profiles
-		WHERE tenant_id = $1 AND workspace_id = $2`, p.TenantID, p.WorkspaceID)
-	if err != nil {
-		return nil, nil, err
-	}
-	defer rows.Close()
-
 	profileIDToExternalID := make(map[string]string)
 	externalIDToProfileID := make(map[string]string)
 	hashToProfileID := make(map[string]string)
 	allProfileIDs := make(map[string]bool)
 
-	for rows.Next() {
-		var id, extID string
-		if err := rows.Scan(&id, &extID); err != nil {
+	// Keyset pagination keeps each database fetch bounded for large tenants while
+	// retaining the complete ID mappings needed by NOT/event-history evaluation.
+	var lastProfileID any
+	for {
+		rows, err := s.pool.Query(ctx, `SELECT id, COALESCE(external_id, '') FROM profiles
+			WHERE tenant_id = $1 AND workspace_id = $2
+			  AND ($3::uuid IS NULL OR id > $3::uuid)
+			ORDER BY id
+			LIMIT $4`, p.TenantID, p.WorkspaceID, lastProfileID, profileResolutionPageSize)
+		if err != nil {
 			return nil, nil, err
 		}
-		allProfileIDs[id] = true
-		if extID != "" {
-			profileIDToExternalID[id] = extID
-			externalIDToProfileID[extID] = id
-			h := sha256.Sum256([]byte(extID))
-			hashToProfileID[fmt.Sprintf("%x", h)] = id
+
+		pageCount := 0
+		for rows.Next() {
+			var id, extID string
+			if err := rows.Scan(&id, &extID); err != nil {
+				rows.Close()
+				return nil, nil, err
+			}
+			pageCount++
+			lastProfileID = id
+			allProfileIDs[id] = true
+			if extID != "" {
+				profileIDToExternalID[id] = extID
+				externalIDToProfileID[extID] = id
+				h := sha256.Sum256([]byte(extID))
+				hashToProfileID[fmt.Sprintf("%x", h)] = id
+			}
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, nil, err
+		}
+		rows.Close()
+		if pageCount < profileResolutionPageSize {
+			break
 		}
 	}
 

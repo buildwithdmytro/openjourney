@@ -11,6 +11,8 @@ import (
 
 const shortLinkColumns = `id, tenant_id, workspace_id, slug, destination_url, utm, created_at`
 
+const shortLinkListLimit = 1000
+
 func scanShortLink(row pgx.Row, out *domain.ShortLink) error {
 	return row.Scan(&out.ID, &out.TenantID, &out.WorkspaceID, &out.Slug, &out.DestinationURL, &out.UTM, &out.CreatedAt)
 }
@@ -45,7 +47,7 @@ func (s *Store) CreateShortLink(ctx context.Context, p domain.Principal, link do
 }
 
 func (s *Store) ListShortLinks(ctx context.Context, p domain.Principal) ([]domain.ShortLink, error) {
-	rows, err := s.pool.Query(ctx, `SELECT `+shortLinkColumns+` FROM short_links WHERE tenant_id=$1 AND workspace_id=$2 ORDER BY created_at DESC`, p.TenantID, p.WorkspaceID)
+	rows, err := s.pool.Query(ctx, `SELECT `+shortLinkColumns+` FROM short_links WHERE tenant_id=$1 AND workspace_id=$2 ORDER BY created_at DESC LIMIT $3`, p.TenantID, p.WorkspaceID, shortLinkListLimit)
 	if err != nil {
 		return nil, err
 	}
